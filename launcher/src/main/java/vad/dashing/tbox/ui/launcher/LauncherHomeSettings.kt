@@ -8,6 +8,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -55,6 +56,10 @@ internal fun LauncherHomeSettingsContent() {
     AdasDistanceTextSizeSlider()
     AdasDistanceOffsetSlider()
     NavButtonsToggle()
+    FloatingHomeSizeSlider()
+    ClimateControlsToggle()
+    ClimateControlsScaleSlider()
+    ResetBottomSlotsButton()
     TopBarHeightSlider()
     BottomBarHeightSlider()
     CruisePresetsSettings()
@@ -311,6 +316,157 @@ private fun NavButtonsToggle() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+    }
+}
+
+@Composable
+private fun ClimateControlsToggle() {
+    val context = LocalContext.current
+    val climateRevision by LauncherAppConfigStore.climateControlsRevisionFlow.collectAsStateWithLifecycle()
+    var climateVisible by remember(context, climateRevision) {
+        mutableStateOf(LauncherAppConfigStore.climateControlsVisible(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_climate_visible_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = climateVisible,
+                onCheckedChange = { enabled ->
+                    climateVisible = enabled
+                    LauncherAppConfigStore.setClimateControlsVisible(context, enabled)
+                },
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_climate_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun ClimateControlsScaleSlider() {
+    val context = LocalContext.current
+    val climateRevision by LauncherAppConfigStore.climateControlsRevisionFlow.collectAsStateWithLifecycle()
+    var scale by remember(context, climateRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.climateControlsScale(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_climate_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${(scale * 100f).roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_climate_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scale,
+            onValueChange = { next ->
+                scale = next
+                LauncherAppConfigStore.setClimateControlsScale(context, next)
+            },
+            valueRange = CLIMATE_SCALE_MIN..CLIMATE_SCALE_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun FloatingHomeSizeSlider() {
+    val context = LocalContext.current
+    val sizeRevision by LauncherAppConfigStore.floatingHomeSizeRevisionFlow.collectAsStateWithLifecycle()
+    var sizeDp by remember(context, sizeRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.floatingHomeSizeDp(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_floating_home_size_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${sizeDp.roundToInt()} dp",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_floating_home_size_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = sizeDp,
+            onValueChange = { next ->
+                sizeDp = next
+                LauncherAppConfigStore.setFloatingHomeSizeDp(context, next.roundToInt())
+            },
+            valueRange = FLOATING_HOME_SIZE_MIN.toFloat()..FLOATING_HOME_SIZE_MAX.toFloat(),
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun ResetBottomSlotsButton() {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_reset_bottom_slots_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+        )
+        Text(
+            text = stringResource(R.string.launcher_reset_bottom_slots_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        TextButton(
+            onClick = {
+                LauncherAppConfigStore.resetBottomSlotsToDefault(context)
+            },
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_reset_bottom_slots_button),
+                color = LauncherColors.AccentCyan,
+            )
+        }
     }
 }
 

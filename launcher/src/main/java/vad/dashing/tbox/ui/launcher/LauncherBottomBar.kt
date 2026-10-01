@@ -28,29 +28,38 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
@@ -65,9 +74,12 @@ import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
 import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
 import vad.dashing.tbox.ui.refreshHvacTemperaturesFromMbCan
 import vad.dashing.tbox.ui.sendAdjustHvacTemperature
+import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
+import vad.dashing.tbox.ui.sendCycleFrontSeatVent
 import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
 import vad.dashing.tbox.ui.sendSetMbCanProperty
+import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
 import vad.dashing.tbox.ui.sendToggleHvacAirRecirculation
 import vad.dashing.tbox.ui.sendToggleHvacAuto
 import vad.dashing.tbox.ui.sendToggleHvacDefrosterFront
@@ -127,6 +139,28 @@ fun LauncherBottomBar(
     val navButtonsVisible = remember(context, navButtonsRevision) {
         LauncherAppConfigStore.navButtonsVisible(context)
     }
+    val climateRevision by LauncherAppConfigStore.climateControlsRevisionFlow.collectAsStateWithLifecycle()
+    val climateVisible = remember(context, climateRevision) {
+        LauncherAppConfigStore.climateControlsVisible(context)
+    }
+    val climateScale = remember(context, climateRevision) {
+        LauncherAppConfigStore.climateControlsScale(context)
+    }
+    val bottomSlotsRevision by LauncherAppConfigStore.bottomSlotsRevisionFlow.collectAsStateWithLifecycle()
+    val slotsUnified = remember(context, bottomSlotsRevision, navButtonsVisible) {
+        val raw = LauncherAppConfigStore.bottomSlotsUnified(context)
+        if (navButtonsVisible) {
+            if ("home_nav" !in raw && "back_nav" !in raw) {
+                listOf("home_nav", "back_nav") + raw.take(raw.size - 2)
+            } else {
+                raw
+            }
+        } else {
+            raw.filter { it != "home_nav" && it != "back_nav" }
+        }
+    }
+
+    val localView = LocalView.current
 
     CompositionLocalProvider(LocalDockIconScale provides dockScale) {
     Box(
@@ -137,46 +171,213 @@ fun LauncherBottomBar(
             .onGloballyPositioned { coordinates ->
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.bottomBarTopPx = rect.top.toInt()
+                val location = IntArray(2)
+                localView.getLocationOnScreen(location)
+                LauncherEmbeddedBoundsState.bottomBarTopOnScreenPx = location[1]
+                LauncherEmbeddedBoundsState.bottomBarHeightOnScreenPx = localView.height
             }
             .background(LauncherColors.BottomBarBg)
             .padding(horizontal = 12.dp),
     ) {
-        if (navButtonsVisible) {
-            Row(
-                modifier = Modifier.align(Alignment.CenterStart),
-                horizontalArrangement = Arrangement.spacedBy(dockDp(4f)),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                LauncherDockIcon(
-                    onClick = {
-                        goLauncherHome(
-                            context = context,
-                            onCloseOverlays = {
-                                onCloseVehicleSettings()
-                            },
-                        )
-                    },
-                    onLongClick = onOpenVehicleSettings,
+        if (climateVisible) {
+            CompositionLocalProvider(LocalDockIconScale provides (dockScale * climateScale)) {
+                Row(
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    horizontalArrangement = Arrangement.spacedBy(dockDp(4f)),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Home, stringResource(R.string.launcher_home_cd), tint = LauncherColors.AccentCyan)
-                }
-                LauncherDockIcon(onClick = {
-                    // Same as hardware Back: close overlays / focus foreign freeform + KEYCODE_BACK.
-                    goLauncherBack(
-                        context = context,
-                        vehicleSettingsOpen = LauncherVehicleSettingsUiState.open,
-                        onCloseVehicleSettings = onCloseVehicleSettings,
-                    )
-                }) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        stringResource(R.string.launcher_back_cd),
-                        tint = LauncherColors.TextSecondary,
-                    )
+                    slotsUnified.forEachIndexed { index, itemId ->
+                        if (itemId != null) {
+                            LauncherDraggableUnifiedSlot(
+                                itemId = itemId,
+                                context = context,
+                                canViewModel = canViewModel,
+                                index = index,
+                                onCloseVehicleSettings = onCloseVehicleSettings,
+                                onOpenVehicleSettings = onOpenVehicleSettings,
+                            )
+                        } else {
+                            Box(modifier = Modifier.size(dockDp(44f)))
+                        }
+                    }
                 }
             }
         }
     }
+    }
+}
+
+@Composable
+private fun LauncherDraggableUnifiedSlot(
+    itemId: String,
+    context: Context,
+    canViewModel: CanDataViewModel,
+    index: Int,
+    onCloseVehicleSettings: () -> Unit,
+    onOpenVehicleSettings: () -> Unit,
+) {
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    val slotWidthDp = when (itemId) {
+        "temp_driver", "temp_pass" -> 88.dp
+        else -> 44.dp
+    }
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(offsetX.roundToInt(), 0) }
+            .graphicsLayer {
+                if (isDragging) {
+                    scaleX = 1.15f
+                    scaleY = 1.15f
+                    shadowElevation = 10f
+                }
+            }
+            .pointerInput(itemId, index) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        isDragging = true
+                        offsetX = 0f
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        val slotWidthPx = slotWidthDp.toPx()
+                        val slotsShift = (offsetX / slotWidthPx).roundToInt()
+                        if (slotsShift != 0) {
+                            LauncherAppConfigStore.reorderUnifiedSlot(
+                                context = context,
+                                itemId = itemId,
+                                currentIndex = index,
+                                slotsShift = slotsShift,
+                            )
+                        }
+                        offsetX = 0f
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        offsetX = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        offsetX += dragAmount.x
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        LauncherBottomDockButtonContent(
+            buttonId = itemId,
+            context = context,
+            canViewModel = canViewModel,
+            onCloseVehicleSettings = onCloseVehicleSettings,
+            onOpenVehicleSettings = onOpenVehicleSettings,
+        )
+    }
+}
+
+@Composable
+private fun LauncherBottomDockButtonContent(
+    buttonId: String,
+    context: Context,
+    canViewModel: CanDataViewModel,
+    onCloseVehicleSettings: () -> Unit,
+    onOpenVehicleSettings: () -> Unit,
+) {
+    val hvacAuto by UniversalCanRepository.hvacAutoState.collectAsStateWithLifecycle()
+    val hvacDefrost by UniversalCanRepository.hvacDefrosterFrontState.collectAsStateWithLifecycle()
+    val hvacRecirc by UniversalCanRepository.hvacAirRecirculationState.collectAsStateWithLifecycle()
+    val steeringHeat by UniversalCanRepository.steeringWheelHeatState.collectAsStateWithLifecycle()
+    val windscreenHeat by UniversalCanRepository.frontWindscreenHeatState.collectAsStateWithLifecycle()
+    val rearDefrost by UniversalCanRepository.hvacDefrosterState.collectAsStateWithLifecycle()
+    val leftSeatMode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
+    val rightSeatMode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
+    val driverTemp by canViewModel.climateSetTemperature1.collectAsStateWithLifecycle()
+    val passTemp by canViewModel.climateSetTemperature2.collectAsStateWithLifecycle()
+    val leftRaw = launcherSeatModeToRaw(leftSeatMode) ?: 1
+    val rightRaw = launcherSeatModeToRaw(rightSeatMode) ?: 1
+
+    when (buttonId) {
+        "home_nav" -> LauncherDockIcon(
+            onClick = {
+                goLauncherHome(
+                    context = context,
+                    onCloseOverlays = { onCloseVehicleSettings() },
+                )
+            },
+            onLongClick = onOpenVehicleSettings,
+        ) {
+            Icon(Icons.Filled.Home, stringResource(R.string.launcher_home_cd), tint = LauncherColors.AccentCyan)
+        }
+        "back_nav" -> LauncherDockIcon(
+            onClick = {
+                goLauncherBack(
+                    context = context,
+                    vehicleSettingsOpen = LauncherVehicleSettingsUiState.open,
+                    onCloseVehicleSettings = onCloseVehicleSettings,
+                )
+            },
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.launcher_back_cd), tint = LauncherColors.TextSecondary)
+        }
+        "temp_driver" -> LauncherTempStepper(
+            tempText = formatHvacSetTemp(driverTemp),
+            onDown = { sendAdjustHvacTemperature(context, driverTemp, -0.5f, HvacTempZone.Driver) },
+            onUp = { sendAdjustHvacTemperature(context, driverTemp, 0.5f, HvacTempZone.Driver) },
+        )
+        "temp_pass" -> LauncherTempStepper(
+            tempText = formatHvacSetTemp(passTemp),
+            onDown = { sendAdjustHvacTemperature(context, passTemp, -0.5f, HvacTempZone.Passenger) },
+            onUp = { sendAdjustHvacTemperature(context, passTemp, 0.5f, HvacTempZone.Passenger) },
+        )
+        "hvac_auto" -> LauncherDockIcon(onClick = { sendToggleHvacAuto(context) }) {
+            LauncherHvacIcon(R.drawable.ic_widget_hvac_auto, hvacAuto)
+        }
+        "seat_heat_left" -> LauncherDockIcon(onClick = {
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
+        }) {
+            LauncherSeatHeatIcon(raw = leftRaw)
+        }
+        "seat_vent_left" -> LauncherDockIcon(onClick = {
+            sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
+        }) {
+            LauncherSeatVentIcon(raw = leftRaw)
+        }
+        "recirc" -> LauncherDockIcon(onClick = { sendToggleHvacAirRecirculation(context) }) {
+            LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc)
+        }
+        "seat_heat_right" -> LauncherDockIcon(onClick = {
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
+        }) {
+            LauncherSeatHeatIcon(raw = rightRaw, mirrored = true)
+        }
+        "seat_vent_right" -> LauncherDockIcon(onClick = {
+            sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
+        }) {
+            LauncherSeatVentIcon(raw = rightRaw, mirrored = true)
+        }
+        "steering_heat" -> LauncherDockIcon(onClick = { sendToggleSteeringWheelHeat(context) }) {
+            LauncherBinaryTintIcon(R.drawable.ic_widget_steering_wheel_heat, steeringHeat is MbCanBinaryState.On)
+        }
+        "windscreen_heat" -> LauncherDockIcon(onClick = { sendToggleFrontWindscreenHeat(context) }) {
+            LauncherBinaryTintIcon(R.drawable.ic_widget_front_windscreen_heat, windscreenHeat is MbCanBinaryState.On)
+        }
+        "front_defrost" -> LauncherDockIcon(onClick = { sendToggleHvacDefrosterFront(context) }) {
+            LauncherHvacIcon(R.drawable.ic_widget_hvac_defroster_front, hvacDefrost)
+        }
+        "rear_defrost" -> LauncherDockIcon(onClick = { sendToggleRearWindowMirrorsDefrost(context) }) {
+            LauncherBinaryTintIcon(R.drawable.ic_widget_rear_window_mirrors_defrost, rearDefrost is MbCanBinaryState.On)
+        }
+        else -> if (buttonId.startsWith("pkg:")) {
+            val pkg = buttonId.removePrefix("pkg:")
+            LauncherDockIcon(onClick = { launchLauncherApp(context, pkg) }) {
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_seat),
+                    contentDescription = null,
+                    modifier = Modifier.size(dockDp(26f)),
+                )
+            }
+        }
     }
 }
 

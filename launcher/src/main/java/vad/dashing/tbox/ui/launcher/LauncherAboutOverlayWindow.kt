@@ -149,6 +149,7 @@ internal object LauncherAboutOverlayWindow {
             wm.addView(view, params)
             composeView = view
             view.requestFocus()
+            LauncherOverlayBar.bringToFront()
             Log.w(TAG, "about overlay shown ${width}x$height")
             true
         }.onFailure {

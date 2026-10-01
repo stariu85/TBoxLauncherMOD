@@ -225,6 +225,7 @@ internal object LauncherAppPickerOverlayWindow {
             wm.addView(view, params)
             composeView = view
             view.requestFocus()
+            LauncherOverlayBar.bringToFront()
             Log.w(TAG, "picker overlay shown ${width}x$height apps=${apps.size}")
             true
         }.onFailure {

@@ -147,6 +147,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
             wm.addView(view, params)
             composeView = view
             view.requestFocus()
+            LauncherOverlayBar.bringToFront()
             Log.w(TAG, "vehicle settings overlay shown")
             true
         }.onFailure {

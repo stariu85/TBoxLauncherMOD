@@ -20,11 +20,37 @@ private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
+private const val KEY_CLIMATE_VISIBLE = "climate_controls_visible"
+private const val KEY_CLIMATE_SCALE = "climate_controls_scale"
+private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
+private const val KEY_BOTTOM_SLOTS_UNIFIED = "bottom_slots_unified"
+
+internal const val GRID_SLOTS_TOTAL_COUNT = 32
+
+internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
+    "seat_heat_left",
+    "seat_vent_left",
+    "temp_driver",
+    "hvac_auto",
+    "temp_pass",
+    "seat_heat_right",
+    "seat_vent_right",
+    "recirc",
+    "steering_heat",
+    "windscreen_heat",
+    "front_defrost",
+    "rear_defrost",
+    null, null, null, null,
+    null, null, null, null,
+    null, null, null, null,
+    null, null, null, null,
+    null, null, null, null,
+)
 
 enum class LauncherAppLaunchMode(val code: String) {
     EMBEDDED("embedded"),
@@ -51,6 +77,9 @@ internal const val TOP_BAR_HEIGHT_MAX = 72
 internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 72
 internal const val BOTTOM_BAR_HEIGHT_MIN = 48
 internal const val BOTTOM_BAR_HEIGHT_MAX = 110
+internal const val FLOATING_HOME_SIZE_DEFAULT = 56
+internal const val FLOATING_HOME_SIZE_MIN = 32
+internal const val FLOATING_HOME_SIZE_MAX = 96
 internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
 internal const val CAR_MODEL_SCALE_MIN = 0.50f
 internal const val CAR_MODEL_SCALE_MAX = 1.80f
@@ -63,6 +92,9 @@ internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
 internal const val ADAS_DISTANCE_LABEL_OFFSET_DEFAULT = 0.15f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MIN = 0.00f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
+internal const val CLIMATE_SCALE_DEFAULT = 1.00f
+internal const val CLIMATE_SCALE_MIN = 0.70f
+internal const val CLIMATE_SCALE_MAX = 1.40f
 internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
@@ -90,6 +122,8 @@ internal object LauncherAppConfigStore {
     internal val topBarHeightRevisionFlow: StateFlow<Int> = topBarHeightRevision
     private val bottomBarHeightRevision = MutableStateFlow(0)
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
+    private val floatingHomeSizeRevision = MutableStateFlow(0)
+    internal val floatingHomeSizeRevisionFlow: StateFlow<Int> = floatingHomeSizeRevision
     private val carModelScaleRevision = MutableStateFlow(0)
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
     private val sidebarWidthRevision = MutableStateFlow(0)
@@ -100,6 +134,10 @@ internal object LauncherAppConfigStore {
     internal val adasDistanceTextSizeRevisionFlow: StateFlow<Int> = adasDistanceTextSizeRevision
     private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
+    private val climateControlsRevision = MutableStateFlow(0)
+    internal val climateControlsRevisionFlow: StateFlow<Int> = climateControlsRevision
+    private val bottomSlotsRevision = MutableStateFlow(0)
+    internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
 
@@ -170,6 +208,16 @@ internal object LauncherAppConfigStore {
         bottomBarHeightRevision.value++
     }
 
+    fun floatingHomeSizeDp(context: Context): Int =
+        prefs(context).getInt(KEY_FLOATING_HOME_SIZE, FLOATING_HOME_SIZE_DEFAULT)
+            .coerceIn(FLOATING_HOME_SIZE_MIN, FLOATING_HOME_SIZE_MAX)
+
+    fun setFloatingHomeSizeDp(context: Context, sizeDp: Int) {
+        val next = sizeDp.coerceIn(FLOATING_HOME_SIZE_MIN, FLOATING_HOME_SIZE_MAX)
+        prefs(context).edit().putInt(KEY_FLOATING_HOME_SIZE, next).apply()
+        floatingHomeSizeRevision.value++
+    }
+
     fun carModelScale(context: Context): Float =
         prefs(context).getFloat(KEY_CAR_MODEL_SCALE, CAR_MODEL_SCALE_DEFAULT)
             .coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
@@ -206,6 +254,63 @@ internal object LauncherAppConfigStore {
         val next = offsetRatio.coerceIn(ADAS_DISTANCE_LABEL_OFFSET_MIN, ADAS_DISTANCE_LABEL_OFFSET_MAX)
         prefs(context).edit().putFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET, next).apply()
         adasDistanceLabelOffsetRevision.value++
+    }
+
+    fun climateControlsVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLIMATE_VISIBLE, true)
+
+    fun setClimateControlsVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLIMATE_VISIBLE, visible).apply()
+        climateControlsRevision.value++
+    }
+
+    fun climateControlsScale(context: Context): Float =
+        prefs(context).getFloat(KEY_CLIMATE_SCALE, CLIMATE_SCALE_DEFAULT)
+            .coerceIn(CLIMATE_SCALE_MIN, CLIMATE_SCALE_MAX)
+
+    fun setClimateControlsScale(context: Context, scale: Float) {
+        val next = scale.coerceIn(CLIMATE_SCALE_MIN, CLIMATE_SCALE_MAX)
+        prefs(context).edit().putFloat(KEY_CLIMATE_SCALE, next).apply()
+        climateControlsRevision.value++
+    }
+
+    fun bottomSlotsUnified(context: Context): List<String?> {
+        val raw = prefs(context).getString(KEY_BOTTOM_SLOTS_UNIFIED, null)
+        if (raw.isNullOrBlank()) return DEFAULT_BOTTOM_SLOTS_UNIFIED
+        val list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }
+        return if (list.size == GRID_SLOTS_TOTAL_COUNT) list else DEFAULT_BOTTOM_SLOTS_UNIFIED
+    }
+
+    fun setBottomSlotsUnified(context: Context, slots: List<String?>) {
+        val raw = slots.take(GRID_SLOTS_TOTAL_COUNT).joinToString(",") { it ?: "null" }
+        prefs(context).edit().putString(KEY_BOTTOM_SLOTS_UNIFIED, raw).apply()
+        bottomSlotsRevision.value++
+    }
+
+    fun reorderUnifiedSlot(
+        context: Context,
+        itemId: String,
+        currentIndex: Int,
+        slotsShift: Int,
+    ) {
+        val slots = bottomSlotsUnified(context).toMutableList()
+        val targetIndex = (currentIndex + slotsShift).coerceIn(0, GRID_SLOTS_TOTAL_COUNT - 1)
+        if (targetIndex == currentIndex) return
+
+        val targetOld = slots[targetIndex]
+        slots[currentIndex] = targetOld
+        slots[targetIndex] = itemId
+
+        setBottomSlotsUnified(context, slots)
+    }
+
+    fun resetBottomSlotsToDefault(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_BOTTOM_SLOTS_UNIFIED)
+            .remove("bottom_slots_left")
+            .remove("bottom_slots_right")
+            .apply()
+        bottomSlotsRevision.value++
     }
 
     fun sidebarWidthDp(context: Context): Int =

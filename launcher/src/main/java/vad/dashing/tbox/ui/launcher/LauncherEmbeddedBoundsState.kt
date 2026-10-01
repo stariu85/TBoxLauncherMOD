@@ -16,6 +16,8 @@ object LauncherEmbeddedBoundsState {
     var contentRowBounds: Rect? by mutableStateOf(null)
     var screenBounds: Rect? by mutableStateOf(null)
     var bottomBarTopPx: Int by mutableIntStateOf(0)
+    var bottomBarTopOnScreenPx: Int by mutableIntStateOf(0)
+    var bottomBarHeightOnScreenPx: Int by mutableIntStateOf(0)
 
     /** No gap between split panes — even 8px left a ~4px HOME strip visible between apps. */
     private const val SPLIT_GAP_PX = 0

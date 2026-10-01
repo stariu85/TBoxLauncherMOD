@@ -212,6 +212,15 @@
     <string name="launcher_adas_distance_text_size_desc">Размер шрифта на метке расстояния до ведущей машины</string>
     <string name="launcher_adas_distance_offset_title">Позиция метки дистанции ACC</string>
     <string name="launcher_adas_distance_offset_desc">Смещение метки от бампера ведущей машины (0%) до вашей машины (100%)</string>
+    <string name="launcher_climate_visible_title">Кнопки климат-контроля</string>
+    <string name="launcher_climate_visible_desc">Отображать панель климат-контроля и подогревов на нижней панели</string>
+    <string name="launcher_climate_scale_title">Размер кнопок климата</string>
+    <string name="launcher_climate_scale_desc">Масштаб значков климат-контроля и температуры</string>
+    <string name="launcher_floating_home_size_title">Размер плавающей кнопки Домой</string>
+    <string name="launcher_floating_home_size_desc">Размер оверлейной кнопки «Домой» поверх всех окон</string>
+    <string name="launcher_reset_bottom_slots_title">Сбросить расположение кнопок нижней панели</string>
+    <string name="launcher_reset_bottom_slots_desc">Возвращает кнопки климата и подогревов в начальный порядок</string>
+    <string name="launcher_reset_bottom_slots_button">Сбросить кнопки</string>
     <string name="launcher_split_add_preset">Добавить пресет</string>
     <string name="launcher_split_new_preset">Новый пресет</string>
     <string name="launcher_split_edit_preset">Пресет сплита</string>

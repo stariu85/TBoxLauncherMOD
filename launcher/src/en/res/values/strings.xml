@@ -25,6 +25,15 @@
     <string name="launcher_adas_distance_text_size_desc">Font size of the lead vehicle distance badge</string>
     <string name="launcher_adas_distance_offset_title">ACC distance label position</string>
     <string name="launcher_adas_distance_offset_desc">Offset of the badge from lead car bumper (0%) to ego car bumper (100%)</string>
+    <string name="launcher_climate_visible_title">Climate controls</string>
+    <string name="launcher_climate_visible_desc">Show climate and seat heating controls on the bottom panel</string>
+    <string name="launcher_climate_scale_title">Climate buttons size</string>
+    <string name="launcher_climate_scale_desc">Scale of climate control and temperature icons</string>
+    <string name="launcher_floating_home_size_title">Floating Home button size</string>
+    <string name="launcher_floating_home_size_desc">Size of the overlay Home button above all windows</string>
+    <string name="launcher_reset_bottom_slots_title">Reset bottom panel buttons</string>
+    <string name="launcher_reset_bottom_slots_desc">Restores default layout for bottom climate and seat buttons</string>
+    <string name="launcher_reset_bottom_slots_button">Reset buttons</string>
     <string name="launcher_update_install_permission_hint">To install the APK, allow installs from unknown sources for Dashing Club Launcher in Android settings.</string>
     <string name="app_name_monitor">TBox Monitor</string>
     <string name="keyboard_accessibility_description">Track keyboard visibility for floating panels</string>
