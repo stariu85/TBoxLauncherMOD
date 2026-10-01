@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,15 +71,13 @@ fun LauncherLeftPanel(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val modelScaleRevision by LauncherAppConfigStore.carModelScaleRevisionFlow.collectAsStateWithLifecycle()
+    val carModelScale = remember(context, modelScaleRevision) {
+        LauncherAppConfigStore.carModelScale(context)
+    }
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
     val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle()
-    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
-    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
-    // Filtered % считается только в активной поездке; вне поездки показываем сырой процент.
-    val fuelPct = fuelPctFiltered ?: fuelPctRaw
-    val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
-    val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
@@ -131,27 +131,7 @@ fun LauncherLeftPanel(
         if (parsedGear != null) latchedGear = parsedGear
     }
     val activeGear = parsedGear ?: latchedGear
-    val inDriveGear = racing || activeGear == 'D'
-    val unitKm = stringResource(R.string.unit_km)
-    var fuelShowsRange by remember {
-        mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
-    }
-    val fuelText = if (fuelShowsRange) {
-        rangeKm?.let { "${valueToString(it, 0)} $unitKm" } ?: "—"
-    } else {
-        fuelPct?.toInt()?.let { "$it%" } ?: "—"
-    }
-    val speedText = valueToString(effectiveSpeed, 0, default = "0")
-    val voltageValue = voltage
-    val voltageLow = voltageValue != null && voltageValue < 12f
-    val voltageText = voltageValue?.let {
-        "${valueToString(it, 1)} ${stringResource(R.string.unit_volt)}"
-    } ?: "— ${stringResource(R.string.unit_volt)}"
-    val voltageColor = when {
-        voltageValue == null -> LauncherColors.LeftTextSecondary
-        voltageLow -> LauncherColors.WarningRed
-        else -> LauncherColors.LeftTextPrimary
-    }
+    val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
 
     Box(
         modifier = modifier
@@ -202,98 +182,20 @@ fun LauncherLeftPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LauncherGearSelector(
-                    activeSlot = if (racing) 'D' else activeGear,
-                    onDClick = { LauncherEggRace.onDTapped() },
-                )
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                val next = !fuelShowsRange
-                                fuelShowsRange = next
-                                LauncherAppConfigStore.setFuelShowsRange(context, next)
-                            },
+                if (!racing) {
+                    LauncherCruisePresetControl(
+                        canViewModel = canViewModel,
+                        adas = adas,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
                         ),
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_launcher_fuel),
-                            contentDescription = stringResource(R.string.launcher_vs_fuel),
-                            modifier = Modifier.size(18.dp),
-                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-                        )
-                        Text(
-                            text = fuelText,
-                            style = MaterialTheme.typography.tboxCaption,
-                            color = LauncherColors.LeftTextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        if (voltageLow) {
-                            Image(
-                                painter = painterResource(R.drawable.ic_launcher_battery),
-                                contentDescription = stringResource(R.string.data_title_voltage),
-                                modifier = Modifier.size(14.dp),
-                                colorFilter = ColorFilter.tint(LauncherColors.WarningRed),
-                            )
-                        }
-                        Text(
-                            text = voltageText,
-                            style = MaterialTheme.typography.tboxCaption,
-                            color = voltageColor,
-                            fontSize = 13.sp,
-                            fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
-                        )
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-            if (!racing) {
-                LauncherCruisePresetControl(
-                    canViewModel = canViewModel,
-                    adas = adas,
                 )
-            }
-                Text(
-                    text = "$speedText ${stringResource(R.string.unit_kmh)}",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = LauncherColors.LeftTextSecondary,
-                    fontSize = 13.sp,
-                )
-            }
-            if (!tboxConnected && !racing) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(LauncherColors.GearInactive),
-                    )
-                    Text(
-                        text = stringResource(R.string.value_disconnected),
-                        fontSize = 12.sp,
-                        color = LauncherColors.LeftTextSecondary,
-                    )
-                }
             }
         }
 
@@ -319,6 +221,7 @@ fun LauncherLeftPanel(
                     settingsView = settingsProgress > 0.02f,
                     settingsProgress = settingsProgress,
                     settingsUserYawDeg = settingsUserYawDeg,
+                    customModelScale = carModelScale,
                     onWheelAnchorsChanged = { wheelAnchors = it },
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },

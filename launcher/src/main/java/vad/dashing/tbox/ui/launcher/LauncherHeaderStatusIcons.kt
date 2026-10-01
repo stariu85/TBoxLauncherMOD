@@ -2,6 +2,7 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import androidx.compose.foundation.Canvas
@@ -27,15 +28,165 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
+import vad.dashing.tbox.ui.theme.tboxCaption
+import vad.dashing.tbox.valueToString
 
 private val StatusIconTint = LauncherColors.TextSecondary
+
+@Composable
+internal fun LauncherTopHeaderBar(
+    canViewModel: CanDataViewModel,
+    tboxViewModel: TboxViewModel,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
+    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
+    val fuelPct = fuelPctFiltered ?: fuelPctRaw
+    val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
+    val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
+
+    var fuelShowsRange by remember {
+        mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
+    }
+    val unitKm = stringResource(R.string.unit_km)
+    val fuelText = if (fuelShowsRange) {
+        rangeKm?.let { "${valueToString(it, 0)} $unitKm" } ?: "—"
+    } else {
+        fuelPct?.toInt()?.let { "$it%" } ?: "—"
+    }
+
+    val voltageValue = voltage?.takeIf { !it.isNaN() && !it.isInfinite() }
+    val voltageLow = voltageValue != null && voltageValue < 12f
+    val voltageText = voltageValue?.let {
+        "${valueToString(it, 1)} ${stringResource(R.string.unit_volt)}"
+    } ?: "— ${stringResource(R.string.unit_volt)}"
+    val voltageColor = when {
+        voltageValue == null -> LauncherColors.TextSecondary
+        voltageLow -> LauncherColors.WarningRed
+        else -> LauncherColors.TextPrimary
+    }
+
+    var clockNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            val now = System.currentTimeMillis()
+            clockNowMs = now
+            delay(1_000L - (now % 1_000L))
+        }
+    }
+    val timeText = remember(clockNowMs) {
+        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(clockNowMs))
+    }
+    val dateText = remember(clockNowMs) {
+        SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(clockNowMs))
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val rect = coordinates.boundsInWindow()
+                LauncherEmbeddedBoundsState.topHeaderBottomPx = rect.bottom.toInt()
+            },
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
+                color = LauncherColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        val next = !fuelShowsRange
+                        fuelShowsRange = next
+                        LauncherAppConfigStore.setFuelShowsRange(context, next)
+                    },
+                ),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_fuel),
+                    contentDescription = stringResource(R.string.launcher_vs_fuel),
+                    modifier = Modifier.size(18.dp),
+                    colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+                )
+                Text(
+                    text = fuelText,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (voltageLow) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_launcher_battery),
+                        contentDescription = stringResource(R.string.data_title_voltage),
+                        modifier = Modifier.size(14.dp),
+                        colorFilter = ColorFilter.tint(LauncherColors.WarningRed),
+                    )
+                }
+                Text(
+                    text = voltageText,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = voltageColor,
+                    fontSize = 15.sp,
+                    fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
+                )
+            }
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
+            Text(
+                text = "$timeText  ·  $dateText",
+                color = LauncherColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Light,
+            )
+        }
+    }
+}
 
 @Composable
 internal fun LauncherHeaderStatusIcons(
@@ -139,29 +290,30 @@ private fun mobileNetworkTypeLabel(netStatus: String): String? = when (netStatus
 @Composable
 private fun rememberWifiConnected(): Boolean {
     val context = LocalContext.current
-    val connectivityManager = remember {
-        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val connectivityManager = remember(context) {
+        runCatching { context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager }.getOrNull()
     }
     var wifiConnected by remember { mutableStateOf(readWifiConnected(connectivityManager)) }
     DisposableEffect(connectivityManager) {
+        val cm = connectivityManager ?: return@DisposableEffect onDispose { }
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: android.net.Network) {
-                wifiConnected = readWifiConnected(connectivityManager)
+            override fun onAvailable(network: Network) {
+                wifiConnected = readWifiConnected(cm)
             }
 
-            override fun onLost(network: android.net.Network) {
-                wifiConnected = readWifiConnected(connectivityManager)
+            override fun onLost(network: Network) {
+                wifiConnected = readWifiConnected(cm)
             }
 
             override fun onCapabilitiesChanged(
                 network: android.net.Network,
                 networkCapabilities: NetworkCapabilities,
             ) {
-                wifiConnected = readWifiConnected(connectivityManager)
+                wifiConnected = readWifiConnected(cm)
             }
         }
-        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
-        onDispose { runCatching { connectivityManager.unregisterNetworkCallback(callback) } }
+        runCatching { cm.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
     }
     return wifiConnected
 }
@@ -190,10 +342,13 @@ private fun rememberWifiLevel(wifiConnected: Boolean): Int {
     return if (wifiConnected) level else 0
 }
 
-private fun readWifiConnected(connectivityManager: ConnectivityManager): Boolean {
-    val network = connectivityManager.activeNetwork ?: return false
-    val caps = connectivityManager.getNetworkCapabilities(network) ?: return false
-    return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+private fun readWifiConnected(connectivityManager: ConnectivityManager?): Boolean {
+    val cm = connectivityManager ?: return false
+    return runCatching {
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }.getOrDefault(false)
 }
 
 @Suppress("DEPRECATION")

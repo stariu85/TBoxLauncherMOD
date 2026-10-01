@@ -10,6 +10,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import vad.dashing.tbox.LastAppTracker
 
 private const val TAG = "LauncherFreeform"
@@ -154,12 +158,12 @@ internal fun tryLaunchIntentInBounds(
 }
 
 @Suppress("DEPRECATION")
-private val FREEFORM_PIN_DELAYS_MS = longArrayOf(0L, 250L, 700L, 1400L, 2500L, 4000L, 6000L)
+private val FREEFORM_PIN_DELAYS_MS = longArrayOf(300L)
 
 /** Re-apply freeform bounds while splash/game activities try to go fullscreen. */
 private fun pinFreeformBounds(context: Context, packageName: String, bounds: Rect) {
     val handler = Handler(Looper.getMainLooper())
-    val apply = { forceFreeformBounds(context, packageName, bounds) }
+    val apply = { forceFreeformBounds(context, packageName, bounds, bringToFront = false) }
     FREEFORM_PIN_DELAYS_MS.forEach { delayMs ->
         if (delayMs <= 0L) apply() else handler.postDelayed(apply, delayMs)
     }
@@ -169,6 +173,7 @@ internal fun forceFreeformBounds(
     context: Context,
     packageName: String,
     bounds: Rect,
+    bringToFront: Boolean = false,
 ) {
     val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val taskId = findTaskIdForPackage(am, packageName)
@@ -176,7 +181,7 @@ internal fun forceFreeformBounds(
         Log.w("LauncherAppLaunch", "resizeTask: no task yet pkg=$packageName")
         return
     }
-    forceFreeformBoundsByTaskId(context, taskId, bounds, label = packageName)
+    forceFreeformBoundsByTaskId(context, taskId, bounds, bringToFront = bringToFront, label = packageName)
 }
 
 /**
@@ -188,12 +193,15 @@ internal fun forceFreeformBoundsByTaskId(
     context: Context,
     taskId: Int,
     bounds: Rect,
+    bringToFront: Boolean = false,
     label: String = "task=$taskId",
 ) {
     val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val rect = Rect(bounds)
-    runCatching { am.moveTaskToFront(taskId, 0) }
-        .onFailure { Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it) }
+    if (bringToFront) {
+        runCatching { am.moveTaskToFront(taskId, 0) }
+            .onFailure { Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it) }
+    }
     setTaskWindowingModeFreeform(am, taskId)
 
     val resized = runCatching {
@@ -411,40 +419,81 @@ internal fun listForeignFreeformTaskIds(
     return out.toList()
 }
 
-/**
- * Close orphan freeform/split windows left above the desktop when the launcher
- * process dies or is reinstalled (OEM keeps freeform stacks alive).
- */
-internal fun dismissForeignFreeformTasks(context: Context) {
-    val launcherPackage = context.packageName
-    val tracked = FreeformLaunchRegistry.snapshot()
-    // Proven on X50 under app UID: `am stack remove` clears freeform above HOME.
-    val viaShell = LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
-    if (viaShell > 0) {
-        FreeformLaunchRegistry.clear()
-        Log.w("LauncherAppLaunch", "dismissForeignFreeform via am stack remove count=$viaShell")
-        return
-    }
+private val SYSTEM_PROTECTED_PACKAGES = setOf(
+    "android",
+    "com.android.systemui",
+    "com.wt.launcher3",
+    "com.android.launcher3",
+    "com.autopai.system.settings",
+    "com.google.android.inputmethod.latin",
+)
 
-    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val ids = linkedSetOf<Int>()
-    ids += listForeignFreeformTaskIds(launcherPackage, visibleOnly = false)
-    for (pkg in tracked) {
-        findTaskIdForPackage(am, pkg)?.let { ids += it }
-    }
-    if (ids.isEmpty()) {
-        Log.w(
-            "LauncherAppLaunch",
-            "dismissForeignFreeform: none stacks=${activityManagerStackInfos().size} tracked=$tracked shellStacks=${LauncherAmStackShell.listStacks().size}",
-        )
-        return
-    }
-    for (taskId in ids) {
-        val removed = removeTaskId(am, taskId)
-        val moved = if (!removed) moveTaskBackwards(taskId) else false
-        Log.w("LauncherAppLaunch", "dismissForeignFreeform task=$taskId removed=$removed movedBack=$moved")
-    }
+private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
+    val myPkg = context.packageName
+    if (pkg.isBlank()) return false
+    if (pkg == myPkg) return false
+    if (pkg in SYSTEM_PROTECTED_PACKAGES) return false
+    if (pkg.startsWith("com.android.system")) return false
+    return true
+}
+
+/**
+ * Hide/dismiss freeform, full-width, or split windows left above the desktop when Home is pressed.
+ * Force-stops external app packages so windows disappear instantly without freezing or dropping down.
+ */
+internal fun dismissForeignFreeformTasks(
+    context: Context,
+    onComplete: () -> Unit = {},
+) {
+    val appCtx = context.applicationContext
+    val launcherPackage = appCtx.packageName
+    val tracked = FreeformLaunchRegistry.snapshot()
     FreeformLaunchRegistry.clear()
+
+    CoroutineScope(Dispatchers.IO).launch {
+        runCatching {
+            val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val packagesToStop = mutableSetOf<String>()
+            packagesToStop += tracked
+
+            // Collect packages from visible foreign tasks
+            for (taskId in listForeignFreeformTaskIds(launcherPackage, visibleOnly = true)) {
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    am.getRunningTasks(32)?.firstOrNull { it.id == taskId }?.let { taskInfo ->
+                        val pkg = taskInfo.topActivity?.packageName ?: taskInfo.baseActivity?.packageName
+                        if (!pkg.isNullOrBlank()) packagesToStop += pkg
+                    }
+                }
+            }
+
+            for (pkg in packagesToStop) {
+                if (!isPackageSafeToStop(appCtx, pkg)) continue
+
+                // Force-stop the package via shell `am force-stop`
+                runCatching {
+                    val pb = ProcessBuilder("am", "force-stop", pkg)
+                    val proc = pb.start()
+                    proc.waitFor()
+                    Log.w("LauncherAppLaunch", "am force-stop $pkg completed")
+                }.onFailure {
+                    Log.w("LauncherAppLaunch", "am force-stop $pkg failed: ${it.message}")
+                }
+
+                findTaskIdForPackage(am, pkg)?.let { taskId ->
+                    removeTaskId(am, taskId)
+                }
+            }
+
+            // Shell fallback: am stack remove
+            LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
+        }.onFailure {
+            Log.w("LauncherAppLaunch", "dismissForeignFreeform failed", it)
+        }
+        withContext(Dispatchers.Main) {
+            onComplete()
+        }
+    }
 }
 
 private fun stackInfoLooksFreeform(info: Any): Boolean {
@@ -455,8 +504,8 @@ private fun stackInfoLooksFreeform(info: Any): Boolean {
     if (bounds.isEmpty) return false
     val w = bounds.width()
     val h = bounds.height()
-    // Fullscreen on X50 is ~1920x1080 / 1920x981 — freeform embed is typically ~1538x947.
-    return w in 200..1800 && h in 200..1000
+    // Embedded: ~1400x950. Full width: ~1920x950 (h < 1050, bounded by top/bottom bars).
+    return w in 200..1930 && h in 200..1050
 }
 
 private fun stackInfoBounds(info: Any): Rect? {

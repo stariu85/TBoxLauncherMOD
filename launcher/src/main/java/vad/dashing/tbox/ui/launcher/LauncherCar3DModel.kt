@@ -24,9 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -45,6 +46,8 @@ import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.exp
 
 // Calibrated against the GLB's authored forward axis so the nose points to screen top.
 private const val MODEL_YAW_DEG = 135f
@@ -94,6 +97,7 @@ fun LauncherCar3DModel(
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit = {},
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
+    customModelScale: Float = 1f,
     projectPdcRings: Boolean = false,
     projectHeadlights: Boolean = false,
     textureSurface: Boolean = false,
@@ -131,6 +135,7 @@ fun LauncherCar3DModel(
             settingsProgress = settingsProgress,
             settingsUserYawDeg = settingsUserYawDeg,
             settingsUserScale = settingsUserScale,
+            customModelScale = customModelScale,
             settingsOrbit = settingsOrbit,
             onWheelAnchorsChanged = onWheelAnchorsChanged,
             onDoorAnchorsChanged = onDoorAnchorsChanged,
@@ -165,6 +170,7 @@ private fun LauncherCarFilamentModel(
     settingsProgress: Float,
     settingsUserYawDeg: Float,
     settingsUserScale: Float,
+    customModelScale: Float = 1f,
     settingsOrbit: LauncherSettingsOrbitState?,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
@@ -176,10 +182,89 @@ private fun LauncherCarFilamentModel(
     textureSurface: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val surfaceEpoch by LauncherCarSurfaceRecovery.epoch.collectAsStateWithLifecycle()
+
+    DisposableEffect(lifecycleOwner, lowPowerPreview) {
+        if (lowPowerPreview) {
+            return@DisposableEffect onDispose { }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> LauncherCarSurfaceRecovery.onHomePaused()
+                Lifecycle.Event.ON_RESUME -> LauncherCarSurfaceRecovery.onHomeResumed()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    Box(modifier = modifier) {
+        key(if (lowPowerPreview) 0 else surfaceEpoch, modelRevision) {
+            LauncherCarFilamentContent(
+                modifier = Modifier.fillMaxSize(),
+                paintId = paintId,
+                rigState = rigState,
+                speedKmh = speedKmh,
+                steeringDeg = steeringDeg,
+                steerPreview = steerPreview,
+                inDriveGear = inDriveGear,
+                settingsProgress = settingsProgress,
+                settingsUserYawDeg = settingsUserYawDeg,
+                settingsUserScale = settingsUserScale,
+                customModelScale = customModelScale,
+                settingsOrbit = settingsOrbit,
+                onWheelAnchorsChanged = onWheelAnchorsChanged,
+                onDoorAnchorsChanged = onDoorAnchorsChanged,
+                onPdcRingsChanged = onPdcRingsChanged,
+                onHeadlightFrameChanged = onHeadlightFrameChanged,
+                onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
+                projectPdcRings = projectPdcRings,
+                projectHeadlights = projectHeadlights,
+                textureSurface = textureSurface,
+                lowPowerPreview = lowPowerPreview,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherCarFilamentContent(
+    modifier: Modifier = Modifier,
+    paintId: String,
+    rigState: LauncherCarRigState,
+    speedKmh: Float,
+    steeringDeg: Float,
+    steerPreview: Boolean,
+    inDriveGear: Boolean,
+    settingsProgress: Float,
+    settingsUserYawDeg: Float,
+    settingsUserScale: Float,
+    customModelScale: Float = 1f,
+    settingsOrbit: LauncherSettingsOrbitState?,
+    onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
+    onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
+    onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit,
+    onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
+    onBodyRigAvailabilityChanged: (Boolean) -> Unit,
+    projectPdcRings: Boolean,
+    projectHeadlights: Boolean,
+    textureSurface: Boolean = false,
+    lowPowerPreview: Boolean = false,
+) {
+    val context = LocalContext.current
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val cameraNode = rememberCameraNode(engine)
-    val modelInstance = rememberModelInstance(modelLoader, LAUNCHER_CAR_MODEL_ASSET)
+    val modelInstance = remember(modelLoader) {
+        runCatching {
+            val buffer = LauncherCarModelCache.getBuffer(context)
+            modelLoader.createModelInstance(buffer)
+        }.getOrNull() ?: modelLoader.createModelInstance(LAUNCHER_CAR_MODEL_ASSET)
+    }
     val currentTransition = settingsProgress.coerceIn(0f, 1f)
 
     val rigStateRef = rememberUpdatedState(
@@ -209,15 +294,19 @@ private fun LauncherCarFilamentModel(
         label = "carDriveBlend",
     )
     val driveBlendRef = rememberUpdatedState(composedDriveBlend)
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
-    var renderedScale by remember(modelInstance) { mutableFloatStateOf(0f) }
-    var modelReady by remember(modelInstance) { mutableStateOf(false) }
+    var renderedScale by remember(modelInstance) { mutableFloatStateOf(HOME_MODEL_SCALE) }
+    var modelReady by remember(modelInstance) { mutableStateOf(modelInstance != null) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = tween(durationMillis = 50),
         label = "launcherCarModelAlpha",
     )
-    val modelNodeRef = remember { mutableStateOf<ModelNode?>(null) }
+    val modelNodeRef = remember(modelInstance) {
+        AtomicReference<ModelNode?>(null)
+    }
     val paintMaterialsRef = remember { mutableStateOf<List<com.google.android.filament.MaterialInstance>>(emptyList()) }
     // TransformManager is read-only here (wheel anchors); body motion uses authored glTF clips.
     val rigController = remember(modelInstance, engine) {
@@ -226,8 +315,6 @@ private fun LauncherCarFilamentModel(
     val animationController = remember(modelInstance) {
         modelInstance?.let(LauncherCarAnimationController::bind)
     }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val surfaceEpoch by LauncherCarSurfaceRecovery.epoch.collectAsStateWithLifecycle()
 
     DisposableEffect(lifecycleOwner, lowPowerPreview) {
         if (lowPowerPreview) {
@@ -248,20 +335,21 @@ private fun LauncherCarFilamentModel(
     }
 
     if (!lowPowerPreview) {
-    LaunchedEffect(surfaceEpoch) {
+    LaunchedEffect(modelInstance != null) {
+        if (modelInstance == null) return@LaunchedEffect
         lastFrameNs = 0L
-        val startedAt = SystemClock.elapsedRealtime()
+        val modelLoadedAt = SystemClock.elapsedRealtime()
         while (isActive) {
-            delay(800)
+            delay(1_000L)
             val resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             if (!resumed) continue
             if (LauncherCarSurfaceRecovery.isCovered()) continue
             val last = lastFrameNs
             if (last == 0L) {
-                if (SystemClock.elapsedRealtime() - startedAt > 8_000L) {
+                if (SystemClock.elapsedRealtime() - modelLoadedAt > 10_000L) {
                     LauncherCarSurfaceRecovery.onFramesStalled(neverStarted = true)
                 }
-            } else if (System.nanoTime() - last > 1_500_000_000L) {
+            } else if (System.nanoTime() - last > 3_000_000_000L) {
                 LauncherCarSurfaceRecovery.onFramesStalled()
             }
         }
@@ -318,7 +406,6 @@ private fun LauncherCarFilamentModel(
 
     Box(modifier = modifier) {
         if (modelInstance != null) {
-            key(if (lowPowerPreview) 0 else surfaceEpoch, modelRevision) {
             SceneView(
                 modifier = Modifier
                     .fillMaxSize()
@@ -335,131 +422,133 @@ private fun LauncherCarFilamentModel(
                 isOpaque = lowPowerPreview,
                 autoFitContent = false,
                 onFrame = { frameNs ->
-                    val node = modelNodeRef.value ?: return@SceneView
-                    val dt = if (lastFrameNs == 0L) {
-                        0.016f
-                    } else {
-                        ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.05f)
-                    }
-                    lastFrameNs = frameNs
-                    if (!lowPowerPreview) {
-                        LauncherCarSurfaceRecovery.onFrameObserved()
-                    }
-
-                    val transition = settingsProgress.coerceIn(0f, 1f)
-                    val driveBlend = driveBlendRef.value
-
-                    // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
-                    val drivePos = Float3(
-                        lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, driveBlend),
-                        lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, driveBlend),
-                        lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, driveBlend),
-                    )
-                    val driveTargetPos = Float3(
-                        lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, driveBlend),
-                        lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, driveBlend),
-                        lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, driveBlend),
-                    )
-                    cameraNode.worldPosition = Position(
-                        lerp(drivePos.x, SETTINGS_CAMERA_POS.x, transition),
-                        lerp(drivePos.y, SETTINGS_CAMERA_POS.y, transition),
-                        lerp(drivePos.z, SETTINGS_CAMERA_POS.z, transition),
-                    )
-                    cameraNode.lookAt(
-                        Position(
-                            lerp(driveTargetPos.x, SETTINGS_CAMERA_TARGET.x, transition),
-                            lerp(driveTargetPos.y, SETTINGS_CAMERA_TARGET.y, transition),
-                            lerp(driveTargetPos.z, SETTINGS_CAMERA_TARGET.z, transition),
-                        ),
-                    )
-                    val orbit = settingsOrbitRef.value
-                    orbit?.tickFling(dt)
-                    val userYaw = orbit?.yawDeg ?: settingsUserYawRef.value
-                    val userScale = orbit?.scale ?: settingsUserScaleRef.value
-                    val modelYaw = lerp(
-                        MODEL_YAW_DEG,
-                        SETTINGS_YAW_DEG + userYaw,
-                        transition,
-                    )
-                    node.rotation = Rotation(y = modelYaw)
-                    node.position = Position(
-                        x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, transition),
-                        y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
-                        z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, transition),
-                    )
-                    val baseScale = lerp(HOME_MODEL_SCALE, SETTINGS_MODEL_SCALE, transition)
-                    val pinchScale = lerp(
-                        1f,
-                        userScale.coerceIn(
-                            SETTINGS_USER_SCALE_MIN,
-                            SETTINGS_USER_SCALE_MAX,
-                        ),
-                        transition,
-                    )
-                    val targetScale = baseScale * pinchScale
-                    node.isVisible = true
-                    if (!modelReady) {
-                        renderedScale = targetScale
-                        node.scale = Scale(renderedScale)
-                        preparedFrames++
-                        if (preparedFrames >= 4) {
-                            modelReady = true
+                    runCatching {
+                        val node = modelNodeRef.get() ?: return@runCatching
+                        val dt = if (lastFrameNs == 0L) {
+                            0.016f
+                        } else {
+                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.05f)
                         }
-                    } else {
-                        val scaleResponse = 1f - kotlin.math.exp(-dt * 8f)
-                        renderedScale += (targetScale - renderedScale) * scaleResponse
-                        node.scale = Scale(renderedScale)
-                    }
+                        lastFrameNs = frameNs
+                        if (!lowPowerPreview) {
+                            LauncherCarSurfaceRecovery.onFrameObserved()
+                        }
 
-                    animationController?.update(rigStateRef.value, dt)
-                    val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
-                    if (frameNs - lastAnchorPublishNs >= publishNs) {
-                        lastAnchorPublishNs = frameNs
-                        val viewport = cameraNode.viewport
-                        val widthPx = viewport?.width ?: 0
-                        val heightPx = viewport?.height ?: 0
-                        val wheels = runCatching {
-                            rigController?.projectWheelAnchors(
-                                cameraNode = cameraNode,
-                                viewportWidthPx = widthPx,
-                                viewportHeightPx = heightPx,
-                            )
-                        }.getOrNull()
-                        val doors = runCatching {
-                            rigController?.projectDoorAnchors(
-                                cameraNode = cameraNode,
-                                viewportWidthPx = widthPx,
-                                viewportHeightPx = heightPx,
-                            )
-                        }.getOrNull()
-                        val pdc = if (projectPdcRef.value) {
-                            runCatching {
-                                rigController?.projectPdcRings(
+                        val transition = settingsProgress.coerceIn(0f, 1f)
+                        val driveBlend = driveBlendRef.value
+
+                        // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
+                        val drivePos = Float3(
+                            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, driveBlend),
+                            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, driveBlend),
+                            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, driveBlend),
+                        )
+                        val driveTargetPos = Float3(
+                            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, driveBlend),
+                            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, driveBlend),
+                            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, driveBlend),
+                        )
+                        cameraNode.worldPosition = Position(
+                            lerp(drivePos.x, SETTINGS_CAMERA_POS.x, transition),
+                            lerp(drivePos.y, SETTINGS_CAMERA_POS.y, transition),
+                            lerp(drivePos.z, SETTINGS_CAMERA_POS.z, transition),
+                        )
+                        cameraNode.lookAt(
+                            Position(
+                                lerp(driveTargetPos.x, SETTINGS_CAMERA_TARGET.x, transition),
+                                lerp(driveTargetPos.y, SETTINGS_CAMERA_TARGET.y, transition),
+                                lerp(driveTargetPos.z, SETTINGS_CAMERA_TARGET.z, transition),
+                            ),
+                        )
+                        val orbit = settingsOrbitRef.value
+                        orbit?.tickFling(dt)
+                        val userYaw = orbit?.yawDeg ?: settingsUserYawRef.value
+                        val userScale = orbit?.scale ?: settingsUserScaleRef.value
+                        val modelYaw = lerp(
+                            MODEL_YAW_DEG,
+                            SETTINGS_YAW_DEG + userYaw,
+                            transition,
+                        )
+                        node.rotation = Rotation(y = modelYaw)
+                        node.position = Position(
+                            x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, transition),
+                            y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
+                            z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, transition),
+                        )
+                        val baseScale = lerp(HOME_MODEL_SCALE, SETTINGS_MODEL_SCALE, transition)
+                        val pinchScale = lerp(
+                            1f,
+                            userScale.coerceIn(
+                                SETTINGS_USER_SCALE_MIN,
+                                SETTINGS_USER_SCALE_MAX,
+                            ),
+                            transition,
+                        )
+                        val targetScale = baseScale * pinchScale * customModelScale
+                        node.isVisible = true
+                        if (!modelReady) {
+                            renderedScale = targetScale
+                            node.scale = Scale(renderedScale)
+                            preparedFrames++
+                            if (preparedFrames >= 1) {
+                                modelReady = true
+                            }
+                        } else {
+                            val scaleResponse = 1f - exp(-dt * 8f)
+                            renderedScale += (targetScale - renderedScale) * scaleResponse
+                            node.scale = Scale(renderedScale)
+                        }
+
+                        animationController?.update(rigStateRef.value, dt)
+                        val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
+                        if (frameNs - lastAnchorPublishNs >= publishNs) {
+                            lastAnchorPublishNs = frameNs
+                            val viewport = cameraNode.viewport
+                            val widthPx = viewport?.width ?: 0
+                            val heightPx = viewport?.height ?: 0
+                            val wheels = runCatching {
+                                rigController?.projectWheelAnchors(
                                     cameraNode = cameraNode,
                                     viewportWidthPx = widthPx,
                                     viewportHeightPx = heightPx,
                                 )
                             }.getOrNull()
-                        } else {
-                            null
-                        }
-                        val headlights = if (projectHeadlightsRef.value && currentTransition < 0.5f) {
-                            runCatching {
-                                rigController?.projectHeadlightBeams(
+                            val doors = runCatching {
+                                rigController?.projectDoorAnchors(
                                     cameraNode = cameraNode,
                                     viewportWidthPx = widthPx,
                                     viewportHeightPx = heightPx,
-                                    driveBlend = driveBlend,
                                 )
                             }.getOrNull()
-                        } else {
-                            null
-                        }
-                        overlayPublishHandler.post {
-                            anchorCallbackRef.value(wheels.orEmpty())
-                            doorAnchorCallbackRef.value(doors.orEmpty())
-                            pdcRingsCallbackRef.value(pdc)
-                            headlightFrameCallbackRef.value(headlights)
+                            val pdc = if (projectPdcRef.value) {
+                                runCatching {
+                                    rigController?.projectPdcRings(
+                                        cameraNode = cameraNode,
+                                        viewportWidthPx = widthPx,
+                                        viewportHeightPx = heightPx,
+                                    )
+                                }.getOrNull()
+                            } else {
+                                null
+                            }
+                            val headlights = if (projectHeadlightsRef.value && currentTransition < 0.5f) {
+                                runCatching {
+                                    rigController?.projectHeadlightBeams(
+                                        cameraNode = cameraNode,
+                                        viewportWidthPx = widthPx,
+                                        viewportHeightPx = heightPx,
+                                        driveBlend = driveBlend,
+                                    )
+                                }.getOrNull()
+                            } else {
+                                null
+                            }
+                            overlayPublishHandler.post {
+                                anchorCallbackRef.value(wheels.orEmpty())
+                                doorAnchorCallbackRef.value(doors.orEmpty())
+                                pdcRingsCallbackRef.value(pdc)
+                                headlightFrameCallbackRef.value(headlights)
+                            }
                         }
                     }
                 },
@@ -498,10 +587,9 @@ private fun LauncherCarFilamentModel(
                     ),
                     apply = {
                         isVisible = true
-                        modelNodeRef.value = this
+                        modelNodeRef.set(this)
                     },
                 )
-            }
             }
         }
     }

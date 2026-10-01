@@ -79,6 +79,7 @@ internal object LauncherAppPickerOverlayWindow {
         hide()
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
+        if (activity.isFinishing || activity.isDestroyed) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
             return false

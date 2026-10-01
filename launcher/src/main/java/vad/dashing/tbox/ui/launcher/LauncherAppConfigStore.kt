@@ -15,14 +15,54 @@ private const val KEY_DEFAULT_MEDIA = "default_media_package"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
+private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
+private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
+private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
+private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
+private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
+private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
+private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
+private const val KEY_FULL_WIDTH = "full_width_packages"
+
+enum class LauncherAppLaunchMode(val code: String) {
+    EMBEDDED("embedded"),
+    FULL_WIDTH("full_width"),
+    FULLSCREEN("fullscreen");
+
+    companion object {
+        fun fromCode(code: String?): LauncherAppLaunchMode = when (code) {
+            FULL_WIDTH.code -> FULL_WIDTH
+            FULLSCREEN.code -> FULLSCREEN
+            else -> EMBEDDED
+        }
+    }
+}
 internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
 internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
 internal const val DOCK_ICON_SCALE_MIN = 1.00f
 internal const val DOCK_ICON_SCALE_MAX = 1.45f
+internal const val TOP_BAR_HEIGHT_DEFAULT = 40
+internal const val TOP_BAR_HEIGHT_MIN = 28
+internal const val TOP_BAR_HEIGHT_MAX = 72
+internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 72
+internal const val BOTTOM_BAR_HEIGHT_MIN = 48
+internal const val BOTTOM_BAR_HEIGHT_MAX = 110
+internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
+internal const val CAR_MODEL_SCALE_MIN = 0.50f
+internal const val CAR_MODEL_SCALE_MAX = 1.80f
+internal const val SIDEBAR_WIDTH_DEFAULT = 440
+internal const val SIDEBAR_WIDTH_MIN = 240
+internal const val SIDEBAR_WIDTH_MAX = 760
+internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
+internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
+internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
+internal const val ADAS_DISTANCE_LABEL_OFFSET_DEFAULT = 0.15f
+internal const val ADAS_DISTANCE_LABEL_OFFSET_MIN = 0.00f
+internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
 internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
@@ -46,6 +86,20 @@ internal object LauncherAppConfigStore {
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
     private val dockIconScaleRevision = MutableStateFlow(0)
     internal val dockIconScaleRevisionFlow: StateFlow<Int> = dockIconScaleRevision
+    private val topBarHeightRevision = MutableStateFlow(0)
+    internal val topBarHeightRevisionFlow: StateFlow<Int> = topBarHeightRevision
+    private val bottomBarHeightRevision = MutableStateFlow(0)
+    internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
+    private val carModelScaleRevision = MutableStateFlow(0)
+    internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
+    private val sidebarWidthRevision = MutableStateFlow(0)
+    internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
+    private val navButtonsRevision = MutableStateFlow(0)
+    internal val navButtonsRevisionFlow: StateFlow<Int> = navButtonsRevision
+    private val adasDistanceTextSizeRevision = MutableStateFlow(0)
+    internal val adasDistanceTextSizeRevisionFlow: StateFlow<Int> = adasDistanceTextSizeRevision
+    private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
+    internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
 
@@ -96,6 +150,74 @@ internal object LauncherAppConfigStore {
         dockIconScaleRevision.value++
     }
 
+    fun topBarHeightDp(context: Context): Int =
+        prefs(context).getInt(KEY_TOP_BAR_HEIGHT, TOP_BAR_HEIGHT_DEFAULT)
+            .coerceIn(TOP_BAR_HEIGHT_MIN, TOP_BAR_HEIGHT_MAX)
+
+    fun setTopBarHeightDp(context: Context, heightDp: Int) {
+        val next = heightDp.coerceIn(TOP_BAR_HEIGHT_MIN, TOP_BAR_HEIGHT_MAX)
+        prefs(context).edit().putInt(KEY_TOP_BAR_HEIGHT, next).apply()
+        topBarHeightRevision.value++
+    }
+
+    fun bottomBarHeightDp(context: Context): Int =
+        prefs(context).getInt(KEY_BOTTOM_BAR_HEIGHT, BOTTOM_BAR_HEIGHT_DEFAULT)
+            .coerceIn(BOTTOM_BAR_HEIGHT_MIN, BOTTOM_BAR_HEIGHT_MAX)
+
+    fun setBottomBarHeightDp(context: Context, heightDp: Int) {
+        val next = heightDp.coerceIn(BOTTOM_BAR_HEIGHT_MIN, BOTTOM_BAR_HEIGHT_MAX)
+        prefs(context).edit().putInt(KEY_BOTTOM_BAR_HEIGHT, next).apply()
+        bottomBarHeightRevision.value++
+    }
+
+    fun carModelScale(context: Context): Float =
+        prefs(context).getFloat(KEY_CAR_MODEL_SCALE, CAR_MODEL_SCALE_DEFAULT)
+            .coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+
+    fun setCarModelScale(context: Context, scale: Float) {
+        val next = scale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+        prefs(context).edit().putFloat(KEY_CAR_MODEL_SCALE, next).apply()
+        carModelScaleRevision.value++
+    }
+
+    fun navButtonsVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BUTTONS_VISIBLE, false)
+
+    fun setNavButtonsVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BUTTONS_VISIBLE, visible).apply()
+        navButtonsRevision.value++
+    }
+
+    fun adasDistanceTextSize(context: Context): Int =
+        prefs(context).getInt(KEY_ADAS_DISTANCE_TEXT_SIZE, ADAS_DISTANCE_TEXT_SIZE_DEFAULT)
+            .coerceIn(ADAS_DISTANCE_TEXT_SIZE_MIN, ADAS_DISTANCE_TEXT_SIZE_MAX)
+
+    fun setAdasDistanceTextSize(context: Context, sizeSp: Int) {
+        val next = sizeSp.coerceIn(ADAS_DISTANCE_TEXT_SIZE_MIN, ADAS_DISTANCE_TEXT_SIZE_MAX)
+        prefs(context).edit().putInt(KEY_ADAS_DISTANCE_TEXT_SIZE, next).apply()
+        adasDistanceTextSizeRevision.value++
+    }
+
+    fun adasDistanceLabelOffset(context: Context): Float =
+        prefs(context).getFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET, ADAS_DISTANCE_LABEL_OFFSET_DEFAULT)
+            .coerceIn(ADAS_DISTANCE_LABEL_OFFSET_MIN, ADAS_DISTANCE_LABEL_OFFSET_MAX)
+
+    fun setAdasDistanceLabelOffset(context: Context, offsetRatio: Float) {
+        val next = offsetRatio.coerceIn(ADAS_DISTANCE_LABEL_OFFSET_MIN, ADAS_DISTANCE_LABEL_OFFSET_MAX)
+        prefs(context).edit().putFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET, next).apply()
+        adasDistanceLabelOffsetRevision.value++
+    }
+
+    fun sidebarWidthDp(context: Context): Int =
+        prefs(context).getInt(KEY_SIDEBAR_WIDTH, SIDEBAR_WIDTH_DEFAULT)
+            .coerceIn(SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
+
+    fun setSidebarWidthDp(context: Context, widthDp: Int) {
+        val next = widthDp.coerceIn(SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX)
+        prefs(context).edit().putInt(KEY_SIDEBAR_WIDTH, next).apply()
+        sidebarWidthRevision.value++
+    }
+
     fun fuelShowsRange(context: Context): Boolean =
         prefs(context).getBoolean(KEY_FUEL_SHOWS_RANGE, false)
 
@@ -123,16 +245,51 @@ internal object LauncherAppConfigStore {
     }
 
     fun isFullscreenLaunch(context: Context, packageName: String): Boolean =
-        packageName.isNotBlank() && packageName in fullscreenPackages(context)
+        appLaunchMode(context, packageName) == LauncherAppLaunchMode.FULLSCREEN
 
     fun fullscreenPackages(context: Context): Set<String> =
         prefs(context).getStringSet(KEY_FULLSCREEN, emptySet()).orEmpty()
 
-    fun setFullscreenLaunch(context: Context, packageName: String, enabled: Boolean) {
+    fun fullWidthPackages(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_FULL_WIDTH, emptySet()).orEmpty()
+
+    fun appLaunchMode(context: Context, packageName: String): LauncherAppLaunchMode {
+        if (packageName.isBlank()) return LauncherAppLaunchMode.EMBEDDED
+        if (packageName in fullscreenPackages(context)) return LauncherAppLaunchMode.FULLSCREEN
+        if (packageName in fullWidthPackages(context)) return LauncherAppLaunchMode.FULL_WIDTH
+        return LauncherAppLaunchMode.EMBEDDED
+    }
+
+    fun setAppLaunchMode(context: Context, packageName: String, mode: LauncherAppLaunchMode) {
         if (packageName.isBlank()) return
-        val next = fullscreenPackages(context).toMutableSet()
-        if (enabled) next.add(packageName) else next.remove(packageName)
-        prefs(context).edit().putStringSet(KEY_FULLSCREEN, next).apply()
+        val full = fullscreenPackages(context).toMutableSet()
+        val fw = fullWidthPackages(context).toMutableSet()
+        when (mode) {
+            LauncherAppLaunchMode.FULLSCREEN -> {
+                full.add(packageName)
+                fw.remove(packageName)
+            }
+            LauncherAppLaunchMode.FULL_WIDTH -> {
+                fw.add(packageName)
+                full.remove(packageName)
+            }
+            LauncherAppLaunchMode.EMBEDDED -> {
+                full.remove(packageName)
+                fw.remove(packageName)
+            }
+        }
+        prefs(context).edit()
+            .putStringSet(KEY_FULLSCREEN, full)
+            .putStringSet(KEY_FULL_WIDTH, fw)
+            .apply()
+    }
+
+    fun setFullscreenLaunch(context: Context, packageName: String, enabled: Boolean) {
+        setAppLaunchMode(
+            context,
+            packageName,
+            if (enabled) LauncherAppLaunchMode.FULLSCREEN else LauncherAppLaunchMode.EMBEDDED,
+        )
     }
 
     fun hiddenPackages(context: Context): Set<String> =

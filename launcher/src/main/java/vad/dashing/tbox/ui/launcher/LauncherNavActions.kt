@@ -9,13 +9,15 @@ import android.util.Log
 import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.View
+import androidx.lifecycle.Lifecycle
 import java.util.concurrent.atomic.AtomicBoolean
 import vad.dashing.tbox.LauncherForegroundHandoff
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
 
 private const val TAG = "LauncherNav"
-private const val HOME_DEBOUNCE_MS = 400L
+private const val HOME_DEBOUNCE_MS = 200L
 
 @Volatile
 private var lastHomeAtMs = 0L
@@ -43,35 +45,34 @@ internal fun goLauncherHome(
     lastHomeAtMs = now
     Log.w(TAG, "goLauncherHome fromHomeIntent=$fromHomeIntent")
 
-    onCloseOverlays()
-    closeVehicleSettingsOverlay()
-    LauncherForegroundHandoff.restoreLauncherWindow()
-    LauncherOverlayElevator.clearHoldWithoutRestore()
+    runCatching { onCloseOverlays() }
+    runCatching { closeVehicleSettingsOverlay() }
+    runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }
+    runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
 
-    dismissForeignFreeformTasks(context)
-
-    val home = LauncherHomeActivityHolder.instance
-    if (home != null) {
-        runCatching {
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
-            Log.w(TAG, "goLauncherHome: moveTaskToFront home=${home.taskId}")
-        }.onFailure {
-            Log.w(TAG, "goLauncherHome: moveTaskToFront failed", it)
+    dismissForeignFreeformTasks(context) {
+        val home = LauncherHomeActivityHolder.instance
+        if (home != null && !home.isFinishing && !home.isDestroyed) {
+            runCatching { home.window.decorView.visibility = View.VISIBLE }
+            runCatching {
+                val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
+                Log.w(TAG, "goLauncherHome: brought to front task=${home.taskId}")
+            }
         }
-    }
 
-    if (fromHomeIntent) return
+        if (fromHomeIntent) return@dismissForeignFreeformTasks
 
-    runCatching {
-        context.startActivity(
-            Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-        )
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                },
+            )
+        }.onFailure {
+            Log.w(TAG, "goLauncherHome: startActivity failed", it)
+        }
     }
 }
 
@@ -88,9 +89,7 @@ internal fun goLauncherHome(
 internal fun goLauncherBack(
     context: Context,
     vehicleSettingsOpen: Boolean,
-    appDrawerOpen: Boolean,
     onCloseVehicleSettings: () -> Unit,
-    onCloseAppDrawer: () -> Unit,
 ) {
     if (backDispatchInProgress.get()) {
         Log.w(TAG, "goLauncherBack: skip re-entrant (inject/BackHandler loop)")
@@ -104,11 +103,6 @@ internal fun goLauncherBack(
             LauncherVehicleSettingsActivity.isOpen() -> {
             onCloseVehicleSettings()
             closeVehicleSettingsOverlay()
-            return
-        }
-        appDrawerOpen || LauncherAppDrawerWindow.isShowing() -> {
-            onCloseAppDrawer()
-            LauncherAppDrawerWindow.hide()
             return
         }
         LauncherAboutOverlayWindow.isShowing() -> {

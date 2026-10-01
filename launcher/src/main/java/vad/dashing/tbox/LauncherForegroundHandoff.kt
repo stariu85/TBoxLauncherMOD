@@ -26,20 +26,6 @@ object LauncherForegroundHandoff {
 
     fun requestLauncherHandoff(delayMs: Long = 150L) {
         cancelPendingHandoff()
-        val runnable = Runnable {
-            pendingHandoff = null
-            val home = LauncherHomeActivityHolder.instance
-            if (home == null) {
-                Log.w(TAG, "handoff skipped: LauncherHomeActivity not alive")
-                return@Runnable
-            }
-            home.window.decorView.visibility = View.INVISIBLE
-            LauncherWindowState.hiddenForExternalApp = true
-            home.moveTaskToBack(true)
-            Log.w(TAG, "LauncherHomeActivity hidden + moveTaskToBack")
-        }
-        pendingHandoff = runnable
-        mainHandler.postDelayed(runnable, delayMs.coerceAtLeast(0L))
     }
 
     fun cancelPendingHandoff() {
@@ -50,9 +36,15 @@ object LauncherForegroundHandoff {
     fun restoreLauncherWindow() {
         cancelPendingHandoff()
         val home = LauncherHomeActivityHolder.instance ?: return
-        if (!LauncherWindowState.hiddenForExternalApp) return
-        home.window.decorView.visibility = View.VISIBLE
-        LauncherWindowState.hiddenForExternalApp = false
-        Log.w(TAG, "LauncherHomeActivity window restored")
+        if (home.isFinishing || home.isDestroyed) return
+        runCatching {
+            if (home.window.decorView.visibility != View.VISIBLE) {
+                home.window.decorView.visibility = View.VISIBLE
+            }
+            LauncherWindowState.hiddenForExternalApp = false
+            Log.w(TAG, "LauncherHomeActivity window restored")
+        }.onFailure {
+            Log.w(TAG, "restoreLauncherWindow failed", it)
+        }
     }
 }

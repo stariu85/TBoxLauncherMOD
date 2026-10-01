@@ -11,11 +11,14 @@ import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -134,13 +137,11 @@ fun TeslaLauncherScreen(
                 appDrawerVisible = false
             }
         }
-        BackHandler(enabled = !appDrawerVisible && !settingsOpen && !LauncherEggRace.active) {
+        BackHandler(enabled = !settingsOpen && !LauncherEggRace.active) {
             goLauncherBack(
                 context = context,
                 vehicleSettingsOpen = false,
-                appDrawerOpen = false,
                 onCloseVehicleSettings = {},
-                onCloseAppDrawer = {},
             )
         }
 
@@ -157,6 +158,10 @@ fun TeslaLauncherScreen(
                     )
                 },
         ) {
+            val topBarRevision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
+            val topBarHeightDp = remember(context, topBarRevision) {
+                LauncherAppConfigStore.topBarHeightDp(context)
+            }
             LauncherDevScaleProvider {
                 Column(
                     modifier = modifier
@@ -164,6 +169,14 @@ fun TeslaLauncherScreen(
                         .background(LauncherColors.CanvasDark)
                         .windowInsetsPadding(WindowInsets.safeDrawing),
                 ) {
+                    LauncherTopHeaderBar(
+                        canViewModel = canViewModel,
+                        tboxViewModel = tboxViewModel,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(topBarHeightDp.dp)
+                            .padding(horizontal = 20.dp),
+                    )
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -188,7 +201,7 @@ fun TeslaLauncherScreen(
                             onCarBoundsChanged = {},
                             colorPickerVisible = colorPickerVisible && !settingsOpen,
                             roadVisible = !settingsOpen,
-                            carHidden = settingsOpen,
+                            carHidden = false,
                             settingsTransitionProgress = 0f,
                             settingsUserYawDeg = 0f,
                             onColorPickerOpen = { colorPickerVisible = true },
@@ -216,12 +229,7 @@ fun TeslaLauncherScreen(
                     }
                     LauncherBottomBar(
                         canViewModel = canViewModel,
-                        onOpenApps = openAppDrawer,
                         onCloseVehicleSettings = closeVehicleSettings,
-                        onCloseAppDrawer = {
-                            appDrawerVisible = false
-                            LauncherAppDrawerWindow.hide()
-                        },
                         onOpenVehicleSettings = openVehicleSettings,
                         configRevision = configRevision,
                         modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
@@ -256,12 +264,7 @@ fun TeslaLauncherScreen(
                     ) {
                         LauncherBottomBar(
                             canViewModel = canViewModel,
-                            onOpenApps = openAppDrawer,
                             onCloseVehicleSettings = closeVehicleSettings,
-                            onCloseAppDrawer = {
-                                appDrawerVisible = false
-                                LauncherAppDrawerWindow.hide()
-                            },
                             onOpenVehicleSettings = openVehicleSettings,
                             configRevision = configRevision,
                         )

@@ -57,6 +57,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
         if (isShowing()) return true
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
+        if (activity.isFinishing || activity.isDestroyed) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
             return false
@@ -130,15 +131,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
                             ) {
                                 LauncherBottomBar(
                                     canViewModel = canViewModel,
-                                    onOpenApps = {
-                                        LauncherAppDrawerWindow.show(
-                                            context = activity,
-                                            settingsViewModel = settingsViewModel,
-                                            onConfigChanged = {},
-                                        )
-                                    },
                                     onCloseVehicleSettings = ::hide,
-                                    onCloseAppDrawer = { LauncherAppDrawerWindow.hide() },
                                     onOpenVehicleSettings = {},
                                 )
                             }
@@ -168,6 +161,8 @@ internal object LauncherVehicleSettingsOverlayWindow {
     fun hide() {
         val view = composeView ?: return
         composeView = null
+        LauncherVehicleSettingsUiState.markClosed()
+        LauncherOverlayElevator.setHoldSource("vehicle_settings", false)
         runCatching { windowManager?.removeViewImmediate(view) }
             .onFailure { Log.w(TAG, "Unable to remove vehicle settings overlay", it) }
         windowManager = null

@@ -59,9 +59,10 @@ internal object LauncherOverlayElevator {
     }
 
     private fun bringLauncherToFront(home: vad.dashing.tbox.LauncherHomeActivity) {
+        if (home.isFinishing || home.isDestroyed) return
         LauncherForegroundHandoff.restoreLauncherWindow()
-        home.window.decorView.visibility = View.VISIBLE
         runCatching {
+            home.window.decorView.visibility = View.VISIBLE
             val params = home.window.attributes
             params.alpha = 1f
             home.window.attributes = params
@@ -76,6 +77,7 @@ internal object LauncherOverlayElevator {
 
     fun releaseOverlayElevation() {
         val home = LauncherHomeActivityHolder.instance ?: return
+        if (home.isFinishing || home.isDestroyed) return
         runCatching {
             home.window.decorView.elevation = 0f
             home.window.decorView.translationZ = 0f

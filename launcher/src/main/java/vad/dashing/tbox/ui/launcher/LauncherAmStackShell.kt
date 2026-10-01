@@ -107,7 +107,19 @@ internal object LauncherAmStackShell {
             val proc = ProcessBuilder(cmd)
                 .redirectErrorStream(true)
                 .start()
-            val text = proc.inputStream.bufferedReader().readText()
+            var text = ""
+            val thread = Thread {
+                runCatching {
+                    text = proc.inputStream.bufferedReader().readText()
+                }
+            }
+            thread.start()
+            thread.join(250L)
+            if (thread.isAlive) {
+                proc.destroy()
+                Log.w(TAG, "am ${args.joinToString(" ")} timed out")
+                return null
+            }
             val code = proc.waitFor()
             if (code != 0 && text.contains("Security exception", ignoreCase = true)) {
                 Log.w(TAG, "am ${args.joinToString(" ")} denied: $text")

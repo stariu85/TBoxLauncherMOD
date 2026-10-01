@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.pm.ResolveInfo
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.os.Process
 import android.util.Log
 import android.widget.Toast
@@ -53,6 +54,32 @@ private val LAUNCH_CATEGORIES = listOf(
     null,
 )
 
+/** Launch app in full-width mode (between top and bottom panels). */
+internal fun launchLauncherAppFullWidth(
+    context: Context,
+    packageName: String,
+    activityName: String? = null,
+) {
+    if (packageName.isBlank()) return
+    val intent = activityName?.takeIf { it.isNotBlank() }?.let { activity ->
+        Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            setClassName(packageName, activity)
+        }
+    } ?: resolveLaunchIntent(context, packageName)
+    if (intent == null) {
+        Toast.makeText(context, "Не удалось найти запуск для $packageName", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val bounds = LauncherEmbeddedBoundsState.fullWidthBounds()
+    tryLaunchIntentInBounds(
+        context = context,
+        packageName = packageName,
+        intent = intent,
+        bounds = bounds ?: Rect(0, 51, 1920, 998),
+    )
+}
+
 /** Launch app in the right panel zone (left car strip stays visible). */
 internal fun launchLauncherAppEmbedded(
     context: Context,
@@ -71,16 +98,16 @@ internal fun launchLauncherAppFullscreen(
     launchWithTarget(context, packageName, activityName, embedded = false, fullscreen = true)
 }
 
-/** Launch using per-app preference: freeform embed by default, optional fullscreen. */
+/** Launch using per-app preference: freeform embed, full width, or fullscreen. */
 internal fun launchLauncherApp(
     context: Context,
     packageName: String,
     activityName: String? = null,
 ) {
-    if (LauncherAppConfigStore.isFullscreenLaunch(context, packageName)) {
-        launchLauncherAppFullscreen(context, packageName, activityName)
-    } else {
-        launchLauncherAppEmbedded(context, packageName, activityName)
+    when (LauncherAppConfigStore.appLaunchMode(context, packageName)) {
+        LauncherAppLaunchMode.FULLSCREEN -> launchLauncherAppFullscreen(context, packageName, activityName)
+        LauncherAppLaunchMode.FULL_WIDTH -> launchLauncherAppFullWidth(context, packageName, activityName)
+        LauncherAppLaunchMode.EMBEDDED -> launchLauncherAppEmbedded(context, packageName, activityName)
     }
 }
 

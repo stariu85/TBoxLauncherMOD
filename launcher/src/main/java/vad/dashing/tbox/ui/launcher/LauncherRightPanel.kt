@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +28,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -116,20 +120,6 @@ fun LauncherRightPanel(
         LauncherOverlayElevator.setHoldSource("right_panel_dialog", anyLocalDialog)
     }
 
-    var clockNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val now = System.currentTimeMillis()
-            clockNowMs = now
-            delay(1_000L - (now % 1_000L))
-        }
-    }
-    val timeText = remember(clockNowMs) {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(clockNowMs))
-    }
-    val dateText = remember(clockNowMs) {
-        SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(clockNowMs))
-    }
     val driveLabel = driveModeRaw?.let { resolveDriveModeWidgetOption(it).label }.orEmpty()
     val cabinTemp = insideTemp ?: outsideTemp
 
@@ -309,8 +299,8 @@ fun LauncherRightPanel(
 
     val settingsItem = homeItems.getOrNull(settingsIndex) as? LauncherHomeItem.App
     if (settingsItem != null) {
-        var fullscreen by remember(settingsItem.packageName, settingsIndex) {
-            mutableStateOf(LauncherAppConfigStore.isFullscreenLaunch(context, settingsItem.packageName))
+        var currentMode by remember(settingsItem.packageName, settingsIndex) {
+            mutableStateOf(LauncherAppConfigStore.appLaunchMode(context, settingsItem.packageName))
         }
         val appLabel = appsByPackage[settingsItem.packageName]?.label
             ?: settingsItem.packageName.substringAfterLast('.')
@@ -318,47 +308,93 @@ fun LauncherRightPanel(
             onDismissRequest = { settingsIndex = -1 },
             title = { Text(stringResource(R.string.launcher_icon_settings_title)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = appLabel,
                         color = LauncherColors.TextSecondary,
                         fontSize = 14.sp,
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable {
-                                fullscreen = !fullscreen
-                                LauncherAppConfigStore.setFullscreenLaunch(
-                                    context,
-                                    settingsItem.packageName,
-                                    fullscreen,
+                    Text(
+                        text = stringResource(R.string.launcher_icon_menu_mode_title),
+                        color = LauncherColors.TextMuted,
+                        fontSize = 12.sp,
+                    )
+
+                    val modes = listOf(
+                        LauncherAppLaunchMode.EMBEDDED to (
+                            stringResource(R.string.launcher_icon_menu_mode_embedded) to
+                                stringResource(R.string.launcher_icon_menu_mode_embedded_desc)
+                        ),
+                        LauncherAppLaunchMode.FULL_WIDTH to (
+                            stringResource(R.string.launcher_icon_menu_mode_full_width) to
+                                stringResource(R.string.launcher_icon_menu_mode_full_width_desc)
+                        ),
+                        LauncherAppLaunchMode.FULLSCREEN to (
+                            stringResource(R.string.launcher_icon_menu_mode_fullscreen) to
+                                stringResource(R.string.launcher_icon_menu_mode_fullscreen_desc)
+                        ),
+                    )
+
+                    modes.forEach { (mode, titles) ->
+                        val selected = currentMode == mode
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (selected) LauncherColors.AccentCyan.copy(alpha = 0.15f)
+                                    else Color(0xFF1E222A),
                                 )
-                                onConfigChanged()
+                                .border(
+                                    width = 1.dp,
+                                    color = if (selected) LauncherColors.AccentCyan else Color.Transparent,
+                                    shape = RoundedCornerShape(10.dp),
+                                )
+                                .clickable {
+                                    currentMode = mode
+                                    LauncherAppConfigStore.setAppLaunchMode(
+                                        context,
+                                        settingsItem.packageName,
+                                        mode,
+                                    )
+                                    onConfigChanged()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = titles.first,
+                                    color = if (selected) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                )
+                                Text(
+                                    text = titles.second,
+                                    color = LauncherColors.TextMuted,
+                                    fontSize = 11.sp,
+                                )
                             }
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_fullscreen),
-                            color = LauncherColors.TextPrimary,
-                            modifier = Modifier.weight(1f),
-                        )
-                        androidx.compose.material3.Switch(
-                            checked = fullscreen,
-                            onCheckedChange = { enabled ->
-                                fullscreen = enabled
-                                LauncherAppConfigStore.setFullscreenLaunch(
-                                    context,
-                                    settingsItem.packageName,
-                                    enabled,
-                                )
-                                onConfigChanged()
-                            },
-                        )
+                            RadioButton(
+                                selected = selected,
+                                onClick = {
+                                    currentMode = mode
+                                    LauncherAppConfigStore.setAppLaunchMode(
+                                        context,
+                                        settingsItem.packageName,
+                                        mode,
+                                    )
+                                    onConfigChanged()
+                                },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = LauncherColors.AccentCyan,
+                                    unselectedColor = LauncherColors.TextMuted,
+                                ),
+                            )
+                        }
                     }
+
                     Text(
                         text = stringResource(R.string.launcher_icon_menu_change_app),
                         modifier = Modifier
@@ -368,7 +404,7 @@ fun LauncherRightPanel(
                                 replaceIndex = settingsIndex
                                 settingsIndex = -1
                             }
-                            .padding(12.dp),
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
                         color = LauncherColors.AccentCyan,
                     )
                 }
@@ -385,40 +421,8 @@ fun LauncherRightPanel(
         modifier = modifier
             .fillMaxSize()
             .background(LauncherColors.CanvasDark)
-            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 10.dp),
+            .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 10.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    val rect = coordinates.boundsInWindow()
-                    LauncherEmbeddedBoundsState.topHeaderBottomPx = rect.bottom.toInt()
-                },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
-                color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
-                Text(
-                    text = "$timeText  ·  $dateText",
-                    color = LauncherColors.TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Light,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
         Box(
             modifier = Modifier
                 .weight(1f)

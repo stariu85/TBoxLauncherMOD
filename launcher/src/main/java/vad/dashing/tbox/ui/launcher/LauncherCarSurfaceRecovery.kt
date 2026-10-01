@@ -78,14 +78,21 @@ internal object LauncherCarSurfaceRecovery {
         awaitFirstFrame = false
     }
 
+    fun requestRecovery(reason: String = "manual request") {
+        if (isCovered()) return
+        awaitFirstFrame = false
+        coveredBy = null
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastRecoverAtMs < MIN_RECOVER_INTERVAL_MS) return
+        lastRecoverAtMs = now
+        val next = _epoch.value + 1
+        _epoch.value = next
+        Log.w(TAG, "requestRecovery SceneView epoch=$next reason=$reason")
+    }
+
     fun onFramesStalled(neverStarted: Boolean = false) {
         if (isCovered()) return
-        if (neverStarted &&
-            SystemClock.elapsedRealtime() - processStartedAtMs < COLD_START_GRACE_MS
-        ) {
-            return
-        }
-        if (!neverStarted && awaitFirstFrame) return
+        awaitFirstFrame = false
         recover(if (neverStarted) "frames never started" else "frames stalled")
     }
 

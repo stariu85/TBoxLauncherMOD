@@ -1,5 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -14,8 +17,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -39,8 +44,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.R
+import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -56,6 +63,7 @@ fun LauncherVirtualRoad(
 ) {
     val driveTarget = when {
         inDriveGear -> 1f
+        speedKmh > 0.5f -> 1f
         steerPreview -> 1f
         else -> 0f
     }
@@ -66,18 +74,33 @@ fun LauncherVirtualRoad(
     )
 
     var roadPhase by remember { mutableFloatStateOf(0f) }
+    val currentSpeedKmh by rememberUpdatedState(speedKmh)
+    val currentDriveBlend by rememberUpdatedState(driveBlend)
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(speedKmh, driveBlend) {
-        while (true) {
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
             withFrameMillis {
-                val resumed = lifecycleOwner.lifecycle.currentState
-                    .isAtLeast(Lifecycle.State.RESUMED)
+                val started = lifecycleOwner.lifecycle.currentState
+                    .isAtLeast(Lifecycle.State.STARTED)
                 val hidden = LauncherWindowState.hiddenForExternalApp
-                if (resumed && !hidden && speedKmh > 0.5f && driveBlend > 0.02f) {
-                    roadPhase += speedKmh * 0.03f
+                val spd = currentSpeedKmh
+                val blend = currentDriveBlend
+                if (started && !hidden && spd > 0.5f && blend > 0.02f) {
+                    roadPhase += spd * 0.03f
                 }
             }
         }
+    }
+
+    val context = LocalContext.current
+    val textSizeRevision by LauncherAppConfigStore.adasDistanceTextSizeRevisionFlow.collectAsStateWithLifecycle()
+    val distanceTextSizeSp = remember(context, textSizeRevision) {
+        LauncherAppConfigStore.adasDistanceTextSize(context)
+    }
+    val offsetRevision by LauncherAppConfigStore.adasDistanceLabelOffsetRevisionFlow.collectAsStateWithLifecycle()
+    val distanceLabelOffsetRatio = remember(context, offsetRevision) {
+        LauncherAppConfigStore.adasDistanceLabelOffset(context)
     }
 
     val leadSprites = rememberLeadObjectSprites()
@@ -94,6 +117,8 @@ fun LauncherVirtualRoad(
             adas = adas,
             leadSprites = leadSprites,
             leadVisual = leadVisual,
+            distanceTextSizeSp = distanceTextSizeSp,
+            distanceLabelOffsetRatio = distanceLabelOffsetRatio,
         )
     }
 }
@@ -302,6 +327,8 @@ private fun DrawScope.drawVirtualRoad(
     adas: LauncherAdasState,
     leadSprites: LeadObjectSprites,
     leadVisual: LeadObjectVisual?,
+    distanceTextSizeSp: Int = 14,
+    distanceLabelOffsetRatio: Float = 0.15f,
 ) {
     val w = size.width
     val h = size.height
@@ -386,6 +413,8 @@ private fun DrawScope.drawVirtualRoad(
             centerXAt = ::centerXAt,
             halfWidthAt = ::halfWidthAt,
             yAt = ::yAt,
+            distanceTextSizeSp = distanceTextSizeSp,
+            distanceLabelOffsetRatio = distanceLabelOffsetRatio,
         )
     } else if ((adas.accActive || adas.accStandby) && adas.timeGapLevel != null) {
         // No target ahead — stretch the ACC path to the horizon.
@@ -576,6 +605,8 @@ private fun DrawScope.drawFrontObject(
     centerXAt: (Float) -> Float,
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
+    distanceTextSizeSp: Int = 14,
+    distanceLabelOffsetRatio: Float = 0.15f,
 ) {
     val depth = distanceToRoadDepth(distanceM)
     val cx = centerXAt(depth)
@@ -587,7 +618,6 @@ private fun DrawScope.drawFrontObject(
     val strokeColor = baseColor.copy(alpha = 0.92f * objectAlpha)
 
     val sprite = leadSprites.forType(type)
-    var labelLift: Float
     if (sprite != null) {
         val destW = leadSpriteWidth(type, roadHalf)
         val destH = destW * sprite.height / sprite.width.toFloat()
@@ -606,10 +636,8 @@ private fun DrawScope.drawFrontObject(
             alpha = objectAlpha,
             ground = 1f,
         )
-        labelLift = destH * 0.98f
     } else {
         val (objW, objH) = objectSizeForType(type, roadHalf)
-        labelLift = objH * 1.35f
         when (type) {
             LauncherAdasFrontObjectType.Bicycle ->
                 drawLeadBicycleBody(cx = cx, cy = cy, objW = objW, objH = objH * 1.10f)
@@ -627,20 +655,52 @@ private fun DrawScope.drawFrontObject(
         }
     }
 
-    // Distance label above the vehicle, where the ACC beam ends.
+    // Distance label position along the ACC beam between lead car depth and ego car depth (0.92f)
+    val egoDepth = 0.92f
+    val labelDepth = (depth + (egoDepth - depth) * distanceLabelOffsetRatio).coerceIn(0.02f, 0.88f)
+    val labelCx = centerXAt(labelDepth)
+    val labelCy = yAt(labelDepth) + 10f
+
     val labelColor = (if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan)
         .copy(alpha = objectAlpha)
-    val paint = android.graphics.Paint().apply {
+
+    val text = "${distanceM} м"
+    val baseSizeSp = distanceTextSizeSp.toFloat()
+    val paint = Paint().apply {
         isAntiAlias = true
         color = labelColor.toArgb()
-        textAlign = android.graphics.Paint.Align.CENTER
-        textSize = (11f + depth * 6f).coerceIn(11f, 15f)
-        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
+        textSize = (baseSizeSp * (0.85f + labelDepth * 0.3f)).coerceIn(12f, 50f)
+        typeface = Typeface.DEFAULT_BOLD
     }
+
+    val textWidth = paint.measureText(text)
+    val textHeight = abs(paint.ascent()) + paint.descent()
+    val paddingX = 10f
+    val paddingY = 4f
+    val pillRect = RectF(
+        labelCx - textWidth / 2f - paddingX,
+        labelCy - textHeight / 2f - paddingY,
+        labelCx + textWidth / 2f + paddingX,
+        labelCy + textHeight / 2f + paddingY,
+    )
+
+    // Soft dark background pill for contrast against asphalt (no stroke border)
+    drawContext.canvas.nativeCanvas.drawRoundRect(
+        pillRect,
+        10f,
+        10f,
+        Paint().apply {
+            isAntiAlias = true
+            color = android.graphics.Color.argb((0xB0 * objectAlpha).toInt(), 0x0F, 0x17, 0x2A)
+            style = Paint.Style.FILL
+        },
+    )
+
     drawContext.canvas.nativeCanvas.drawText(
-        "${distanceM}m",
-        cx,
-        cy - labelLift - 4f,
+        text,
+        labelCx,
+        labelCy + (textHeight / 2f) - paint.descent(),
         paint,
     )
 }

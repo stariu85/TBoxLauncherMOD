@@ -36,8 +36,8 @@ object LauncherEmbeddedBoundsState {
         val row = contentRowBounds ?: return null
         val leftEdge = (leftPanelBounds?.right ?: row.left) + MARGIN_LEFT_PX
         val right = row.right + BLEED_RIGHT_PX
-        val top = FREEFORM_TOP_PX
-        val bottom = FREEFORM_BOTTOM_PX
+        val top = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
+        val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
         if (bottom <= top || right <= leftEdge) return null
         val rect = Rect(leftEdge, top, right, bottom)
         android.util.Log.w(
@@ -65,14 +65,25 @@ object LauncherEmbeddedBoundsState {
         return Rect(screen)
     }
 
+    /** Full screen width, height bounded between top and bottom panels. */
+    fun fullWidthBounds(): Rect? {
+        val row = contentRowBounds ?: return null
+        val left = 0
+        val right = row.right + BLEED_RIGHT_PX
+        val top = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
+        val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
+        if (bottom <= top || right <= left) return null
+        return Rect(left, top, right, bottom)
+    }
+
     /** Left freeform pane for vehicle settings (covers car strip, a bit wider). */
     fun vehicleSettingsBounds(): Rect {
         val row = contentRowBounds
         val screenW = row?.right?.coerceAtLeast(1920) ?: 1920
         val width = (screenW * VEHICLE_SETTINGS_WIDTH_FRACTION).toInt().coerceIn(520, 860)
         val left = 0
-        val top = FREEFORM_TOP_PX
-        val bottom = FREEFORM_BOTTOM_PX
+        val top = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
+        val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
         return Rect(left, top, width, bottom)
     }
 }

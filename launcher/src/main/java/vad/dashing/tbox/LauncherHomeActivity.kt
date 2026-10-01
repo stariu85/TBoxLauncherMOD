@@ -28,6 +28,8 @@ import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
 import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
 import vad.dashing.tbox.ui.launcher.goLauncherHome
 import androidx.compose.runtime.DisposableEffect
+import vad.dashing.tbox.ui.launcher.LauncherCarModelCache
+import vad.dashing.tbox.ui.launcher.LauncherOverlayBar
 
 /**
  * Android HOME handler — Tesla-style launcher surface for the head unit.
@@ -56,19 +58,21 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherAppListVersion.ensurePackageChangeReceiver(applicationContext)
         // After reinstall / process death OEM freeform stacks often survive alone on top.
         // Delay slightly so WM finishes enumerating stacks post-install.
-        window.decorView.postDelayed({ dismissForeignFreeformTasks(this) }, 400L)
+        val appCtx = applicationContext
+        window.decorView.postDelayed({ dismissForeignFreeformTasks(appCtx) }, 400L)
 
         settingsManager = SettingsManager(this)
         appDataManager = AppDataManager(this)
 
         // SoftAP params are broadcast into mbCAN only for ~10–30 s after boot — poll eagerly.
-        LauncherWifiApRepository.init(applicationContext)
-        LauncherThemeState.init(applicationContext)
+        LauncherWifiApRepository.init(appCtx)
+        LauncherThemeState.init(appCtx)
+        LauncherCarModelCache.preload(appCtx)
         // Home-dock autostart shortcut (long-tap icon). Once per process start; delayed so
         // freeform machinery and the 400ms stack cleanup above settle first.
         if (!autostartFired) {
             autostartFired = true
-            window.decorView.postDelayed({ launchAutostartShortcut(this) }, 1600L)
+            window.decorView.postDelayed({ launchAutostartShortcut(appCtx) }, 1600L)
         }
 
         setContent {
@@ -87,18 +91,21 @@ class LauncherHomeActivity : ComponentActivity() {
             }
         }
         startBackgroundService()
+        LauncherOverlayBar.ensureShowing(this)
     }
 
     override fun onRestart() {
         super.onRestart()
         LauncherHomeActivityHolder.instance = this
         startBackgroundService()
+        LauncherOverlayBar.ensureShowing(this)
     }
 
     override fun onResume() {
         super.onResume()
         LauncherForegroundHandoff.restoreLauncherWindow()
         window.decorView.visibility = android.view.View.VISIBLE
+        LauncherOverlayBar.ensureShowing(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -119,6 +126,7 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherAppPickerOverlayWindow.hide()
         LauncherVehicleSettingsOverlayWindow.hide()
         LauncherAboutOverlayWindow.hide()
+        LauncherOverlayBar.hide()
         runCatching { dismissForeignFreeformTasks(this) }
         LauncherOverlayElevator.reset()
         if (LauncherHomeActivityHolder.instance === this) {
