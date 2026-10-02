@@ -1,4 +1,6 @@
-# TBox Launcher (standalone)
+# TBox Launcher MOD
+
+Форк оригинального лаунчера для ГУ Jetour Dashing
 
 Отдельный HOME-лаунчер для головного устройства Jetour Dashing (Android 9, API 28+),
 выделенный из монорепозитория TBox Monitor. Устанавливается рядом с Monitor
