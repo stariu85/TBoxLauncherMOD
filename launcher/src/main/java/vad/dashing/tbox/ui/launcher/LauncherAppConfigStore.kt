@@ -22,6 +22,7 @@ private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
 private const val KEY_CLIMATE_VISIBLE = "climate_controls_visible"
 private const val KEY_CLIMATE_SCALE = "climate_controls_scale"
+private const val KEY_CLIMATE_CARD_BG_VISIBLE = "climate_card_bg_visible"
 private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
@@ -30,9 +31,10 @@ private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
 private const val KEY_BOTTOM_SLOTS_UNIFIED = "bottom_slots_unified"
 
-internal const val GRID_SLOTS_TOTAL_COUNT = 32
+internal const val GRID_SLOTS_TOTAL_COUNT = 20
 
 internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
+    null, // Reserved empty slot 0 so floating Home button never overlaps icons
     "seat_heat_left",
     "seat_vent_left",
     "temp_driver",
@@ -45,11 +47,13 @@ internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
     "windscreen_heat",
     "front_defrost",
     "rear_defrost",
-    null, null, null, null,
-    null, null, null, null,
-    null, null, null, null,
-    null, null, null, null,
-    null, null, null, null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
 )
 
 enum class LauncherAppLaunchMode(val code: String) {
@@ -136,6 +140,8 @@ internal object LauncherAppConfigStore {
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
     private val climateControlsRevision = MutableStateFlow(0)
     internal val climateControlsRevisionFlow: StateFlow<Int> = climateControlsRevision
+    private val climateCardBgRevision = MutableStateFlow(0)
+    internal val climateCardBgRevisionFlow: StateFlow<Int> = climateCardBgRevision
     private val bottomSlotsRevision = MutableStateFlow(0)
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
@@ -233,6 +239,24 @@ internal object LauncherAppConfigStore {
 
     fun setNavButtonsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_BUTTONS_VISIBLE, visible).apply()
+        val slots = bottomSlotsUnified(context).toMutableList()
+        if (visible) {
+            if ("home_nav" !in slots) {
+                val firstEmpty = (1 until GRID_SLOTS_TOTAL_COUNT).firstOrNull { slots[it] == null }
+                if (firstEmpty != null) slots[firstEmpty] = "home_nav"
+            }
+            if ("back_nav" !in slots) {
+                val secondEmpty = (1 until GRID_SLOTS_TOTAL_COUNT).firstOrNull { slots[it] == null }
+                if (secondEmpty != null) slots[secondEmpty] = "back_nav"
+            }
+        } else {
+            for (i in slots.indices) {
+                if (slots[i] == "home_nav" || slots[i] == "back_nav") {
+                    slots[i] = null
+                }
+            }
+        }
+        setBottomSlotsUnified(context, slots)
         navButtonsRevision.value++
     }
 
@@ -274,17 +298,37 @@ internal object LauncherAppConfigStore {
         climateControlsRevision.value++
     }
 
+    fun climateCardBgVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLIMATE_CARD_BG_VISIBLE, true)
+
+    fun setClimateCardBgVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLIMATE_CARD_BG_VISIBLE, visible).apply()
+        climateCardBgRevision.value++
+    }
+
     fun bottomSlotsUnified(context: Context): List<String?> {
         val raw = prefs(context).getString(KEY_BOTTOM_SLOTS_UNIFIED, null)
         if (raw.isNullOrBlank()) return DEFAULT_BOTTOM_SLOTS_UNIFIED
-        val list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }
-        return if (list.size == GRID_SLOTS_TOTAL_COUNT) list else DEFAULT_BOTTOM_SLOTS_UNIFIED
+        val list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
+        if (list.size == GRID_SLOTS_TOTAL_COUNT) {
+            list[0] = null // Reserved empty slot 0 for Home button buffer
+            return list
+        }
+        return DEFAULT_BOTTOM_SLOTS_UNIFIED
     }
 
     fun setBottomSlotsUnified(context: Context, slots: List<String?>) {
         val raw = slots.take(GRID_SLOTS_TOTAL_COUNT).joinToString(",") { it ?: "null" }
         prefs(context).edit().putString(KEY_BOTTOM_SLOTS_UNIFIED, raw).apply()
         bottomSlotsRevision.value++
+    }
+
+    fun setButtonInUnifiedSlot(context: Context, slotIndex: Int, buttonId: String?) {
+        val slots = bottomSlotsUnified(context).toMutableList()
+        if (slotIndex in 1 until GRID_SLOTS_TOTAL_COUNT) {
+            slots[slotIndex] = buttonId
+            setBottomSlotsUnified(context, slots)
+        }
     }
 
     fun reorderUnifiedSlot(
@@ -294,12 +338,13 @@ internal object LauncherAppConfigStore {
         slotsShift: Int,
     ) {
         val slots = bottomSlotsUnified(context).toMutableList()
-        val targetIndex = (currentIndex + slotsShift).coerceIn(0, GRID_SLOTS_TOTAL_COUNT - 1)
+        val targetIndex = (currentIndex + slotsShift).coerceIn(1, GRID_SLOTS_TOTAL_COUNT - 1)
         if (targetIndex == currentIndex) return
 
         val targetOld = slots[targetIndex]
         slots[currentIndex] = targetOld
         slots[targetIndex] = itemId
+        slots[0] = null // Enforce slot 0 stays empty for Home button reserved buffer
 
         setBottomSlotsUnified(context, slots)
     }

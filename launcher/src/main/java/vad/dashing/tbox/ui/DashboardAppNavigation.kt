@@ -332,14 +332,14 @@ enum class HvacTempZone {
 internal fun decodeHvacTemperatureRaw(raw: Int): Float? = when {
     raw in MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MIN..
         MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MAX ->
-        raw.toFloat() / MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS
+        (raw.toFloat() / MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS).roundToInt().toFloat()
     // Some firmwares briefly report already-in-°C integers.
     raw in 16..30 -> raw.toFloat()
     else -> null
 }
 
 /**
- * OEM hard-key path ([HardKeyService] / MBACTempView): read raw HVAC temp, then ±5.
+ * OEM hard-key path ([HardKeyService] / MBACTempView): read raw HVAC temp, then ±10 (whole 1°C steps).
  */
 internal fun sendAdjustHvacTemperature(
     context: Context,
@@ -353,16 +353,18 @@ internal fun sendAdjustHvacTemperature(
         hvacTempAdjustBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
         hvacTempRefreshSuppressedUntilMs = now + 2_500L
     }
-    val stepRaw = when {
-        deltaCelsius > 0f -> MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_STEP
-        deltaCelsius < 0f -> -MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_STEP
+    val scale = MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS
+    val stepDir = when {
+        deltaCelsius > 0f -> 1
+        deltaCelsius < 0f -> -1
         else -> return
     }
+    // 1.0°C step in raw units = 10 units
+    val stepRaw = stepDir * scale
     val propertyId = when (zone) {
         HvacTempZone.Driver -> MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE
         HvacTempZone.Passenger -> MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE
     }
-    val scale = MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS
     Thread {
         try {
             val got = vad.dashing.tbox.mbcan.MbCanEngineFacade.canGetVehicleParam(propertyId)
@@ -371,11 +373,12 @@ internal fun sendAdjustHvacTemperature(
                 currentCelsius != null -> (currentCelsius * scale).roundToInt()
                 else -> 220
             }
-            val nextRaw = (currentRaw + stepRaw).coerceIn(
+            val rawRounded = (currentRaw / 10) * 10
+            val nextRaw = (rawRounded + stepRaw).coerceIn(
                 MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MIN,
                 MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MAX,
             )
-            val celsius = nextRaw.toFloat() / scale
+            val celsius = (nextRaw.toFloat() / scale).roundToInt().toFloat()
             when (zone) {
                 HvacTempZone.Driver -> CanDataRepository.updateClimateSetTemperature1(celsius)
                 HvacTempZone.Passenger -> CanDataRepository.updateClimateSetTemperature2(celsius)

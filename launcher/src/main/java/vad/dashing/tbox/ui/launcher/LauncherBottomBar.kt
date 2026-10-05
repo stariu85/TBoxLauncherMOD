@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,8 +14,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.Popup
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -43,13 +56,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -106,15 +124,133 @@ internal data class LauncherPendingSeatCommand(
     val sequence: Long,
 )
 
-private fun formatHvacSetTemp(celsius: Float?): String {
-    if (celsius == null) return "—"
-    val rounded = (celsius * 2f).toInt() / 2f
-    return if (abs(rounded - rounded.toInt()) < 0.01f) {
-        rounded.toInt().toString()
-    } else {
-        valueToString(rounded, 1)
+internal data class LauncherDockButtonDescriptor(
+    val id: String,
+    val title: String,
+    val iconRes: Int? = null,
+)
+
+internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
+    LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
+    LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_3),
+    LauncherDockButtonDescriptor("temp_driver", "Температура водителя", R.drawable.ic_widget_hvac_auto),
+    LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", R.drawable.ic_widget_hvac_auto),
+    LauncherDockButtonDescriptor("temp_pass", "Температура пассажира", R.drawable.ic_widget_hvac_auto),
+    LauncherDockButtonDescriptor("seat_heat_right", "Подогрев пассажира", R.drawable.ic_widget_seat_heat_right),
+    LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_3),
+    LauncherDockButtonDescriptor("recirc", "Рециркуляция", R.drawable.ic_widget_hvac_air_recirculation),
+    LauncherDockButtonDescriptor("steering_heat", "Подогрев руля", R.drawable.ic_widget_steering_wheel_heat),
+    LauncherDockButtonDescriptor("windscreen_heat", "Подогрев лобового", R.drawable.ic_widget_front_windscreen_heat),
+    LauncherDockButtonDescriptor("front_defrost", "Обдув лобового", R.drawable.ic_widget_hvac_defroster_front),
+    LauncherDockButtonDescriptor("rear_defrost", "Обогрев заднего стекла", R.drawable.ic_widget_rear_window_mirrors_defrost),
+    LauncherDockButtonDescriptor("home_nav", "Кнопка Домой"),
+    LauncherDockButtonDescriptor("back_nav", "Кнопка Назад"),
+)
+
+@Composable
+private fun LauncherDockSlotPickerPopup(
+    slotIndex: Int,
+    missingButtons: List<LauncherDockButtonDescriptor>,
+    onSelectButton: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Popup(
+        alignment = Alignment.BottomCenter,
+        offset = IntOffset(0, -110),
+        onDismissRequest = onDismiss,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xF218202A),
+            border = BorderStroke(1.dp, Color(0x5038BDF8)),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .widthIn(max = 520.dp)
+                .padding(8.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Добавить иконку в слот №${slotIndex + 1}",
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Filled.Close, null, tint = LauncherColors.TextMuted)
+                    }
+                }
+
+                if (missingButtons.isEmpty()) {
+                    Text(
+                        text = "Все доступные иконки климата уже добавлены на панель",
+                        color = LauncherColors.TextMuted,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                    )
+                } else {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 6.dp),
+                    ) {
+                        items(missingButtons) { btn ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(LauncherColors.CardDark)
+                                    .clickable { onSelectButton(btn.id) }
+                                    .padding(8.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(38.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (btn.iconRes != null) {
+                                        Image(
+                                            painter = painterResource(btn.iconRes),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(26.dp),
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = if (btn.id == "home_nav") Icons.Filled.Home else Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = null,
+                                            tint = LauncherColors.AccentCyan,
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = btn.title,
+                                    color = LauncherColors.TextPrimary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
+
+private fun formatHvacSetTemp(celsius: Float?): String {
+    if (celsius == null || celsius <= 0f) return "—"
+    return "${celsius.roundToInt()}°"
+}
+
+private val LocalClimateCardBgVisible = compositionLocalOf { true }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -146,18 +282,13 @@ fun LauncherBottomBar(
     val climateScale = remember(context, climateRevision) {
         LauncherAppConfigStore.climateControlsScale(context)
     }
+    val climateCardBgRevision by LauncherAppConfigStore.climateCardBgRevisionFlow.collectAsStateWithLifecycle()
+    val climateCardBgVisible = remember(context, climateCardBgRevision) {
+        LauncherAppConfigStore.climateCardBgVisible(context)
+    }
     val bottomSlotsRevision by LauncherAppConfigStore.bottomSlotsRevisionFlow.collectAsStateWithLifecycle()
-    val slotsUnified = remember(context, bottomSlotsRevision, navButtonsVisible) {
-        val raw = LauncherAppConfigStore.bottomSlotsUnified(context)
-        if (navButtonsVisible) {
-            if ("home_nav" !in raw && "back_nav" !in raw) {
-                listOf("home_nav", "back_nav") + raw.take(raw.size - 2)
-            } else {
-                raw
-            }
-        } else {
-            raw.filter { it != "home_nav" && it != "back_nav" }
-        }
+    val slotsUnified = remember(context, bottomSlotsRevision) {
+        LauncherAppConfigStore.bottomSlotsUnified(context)
     }
 
     val localView = LocalView.current
@@ -167,7 +298,6 @@ fun LauncherBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .height(bottomBarHeightDp.dp)
-            .clipToBounds()
             .onGloballyPositioned { coordinates ->
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.bottomBarTopPx = rect.top.toInt()
@@ -180,27 +310,98 @@ fun LauncherBottomBar(
             .padding(horizontal = 12.dp),
     ) {
         if (climateVisible) {
-            CompositionLocalProvider(LocalDockIconScale provides (dockScale * climateScale)) {
+            val screenWidthDp = LocalConfiguration.current.screenWidthDp
+            val slotUnitWidthDp = ((screenWidthDp - 24f) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(28f).dp
+            var isDraggingAnySlot by remember { mutableStateOf(false) }
+            var pickerSlotIndex by remember { mutableStateOf<Int?>(null) }
+
+            CompositionLocalProvider(
+                LocalDockIconScale provides (dockScale * climateScale),
+                LocalClimateCardBgVisible provides climateCardBgVisible,
+            ) {
                 Row(
-                    modifier = Modifier.align(Alignment.CenterStart),
-                    horizontalArrangement = Arrangement.spacedBy(dockDp(4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.CenterStart),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     slotsUnified.forEachIndexed { index, itemId ->
-                        if (itemId != null) {
-                            LauncherDraggableUnifiedSlot(
-                                itemId = itemId,
-                                context = context,
-                                canViewModel = canViewModel,
-                                index = index,
-                                onCloseVehicleSettings = onCloseVehicleSettings,
-                                onOpenVehicleSettings = onOpenVehicleSettings,
-                            )
-                        } else {
-                            Box(modifier = Modifier.size(dockDp(44f)))
+                        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass") 2 else 1
+                        val itemWidthDp = slotUnitWidthDp * itemSpan
+
+                        Box(
+                            modifier = Modifier
+                                .width(itemWidthDp)
+                                .height(bottomBarHeightDp.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (itemId != null) {
+                                LauncherDraggableUnifiedSlot(
+                                    itemId = itemId,
+                                    context = context,
+                                    canViewModel = canViewModel,
+                                    index = index,
+                                    slotWidthDp = itemWidthDp,
+                                    onDragStateChange = { dragging -> isDraggingAnySlot = dragging },
+                                    onCloseVehicleSettings = onCloseVehicleSettings,
+                                    onOpenVehicleSettings = onOpenVehicleSettings,
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp, 36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .combinedClickable(
+                                            onLongClick = {
+                                                if (index >= 1) {
+                                                    pickerSlotIndex = index
+                                                }
+                                            },
+                                            onClick = {},
+                                        )
+                                        .then(
+                                            if (isDraggingAnySlot) {
+                                                Modifier.border(
+                                                    width = 1.dp,
+                                                    color = Color.White.copy(alpha = 0.22f),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                )
+                                            } else {
+                                                Modifier.border(
+                                                    width = 1.dp,
+                                                    color = Color.White.copy(alpha = 0.04f),
+                                                    shape = RoundedCornerShape(8.dp),
+                                                )
+                                            }
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = "Добавить иконку",
+                                        tint = Color.White.copy(alpha = if (isDraggingAnySlot) 0.35f else 0.12f),
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+            }
+
+            pickerSlotIndex?.let { slotIdx ->
+                val presentIds = slotsUnified.filterNotNull().toSet()
+                val missingButtons = ALL_CLIMATE_DOCK_BUTTONS.filter { it.id !in presentIds }
+                LauncherDockSlotPickerPopup(
+                    slotIndex = slotIdx,
+                    missingButtons = missingButtons,
+                    onSelectButton = { buttonId ->
+                        LauncherAppConfigStore.setButtonInUnifiedSlot(context, slotIdx, buttonId)
+                        pickerSlotIndex = null
+                    },
+                    onDismiss = { pickerSlotIndex = null },
+                )
             }
         }
     }
@@ -213,66 +414,100 @@ private fun LauncherDraggableUnifiedSlot(
     context: Context,
     canViewModel: CanDataViewModel,
     index: Int,
+    slotWidthDp: Dp,
+    onDragStateChange: (Boolean) -> Unit,
     onCloseVehicleSettings: () -> Unit,
     onOpenVehicleSettings: () -> Unit,
 ) {
     var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
 
-    val slotWidthDp = when (itemId) {
-        "temp_driver", "temp_pass" -> 88.dp
-        else -> 44.dp
-    }
+    val density = LocalDensity.current
+    val trashThresholdPx = remember(density) { with(density) { -36.dp.toPx() } }
+    val isTrashThreshold = isDragging && offsetY < trashThresholdPx
 
     Box(
         modifier = Modifier
-            .offset { IntOffset(offsetX.roundToInt(), 0) }
+            .zIndex(if (isDragging) 200f else 0f)
+            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .graphicsLayer {
                 if (isDragging) {
-                    scaleX = 1.15f
-                    scaleY = 1.15f
-                    shadowElevation = 10f
+                    scaleX = if (isTrashThreshold) 1.05f else 1.15f
+                    scaleY = if (isTrashThreshold) 1.05f else 1.15f
+                    shadowElevation = 16f
                 }
             }
             .pointerInput(itemId, index) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
                         isDragging = true
+                        onDragStateChange(true)
                         offsetX = 0f
+                        offsetY = 0f
                     },
                     onDragEnd = {
                         isDragging = false
-                        val slotWidthPx = slotWidthDp.toPx()
-                        val slotsShift = (offsetX / slotWidthPx).roundToInt()
-                        if (slotsShift != 0) {
-                            LauncherAppConfigStore.reorderUnifiedSlot(
-                                context = context,
-                                itemId = itemId,
-                                currentIndex = index,
-                                slotsShift = slotsShift,
-                            )
+                        onDragStateChange(false)
+                        if (offsetY < trashThresholdPx && index >= 1) {
+                            // Dragged UP out of bottom panel -> Remove icon from slot!
+                            LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, null)
+                        } else {
+                            val slotWidthPx = slotWidthDp.toPx()
+                            val slotsShift = (offsetX / slotWidthPx).roundToInt()
+                            if (slotsShift != 0) {
+                                LauncherAppConfigStore.reorderUnifiedSlot(
+                                    context = context,
+                                    itemId = itemId,
+                                    currentIndex = index,
+                                    slotsShift = slotsShift,
+                                )
+                            }
                         }
                         offsetX = 0f
+                        offsetY = 0f
                     },
                     onDragCancel = {
                         isDragging = false
+                        onDragStateChange(false)
                         offsetX = 0f
+                        offsetY = 0f
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
                         offsetX += dragAmount.x
+                        offsetY += dragAmount.y
                     },
                 )
             },
         contentAlignment = Alignment.Center,
     ) {
-        LauncherBottomDockButtonContent(
-            buttonId = itemId,
-            context = context,
-            canViewModel = canViewModel,
-            onCloseVehicleSettings = onCloseVehicleSettings,
-            onOpenVehicleSettings = onOpenVehicleSettings,
-        )
+        Box(contentAlignment = Alignment.Center) {
+            LauncherBottomDockButtonContent(
+                buttonId = itemId,
+                context = context,
+                canViewModel = canViewModel,
+                onCloseVehicleSettings = onCloseVehicleSettings,
+                onOpenVehicleSettings = onOpenVehicleSettings,
+            )
+            if (isTrashThreshold) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEF4444))
+                        .border(1.5.dp, Color.White, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Удалить",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -305,7 +540,6 @@ private fun LauncherBottomDockButtonContent(
                     onCloseOverlays = { onCloseVehicleSettings() },
                 )
             },
-            onLongClick = onOpenVehicleSettings,
         ) {
             Icon(Icons.Filled.Home, stringResource(R.string.launcher_home_cd), tint = LauncherColors.AccentCyan)
         }
@@ -322,13 +556,13 @@ private fun LauncherBottomDockButtonContent(
         }
         "temp_driver" -> LauncherTempStepper(
             tempText = formatHvacSetTemp(driverTemp),
-            onDown = { sendAdjustHvacTemperature(context, driverTemp, -0.5f, HvacTempZone.Driver) },
-            onUp = { sendAdjustHvacTemperature(context, driverTemp, 0.5f, HvacTempZone.Driver) },
+            onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
+            onUp = { sendAdjustHvacTemperature(context, driverTemp, 1.0f, HvacTempZone.Driver) },
         )
         "temp_pass" -> LauncherTempStepper(
             tempText = formatHvacSetTemp(passTemp),
-            onDown = { sendAdjustHvacTemperature(context, passTemp, -0.5f, HvacTempZone.Passenger) },
-            onUp = { sendAdjustHvacTemperature(context, passTemp, 0.5f, HvacTempZone.Passenger) },
+            onDown = { sendAdjustHvacTemperature(context, passTemp, -1.0f, HvacTempZone.Passenger) },
+            onUp = { sendAdjustHvacTemperature(context, passTemp, 1.0f, HvacTempZone.Passenger) },
         )
         "hvac_auto" -> LauncherDockIcon(onClick = { sendToggleHvacAuto(context) }) {
             LauncherHvacIcon(R.drawable.ic_widget_hvac_auto, hvacAuto)
@@ -632,11 +866,12 @@ private fun LauncherDockIcon(
     onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
+    val cardBgVisible = LocalClimateCardBgVisible.current
     Box(
         modifier = Modifier
             .size(dockDp(44f))
             .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.CardDark)
+            .background(if (cardBgVisible) LauncherColors.CardDark else Color.Transparent)
             .then(
                 if (onLongClick != null) {
                     Modifier.combinedClickable(

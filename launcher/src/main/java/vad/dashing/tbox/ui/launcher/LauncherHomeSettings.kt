@@ -58,6 +58,7 @@ internal fun LauncherHomeSettingsContent() {
     NavButtonsToggle()
     FloatingHomeSizeSlider()
     ClimateControlsToggle()
+    ClimateCardBgToggle()
     ClimateControlsScaleSlider()
     ResetBottomSlotsButton()
     TopBarHeightSlider()
@@ -394,6 +395,40 @@ private fun ClimateControlsScaleSlider() {
                 activeTrackColor = LauncherColors.AccentCyan,
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
+        )
+    }
+}
+
+@Composable
+private fun ClimateCardBgToggle() {
+    val context = LocalContext.current
+    val climateCardBgRevision by LauncherAppConfigStore.climateCardBgRevisionFlow.collectAsStateWithLifecycle()
+    var climateCardBgVisible by remember(context, climateCardBgRevision) {
+        mutableStateOf(LauncherAppConfigStore.climateCardBgVisible(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_climate_card_bg_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = climateCardBgVisible,
+                onCheckedChange = { enabled ->
+                    climateCardBgVisible = enabled
+                    LauncherAppConfigStore.setClimateCardBgVisible(context, enabled)
+                },
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_climate_card_bg_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
         )
     }
 }

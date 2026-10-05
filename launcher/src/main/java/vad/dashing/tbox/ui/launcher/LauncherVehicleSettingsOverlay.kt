@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import kotlin.math.roundToInt
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -474,11 +475,11 @@ internal fun LauncherVehicleSettingsContent(
             )
             LauncherSettingsValueRow(
                 stringResource(R.string.launcher_vs_climate_set_driver),
-                climateSet?.let { valueToString(it, 1) + "°" } ?: dash,
+                climateSet?.let { "${it.roundToInt()}°" } ?: dash,
             )
             LauncherSettingsValueRow(
                 stringResource(R.string.launcher_vs_climate_set_passenger),
-                climateSetPassenger?.let { valueToString(it, 1) + "°" } ?: dash,
+                climateSetPassenger?.let { "${it.roundToInt()}°" } ?: dash,
             )
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_climate_ac),
@@ -506,7 +507,7 @@ internal fun LauncherVehicleSettingsContent(
                     modifier = Modifier
                         .clickable {
                             sendAdjustHvacTemperature(
-                                context, climateSet, -0.5f, HvacTempZone.Driver,
+                                context, climateSet, -1.0f, HvacTempZone.Driver,
                             )
                         }
                         .padding(vertical = 6.dp),
@@ -518,7 +519,7 @@ internal fun LauncherVehicleSettingsContent(
                     modifier = Modifier
                         .clickable {
                             sendAdjustHvacTemperature(
-                                context, climateSet, 0.5f, HvacTempZone.Driver,
+                                context, climateSet, 1.0f, HvacTempZone.Driver,
                             )
                         }
                         .padding(vertical = 6.dp),
@@ -535,7 +536,7 @@ internal fun LauncherVehicleSettingsContent(
                     modifier = Modifier
                         .clickable {
                             sendAdjustHvacTemperature(
-                                context, climateSetPassenger, -0.5f, HvacTempZone.Passenger,
+                                context, climateSetPassenger, -1.0f, HvacTempZone.Passenger,
                             )
                         }
                         .padding(vertical = 6.dp),
@@ -547,7 +548,7 @@ internal fun LauncherVehicleSettingsContent(
                     modifier = Modifier
                         .clickable {
                             sendAdjustHvacTemperature(
-                                context, climateSetPassenger, 0.5f, HvacTempZone.Passenger,
+                                context, climateSetPassenger, 1.0f, HvacTempZone.Passenger,
                             )
                         }
                         .padding(vertical = 6.dp),

@@ -177,24 +177,10 @@ fun LauncherLeftPanel(
             if (racing) {
                 LauncherEggRaceCloseBar()
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (!racing) {
-                    LauncherCruisePresetControl(
-                        canViewModel = canViewModel,
-                        adas = adas,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
-                        ),
+            if (!racing) {
+                LauncherCruisePresetControl(
+                    canViewModel = canViewModel,
+                    adas = adas,
                 )
             }
         }

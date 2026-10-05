@@ -29,6 +29,8 @@
     <string name="launcher_climate_visible_desc">Show climate and seat heating controls on the bottom panel</string>
     <string name="launcher_climate_scale_title">Climate buttons size</string>
     <string name="launcher_climate_scale_desc">Scale of climate control and temperature icons</string>
+    <string name="launcher_climate_card_bg_title">Climate buttons background</string>
+    <string name="launcher_climate_card_bg_desc">Show dark card background behind climate buttons</string>
     <string name="launcher_floating_home_size_title">Floating Home button size</string>
     <string name="launcher_floating_home_size_desc">Size of the overlay Home button above all windows</string>
     <string name="launcher_reset_bottom_slots_title">Reset bottom panel buttons</string>

@@ -7,9 +7,13 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -174,16 +178,25 @@ internal fun LauncherTopHeaderBar(
         }
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
             Text(
                 text = "$timeText  ·  $dateText",
                 color = LauncherColors.TextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Light,
             )
+            val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
+                    ),
+            )
+            LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
         }
     }
 }

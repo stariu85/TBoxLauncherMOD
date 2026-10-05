@@ -216,6 +216,8 @@
     <string name="launcher_climate_visible_desc">Отображать панель климат-контроля и подогревов на нижней панели</string>
     <string name="launcher_climate_scale_title">Размер кнопок климата</string>
     <string name="launcher_climate_scale_desc">Масштаб значков климат-контроля и температуры</string>
+    <string name="launcher_climate_card_bg_title">Подложка кнопок климата</string>
+    <string name="launcher_climate_card_bg_desc">Отображать тёмный фон-карточку вокруг кнопок климата</string>
     <string name="launcher_floating_home_size_title">Размер плавающей кнопки Домой</string>
     <string name="launcher_floating_home_size_desc">Размер оверлейной кнопки «Домой» поверх всех окон</string>
     <string name="launcher_reset_bottom_slots_title">Сбросить расположение кнопок нижней панели</string>
