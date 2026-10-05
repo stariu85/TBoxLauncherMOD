@@ -23,6 +23,7 @@ private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
 private const val KEY_CLIMATE_VISIBLE = "climate_controls_visible"
 private const val KEY_CLIMATE_SCALE = "climate_controls_scale"
 private const val KEY_CLIMATE_CARD_BG_VISIBLE = "climate_card_bg_visible"
+private const val KEY_FLOATING_HOME_VISIBLE = "floating_home_visible"
 private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
@@ -128,6 +129,8 @@ internal object LauncherAppConfigStore {
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
     private val floatingHomeSizeRevision = MutableStateFlow(0)
     internal val floatingHomeSizeRevisionFlow: StateFlow<Int> = floatingHomeSizeRevision
+    private val floatingHomeVisibleRevision = MutableStateFlow(0)
+    internal val floatingHomeVisibleRevisionFlow: StateFlow<Int> = floatingHomeVisibleRevision
     private val carModelScaleRevision = MutableStateFlow(0)
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
     private val sidebarWidthRevision = MutableStateFlow(0)
@@ -224,6 +227,28 @@ internal object LauncherAppConfigStore {
         floatingHomeSizeRevision.value++
     }
 
+    fun floatingHomeVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_FLOATING_HOME_VISIBLE, true)
+
+    fun setFloatingHomeVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_FLOATING_HOME_VISIBLE, visible).apply()
+        if (visible) {
+            LauncherOverlayBar.show(context)
+            // Ensure slot 0 is cleared if occupied
+            val slots = bottomSlotsUnified(context).toMutableList()
+            if (slots[0] != null) {
+                val occupied = slots[0]
+                slots[0] = null
+                val freeIdx = (1 until GRID_SLOTS_TOTAL_COUNT).firstOrNull { slots[it] == null }
+                if (freeIdx != null) slots[freeIdx] = occupied
+                setBottomSlotsUnified(context, slots)
+            }
+        } else {
+            LauncherOverlayBar.hide()
+        }
+        floatingHomeVisibleRevision.value++
+    }
+
     fun carModelScale(context: Context): Float =
         prefs(context).getFloat(KEY_CAR_MODEL_SCALE, CAR_MODEL_SCALE_DEFAULT)
             .coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
@@ -311,7 +336,9 @@ internal object LauncherAppConfigStore {
         if (raw.isNullOrBlank()) return DEFAULT_BOTTOM_SLOTS_UNIFIED
         val list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
         if (list.size == GRID_SLOTS_TOTAL_COUNT) {
-            list[0] = null // Reserved empty slot 0 for Home button buffer
+            if (floatingHomeVisible(context)) {
+                list[0] = null // Slot 0 blocked when floating Home button is ON
+            }
             return list
         }
         return DEFAULT_BOTTOM_SLOTS_UNIFIED
@@ -325,7 +352,8 @@ internal object LauncherAppConfigStore {
 
     fun setButtonInUnifiedSlot(context: Context, slotIndex: Int, buttonId: String?) {
         val slots = bottomSlotsUnified(context).toMutableList()
-        if (slotIndex in 1 until GRID_SLOTS_TOTAL_COUNT) {
+        val minSlot = if (floatingHomeVisible(context)) 1 else 0
+        if (slotIndex in minSlot until GRID_SLOTS_TOTAL_COUNT) {
             slots[slotIndex] = buttonId
             setBottomSlotsUnified(context, slots)
         }
@@ -338,13 +366,17 @@ internal object LauncherAppConfigStore {
         slotsShift: Int,
     ) {
         val slots = bottomSlotsUnified(context).toMutableList()
-        val targetIndex = (currentIndex + slotsShift).coerceIn(1, GRID_SLOTS_TOTAL_COUNT - 1)
+        val floatingHomeOn = floatingHomeVisible(context)
+        val minSlot = if (floatingHomeOn) 1 else 0
+        val targetIndex = (currentIndex + slotsShift).coerceIn(minSlot, GRID_SLOTS_TOTAL_COUNT - 1)
         if (targetIndex == currentIndex) return
 
         val targetOld = slots[targetIndex]
         slots[currentIndex] = targetOld
         slots[targetIndex] = itemId
-        slots[0] = null // Enforce slot 0 stays empty for Home button reserved buffer
+        if (floatingHomeOn) {
+            slots[0] = null
+        }
 
         setBottomSlotsUnified(context, slots)
     }

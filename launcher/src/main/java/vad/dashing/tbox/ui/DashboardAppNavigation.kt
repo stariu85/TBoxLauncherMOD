@@ -3,12 +3,19 @@ package vad.dashing.tbox.ui
 import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
-import kotlin.math.roundToInt
+import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.LastAppTracker
 import vad.dashing.tbox.MainActivityIntentHelper
+import vad.dashing.tbox.mbcan.MbCanCommand
+import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
+import vad.dashing.tbox.mbcan.UniversalCanRepository
+import kotlin.math.roundToInt
 
 private val steeringHeatToggleLock = Any()
 private var steeringHeatToggleBlockedUntilMs = 0L
@@ -103,28 +110,32 @@ internal fun sendToggleFloatingPanelsEnabled(
     }
 }
 
+internal fun sendToggleMbCanProperty(context: Context, propertyId: Int) {
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val got = MbCanEngineFacade.canGetVehicleParam(propertyId)
+            val nextRaw = if (got == 2) 1 else 2
+            val written = MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
+            if (written == null) {
+                sendSetMbCanProperty(context, propertyId, nextRaw)
+            }
+            UniversalCanRepository.execute(
+                MbCanCommand.ToggleProperty(propertyId)
+            )
+            Log.w("DashboardAppNav", "sendToggleMbCanProperty propertyId=$propertyId got=$got next=$nextRaw written=$written")
+        } catch (e: Exception) {
+            Log.e("DashboardAppNav", "sendToggleMbCanProperty failed propertyId=$propertyId", e)
+        }
+    }
+}
+
 internal fun sendToggleSteeringWheelHeat(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(steeringHeatToggleLock) {
         if (now < steeringHeatToggleBlockedUntilMs) return
         steeringHeatToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH)
 }
 
 internal fun sendToggleFrontWindscreenHeat(context: Context) {
@@ -133,22 +144,7 @@ internal fun sendToggleFrontWindscreenHeat(context: Context) {
         if (now < windscreenHeatToggleBlockedUntilMs) return
         windscreenHeatToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH)
 }
 
 internal fun sendToggleWiperMaintenance(context: Context) {
@@ -157,22 +153,7 @@ internal fun sendToggleWiperMaintenance(context: Context) {
         if (now < wiperMaintenanceToggleBlockedUntilMs) return
         wiperMaintenanceToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH)
 }
 
 internal fun sendToggleParkingRadar(context: Context) {
@@ -181,22 +162,7 @@ internal fun sendToggleParkingRadar(context: Context) {
         if (now < parkingRadarToggleBlockedUntilMs) return
         parkingRadarToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH)
 }
 
 internal fun sendToggleRearWindowMirrorsDefrost(context: Context) {
@@ -205,22 +171,7 @@ internal fun sendToggleRearWindowMirrorsDefrost(context: Context) {
         if (now < hvacDefrosterToggleBlockedUntilMs) return
         hvacDefrosterToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH)
 }
 
 internal fun sendToggleHvacAirRecirculation(context: Context) {
@@ -229,22 +180,7 @@ internal fun sendToggleHvacAirRecirculation(context: Context) {
         if (now < hvacAirRecirculationToggleBlockedUntilMs) return
         hvacAirRecirculationToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION)
 }
 
 internal fun sendToggleHvacAc(context: Context) {
@@ -253,22 +189,7 @@ internal fun sendToggleHvacAc(context: Context) {
         if (now < hvacAcToggleBlockedUntilMs) return
         hvacAcToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.HVAC_POWER
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_POWER)
 }
 
 internal fun sendToggleHvacAuto(context: Context) {
@@ -277,22 +198,7 @@ internal fun sendToggleHvacAuto(context: Context) {
         if (now < hvacAutoToggleBlockedUntilMs) return
         hvacAutoToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE)
 }
 
 internal fun sendToggleHvacDefrosterFront(context: Context) {
@@ -301,22 +207,7 @@ internal fun sendToggleHvacDefrosterFront(context: Context) {
         if (now < hvacDefrosterFrontToggleBlockedUntilMs) return
         hvacDefrosterFrontToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION
-                )
-            }
-        )
-    } catch (_: Exception) {
-    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH)
 }
 
 /**
@@ -367,7 +258,7 @@ internal fun sendAdjustHvacTemperature(
     }
     Thread {
         try {
-            val got = vad.dashing.tbox.mbcan.MbCanEngineFacade.canGetVehicleParam(propertyId)
+            val got = MbCanEngineFacade.canGetVehicleParam(propertyId)
             val currentRaw = when {
                 got != null && decodeHvacTemperatureRaw(got) != null && got >= 160 -> got
                 currentCelsius != null -> (currentCelsius * scale).roundToInt()
@@ -384,7 +275,7 @@ internal fun sendAdjustHvacTemperature(
                 HvacTempZone.Passenger -> CanDataRepository.updateClimateSetTemperature2(celsius)
             }
             // Write via engine directly — avoids BackgroundService start flicker on freeform.
-            val written = vad.dashing.tbox.mbcan.MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
+            val written = MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
             if (written == null) {
                 sendSetMbCanProperty(context, propertyId, nextRaw)
             }
@@ -400,11 +291,11 @@ private var hvacTempRefreshSuppressedUntilMs = 0L
 internal fun refreshHvacTemperaturesFromMbCan() {
     if (SystemClock.uptimeMillis() < hvacTempRefreshSuppressedUntilMs) return
     runCatching {
-        vad.dashing.tbox.mbcan.MbCanEngineFacade
+        MbCanEngineFacade
             .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE)
             ?.let { decodeHvacTemperatureRaw(it) }
             ?.let { CanDataRepository.updateClimateSetTemperature1(it) }
-        vad.dashing.tbox.mbcan.MbCanEngineFacade
+        MbCanEngineFacade
             .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE)
             ?.let { decodeHvacTemperatureRaw(it) }
             ?.let { CanDataRepository.updateClimateSetTemperature2(it) }
@@ -430,7 +321,7 @@ internal fun sendAdjustHvacFanSpeed(context: Context, delta: Int) {
     }
     Thread {
         try {
-            val current = vad.dashing.tbox.mbcan.MbCanEngineFacade
+            val current = MbCanEngineFacade
                 .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED)
                 ?: 3
             val next = (current + delta).coerceIn(0, 8)
@@ -452,7 +343,7 @@ internal fun sendCycleHvacFanDirection(context: Context) {
     }
     Thread {
         try {
-            val current = vad.dashing.tbox.mbcan.MbCanEngineFacade
+            val current = MbCanEngineFacade
                 .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
             val next = when (current) {
                 MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE ->
@@ -521,22 +412,6 @@ internal fun requestHeadUnitReboot(context: Context) {
         MbCanKnownVehiclePropertyId.SYSTEM_REBOOT,
         MbCanKnownVehiclePropertyId.SYSTEM_REBOOT_VALUE,
     )
-}
-
-internal fun sendToggleMbCanProperty(context: Context, propertyId: Int) {
-    try {
-        context.startService(
-            Intent(context, BackgroundService::class.java).apply {
-                action = BackgroundService.ACTION_MBCAN_COMMAND
-                putExtra(
-                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
-                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
-                )
-                putExtra(BackgroundService.EXTRA_MBCAN_PROPERTY_ID, propertyId)
-            }
-        )
-    } catch (_: Exception) {
-    }
 }
 
 internal fun sendToggleDoorAutoLock(context: Context) =

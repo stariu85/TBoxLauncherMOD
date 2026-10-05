@@ -4,7 +4,7 @@
     <string name="launcher_standalone_about_title">About</string>
     <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME launcher for Jetour Dashing.\nOTA.</string>
     <string name="update_reboot_hu_title">Reboot HU?</string>
-    <string name="update_reboot_hu_body"></string>
+    <string name="update_reboot_hu_body">Reboot the head unit now?</string>
     <string name="update_reboot_hu_later">Later</string>
     <string name="update_reboot_hu_unavailable">HU reboot is available on Android 9 (mbCAN).</string>
     <string name="launcher_media_card_opacity_title">Player card opacity</string>
@@ -31,6 +31,8 @@
     <string name="launcher_climate_scale_desc">Scale of climate control and temperature icons</string>
     <string name="launcher_climate_card_bg_title">Climate buttons background</string>
     <string name="launcher_climate_card_bg_desc">Show dark card background behind climate buttons</string>
+    <string name="launcher_floating_home_visible_title">Floating Home button</string>
+    <string name="launcher_floating_home_visible_desc">Show circular Home button in the bottom-left corner over all windows. Unblocks leftmost slot when disabled</string>
     <string name="launcher_floating_home_size_title">Floating Home button size</string>
     <string name="launcher_floating_home_size_desc">Size of the overlay Home button above all windows</string>
     <string name="launcher_reset_bottom_slots_title">Reset bottom panel buttons</string>
@@ -939,7 +941,7 @@
     <string name="widget_app_launcher_required">Choose an app to save the widget</string>
     <string name="widget_app_launcher_pick_title">Choose app</string>
     <string name="widget_app_launcher_search">Search</string>
-    <string name="widget_app_launcher_no_icon">?</string>
+    <string name="widget_app_launcher_no_icon">"\?"</string>
     <string name="widget_app_launcher_change_icon">Change icon</string>
     <string name="widget_app_launcher_remove_icon">Remove icon</string>
     <string name="widget_app_launcher_remove_icon_from_theme">Remove icon from theme</string>

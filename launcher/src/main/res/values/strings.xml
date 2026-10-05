@@ -4,7 +4,7 @@
     <string name="launcher_standalone_about_title">О лаунчере</string>
     <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME-лаунчер для Jetour Dashing.\nOTA.</string>
     <string name="update_reboot_hu_title">Перезагрузить ГУ?</string>
-    <string name="update_reboot_hu_body"></string>
+    <string name="update_reboot_hu_body">Выполнить перезагрузку головного устройства сейчас?</string>
     <string name="update_reboot_hu_later">Позже</string>
     <string name="update_reboot_hu_unavailable">Перезагрузка ГУ доступна на Android 9 (mbCAN).</string>
     <string name="launcher_standalone_service_running">Сервис лаунчера</string>
@@ -218,6 +218,8 @@
     <string name="launcher_climate_scale_desc">Масштаб значков климат-контроля и температуры</string>
     <string name="launcher_climate_card_bg_title">Подложка кнопок климата</string>
     <string name="launcher_climate_card_bg_desc">Отображать тёмный фон-карточку вокруг кнопок климата</string>
+    <string name="launcher_floating_home_visible_title">Плавающая кнопка Домой</string>
+    <string name="launcher_floating_home_visible_desc">Отображать круглую кнопку «Домой» в левом нижнем углу поверх всех окон. При выключении освобождает крайний левый слот для иконок</string>
     <string name="launcher_floating_home_size_title">Размер плавающей кнопки Домой</string>
     <string name="launcher_floating_home_size_desc">Размер оверлейной кнопки «Домой» поверх всех окон</string>
     <string name="launcher_reset_bottom_slots_title">Сбросить расположение кнопок нижней панели</string>
@@ -1184,7 +1186,7 @@
     <string name="widget_app_launcher_required">Выберите приложение, чтобы сохранить виджет</string>
     <string name="widget_app_launcher_pick_title">Выбор приложения</string>
     <string name="widget_app_launcher_search">Поиск</string>
-    <string name="widget_app_launcher_no_icon">?</string>
+    <string name="widget_app_launcher_no_icon">"\?"</string>
     <string name="widget_app_launcher_change_icon">Изменить иконку</string>
     <string name="widget_app_launcher_remove_icon">Удалить иконку</string>
     <string name="widget_app_launcher_remove_icon_from_theme">Удалить иконку из темы</string>

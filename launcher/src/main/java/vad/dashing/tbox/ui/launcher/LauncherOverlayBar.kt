@@ -2,7 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.graphics.PixelFormat
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -12,7 +11,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -64,6 +62,7 @@ internal object LauncherOverlayBar {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
+        if (!LauncherAppConfigStore.floatingHomeVisible(activity)) return false
         if (!Settings.canDrawOverlays(activity)) {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
             return false
@@ -75,12 +74,7 @@ internal object LauncherOverlayBar {
             it.setCurrentState(Lifecycle.State.RESUMED)
         }
         val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
+        val type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
         val density = activity.resources.displayMetrics.density
         val marginPx = (15 * density).toInt()

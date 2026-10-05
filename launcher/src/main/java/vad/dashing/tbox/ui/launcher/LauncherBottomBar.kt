@@ -1,65 +1,64 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.ui.window.Popup
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -71,18 +70,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.Context
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
-import vad.dashing.tbox.mbcan.MbCanSignal
 import vad.dashing.tbox.mbcan.MbCanSeatModeState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.HvacTempZone
@@ -90,13 +87,9 @@ import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
 import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
-import vad.dashing.tbox.ui.refreshHvacTemperaturesFromMbCan
 import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
 import vad.dashing.tbox.ui.sendCycleFrontSeatVent
-import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
-import vad.dashing.tbox.ui.sendOpenCloseTrunk
-import vad.dashing.tbox.ui.sendSetMbCanProperty
 import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
 import vad.dashing.tbox.ui.sendToggleHvacAirRecirculation
 import vad.dashing.tbox.ui.sendToggleHvacAuto
@@ -104,8 +97,7 @@ import vad.dashing.tbox.ui.sendToggleHvacDefrosterFront
 import vad.dashing.tbox.ui.sendToggleRearWindowMirrorsDefrost
 import vad.dashing.tbox.ui.sendToggleSteeringWheelHeat
 import vad.dashing.tbox.ui.theme.tboxCaption
-import vad.dashing.tbox.valueToString
-import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private val HvacOnColor = Color(0xFF4FC3F7)
 private val SeatHeatOnColor = Color(0xFFF59E0B)
@@ -154,6 +146,9 @@ private fun LauncherDockSlotPickerPopup(
     onSelectButton: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val maxPopupWidthDp = (screenWidthDp - 32).coerceAtLeast(320).dp
+
     Popup(
         alignment = Alignment.BottomCenter,
         offset = IntOffset(0, -110),
@@ -165,11 +160,13 @@ private fun LauncherDockSlotPickerPopup(
             border = BorderStroke(1.dp, Color(0x5038BDF8)),
             shadowElevation = 12.dp,
             modifier = Modifier
-                .widthIn(max = 520.dp)
+                .widthIn(min = 280.dp, max = maxPopupWidthDp)
                 .padding(8.dp),
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier
+                    .padding(12.dp)
+                    .wrapContentWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(
@@ -196,12 +193,14 @@ private fun LauncherDockSlotPickerPopup(
                         modifier = Modifier.padding(vertical = 12.dp),
                     )
                 } else {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 6.dp),
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 6.dp),
                     ) {
-                        items(missingButtons) { btn ->
+                        missingButtons.forEach { btn ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -209,10 +208,10 @@ private fun LauncherDockSlotPickerPopup(
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(LauncherColors.CardDark)
                                     .clickable { onSelectButton(btn.id) }
-                                    .padding(8.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                             ) {
                                 Box(
-                                    modifier = Modifier.size(38.dp),
+                                    modifier = Modifier.size(36.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (btn.iconRes != null) {
@@ -271,10 +270,6 @@ fun LauncherBottomBar(
     val dockScale = remember(context, dockScaleRevision) {
         LauncherAppConfigStore.dockIconScale(context)
     }
-    val navButtonsRevision by LauncherAppConfigStore.navButtonsRevisionFlow.collectAsStateWithLifecycle()
-    val navButtonsVisible = remember(context, navButtonsRevision) {
-        LauncherAppConfigStore.navButtonsVisible(context)
-    }
     val climateRevision by LauncherAppConfigStore.climateControlsRevisionFlow.collectAsStateWithLifecycle()
     val climateVisible = remember(context, climateRevision) {
         LauncherAppConfigStore.climateControlsVisible(context)
@@ -285,6 +280,10 @@ fun LauncherBottomBar(
     val climateCardBgRevision by LauncherAppConfigStore.climateCardBgRevisionFlow.collectAsStateWithLifecycle()
     val climateCardBgVisible = remember(context, climateCardBgRevision) {
         LauncherAppConfigStore.climateCardBgVisible(context)
+    }
+    val floatingHomeVisibleRevision by LauncherAppConfigStore.floatingHomeVisibleRevisionFlow.collectAsStateWithLifecycle()
+    val floatingHomeVisible = remember(context, floatingHomeVisibleRevision) {
+        LauncherAppConfigStore.floatingHomeVisible(context)
     }
     val bottomSlotsRevision by LauncherAppConfigStore.bottomSlotsRevisionFlow.collectAsStateWithLifecycle()
     val slotsUnified = remember(context, bottomSlotsRevision) {
@@ -313,7 +312,30 @@ fun LauncherBottomBar(
             val screenWidthDp = LocalConfiguration.current.screenWidthDp
             val slotUnitWidthDp = ((screenWidthDp - 24f) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(28f).dp
             var isDraggingAnySlot by remember { mutableStateOf(false) }
+            var isEditingBottomSlots by remember { mutableStateOf(false) }
             var pickerSlotIndex by remember { mutableStateOf<Int?>(null) }
+            val coroutineScope = rememberCoroutineScope()
+            var editingTimerJob by remember { mutableStateOf<Job?>(null) }
+
+            val triggerEditingMode: () -> Unit = {
+                isEditingBottomSlots = true
+                editingTimerJob?.cancel()
+                editingTimerJob = coroutineScope.launch {
+                    delay(5_000L)
+                    isEditingBottomSlots = false
+                }
+            }
+
+            val slotBorderAlpha by animateFloatAsState(
+                targetValue = if (isEditingBottomSlots || isDraggingAnySlot) 0.22f else 0.00f,
+                animationSpec = tween(400),
+                label = "slotBorderAlpha",
+            )
+            val plusIconAlpha by animateFloatAsState(
+                targetValue = if (isEditingBottomSlots || isDraggingAnySlot) 0.35f else 0.00f,
+                animationSpec = tween(400),
+                label = "plusIconAlpha",
+            )
 
             CompositionLocalProvider(
                 LocalDockIconScale provides (dockScale * climateScale),
@@ -343,7 +365,15 @@ fun LauncherBottomBar(
                                     canViewModel = canViewModel,
                                     index = index,
                                     slotWidthDp = itemWidthDp,
-                                    onDragStateChange = { dragging -> isDraggingAnySlot = dragging },
+                                    onDragStateChange = { dragging ->
+                                        isDraggingAnySlot = dragging
+                                        if (dragging) {
+                                            isEditingBottomSlots = true
+                                            editingTimerJob?.cancel()
+                                        } else {
+                                            triggerEditingMode()
+                                        }
+                                    },
                                     onCloseVehicleSettings = onCloseVehicleSettings,
                                     onOpenVehicleSettings = onOpenVehicleSettings,
                                 )
@@ -354,35 +384,35 @@ fun LauncherBottomBar(
                                         .clip(RoundedCornerShape(8.dp))
                                         .combinedClickable(
                                             onLongClick = {
-                                                if (index >= 1) {
+                                                val minSlot = if (floatingHomeVisible) 1 else 0
+                                                if (index >= minSlot) {
+                                                    triggerEditingMode()
                                                     pickerSlotIndex = index
                                                 }
                                             },
                                             onClick = {},
                                         )
                                         .then(
-                                            if (isDraggingAnySlot) {
+                                            if (slotBorderAlpha > 0.001f) {
                                                 Modifier.border(
                                                     width = 1.dp,
-                                                    color = Color.White.copy(alpha = 0.22f),
+                                                    color = Color.White.copy(alpha = slotBorderAlpha),
                                                     shape = RoundedCornerShape(8.dp),
                                                 )
                                             } else {
-                                                Modifier.border(
-                                                    width = 1.dp,
-                                                    color = Color.White.copy(alpha = 0.04f),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                )
+                                                Modifier
                                             }
                                         ),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = "Добавить иконку",
-                                        tint = Color.White.copy(alpha = if (isDraggingAnySlot) 0.35f else 0.12f),
-                                        modifier = Modifier.size(14.dp),
-                                    )
+                                    if (plusIconAlpha > 0.001f) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Add,
+                                            contentDescription = "Добавить иконку",
+                                            tint = Color.White.copy(alpha = plusIconAlpha),
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -398,6 +428,7 @@ fun LauncherBottomBar(
                     missingButtons = missingButtons,
                     onSelectButton = { buttonId ->
                         LauncherAppConfigStore.setButtonInUnifiedSlot(context, slotIdx, buttonId)
+                        triggerEditingMode()
                         pickerSlotIndex = null
                     },
                     onDismiss = { pickerSlotIndex = null },
@@ -449,7 +480,8 @@ private fun LauncherDraggableUnifiedSlot(
                     onDragEnd = {
                         isDragging = false
                         onDragStateChange(false)
-                        if (offsetY < trashThresholdPx && index >= 1) {
+                        val minSlot = if (LauncherAppConfigStore.floatingHomeVisible(context)) 1 else 0
+                        if (offsetY < trashThresholdPx && index >= minSlot) {
                             // Dragged UP out of bottom panel -> Remove icon from slot!
                             LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, null)
                         } else {
@@ -517,7 +549,7 @@ private fun LauncherBottomDockButtonContent(
     context: Context,
     canViewModel: CanDataViewModel,
     onCloseVehicleSettings: () -> Unit,
-    onOpenVehicleSettings: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onOpenVehicleSettings: () -> Unit,
 ) {
     val hvacAuto by UniversalCanRepository.hvacAutoState.collectAsStateWithLifecycle()
     val hvacDefrost by UniversalCanRepository.hvacDefrosterFrontState.collectAsStateWithLifecycle()

@@ -22,8 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.roundToInt
 import vad.dashing.tbox.R
+import kotlin.math.roundToInt
 
 @Composable
 internal fun LauncherHomeSettingsContent() {
@@ -56,6 +56,7 @@ internal fun LauncherHomeSettingsContent() {
     AdasDistanceTextSizeSlider()
     AdasDistanceOffsetSlider()
     NavButtonsToggle()
+    FloatingHomeToggle()
     FloatingHomeSizeSlider()
     ClimateControlsToggle()
     ClimateCardBgToggle()
@@ -395,6 +396,40 @@ private fun ClimateControlsScaleSlider() {
                 activeTrackColor = LauncherColors.AccentCyan,
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
+        )
+    }
+}
+
+@Composable
+private fun FloatingHomeToggle() {
+    val context = LocalContext.current
+    val sizeRevision by LauncherAppConfigStore.floatingHomeVisibleRevisionFlow.collectAsStateWithLifecycle()
+    var homeVisible by remember(context, sizeRevision) {
+        mutableStateOf(LauncherAppConfigStore.floatingHomeVisible(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_floating_home_visible_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = homeVisible,
+                onCheckedChange = { enabled ->
+                    homeVisible = enabled
+                    LauncherAppConfigStore.setFloatingHomeVisible(context, enabled)
+                },
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_floating_home_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
         )
     }
 }
