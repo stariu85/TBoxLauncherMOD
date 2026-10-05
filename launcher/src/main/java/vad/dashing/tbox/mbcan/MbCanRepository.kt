@@ -11,13 +11,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.job
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
+import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.DRIVE_MODE_WIDGET_DATA_KEY
 import vad.dashing.tbox.FRONT_LEFT_SEAT_HEAT_VENT_SINGLE_WIDGET_DATA_KEY
 import vad.dashing.tbox.FRONT_RIGHT_SEAT_HEAT_VENT_SINGLE_WIDGET_DATA_KEY
@@ -25,6 +24,16 @@ import vad.dashing.tbox.PARKING_RADAR_WIDGET_DATA_KEY
 import vad.dashing.tbox.REAR_LEFT_SEAT_HEAT_WIDGET_DATA_KEY
 import vad.dashing.tbox.REAR_RIGHT_SEAT_HEAT_WIDGET_DATA_KEY
 import vad.dashing.tbox.WIPER_MAINTENANCE_WIDGET_DATA_KEY
+import vad.dashing.tbox.mbcan.MbCanRepository.availability
+import vad.dashing.tbox.mbcan.MbCanRepository.clearSource
+import vad.dashing.tbox.mbcan.MbCanRepository.enqueueClearSource
+import vad.dashing.tbox.mbcan.MbCanRepository.reapplyAllInterests
+import vad.dashing.tbox.mbcan.MbCanRepository.setSourceSignals
+import vad.dashing.tbox.mbcan.MbCanRepository.setSourceWidgetKeys
+import vad.dashing.tbox.mbcan.MbCanRepository.stateApplyDispatcher
+import vad.dashing.tbox.ui.decodeHvacTemperatureRaw
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 enum class MbCanSignal(val subscribeDataTypes: Set<String>) {
     SteeringWheelHeat(setOf("eMBCAN_CFG_VEHICLE")),
@@ -190,6 +199,10 @@ object MbCanRepository {
     val hvacAcPowerState: StateFlow<MbCanBinaryState> = _hvacAcPowerState.asStateFlow()
     private val _hvacAutoState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacAutoState: StateFlow<MbCanBinaryState> = _hvacAutoState.asStateFlow()
+    private val _hvacSyncState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
+    val hvacSyncState: StateFlow<MbCanBinaryState> = _hvacSyncState.asStateFlow()
+    private val _hvacPm25State = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
+    val hvacPm25State: StateFlow<MbCanBinaryState> = _hvacPm25State.asStateFlow()
     private val _hvacDefrosterFrontState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = _hvacDefrosterFrontState.asStateFlow()
     private val _wirelessChargingState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
@@ -394,10 +407,25 @@ object MbCanRepository {
                         stateEngine.applyHvacAutoStateCandidate(
                             MbCanSignalStateEngine.decodeHvacAutoStateRaw(raw)
                         )
+                    MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED -> {
+                        UniversalCanRepository.updateHvacFanSpeedRaw(raw)
+                    }
                     MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION ->
                         stateEngine.applyHvacDefrosterFrontCandidate(
                             MbCanSignalStateEngine.decodeHvacFrontDefrostMbCanRaw(raw)
                         )
+                    MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE -> {
+                        val deg = decodeHvacTemperatureRaw(raw)
+                        if (deg != null) {
+                            CanDataRepository.updateClimateSetTemperature1(deg)
+                        }
+                    }
+                    MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE -> {
+                        val deg = decodeHvacTemperatureRaw(raw)
+                        if (deg != null) {
+                            CanDataRepository.updateClimateSetTemperature2(deg)
+                        }
+                    }
                     MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH ->
                         stateEngine.applyWirelessChargingCandidate(
                             MbCanSignalStateEngine.decodeWirelessChargingRaw(raw)

@@ -1,5 +1,9 @@
 package vad.dashing.tbox.mbcan
 
+import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE
+import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId.SYSTEM_REBOOT
+
+
 /**
  * Catalog of mbCAN capabilities collected from vendor apps in the mbCAN workspace.
  * These lists are used as a reference/spec and do not imply automatic subscription.
@@ -150,6 +154,10 @@ object MbCanKnownVehiclePropertyId {
     const val HVAC_POWER = 36
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eHVAC_AUTO_STATE] — AUTO mode; 1 off, 2 on. */
     const val HVAC_AUTO_STATE = 110
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eSYNCSWTICH_REQ] — dual/sync mode; 1 off, 2 on. */
+    const val HVAC_SYNC_SWITCH = 94
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PM25_MONITORING] — PM2.5 air purifier switch; 1 off, 2 on. */
+    const val HVAC_PM25_MONITORING = 166
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_HVAC_FAN_DIRECTION] — blow mode. */
     const val HVAC_FAN_DIRECTION = 40
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_HVAC_FAN_SPEED]. */
@@ -370,7 +378,7 @@ object MbCanCommandRegistry {
             refreshSignal = MbCanSignal.HvacAcPower
         ),
         MbCanCommandSpec(
-            propertyId = MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE,
+            propertyId = HVAC_TEMPERATURE,
             // OEM MBACTempView: raw = °C×10, Lo=160 Hi=300, hard-key ±5.
             policy = MbCanCommandPolicy.SetExact(
                 allowedValues = (MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MIN..
@@ -396,6 +404,22 @@ object MbCanCommandRegistry {
                 unknownFallbackValue = 2
             ),
             refreshSignal = MbCanSignal.HvacAutoState
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+            policy = MbCanCommandPolicy.ToggleBinary(
+                offValue = 1,
+                onValue = 2,
+                unknownFallbackValue = 2
+            )
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
+            policy = MbCanCommandPolicy.ToggleBinary(
+                offValue = 1,
+                onValue = 2,
+                unknownFallbackValue = 2
+            )
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION,
@@ -441,7 +465,7 @@ object MbCanCommandRegistry {
             refreshSignal = MbCanSignal.CarSettingsVehicleParams
         ),
         MbCanCommandSpec(
-            propertyId = MbCanKnownVehiclePropertyId.SYSTEM_REBOOT,
+            propertyId = SYSTEM_REBOOT,
             policy = MbCanCommandPolicy.SetExact(
                 allowedValues = setOf(MbCanKnownVehiclePropertyId.SYSTEM_REBOOT_VALUE),
             ),

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -42,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
@@ -75,6 +79,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
@@ -87,17 +92,26 @@ import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
 import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
+import vad.dashing.tbox.ui.refreshHvacTemperaturesFromMbCan
 import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
 import vad.dashing.tbox.ui.sendCycleFrontSeatVent
+import vad.dashing.tbox.ui.sendCycleHvacFanDirection
+import vad.dashing.tbox.ui.sendCycleHvacFanSpeed
 import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
+import vad.dashing.tbox.ui.sendToggleHvacAc
 import vad.dashing.tbox.ui.sendToggleHvacAirRecirculation
 import vad.dashing.tbox.ui.sendToggleHvacAuto
 import vad.dashing.tbox.ui.sendToggleHvacDefrosterFront
+import vad.dashing.tbox.ui.sendToggleHvacPm25
+import vad.dashing.tbox.ui.sendToggleHvacSync
 import vad.dashing.tbox.ui.sendToggleRearWindowMirrorsDefrost
 import vad.dashing.tbox.ui.sendToggleSteeringWheelHeat
 import vad.dashing.tbox.ui.theme.tboxCaption
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 private val HvacOnColor = Color(0xFF4FC3F7)
 private val SeatHeatOnColor = Color(0xFFF59E0B)
@@ -122,7 +136,42 @@ internal data class LauncherDockButtonDescriptor(
     val iconRes: Int? = null,
 )
 
+@Composable
+private fun LauncherFanSpeedIcon(
+    speedLevel: Int,
+    activeColor: Color = Color(0xFF4FC3F7),
+    inactiveColor: Color = Color.White.copy(alpha = 0.2f),
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension / 2f * 0.82f
+        val dotRadius = size.minDimension * 0.055f
+
+        for (i in 0 until 10) {
+            val angleDeg = -90f + i * 36f
+            val angleRad = Math.toRadians(angleDeg.toDouble())
+            val dotX = center.x + radius * cos(angleRad).toFloat()
+            val dotY = center.y + radius * sin(angleRad).toFloat()
+
+            val isLit = (i < speedLevel)
+            drawCircle(
+                color = if (isLit) activeColor else inactiveColor,
+                radius = if (isLit) dotRadius * 1.15f else dotRadius,
+                center = Offset(dotX, dotY),
+            )
+        }
+    }
+}
+
 internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
+    LauncherDockButtonDescriptor("hvac_power", "Питание климата", R.drawable.ic_widget_hvac_power),
+    LauncherDockButtonDescriptor("hvac_ac", "Кондиционер AC", R.drawable.ic_widget_hvac_ac),
+    LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", R.drawable.ic_widget_hvac_auto),
+    LauncherDockButtonDescriptor("hvac_sync", "Синхронизация SYNC", null),
+    LauncherDockButtonDescriptor("hvac_pm25", "Очистка PM 2.5", R.drawable.ic_widget_pm25_leaf),
+    LauncherDockButtonDescriptor("hvac_fan_speed", "Скорость вентилятора", R.drawable.ic_widget_fan),
+    LauncherDockButtonDescriptor("hvac_fan_direction", "Направление обдува", R.drawable.ic_widget_fan_face_feet),
     LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
     LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_3),
     LauncherDockButtonDescriptor("temp_driver", "Температура водителя", R.drawable.ic_widget_hvac_auto),
@@ -214,7 +263,21 @@ private fun LauncherDockSlotPickerPopup(
                                     modifier = Modifier.size(36.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    if (btn.iconRes != null) {
+                                    if (btn.id == "hvac_sync") {
+                                        Text(
+                                            text = "SYNC",
+                                            color = LauncherColors.AccentCyan,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    } else if (btn.id == "hvac_pm25") {
+                                        Image(
+                                            painter = painterResource(btn.iconRes!!),
+                                            contentDescription = null,
+                                            colorFilter = ColorFilter.tint(Color(0xFF22C55E)),
+                                            modifier = Modifier.size(26.dp),
+                                        )
+                                    } else if (btn.iconRes != null) {
                                         Image(
                                             painter = painterResource(btn.iconRes),
                                             contentDescription = null,
@@ -288,6 +351,13 @@ fun LauncherBottomBar(
     val bottomSlotsRevision by LauncherAppConfigStore.bottomSlotsRevisionFlow.collectAsStateWithLifecycle()
     val slotsUnified = remember(context, bottomSlotsRevision) {
         LauncherAppConfigStore.bottomSlotsUnified(context)
+    }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            refreshHvacTemperaturesFromMbCan()
+            delay(1_000L)
+        }
     }
 
     val localView = LocalView.current
@@ -565,6 +635,97 @@ private fun LauncherBottomDockButtonContent(
     val rightRaw = launcherSeatModeToRaw(rightSeatMode) ?: 1
 
     when (buttonId) {
+        "hvac_sync" -> {
+            val syncState by UniversalCanRepository.hvacSyncState.collectAsStateWithLifecycle()
+            val isSyncOn = syncState is MbCanBinaryState.On || (driverTemp != null && passTemp != null && abs(driverTemp!! - passTemp!!) < 0.1f)
+            val tint = if (isSyncOn) HvacOnColor else HvacOffColor
+            LauncherDockIcon(onClick = { sendToggleHvacSync(context) }) {
+                Text(
+                    text = "SYNC",
+                    color = tint,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        "hvac_pm25" -> {
+            val pm25State by UniversalCanRepository.hvacPm25State.collectAsStateWithLifecycle()
+            LauncherDockIcon(onClick = { sendToggleHvacPm25(context) }) {
+                val isOn = pm25State is MbCanBinaryState.On
+                val tint = if (isOn) Color(0xFF22C55E) else HvacOffColor
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_pm25_leaf),
+                    contentDescription = "Очистка воздуха PM 2.5",
+                    colorFilter = ColorFilter.tint(tint),
+                    modifier = Modifier.size(dockDp(24f)),
+                )
+            }
+        }
+        "hvac_power" -> {
+            val hvacPower by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+            LauncherDockIcon(onClick = { sendToggleHvacAc(context) }) {
+                val isOn = hvacPower is MbCanBinaryState.On
+                val tint = if (isOn) HvacOnColor else HvacOffColor
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_hvac_power),
+                    contentDescription = "Питание климата",
+                    colorFilter = ColorFilter.tint(tint),
+                    modifier = Modifier.size(dockDp(24f)),
+                )
+            }
+        }
+        "hvac_fan_speed" -> {
+            val speedRaw by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
+            LauncherDockIcon(onClick = { sendCycleHvacFanSpeed(context) }) {
+                Box(
+                    modifier = Modifier.size(dockDp(38f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LauncherFanSpeedIcon(
+                        speedLevel = speedRaw.coerceIn(1, 10),
+                        activeColor = HvacOnColor,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Image(
+                        painter = painterResource(R.drawable.ic_widget_fan),
+                        contentDescription = "Скорость вентилятора",
+                        colorFilter = ColorFilter.tint(HvacOnColor),
+                        modifier = Modifier.size(dockDp(18f)),
+                    )
+                }
+            }
+        }
+        "hvac_ac" -> {
+            val hvacAc by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+            LauncherDockIcon(onClick = { sendToggleHvacAc(context) }) {
+                val isOn = hvacAc is MbCanBinaryState.On
+                val tint = if (isOn) HvacOnColor else HvacOffColor
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_hvac_ac),
+                    contentDescription = "Кондиционер AC",
+                    colorFilter = ColorFilter.tint(tint),
+                    modifier = Modifier.size(dockDp(24f)),
+                )
+            }
+        }
+        "hvac_fan_direction" -> {
+            val rawDirection by UniversalCanRepository.hvacFanDirectionRawState.collectAsStateWithLifecycle()
+            val drawableRes = when (rawDirection) {
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT -> R.drawable.ic_widget_fan_feet
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE_FOOT -> R.drawable.ic_widget_fan_face_feet
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE -> R.drawable.ic_widget_fan_face
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST_FOOT -> R.drawable.ic_widget_fan_defrost_feet
+                else -> R.drawable.ic_widget_fan_feet
+            }
+            LauncherDockIcon(onClick = { sendCycleHvacFanDirection(context) }) {
+                Image(
+                    painter = painterResource(drawableRes),
+                    contentDescription = "Направление обдува",
+                    colorFilter = ColorFilter.tint(HvacOnColor),
+                    modifier = Modifier.size(dockDp(24f)),
+                )
+            }
+        }
         "home_nav" -> LauncherDockIcon(
             onClick = {
                 goLauncherHome(

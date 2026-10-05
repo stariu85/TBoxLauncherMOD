@@ -201,6 +201,36 @@ internal fun sendToggleHvacAuto(context: Context) {
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE)
 }
 
+private val hvacSyncToggleLock = Any()
+private var hvacSyncToggleBlockedUntilMs = 0L
+
+internal fun sendToggleHvacSync(context: Context) {
+    val now = SystemClock.uptimeMillis()
+    synchronized(hvacSyncToggleLock) {
+        if (now < hvacSyncToggleBlockedUntilMs) return
+        hvacSyncToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
+    }
+    val driverTemp = CanDataRepository.climateSetTemperature1.value
+    if (driverTemp != null) {
+        CanDataRepository.updateClimateSetTemperature2(driverTemp)
+        val driverRaw = (driverTemp * MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS).roundToInt()
+        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE, driverRaw)
+    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH)
+}
+
+private val hvacPm25ToggleLock = Any()
+private var hvacPm25ToggleBlockedUntilMs = 0L
+
+internal fun sendToggleHvacPm25(context: Context) {
+    val now = SystemClock.uptimeMillis()
+    synchronized(hvacPm25ToggleLock) {
+        if (now < hvacPm25ToggleBlockedUntilMs) return
+        hvacPm25ToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
+    }
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+}
+
 internal fun sendToggleHvacDefrosterFront(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacDefrosterFrontToggleLock) {
@@ -311,29 +341,35 @@ private var hvacFanDirectionCycleBlockedUntilMs = 0L
 private val trunkOpenLock = Any()
 private var trunkOpenBlockedUntilMs = 0L
 
-/** Stock hard-key path: read fan speed, then ±1 (clamped 0..8). */
-internal fun sendAdjustHvacFanSpeed(context: Context, delta: Int) {
-    if (delta == 0) return
+/** Cycle fan speed 10% .. 100% (1..10 dots). When 100% (10), wraps around to 10% (1). */
+internal fun sendCycleHvacFanSpeed(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacFanSpeedAdjustLock) {
         if (now < hvacFanSpeedAdjustBlockedUntilMs) return
         hvacFanSpeedAdjustBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    Thread {
+    CoroutineScope(Dispatchers.IO).launch {
         try {
-            val current = MbCanEngineFacade
-                .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED)
-                ?: 3
-            val next = (current + delta).coerceIn(0, 8)
-            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED, next)
-        } catch (_: Exception) {
+            val propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED
+            val got = MbCanEngineFacade.canGetVehicleParam(propertyId) ?: 1
+            val next = if (got >= 10) 1 else got + 1
+            val written = MbCanEngineFacade.canSetVehicleParam(propertyId, next)
+            if (written == null) {
+                sendSetMbCanProperty(context, propertyId, next)
+            }
+            UniversalCanRepository.updateHvacFanSpeedRaw(next)
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(propertyId, next)
+            )
+            Log.w("DashboardAppNav", "sendCycleHvacFanSpeed got=$got -> next=$next written=$written")
+        } catch (e: Exception) {
+            Log.e("DashboardAppNav", "sendCycleHvacFanSpeed failed", e)
         }
-    }.start()
+    }
 }
 
 /**
- * Cycle blow modes: face → face+foot → foot → defrost → defrost+foot → face…
- * Uses current raw [HVAC_FAN_DIRECTION] when readable.
+ * Cycle blow modes: 1) Feet (2) -> 2) Feet & Face (3) -> 3) Face (1) -> 4) Feet & Windscreen (5)
  */
 internal fun sendCycleHvacFanDirection(context: Context) {
     val now = SystemClock.uptimeMillis()
@@ -341,28 +377,34 @@ internal fun sendCycleHvacFanDirection(context: Context) {
         if (now < hvacFanDirectionCycleBlockedUntilMs) return
         hvacFanDirectionCycleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    Thread {
+    CoroutineScope(Dispatchers.IO).launch {
         try {
-            val current = MbCanEngineFacade
-                .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
-            val next = when (current) {
-                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE ->
+            val propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION
+            val got = MbCanEngineFacade.canGetVehicleParam(propertyId)
+            val next = when (got) {
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT ->
                     MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE_FOOT
                 MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE_FOOT ->
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT
-                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT ->
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST
-                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST ->
+                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE ->
                     MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST_FOOT
                 MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST_FOOT ->
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE
-                // VHAL face / unknown → start at face
-                else -> MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE
+                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT
+                else -> MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT
             }
-            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION, next)
-        } catch (_: Exception) {
+            val written = MbCanEngineFacade.canSetVehicleParam(propertyId, next)
+            if (written == null) {
+                sendSetMbCanProperty(context, propertyId, next)
+            }
+            UniversalCanRepository.updateHvacFanDirectionRaw(next)
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(propertyId, next)
+            )
+            Log.w("DashboardAppNav", "sendCycleHvacFanDirection got=$got -> next=$next written=$written")
+        } catch (e: Exception) {
+            Log.e("DashboardAppNav", "sendCycleHvacFanDirection failed", e)
         }
-    }.start()
+    }
 }
 
 /**

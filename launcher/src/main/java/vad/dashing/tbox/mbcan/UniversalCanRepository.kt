@@ -5,12 +5,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
@@ -127,6 +126,26 @@ object UniversalCanRepository {
         }
         .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
 
+    val hvacSyncState: StateFlow<MbCanBinaryState> = mode
+        .flatMapLatest { activeMode ->
+            if (activeMode == HeadUnitCanMode.Android9MbCan) {
+                MbCanRepository.hvacSyncState
+            } else {
+                Android10VhalRepository.hvacSyncState
+            }
+        }
+        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+
+    val hvacPm25State: StateFlow<MbCanBinaryState> = mode
+        .flatMapLatest { activeMode ->
+            if (activeMode == HeadUnitCanMode.Android9MbCan) {
+                MbCanRepository.hvacPm25State
+            } else {
+                Android10VhalRepository.hvacPm25State
+            }
+        }
+        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
             if (activeMode == HeadUnitCanMode.Android9MbCan) {
@@ -136,6 +155,20 @@ object UniversalCanRepository {
             }
         }
         .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+
+    private val _hvacFanDirectionRaw = MutableStateFlow<Int?>(null)
+    val hvacFanDirectionRawState: StateFlow<Int?> = _hvacFanDirectionRaw.asStateFlow()
+
+    fun updateHvacFanDirectionRaw(raw: Int?) {
+        _hvacFanDirectionRaw.value = raw
+    }
+
+    private val _hvacFanSpeedRaw = MutableStateFlow<Int>(1)
+    val hvacFanSpeedRawState: StateFlow<Int> = _hvacFanSpeedRaw.asStateFlow()
+
+    fun updateHvacFanSpeedRaw(raw: Int) {
+        _hvacFanSpeedRaw.value = raw.coerceIn(1, 10)
+    }
 
     val frontLeftSeatModeState: StateFlow<MbCanSeatModeState> = mode
         .flatMapLatest { activeMode ->
