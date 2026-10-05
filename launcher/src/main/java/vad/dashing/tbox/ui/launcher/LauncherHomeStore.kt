@@ -6,13 +6,19 @@ import org.json.JSONObject
 
 sealed class LauncherHomeItem {
     abstract val key: String
+    abstract val slotIndex: Int
 
-    data class App(val packageName: String) : LauncherHomeItem() {
-        override val key: String = "app:$packageName"
+    data class App(val packageName: String, override val slotIndex: Int) : LauncherHomeItem() {
+        override val key: String = "app:$packageName@$slotIndex"
     }
 
-    data class Split(val presetId: String) : LauncherHomeItem() {
-        override val key: String = "split:$presetId"
+    data class Split(val presetId: String, override val slotIndex: Int) : LauncherHomeItem() {
+        override val key: String = "split:$presetId@$slotIndex"
+    }
+
+    fun withSlot(newSlot: Int): LauncherHomeItem = when (this) {
+        is App -> copy(slotIndex = newSlot)
+        is Split -> copy(presetId = presetId, slotIndex = newSlot)
     }
 }
 
@@ -47,8 +53,12 @@ internal object LauncherHomeStore {
         val array = JSONArray()
         items.forEach { item ->
             when (item) {
-                is LauncherHomeItem.App -> array.put(JSONObject().put("type", "app").put("package", item.packageName))
-                is LauncherHomeItem.Split -> array.put(JSONObject().put("type", "split").put("id", item.presetId))
+                is LauncherHomeItem.App -> array.put(
+                    JSONObject().put("type", "app").put("package", item.packageName).put("slot", item.slotIndex)
+                )
+                is LauncherHomeItem.Split -> array.put(
+                    JSONObject().put("type", "split").put("id", item.presetId).put("slot", item.slotIndex)
+                )
             }
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -57,41 +67,65 @@ internal object LauncherHomeStore {
             .apply()
     }
 
-    fun addApp(context: Context, packageName: String) {
+    fun addApp(context: Context, packageName: String, targetSlot: Int = -1) {
         val items = loadItems(context).toMutableList()
-        if (items.none { it is LauncherHomeItem.App && it.packageName == packageName }) {
-            items.add(LauncherHomeItem.App(packageName))
-            saveItems(context, items)
+        val occupiedSlots = items.map { it.slotIndex }.toSet()
+        val slot = if (targetSlot >= 0 && targetSlot !in occupiedSlots) {
+            targetSlot
+        } else {
+            (0..1000).first { it !in occupiedSlots }
         }
+        items.add(LauncherHomeItem.App(packageName, slot))
+        saveItems(context, items)
     }
 
-    fun addSplit(context: Context, presetId: String) {
+    fun addSplit(context: Context, presetId: String, targetSlot: Int = -1) {
         val items = loadItems(context).toMutableList()
-        if (items.none { it is LauncherHomeItem.Split && it.presetId == presetId }) {
-            items.add(LauncherHomeItem.Split(presetId))
-            saveItems(context, items)
+        val occupiedSlots = items.map { it.slotIndex }.toSet()
+        val slot = if (targetSlot >= 0 && targetSlot !in occupiedSlots) {
+            targetSlot
+        } else {
+            (0..1000).first { it !in occupiedSlots }
         }
+        items.add(LauncherHomeItem.Split(presetId, slot))
+        saveItems(context, items)
     }
 
-    fun removeAt(context: Context, index: Int) {
+    fun removeAtSlot(context: Context, slotIndex: Int) {
         val items = loadItems(context).toMutableList()
-        if (index in items.indices) {
-            val removed = items.removeAt(index)
-            saveItems(context, items)
-            if (autostartKey(context) == removed.key) setAutostartKey(context, null)
-        }
+        val item = items.firstOrNull { it.slotIndex == slotIndex } ?: return
+        items.remove(item)
+        saveItems(context, items)
+        if (autostartKey(context) == item.key) setAutostartKey(context, null)
     }
 
-    fun replaceAt(context: Context, index: Int, item: LauncherHomeItem) {
+    fun replaceAtSlot(context: Context, slotIndex: Int, newItem: LauncherHomeItem) {
         val items = loadItems(context).toMutableList()
-        if (index in items.indices) {
-            val replaced = items[index]
-            items[index] = item
-            saveItems(context, items)
-            if (autostartKey(context) == replaced.key && replaced.key != item.key) {
-                setAutostartKey(context, null)
-            }
+        val item = items.firstOrNull { it.slotIndex == slotIndex }
+        if (item != null) {
+            val idx = items.indexOf(item)
+            items[idx] = newItem.withSlot(slotIndex)
+        } else {
+            items.add(newItem.withSlot(slotIndex))
         }
+        saveItems(context, items)
+    }
+
+    fun moveItem(context: Context, fromSlot: Int, toSlot: Int) {
+        val items = loadItems(context).toMutableList()
+        val fromItem = items.firstOrNull { it.slotIndex == fromSlot } ?: return
+        val targetItem = items.firstOrNull { it.slotIndex == toSlot }
+
+        if (targetItem != null) {
+            val idxFrom = items.indexOf(fromItem)
+            val idxTarget = items.indexOf(targetItem)
+            items[idxFrom] = fromItem.withSlot(toSlot)
+            items[idxTarget] = targetItem.withSlot(fromSlot)
+        } else {
+            val idxFrom = items.indexOf(fromItem)
+            items[idxFrom] = fromItem.withSlot(toSlot)
+        }
+        saveItems(context, items)
     }
 
     private fun parseItems(raw: String): List<LauncherHomeItem> =
@@ -100,9 +134,10 @@ internal object LauncherHomeStore {
             buildList {
                 for (i in 0 until array.length()) {
                     val obj = array.optJSONObject(i) ?: continue
+                    val slot = if (obj.has("slot")) obj.optInt("slot", i) else i
                     when (obj.optString("type")) {
-                        "app" -> obj.optString("package").takeIf { it.isNotBlank() }?.let { add(LauncherHomeItem.App(it)) }
-                        "split" -> obj.optString("id").takeIf { it.isNotBlank() }?.let { add(LauncherHomeItem.Split(it)) }
+                        "app" -> obj.optString("package").takeIf { it.isNotBlank() }?.let { add(LauncherHomeItem.App(it, slot)) }
+                        "split" -> obj.optString("id").takeIf { it.isNotBlank() }?.let { add(LauncherHomeItem.Split(it, slot)) }
                     }
                 }
             }
@@ -111,6 +146,6 @@ internal object LauncherHomeStore {
     private fun migrateFromGrid(context: Context): List<LauncherHomeItem> =
         LauncherAppConfigStore.gridPackages(context)
             .filter { it.isNotBlank() }
-            .map { LauncherHomeItem.App(it) }
+            .mapIndexed { idx, pkg -> LauncherHomeItem.App(pkg, idx) }
             .also { if (it.isNotEmpty()) saveItems(context, it) }
 }

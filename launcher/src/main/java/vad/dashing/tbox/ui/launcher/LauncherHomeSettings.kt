@@ -64,6 +64,10 @@ internal fun LauncherHomeSettingsContent() {
     ResetBottomSlotsButton()
     TopBarHeightSlider()
     BottomBarHeightSlider()
+    GridColumnsSlider()
+    GridRowsSlider()
+    HomeIconScaleSlider()
+    HiddenAppsSettings()
     CruisePresetsSettings()
 }
 
@@ -695,5 +699,173 @@ private fun CruisePresetSliderRow(
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
         )
+    }
+}
+
+@Composable
+private fun GridColumnsSlider() {
+    val context = LocalContext.current
+    val colsRevision by LauncherAppConfigStore.gridColumnsRevisionFlow.collectAsStateWithLifecycle()
+    var cols by remember(context, colsRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.gridColumns(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Колонки сетки (10..20)",
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${cols.roundToInt()}",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = "Количество столбцов сетки для ярлыков правой зоны",
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = cols,
+            onValueChange = { next ->
+                cols = next
+                LauncherAppConfigStore.setGridColumns(context, next.roundToInt())
+            },
+            valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
+            steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun GridRowsSlider() {
+    val context = LocalContext.current
+    val rowsRevision by LauncherAppConfigStore.gridRowsRevisionFlow.collectAsStateWithLifecycle()
+    var rows by remember(context, rowsRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.gridRows(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Строки сетки (1..10)",
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${rows.roundToInt()}",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = "Количество строк сетки для ярлыков правой зоны",
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = rows,
+            onValueChange = { next ->
+                rows = next
+                LauncherAppConfigStore.setGridRows(context, next.roundToInt())
+            },
+            valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
+            steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun HomeIconScaleSlider() {
+    val context = LocalContext.current
+    val scaleRevision by LauncherAppConfigStore.homeIconScaleRevisionFlow.collectAsStateWithLifecycle()
+    var scale by remember(context, scaleRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.homeIconScale(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Размер иконок правой зоны",
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${(scale * 100f).roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = "Масштаб ярлыков приложений в правой панели",
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scale,
+            onValueChange = { next ->
+                scale = next
+                LauncherAppConfigStore.setHomeIconScale(context, next)
+            },
+            valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun HiddenAppsSettings() {
+    val context = LocalContext.current
+    val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
+    if (hidden.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Скрытые приложения (${hidden.size})",
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "Приложения, скрытые из рабочего стола и поиска",
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+            )
+            TextButton(
+                onClick = {
+                    LauncherAppConfigStore.unhideAllPackages(context)
+                },
+            ) {
+                Text(
+                    text = "Показать все скрытые приложения",
+                    color = LauncherColors.AccentCyan,
+                    fontSize = 13.sp,
+                )
+            }
+        }
     }
 }

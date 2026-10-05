@@ -27,6 +27,7 @@ object MbCanEngineFacade {
     private var engineInstance: Any? = null
     private var canGetVehicleParamMethod: Method? = null
     private var canSetVehicleParamMethod: Method? = null
+    private var canSetAirConditionMethod: Method? = null
     private var canGetVehicleParamStringMethod: Method? = null
     private var canGetAudioParamMethod: Method? = null
     private var canSetAudioParamMethod: Method? = null
@@ -87,6 +88,9 @@ object MbCanEngineFacade {
             canGetVehicleParamMethod = engineClass.getMethod("canGetVehicleParam", Int::class.javaPrimitiveType)
             canSetVehicleParamMethod =
                 engineClass.getMethod("canSetVehicleParam", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            canSetAirConditionMethod = runCatching {
+                engineClass.getMethod("canSetAirCondition", Class.forName("com.mengbo.mbCan.entity.MBAirCondition"))
+            }.getOrNull()
             // Optional vendor entry point (string properties: Wi-Fi SSID/PSK/MAC, BT address...).
             // Absent on some firmware — must not fail the whole init.
             canGetVehicleParamStringMethod = runCatching {
@@ -161,6 +165,17 @@ object MbCanEngineFacade {
         return try {
             withNativeLock {
                 (canSetVehicleParamMethod?.invoke(engineInstance, propertyId, value) as? Int)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun canSetAirCondition(airCondition: com.mengbo.mbCan.entity.MBAirCondition): Int? {
+        if (ensureInitialized() !is MbCanAvailability.Available) return null
+        return try {
+            withNativeLock {
+                (canSetAirConditionMethod?.invoke(engineInstance, airCondition) as? Int)
             }
         } catch (_: Throwable) {
             null

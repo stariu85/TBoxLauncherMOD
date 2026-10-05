@@ -1,11 +1,13 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,9 +18,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -35,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,17 +50,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,7 +86,7 @@ import vad.dashing.tbox.valueToString
 private sealed class HomeDockEntry(val key: String) {
     data class App(val entry: LaunchableAppEntry, val index: Int) : HomeDockEntry("app_${entry.packageName}_$index")
     data class Split(val preset: LauncherSplitPreset, val index: Int) : HomeDockEntry("split_${preset.id}_$index")
-    data object Add : HomeDockEntry("add")
+    data class Empty(val index: Int) : HomeDockEntry("empty_$index")
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -113,8 +125,23 @@ fun LauncherRightPanel(
     var contextMenuIndex by remember { mutableIntStateOf(-1) }
     var replaceIndex by remember { mutableIntStateOf(-1) }
     var settingsIndex by remember { mutableIntStateOf(-1) }
+    var isDragMode by remember { mutableStateOf(false) }
+    var showHiddenDialogVisible by remember { mutableStateOf(false) }
 
-    val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible ||
+    var activeDraggingEntry by remember { mutableStateOf<HomeDockEntry?>(null) }
+    var activeDraggingX by remember { mutableFloatStateOf(0f) }
+    var activeDraggingY by remember { mutableFloatStateOf(0f) }
+    var rightPanelLeftPx by remember { mutableFloatStateOf(0f) }
+    var rightPanelTopPx by remember { mutableFloatStateOf(0f) }
+
+    val gridColumnsRevision by LauncherAppConfigStore.gridColumnsRevisionFlow.collectAsStateWithLifecycle()
+    val gridColumns = remember(context, gridColumnsRevision) { LauncherAppConfigStore.gridColumns(context) }
+    val gridRowsRevision by LauncherAppConfigStore.gridRowsRevisionFlow.collectAsStateWithLifecycle()
+    val gridRows = remember(context, gridRowsRevision) { LauncherAppConfigStore.gridRows(context) }
+    val homeIconScaleRevision by LauncherAppConfigStore.homeIconScaleRevisionFlow.collectAsStateWithLifecycle()
+    val homeIconScale = remember(context, homeIconScaleRevision) { LauncherAppConfigStore.homeIconScale(context) }
+
+    val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible || showHiddenDialogVisible ||
         contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
     LaunchedEffect(anyLocalDialog) {
         LauncherOverlayElevator.setHoldSource("right_panel_dialog", anyLocalDialog)
@@ -123,16 +150,30 @@ fun LauncherRightPanel(
     val driveLabel = driveModeRaw?.let { resolveDriveModeWidgetOption(it).label }.orEmpty()
     val cabinTemp = insideTemp ?: outsideTemp
 
-    val dockEntries = remember(homeItems, splitPresets, appsByPackage) {
-        buildList {
-            homeItems.forEachIndexed { index, item ->
-                when (item) {
-                    is LauncherHomeItem.App -> appsByPackage[item.packageName]?.let { add(HomeDockEntry.App(it, index)) }
-                    is LauncherHomeItem.Split -> splitPresets.firstOrNull { it.id == item.presetId }
-                        ?.let { add(HomeDockEntry.Split(it, index)) }
+    var pickerSlotIndex by remember { mutableIntStateOf(-1) }
+
+    val totalGridSlots = gridColumns * gridRows
+    val itemsBySlot = remember(homeItems) { homeItems.associateBy { it.slotIndex } }
+    val maxOccupiedSlot = remember(homeItems) { homeItems.maxOfOrNull { it.slotIndex } ?: -1 }
+
+    val dockEntries = remember(itemsBySlot, maxOccupiedSlot, splitPresets, appsByPackage, isDragMode, totalGridSlots, gridColumns) {
+        val minSlots = maxOf(maxOccupiedSlot + 1, gridColumns)
+        val totalSlotsToRender = if (isDragMode) totalGridSlots else minSlots.coerceAtMost(totalGridSlots)
+        List(totalSlotsToRender) { slotIdx ->
+            val item = itemsBySlot[slotIdx]
+            when {
+                item is LauncherHomeItem.App -> {
+                    val app = appsByPackage[item.packageName]
+                    if (app != null) HomeDockEntry.App(app, slotIdx)
+                    else HomeDockEntry.Empty(slotIdx)
                 }
+                item is LauncherHomeItem.Split -> {
+                    val preset = splitPresets.firstOrNull { it.id == item.presetId }
+                    if (preset != null) HomeDockEntry.Split(preset, slotIdx)
+                    else HomeDockEntry.Empty(slotIdx)
+                }
+                else -> HomeDockEntry.Empty(slotIdx)
             }
-            add(HomeDockEntry.Add)
         }
     }
 
@@ -143,16 +184,18 @@ fun LauncherRightPanel(
         onDismiss = {
             appPickerVisible = false
             replaceIndex = -1
+            pickerSlotIndex = -1
         },
         onPick = { app ->
             if (replaceIndex >= 0) {
-                LauncherHomeStore.replaceAt(context, replaceIndex, LauncherHomeItem.App(app.packageName))
+                LauncherHomeStore.replaceAtSlot(context, replaceIndex, LauncherHomeItem.App(app.packageName, replaceIndex))
             } else {
-                LauncherHomeStore.addApp(context, app.packageName)
+                LauncherHomeStore.addApp(context, app.packageName, targetSlot = pickerSlotIndex)
             }
             onConfigChanged()
             appPickerVisible = false
             replaceIndex = -1
+            pickerSlotIndex = -1
         },
     )
 
@@ -160,12 +203,21 @@ fun LauncherRightPanel(
         visible = splitCreateVisible,
         apps = pickerApps,
         initialPreset = splitEditPreset,
-        pinToHomeOnSave = splitEditPreset == null,
+        pinToHomeOnSave = false,
         onDismiss = {
             splitCreateVisible = false
             splitEditPreset = null
         },
-        onSaved = onConfigChanged,
+        onSaved = {
+            if (splitEditPreset == null) {
+                val latestPreset = LauncherSplitPresetStore.loadPresets(context).lastOrNull()
+                if (latestPreset != null) {
+                    LauncherHomeStore.addSplit(context, latestPreset.id, targetSlot = pickerSlotIndex)
+                }
+            }
+            onConfigChanged()
+            pickerSlotIndex = -1
+        },
     )
 
     if (addMenuVisible) {
@@ -210,7 +262,7 @@ fun LauncherRightPanel(
     }
 
     if (contextMenuIndex >= 0) {
-        val item = homeItems.getOrNull(contextMenuIndex)
+        val item = homeItems.firstOrNull { it.slotIndex == contextMenuIndex }
         LauncherDarkAlertDialog(
             onDismissRequest = { contextMenuIndex = -1 },
             title = { Text(stringResource(R.string.launcher_icon_menu_title)) },
@@ -234,7 +286,7 @@ fun LauncherRightPanel(
                                 .fillMaxWidth()
                                 .clickable {
                                     LauncherAppConfigStore.hidePackage(context, item.packageName)
-                                    LauncherHomeStore.removeAt(context, contextMenuIndex)
+                                    LauncherHomeStore.removeAtSlot(context, contextMenuIndex)
                                     onConfigChanged()
                                     contextMenuIndex = -1
                                 }
@@ -257,6 +309,30 @@ fun LauncherRightPanel(
                         )
                     }
                     if (item != null) {
+                        Text(
+                            text = "Режим перетаскивания",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    isDragMode = true
+                                    contextMenuIndex = -1
+                                }
+                                .padding(12.dp),
+                            color = LauncherColors.AccentCyan,
+                        )
+                        if (hidden.isNotEmpty()) {
+                            Text(
+                                text = "Показать скрытое (${hidden.size})",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        contextMenuIndex = -1
+                                        showHiddenDialogVisible = true
+                                    }
+                                    .padding(12.dp),
+                                color = LauncherColors.AccentCyan,
+                            )
+                        }
                         val isAutostart = item.key == autostartKey
                         Text(
                             text = stringResource(R.string.launcher_icon_menu_autostart) +
@@ -280,7 +356,7 @@ fun LauncherRightPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                LauncherHomeStore.removeAt(context, contextMenuIndex)
+                                LauncherHomeStore.removeAtSlot(context, contextMenuIndex)
                                 onConfigChanged()
                                 contextMenuIndex = -1
                             }
@@ -297,7 +373,7 @@ fun LauncherRightPanel(
         )
     }
 
-    val settingsItem = homeItems.getOrNull(settingsIndex) as? LauncherHomeItem.App
+    val settingsItem = homeItems.firstOrNull { it.slotIndex == settingsIndex } as? LauncherHomeItem.App
     if (settingsItem != null) {
         var currentMode by remember(settingsItem.packageName, settingsIndex) {
             mutableStateOf(LauncherAppConfigStore.appLaunchMode(context, settingsItem.packageName))
@@ -417,6 +493,102 @@ fun LauncherRightPanel(
         )
     }
 
+    if (showHiddenDialogVisible) {
+        val hiddenApps = remember(rawApps, hidden) { rawApps.filter { it.packageName in hidden } }
+        LauncherDarkAlertDialog(
+            onDismissRequest = { showHiddenDialogVisible = false },
+            title = { Text("Скрытые приложения") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (hiddenApps.isEmpty() && hidden.isEmpty()) {
+                        Text(
+                            text = "Нет скрытых приложений",
+                            color = LauncherColors.TextMuted,
+                            fontSize = 13.sp,
+                        )
+                    } else {
+                        val scrollState = rememberScrollState()
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 280.dp)
+                                .verticalScroll(scrollState),
+                        ) {
+                            hidden.forEach { pkg ->
+                                val app = hiddenApps.firstOrNull { it.packageName == pkg }
+                                val label = app?.label ?: pkg.substringAfterLast('.')
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(LauncherColors.CardDark)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        if (app?.icon != null) {
+                                            Image(
+                                                bitmap = app.icon,
+                                                contentDescription = label,
+                                                modifier = Modifier.size(24.dp),
+                                                contentScale = ContentScale.Fit,
+                                            )
+                                        }
+                                        Text(
+                                            text = label,
+                                            color = LauncherColors.TextPrimary,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            LauncherAppConfigStore.showPackage(context, pkg)
+                                            onConfigChanged()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    ) {
+                                        Text(
+                                            text = "Показать",
+                                            color = LauncherColors.AccentCyan,
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                LauncherAppConfigStore.unhideAllPackages(context)
+                                onConfigChanged()
+                                showHiddenDialogVisible = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = "Показать все скрытые",
+                                color = LauncherColors.AccentCyan,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHiddenDialogVisible = false }) {
+                    Text(stringResource(R.string.action_close))
+                }
+            },
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -429,6 +601,8 @@ fun LauncherRightPanel(
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
                     val rect = coordinates.boundsInWindow()
+                    rightPanelLeftPx = rect.left
+                    rightPanelTopPx = rect.top
                     LauncherEmbeddedBoundsState.embeddedZoneBounds = android.graphics.Rect(
                         rect.left.toInt(),
                         rect.top.toInt(),
@@ -437,6 +611,44 @@ fun LauncherRightPanel(
                     )
                 },
         ) {
+            activeDraggingEntry?.let { entry ->
+                val density = LocalDensity.current
+                val localLeftPx = activeDraggingX - rightPanelLeftPx
+                val localTopPx = activeDraggingY - rightPanelTopPx
+                val leftDp = with(density) { localLeftPx.toDp() }
+                val topDp = with(density) { localTopPx.toDp() }
+                Box(
+                    modifier = Modifier
+                        .zIndex(1000f)
+                        .offset(x = leftDp, y = topDp)
+                        .graphicsLayer {
+                            scaleX = 1.18f
+                            scaleY = 1.18f
+                            shadowElevation = 20f
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (entry) {
+                        is HomeDockEntry.App -> LauncherAppDockIcon(
+                            app = entry.entry,
+                            iconScale = homeIconScale,
+                            isDragMode = true,
+                            onClick = {},
+                            onLongClick = {},
+                        )
+                        is HomeDockEntry.Split -> LauncherSplitDockIcon(
+                            preset = entry.preset,
+                            leftApp = appsByPackage[entry.preset.leftPackage],
+                            rightApp = appsByPackage[entry.preset.rightPackage],
+                            iconScale = homeIconScale,
+                            isDragMode = true,
+                            onClick = {},
+                            onLongClick = {},
+                        )
+                        else -> {}
+                    }
+                }
+            }
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -466,8 +678,39 @@ fun LauncherRightPanel(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                if (isDragMode) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(LauncherColors.AccentCyan.copy(alpha = 0.20f))
+                            .padding(horizontal = 12.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Режим перетаскивания (сетка ${gridColumns}×${gridRows})",
+                            color = LauncherColors.TextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        TextButton(
+                            onClick = { isDragMode = false },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text = "Готово",
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(60.dp),
+                    columns = GridCells.Fixed(gridColumns),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -476,32 +719,57 @@ fun LauncherRightPanel(
                             LauncherEmbeddedBoundsState.dockGridTopPx = rect.top.toInt()
                         },
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     itemsIndexed(dockEntries, key = { _, entry -> entry.key }) { _, entry ->
-                        when (entry) {
-                            is HomeDockEntry.Add -> LauncherAddIcon(onClick = {
-                                LauncherOverlayElevator.bringLauncherToFront(context)
-                                addMenuVisible = true
-                            })
-                            is HomeDockEntry.App -> LauncherAppDockIcon(
-                                app = entry.entry,
-                                autostart = homeItems.getOrNull(entry.index)?.key == autostartKey,
-                                onClick = {
-                                    launchLauncherApp(context, entry.entry.packageName, entry.entry.activityName)
-                                },
-                                onLongClick = { contextMenuIndex = entry.index },
-                            )
-                            is HomeDockEntry.Split -> LauncherSplitDockIcon(
-                                preset = entry.preset,
-                                leftApp = appsByPackage[entry.preset.leftPackage],
-                                rightApp = appsByPackage[entry.preset.rightPackage],
-                                autostart = homeItems.getOrNull(entry.index)?.key == autostartKey,
-                                onClick = { launchSplitPreset(context, entry.preset, visibleApps) },
-                                onLongClick = { contextMenuIndex = entry.index },
-                            )
+                        val slotIdx = when (entry) {
+                            is HomeDockEntry.App -> entry.index
+                            is HomeDockEntry.Split -> entry.index
+                            is HomeDockEntry.Empty -> entry.index
                         }
+                        LauncherDraggableHomeDockEntry(
+                            entry = entry,
+                            slotIndex = slotIdx,
+                            autostartKey = autostartKey,
+                            appsByPackage = appsByPackage,
+                            homeItems = homeItems,
+                            visibleApps = visibleApps,
+                            isDragMode = isDragMode,
+                            gridColumns = gridColumns,
+                            gridRows = gridRows,
+                            iconScale = homeIconScale,
+                            context = context,
+                            onEnableDragMode = { isDragMode = true },
+                            onOpenAddMenu = { targetSlot ->
+                                LauncherOverlayElevator.bringLauncherToFront(context)
+                                pickerSlotIndex = targetSlot
+                                addMenuVisible = true
+                            },
+                            onOpenContextMenu = { targetSlot -> contextMenuIndex = targetSlot },
+                            onMoveItem = { fromSlot, toSlot ->
+                                LauncherHomeStore.moveItem(context, fromSlot, toSlot)
+                                onConfigChanged()
+                            },
+                            onRemoveItem = { targetSlot ->
+                                LauncherHomeStore.removeAtSlot(context, targetSlot)
+                                onConfigChanged()
+                            },
+                            onStartDrag = { dragEntry, startX, startY ->
+                                activeDraggingEntry = dragEntry
+                                activeDraggingX = startX
+                                activeDraggingY = startY
+                            },
+                            onDragUpdate = { dx, dy ->
+                                activeDraggingX += dx
+                                activeDraggingY += dy
+                            },
+                            onEndDrag = {
+                                activeDraggingEntry = null
+                            },
+                            activeDraggingKey = activeDraggingEntry?.key,
+                            onConfigChanged = onConfigChanged,
+                        )
                     }
                 }
             }
@@ -537,22 +805,196 @@ fun LauncherRightPanel(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LauncherAddIcon(onClick: () -> Unit) {
+private fun LauncherDraggableHomeDockEntry(
+    entry: HomeDockEntry,
+    slotIndex: Int,
+    autostartKey: String?,
+    appsByPackage: Map<String, LaunchableAppEntry>,
+    homeItems: List<LauncherHomeItem>,
+    visibleApps: List<LaunchableAppEntry>,
+    isDragMode: Boolean,
+    gridColumns: Int,
+    gridRows: Int,
+    iconScale: Float = 1f,
+    context: Context,
+    onEnableDragMode: () -> Unit,
+    onOpenAddMenu: (slotIdx: Int) -> Unit,
+    onOpenContextMenu: (slotIdx: Int) -> Unit,
+    onMoveItem: (fromSlot: Int, toSlot: Int) -> Unit,
+    onRemoveItem: (slotIdx: Int) -> Unit,
+    onStartDrag: (entry: HomeDockEntry, startX: Float, startY: Float) -> Unit,
+    onDragUpdate: (dx: Float, dy: Float) -> Unit,
+    onEndDrag: () -> Unit,
+    activeDraggingKey: String?,
+    onConfigChanged: () -> Unit = {},
+) {
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+
+    var cellWidthPx by remember { mutableFloatStateOf(1f) }
+    var cellHeightPx by remember { mutableFloatStateOf(1f) }
+    var itemTopPx by remember { mutableFloatStateOf(0f) }
+    var itemLeftX by remember { mutableFloatStateOf(0f) }
+
+    val isInteractive = entry is HomeDockEntry.App || entry is HomeDockEntry.Split
+    val isBeingDragged = activeDraggingKey == entry.key
+
     Box(
         modifier = Modifier
-            .size(60.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(LauncherColors.CardDark.copy(alpha = 0.55f))
-            .clickable(onClick = onClick),
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                itemTopPx = bounds.top
+                itemLeftX = bounds.left
+                cellWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
+                cellHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
+            }
+            .then(
+                if (isDragMode) {
+                    Modifier.border(
+                        width = 0.8.dp,
+                        color = if (isInteractive) LauncherColors.AccentCyan.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (isInteractive) {
+                    Modifier.pointerInput(entry.key, slotIndex, isDragMode, gridColumns, gridRows) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                offsetX = 0f
+                                offsetY = 0f
+                                onStartDrag(entry, itemLeftX, itemTopPx)
+                            },
+                            onDragEnd = {
+                                val colShift = (offsetX / cellWidthPx).roundToInt()
+                                val rowShift = (offsetY / cellHeightPx).roundToInt()
+
+                                val currentColumn = slotIndex % gridColumns
+                                val currentRow = slotIndex / gridColumns
+
+                                val targetColumn = (currentColumn + colShift).coerceIn(0, gridColumns - 1)
+                                val targetRow = currentRow + rowShift
+
+                                val bottomBarTop = LauncherEmbeddedBoundsState.bottomBarTopPx
+                                val droppedTopY = itemTopPx + offsetY
+                                val isDroppedInBottomBar = (bottomBarTop > 0 && droppedTopY >= bottomBarTop - 40) ||
+                                    (targetRow >= gridRows) ||
+                                    (offsetY > cellHeightPx * (gridRows - currentRow - 0.3f))
+
+                                val buttonId = when (entry) {
+                                    is HomeDockEntry.App -> "pkg:${entry.entry.packageName}"
+                                    is HomeDockEntry.Split -> "split:${entry.preset.id}"
+                                    else -> null
+                                }
+                                if (isDroppedInBottomBar && buttonId != null) {
+                                    val droppedLeftX = itemLeftX + offsetX
+                                    val displayMetrics = context.resources.displayMetrics
+                                    val screenWidthPx = displayMetrics.widthPixels
+                                    val slotUnitWidthPx = ((screenWidthPx - (24f * displayMetrics.density)) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(1f)
+                                    val targetBottomSlot = (droppedLeftX / slotUnitWidthPx).roundToInt().coerceIn(0, GRID_SLOTS_TOTAL_COUNT - 1)
+
+                                    LauncherAppConfigStore.setButtonInUnifiedSlot(context, targetBottomSlot, buttonId)
+                                    onConfigChanged()
+                                } else {
+                                    val isDraggedAboveGrid = targetRow < 0 && offsetY < -cellHeightPx * (currentRow + 0.6f)
+
+                                    if (isDraggedAboveGrid) {
+                                        onRemoveItem(slotIndex)
+                                    } else {
+                                        val validTargetRow = targetRow.coerceIn(0, gridRows - 1)
+                                        val targetSlot = validTargetRow * gridColumns + targetColumn
+                                        if (targetSlot != slotIndex) {
+                                            onMoveItem(slotIndex, targetSlot)
+                                        }
+                                    }
+                                }
+                                offsetX = 0f
+                                offsetY = 0f
+                                onEndDrag()
+                            },
+                            onDragCancel = {
+                                offsetX = 0f
+                                offsetY = 0f
+                                onEndDrag()
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                offsetX += dragAmount.x
+                                offsetY += dragAmount.y
+                                onDragUpdate(dragAmount.x, dragAmount.y)
+                            },
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            )
+            .graphicsLayer {
+                if (isBeingDragged) {
+                    alpha = 0.25f
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.material3.Icon(
-            Icons.Filled.Add,
-            contentDescription = stringResource(R.string.launcher_home_add_title),
-            tint = LauncherColors.AccentCyan,
-            modifier = Modifier.size(25.dp),
-        )
+        when (entry) {
+            is HomeDockEntry.App -> LauncherAppDockIcon(
+                app = entry.entry,
+                autostart = homeItems.firstOrNull { it.slotIndex == slotIndex }?.key == autostartKey,
+                iconScale = iconScale,
+                isDragMode = isDragMode,
+                onClick = {
+                    if (!isDragMode) {
+                        launchLauncherApp(context, entry.entry.packageName, entry.entry.activityName)
+                    }
+                },
+                onLongClick = { onOpenContextMenu(slotIndex) },
+            )
+            is HomeDockEntry.Split -> LauncherSplitDockIcon(
+                preset = entry.preset,
+                leftApp = appsByPackage[entry.preset.leftPackage],
+                rightApp = appsByPackage[entry.preset.rightPackage],
+                autostart = homeItems.firstOrNull { it.slotIndex == slotIndex }?.key == autostartKey,
+                iconScale = iconScale,
+                isDragMode = isDragMode,
+                onClick = {
+                    if (!isDragMode) {
+                        launchSplitPreset(context, entry.preset, visibleApps)
+                    }
+                },
+                onLongClick = { onOpenContextMenu(slotIndex) },
+            )
+            is HomeDockEntry.Empty -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height((60 * iconScale).dp)
+                    .then(
+                        if (isDragMode) {
+                            Modifier.clickable { onOpenAddMenu(slotIndex) }
+                        } else {
+                            Modifier.combinedClickable(
+                                onClick = {},
+                                onLongClick = onEnableDragMode,
+                            )
+                        }
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isDragMode) {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Добавить иконку",
+                        tint = LauncherColors.AccentCyan.copy(alpha = 0.6f),
+                        modifier = Modifier.size((20 * iconScale).dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -561,19 +1003,27 @@ private fun LauncherAddIcon(onClick: () -> Unit) {
 private fun LauncherAppDockIcon(
     app: LaunchableAppEntry,
     autostart: Boolean = false,
+    iconScale: Float = 1f,
+    isDragMode: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(60.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .size((60 * iconScale).dp)
+            .clip(RoundedCornerShape((16 * iconScale).dp))
             .background(LauncherColors.CardDarkElevated)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
+            .then(
+                if (!isDragMode) {
+                    Modifier.combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier
+                }
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -581,19 +1031,19 @@ private fun LauncherAppDockIcon(
             Image(
                 bitmap = app.icon,
                 contentDescription = app.label,
-                modifier = Modifier.size(39.dp),
+                modifier = Modifier.size((39 * iconScale).dp),
                 contentScale = ContentScale.Fit,
             )
         } else {
             Text(
                 text = app.label.take(1).uppercase(),
                 color = LauncherColors.AccentCyan,
-                fontSize = 16.sp,
+                fontSize = (16 * iconScale).sp,
                 fontWeight = FontWeight.Bold,
             )
         }
         if (autostart) {
-            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding(3.dp))
+            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding((3 * iconScale).dp))
         }
     }
 }
@@ -623,65 +1073,73 @@ private fun LauncherSplitDockIcon(
     leftApp: LaunchableAppEntry?,
     rightApp: LaunchableAppEntry?,
     autostart: Boolean = false,
+    iconScale: Float = 1f,
+    isDragMode: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
-            .size(60.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .size((60 * iconScale).dp)
+            .clip(RoundedCornerShape((16 * iconScale).dp))
             .background(LauncherColors.CardDarkElevated)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
+            .then(
+                if (!isDragMode) {
+                    Modifier.combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier
+                }
             ),
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size((34 * iconScale).dp)
                 .align(Alignment.CenterStart)
-                .offset(x = 7.dp),
+                .offset(x = (7 * iconScale).dp),
             contentAlignment = Alignment.Center,
         ) {
-            LauncherMiniIcon(app = leftApp, fallback = preset.leftPackage.substringAfterLast('.'))
+            LauncherMiniIcon(app = leftApp, fallback = preset.leftPackage.substringAfterLast('.'), iconScale = iconScale)
         }
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size((34 * iconScale).dp)
                 .align(Alignment.CenterEnd)
-                .offset(x = (-7).dp),
+                .offset(x = (-7 * iconScale).dp),
             contentAlignment = Alignment.Center,
         ) {
-            LauncherMiniIcon(app = rightApp, fallback = preset.rightPackage.substringAfterLast('.'))
+            LauncherMiniIcon(app = rightApp, fallback = preset.rightPackage.substringAfterLast('.'), iconScale = iconScale)
         }
         Text(
             text = "‖",
             modifier = Modifier.align(Alignment.Center),
             color = LauncherColors.AccentCyan.copy(alpha = 0.7f),
-            fontSize = 14.sp,
+            fontSize = (14 * iconScale).sp,
         )
         if (autostart) {
-            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding(3.dp))
+            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding((3 * iconScale).dp))
         }
     }
 }
 
 @Composable
-private fun LauncherMiniIcon(app: LaunchableAppEntry?, fallback: String) {
+internal fun LauncherMiniIcon(app: LaunchableAppEntry?, fallback: String, iconScale: Float = 1f) {
     if (app?.icon != null) {
         Image(
             bitmap = app.icon,
             contentDescription = app.label,
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size((28 * iconScale).dp),
             contentScale = ContentScale.Fit,
         )
     } else {
         Text(
             text = (app?.label ?: fallback).take(1).uppercase(),
             color = LauncherColors.AccentCyan,
-            fontSize = 12.sp,
+            fontSize = (12 * iconScale).sp,
             fontWeight = FontWeight.Bold,
         )
     }

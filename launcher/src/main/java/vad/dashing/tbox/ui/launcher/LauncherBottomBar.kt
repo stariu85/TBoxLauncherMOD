@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
@@ -68,8 +69,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -88,6 +90,8 @@ import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.MbCanSeatModeState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.HvacTempZone
+import vad.dashing.tbox.ui.LaunchableAppEntry
+import vad.dashing.tbox.ui.rememberLaunchableAppEntries
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
@@ -104,6 +108,7 @@ import vad.dashing.tbox.ui.sendToggleHvacAirRecirculation
 import vad.dashing.tbox.ui.sendToggleHvacAuto
 import vad.dashing.tbox.ui.sendToggleHvacDefrosterFront
 import vad.dashing.tbox.ui.sendToggleHvacPm25
+import vad.dashing.tbox.ui.sendToggleHvacPower
 import vad.dashing.tbox.ui.sendToggleHvacSync
 import vad.dashing.tbox.ui.sendToggleRearWindowMirrorsDefrost
 import vad.dashing.tbox.ui.sendToggleSteeringWheelHeat
@@ -146,18 +151,18 @@ private fun LauncherFanSpeedIcon(
     Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension / 2f * 0.82f
-        val dotRadius = size.minDimension * 0.055f
+        val dotRadius = size.minDimension * 0.065f
 
-        for (i in 0 until 10) {
-            val angleDeg = -90f + i * 36f
+        for (i in 0 until 7) {
+            val angleDeg = -210f + i * 40f
             val angleRad = Math.toRadians(angleDeg.toDouble())
             val dotX = center.x + radius * cos(angleRad).toFloat()
             val dotY = center.y + radius * sin(angleRad).toFloat()
 
-            val isLit = (i < speedLevel)
+            val isLit = (i < speedLevel.coerceIn(0, 7))
             drawCircle(
                 color = if (isLit) activeColor else inactiveColor,
-                radius = if (isLit) dotRadius * 1.15f else dotRadius,
+                radius = if (isLit) dotRadius * 1.2f else dotRadius,
                 center = Offset(dotX, dotY),
             )
         }
@@ -192,11 +197,14 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
 private fun LauncherDockSlotPickerPopup(
     slotIndex: Int,
     missingButtons: List<LauncherDockButtonDescriptor>,
+    pickerApps: List<LaunchableAppEntry> = emptyList(),
+    splitPresets: List<LauncherSplitPreset> = emptyList(),
     onSelectButton: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val maxPopupWidthDp = (screenWidthDp - 32).coerceAtLeast(320).dp
+    val appsByPackage = remember(pickerApps) { pickerApps.associateBy { it.packageName } }
 
     Popup(
         alignment = Alignment.BottomCenter,
@@ -234,20 +242,19 @@ private fun LauncherDockSlotPickerPopup(
                     }
                 }
 
-                if (missingButtons.isEmpty()) {
+                if (missingButtons.isNotEmpty()) {
                     Text(
-                        text = "Все доступные иконки климата уже добавлены на панель",
+                        text = "Иконки климата",
                         color = LauncherColors.TextMuted,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 12.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
                     )
-                } else {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 4.dp),
                     ) {
                         missingButtons.forEach { btn ->
                             Column(
@@ -297,6 +304,129 @@ private fun LauncherDockSlotPickerPopup(
                                     color = LauncherColors.TextPrimary,
                                     fontSize = 10.sp,
                                     maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (pickerApps.isNotEmpty()) {
+                    Text(
+                        text = "Приложения",
+                        color = LauncherColors.TextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 4.dp),
+                    ) {
+                        pickerApps.forEach { app ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(LauncherColors.CardDark)
+                                    .clickable { onSelectButton("pkg:${app.packageName}") }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(36.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (app.icon != null) {
+                                        Image(
+                                            bitmap = app.icon,
+                                            contentDescription = app.label,
+                                            modifier = Modifier.size(28.dp),
+                                            contentScale = ContentScale.Fit,
+                                        )
+                                    } else {
+                                        Text(
+                                            text = app.label.take(1).uppercase(),
+                                            color = LauncherColors.AccentCyan,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = app.label,
+                                    color = LauncherColors.TextPrimary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 55.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (splitPresets.isNotEmpty()) {
+                    Text(
+                        text = "Сплит-экраны",
+                        color = LauncherColors.TextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 4.dp),
+                    ) {
+                        splitPresets.forEach { preset ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(LauncherColors.CardDark)
+                                    .clickable { onSelectButton("split:${preset.id}") }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(36.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .align(Alignment.CenterStart)
+                                            .offset(x = 2.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        LauncherMiniIcon(app = appsByPackage[preset.leftPackage], fallback = preset.leftPackage.substringAfterLast('.'))
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .align(Alignment.CenterEnd)
+                                            .offset(x = (-2).dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        LauncherMiniIcon(app = appsByPackage[preset.rightPackage], fallback = preset.rightPackage.substringAfterLast('.'))
+                                    }
+                                    Text(
+                                        text = "‖",
+                                        modifier = Modifier.align(Alignment.Center),
+                                        color = LauncherColors.AccentCyan.copy(alpha = 0.7f),
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                                Text(
+                                    text = preset.name,
+                                    color = LauncherColors.TextPrimary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 55.dp),
                                 )
                             }
                         }
@@ -380,7 +510,7 @@ fun LauncherBottomBar(
     ) {
         if (climateVisible) {
             val screenWidthDp = LocalConfiguration.current.screenWidthDp
-            val slotUnitWidthDp = ((screenWidthDp - 24f) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(28f).dp
+            val slotUnitWidthDp = ((screenWidthDp - 24f) / GRID_SLOTS_TOTAL_COUNT.toFloat()).dp
             var isDraggingAnySlot by remember { mutableStateOf(false) }
             var isEditingBottomSlots by remember { mutableStateOf(false) }
             var pickerSlotIndex by remember { mutableStateOf<Int?>(null) }
@@ -418,13 +548,22 @@ fun LauncherBottomBar(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    slotsUnified.forEachIndexed { index, itemId ->
+                    var skipCount = 0
+                    for (index in 0 until GRID_SLOTS_TOTAL_COUNT) {
+                        if (skipCount > 0) {
+                            skipCount--
+                            continue
+                        }
+                        val itemId = slotsUnified.getOrNull(index)
                         val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass") 2 else 1
+                        if (itemSpan > 1) {
+                            skipCount = itemSpan - 1
+                        }
                         val itemWidthDp = slotUnitWidthDp * itemSpan
 
                         Box(
                             modifier = Modifier
-                                .width(itemWidthDp)
+                                .weight(itemSpan.toFloat())
                                 .height(bottomBarHeightDp.dp),
                             contentAlignment = Alignment.Center,
                         ) {
@@ -493,9 +632,25 @@ fun LauncherBottomBar(
             pickerSlotIndex?.let { slotIdx ->
                 val presentIds = slotsUnified.filterNotNull().toSet()
                 val missingButtons = ALL_CLIMATE_DOCK_BUTTONS.filter { it.id !in presentIds }
+                val rawApps = rememberLaunchableAppEntries(null, 0)
+                val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
+                val pickerApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
+                val homeItems = remember(context, configRevision) { LauncherHomeStore.loadItems(context) }
+                val activeSplitIds = remember(homeItems) {
+                    homeItems.filterIsInstance<LauncherHomeItem.Split>().map { it.presetId }.toSet()
+                }
+                val splitPresets = remember(context, activeSplitIds) {
+                    LauncherSplitPresetStore.loadPresets(context).filter { it.id in activeSplitIds }
+                }
+                val missingPresets = remember(splitPresets, presentIds, hidden) {
+                    splitPresets.filter { "split:${it.id}" !in presentIds && it.leftPackage !in hidden && it.rightPackage !in hidden }
+                }
+
                 LauncherDockSlotPickerPopup(
                     slotIndex = slotIdx,
                     missingButtons = missingButtons,
+                    pickerApps = pickerApps,
+                    splitPresets = missingPresets,
                     onSelectButton = { buttonId ->
                         LauncherAppConfigStore.setButtonInUnifiedSlot(context, slotIdx, buttonId)
                         triggerEditingMode()
@@ -663,8 +818,9 @@ private fun LauncherBottomDockButtonContent(
         }
         "hvac_power" -> {
             val hvacPower by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
-            LauncherDockIcon(onClick = { sendToggleHvacAc(context) }) {
-                val isOn = hvacPower is MbCanBinaryState.On
+            val fanSpeed by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
+            val isOn = hvacPower is MbCanBinaryState.On || fanSpeed > 0
+            LauncherDockIcon(onClick = { sendToggleHvacPower(context) }) {
                 val tint = if (isOn) HvacOnColor else HvacOffColor
                 Image(
                     painter = painterResource(R.drawable.ic_widget_hvac_power),
@@ -676,20 +832,22 @@ private fun LauncherBottomDockButtonContent(
         }
         "hvac_fan_speed" -> {
             val speedRaw by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
+            val isOn = speedRaw > 0
+            val iconTint = if (isOn) HvacOnColor else HvacOffColor
             LauncherDockIcon(onClick = { sendCycleHvacFanSpeed(context) }) {
                 Box(
                     modifier = Modifier.size(dockDp(38f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     LauncherFanSpeedIcon(
-                        speedLevel = speedRaw.coerceIn(1, 10),
+                        speedLevel = speedRaw.coerceIn(0, 7),
                         activeColor = HvacOnColor,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Image(
                         painter = painterResource(R.drawable.ic_widget_fan),
                         contentDescription = "Скорость вентилятора",
-                        colorFilter = ColorFilter.tint(HvacOnColor),
+                        colorFilter = ColorFilter.tint(iconTint),
                         modifier = Modifier.size(dockDp(18f)),
                     )
                 }
@@ -795,14 +953,74 @@ private fun LauncherBottomDockButtonContent(
         "rear_defrost" -> LauncherDockIcon(onClick = { sendToggleRearWindowMirrorsDefrost(context) }) {
             LauncherBinaryTintIcon(R.drawable.ic_widget_rear_window_mirrors_defrost, rearDefrost is MbCanBinaryState.On)
         }
-        else -> if (buttonId.startsWith("pkg:")) {
-            val pkg = buttonId.removePrefix("pkg:")
-            LauncherDockIcon(onClick = { launchLauncherApp(context, pkg) }) {
-                Image(
-                    painter = painterResource(R.drawable.ic_widget_seat),
-                    contentDescription = null,
-                    modifier = Modifier.size(dockDp(26f)),
-                )
+        else -> when {
+            buttonId.startsWith("split:") -> {
+                val presetId = buttonId.removePrefix("split:")
+                val rawApps = rememberLaunchableAppEntries(null, 0)
+                val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
+                val visibleApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
+                val appsByPackage = remember(visibleApps) { visibleApps.associateBy { it.packageName } }
+                val splitPresets = remember(context) { LauncherSplitPresetStore.loadPresets(context) }
+                val preset = remember(presetId, splitPresets) { splitPresets.firstOrNull { it.id == presetId } }
+
+                if (preset != null) {
+                    LauncherDockIcon(onClick = { launchSplitPreset(context, preset, visibleApps) }) {
+                        Box(
+                            modifier = Modifier.size(dockDp(38f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(dockDp(22f))
+                                    .align(Alignment.CenterStart)
+                                    .offset(x = dockDp(2f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                LauncherMiniIcon(app = appsByPackage[preset.leftPackage], fallback = preset.leftPackage.substringAfterLast('.'))
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(dockDp(22f))
+                                    .align(Alignment.CenterEnd)
+                                    .offset(x = (-dockDp(2f))),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                LauncherMiniIcon(app = appsByPackage[preset.rightPackage], fallback = preset.rightPackage.substringAfterLast('.'))
+                            }
+                            Text(
+                                text = "‖",
+                                modifier = Modifier.align(Alignment.Center),
+                                color = LauncherColors.AccentCyan.copy(alpha = 0.7f),
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                }
+            }
+            else -> {
+                val pkg = buttonId.removePrefix("pkg:").removePrefix("app:")
+                val rawApps = rememberLaunchableAppEntries(null, 0)
+                val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
+                val visibleApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
+                val app = remember(pkg, visibleApps) { visibleApps.firstOrNull { it.packageName == pkg } }
+
+                LauncherDockIcon(onClick = { launchLauncherApp(context, pkg) }) {
+                    if (app?.icon != null) {
+                        Image(
+                            bitmap = app.icon,
+                            contentDescription = app.label,
+                            modifier = Modifier.size(dockDp(28f)),
+                            contentScale = ContentScale.Fit,
+                        )
+                    } else {
+                        Text(
+                            text = (app?.label ?: pkg.substringAfterLast('.')).take(1).uppercase(),
+                            color = LauncherColors.AccentCyan,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
             }
         }
     }

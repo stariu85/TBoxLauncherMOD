@@ -167,7 +167,7 @@ object UniversalCanRepository {
     val hvacFanSpeedRawState: StateFlow<Int> = _hvacFanSpeedRaw.asStateFlow()
 
     fun updateHvacFanSpeedRaw(raw: Int) {
-        _hvacFanSpeedRaw.value = raw.coerceIn(1, 10)
+        _hvacFanSpeedRaw.value = raw.coerceIn(0, 7)
     }
 
     val frontLeftSeatModeState: StateFlow<MbCanSeatModeState> = mode

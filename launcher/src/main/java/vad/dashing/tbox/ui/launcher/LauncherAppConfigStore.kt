@@ -31,6 +31,9 @@ private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
 private const val KEY_BOTTOM_SLOTS_UNIFIED = "bottom_slots_unified"
+private const val KEY_GRID_COLUMNS = "home_grid_columns"
+private const val KEY_GRID_ROWS = "home_grid_rows"
+private const val KEY_HOME_ICON_SCALE = "home_icon_scale"
 
 internal const val GRID_SLOTS_TOTAL_COUNT = 20
 
@@ -38,9 +41,11 @@ internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
     null, // Reserved empty slot 0 so floating Home button never overlaps icons
     "seat_heat_left",
     "seat_vent_left",
-    "temp_driver",
+    "temp_driver", // Occupies slots 3 and 4 (span = 2)
+    null,          // Slot 4 absorbed by temp_driver
     "hvac_auto",
-    "temp_pass",
+    "temp_pass",   // Occupies slots 6 and 7 (span = 2)
+    null,          // Slot 7 absorbed by temp_pass
     "seat_heat_right",
     "seat_vent_right",
     "recirc",
@@ -48,8 +53,6 @@ internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
     "windscreen_heat",
     "front_defrost",
     "rear_defrost",
-    null,
-    null,
     null,
     null,
     null,
@@ -79,10 +82,10 @@ internal const val DOCK_ICON_SCALE_MAX = 1.45f
 internal const val TOP_BAR_HEIGHT_DEFAULT = 40
 internal const val TOP_BAR_HEIGHT_MIN = 28
 internal const val TOP_BAR_HEIGHT_MAX = 72
-internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 72
+internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 65
 internal const val BOTTOM_BAR_HEIGHT_MIN = 48
 internal const val BOTTOM_BAR_HEIGHT_MAX = 110
-internal const val FLOATING_HOME_SIZE_DEFAULT = 56
+internal const val FLOATING_HOME_SIZE_DEFAULT = 55
 internal const val FLOATING_HOME_SIZE_MIN = 32
 internal const val FLOATING_HOME_SIZE_MAX = 96
 internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
@@ -100,6 +103,15 @@ internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
 internal const val CLIMATE_SCALE_DEFAULT = 1.00f
 internal const val CLIMATE_SCALE_MIN = 0.70f
 internal const val CLIMATE_SCALE_MAX = 1.40f
+internal const val GRID_COLUMNS_DEFAULT = 12
+internal const val GRID_COLUMNS_MIN = 10
+internal const val GRID_COLUMNS_MAX = 20
+internal const val GRID_ROWS_DEFAULT = 8
+internal const val GRID_ROWS_MIN = 1
+internal const val GRID_ROWS_MAX = 10
+internal const val HOME_ICON_SCALE_DEFAULT = 1.00f
+internal const val HOME_ICON_SCALE_MIN = 0.60f
+internal const val HOME_ICON_SCALE_MAX = 1.80f
 internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
@@ -149,6 +161,12 @@ internal object LauncherAppConfigStore {
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
+    private val gridColumnsRevision = MutableStateFlow(0)
+    internal val gridColumnsRevisionFlow: StateFlow<Int> = gridColumnsRevision
+    private val gridRowsRevision = MutableStateFlow(0)
+    internal val gridRowsRevisionFlow: StateFlow<Int> = gridRowsRevision
+    private val homeIconScaleRevision = MutableStateFlow(0)
+    internal val homeIconScaleRevisionFlow: StateFlow<Int> = homeIconScaleRevision
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -225,6 +243,36 @@ internal object LauncherAppConfigStore {
         val next = sizeDp.coerceIn(FLOATING_HOME_SIZE_MIN, FLOATING_HOME_SIZE_MAX)
         prefs(context).edit().putInt(KEY_FLOATING_HOME_SIZE, next).apply()
         floatingHomeSizeRevision.value++
+    }
+
+    fun gridColumns(context: Context): Int =
+        prefs(context).getInt(KEY_GRID_COLUMNS, GRID_COLUMNS_DEFAULT)
+            .coerceIn(GRID_COLUMNS_MIN, GRID_COLUMNS_MAX)
+
+    fun setGridColumns(context: Context, cols: Int) {
+        val next = cols.coerceIn(GRID_COLUMNS_MIN, GRID_COLUMNS_MAX)
+        prefs(context).edit().putInt(KEY_GRID_COLUMNS, next).apply()
+        gridColumnsRevision.value++
+    }
+
+    fun gridRows(context: Context): Int =
+        prefs(context).getInt(KEY_GRID_ROWS, GRID_ROWS_DEFAULT)
+            .coerceIn(GRID_ROWS_MIN, GRID_ROWS_MAX)
+
+    fun setGridRows(context: Context, rows: Int) {
+        val next = rows.coerceIn(GRID_ROWS_MIN, GRID_ROWS_MAX)
+        prefs(context).edit().putInt(KEY_GRID_ROWS, next).apply()
+        gridRowsRevision.value++
+    }
+
+    fun homeIconScale(context: Context): Float =
+        prefs(context).getFloat(KEY_HOME_ICON_SCALE, HOME_ICON_SCALE_DEFAULT)
+            .coerceIn(HOME_ICON_SCALE_MIN, HOME_ICON_SCALE_MAX)
+
+    fun setHomeIconScale(context: Context, scale: Float) {
+        val next = scale.coerceIn(HOME_ICON_SCALE_MIN, HOME_ICON_SCALE_MAX)
+        prefs(context).edit().putFloat(KEY_HOME_ICON_SCALE, next).apply()
+        homeIconScaleRevision.value++
     }
 
     fun floatingHomeVisible(context: Context): Boolean =
@@ -334,14 +382,16 @@ internal object LauncherAppConfigStore {
     fun bottomSlotsUnified(context: Context): List<String?> {
         val raw = prefs(context).getString(KEY_BOTTOM_SLOTS_UNIFIED, null)
         if (raw.isNullOrBlank()) return DEFAULT_BOTTOM_SLOTS_UNIFIED
-        val list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
-        if (list.size == GRID_SLOTS_TOTAL_COUNT) {
-            if (floatingHomeVisible(context)) {
-                list[0] = null // Slot 0 blocked when floating Home button is ON
-            }
-            return list
+        var list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
+        if (list.size < GRID_SLOTS_TOTAL_COUNT) {
+            while (list.size < GRID_SLOTS_TOTAL_COUNT) list.add(null)
+        } else if (list.size > GRID_SLOTS_TOTAL_COUNT) {
+            list = list.take(GRID_SLOTS_TOTAL_COUNT).toMutableList()
         }
-        return DEFAULT_BOTTOM_SLOTS_UNIFIED
+        if (floatingHomeVisible(context)) {
+            list[0] = null // Slot 0 blocked when floating Home button is ON
+        }
+        return list
     }
 
     fun setBottomSlotsUnified(context: Context, slots: List<String?>) {
@@ -355,6 +405,10 @@ internal object LauncherAppConfigStore {
         val minSlot = if (floatingHomeVisible(context)) 1 else 0
         if (slotIndex in minSlot until GRID_SLOTS_TOTAL_COUNT) {
             slots[slotIndex] = buttonId
+            val span = if (buttonId == "temp_driver" || buttonId == "temp_pass") 2 else 1
+            if (span > 1 && slotIndex + 1 < GRID_SLOTS_TOTAL_COUNT) {
+                slots[slotIndex + 1] = null
+            }
             setBottomSlotsUnified(context, slots)
         }
     }
@@ -491,6 +545,10 @@ internal object LauncherAppConfigStore {
         val next = hiddenPackages(context).toMutableSet()
         next.remove(packageName)
         setHiddenPackages(context, next)
+    }
+
+    fun unhideAllPackages(context: Context) {
+        setHiddenPackages(context, emptySet())
     }
 
     fun gridPackages(context: Context): List<String> =

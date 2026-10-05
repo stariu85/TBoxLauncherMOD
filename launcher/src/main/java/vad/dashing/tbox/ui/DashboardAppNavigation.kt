@@ -11,6 +11,7 @@ import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.LastAppTracker
 import vad.dashing.tbox.MainActivityIntentHelper
+import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -183,6 +184,57 @@ internal fun sendToggleHvacAirRecirculation(context: Context) {
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION)
 }
 
+private val hvacPowerToggleLock = Any()
+private var hvacPowerToggleBlockedUntilMs = 0L
+
+internal fun sendToggleHvacPower(context: Context) {
+    val now = SystemClock.uptimeMillis()
+    synchronized(hvacPowerToggleLock) {
+        if (now < hvacPowerToggleBlockedUntilMs) return
+        hvacPowerToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
+    }
+
+    val currentAcState = UniversalCanRepository.hvacAcPowerState.value
+    val currentFanSpeed = UniversalCanRepository.hvacFanSpeedRawState.value
+
+    val isCurrentlyOn = currentAcState is MbCanBinaryState.On || currentFanSpeed > 0
+    val turnOn = !isCurrentlyOn
+
+    val targetFanSpeed = if (turnOn) 3 else 0
+    val targetAcPower = if (turnOn) 2 else 1
+    val targetWorkingReq = if (turnOn) 2 else 1
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val lTemp = ((CanDataRepository.climateSetTemperature1.value ?: 22f)).roundToInt().coerceIn(16, 30).toByte()
+            val rTemp = ((CanDataRepository.climateSetTemperature2.value ?: 22f)).roundToInt().coerceIn(16, 30).toByte()
+
+            val airCond = com.mengbo.mbCan.entity.MBAirCondition(
+                targetFanSpeed.toByte(),
+                0.toByte(),
+                targetAcPower.toByte(),
+                targetWorkingReq.toByte(),
+                lTemp,
+                rTemp,
+            )
+            MbCanEngineFacade.canSetAirCondition(airCond)
+
+            MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_POWER, targetAcPower)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_POWER, targetAcPower)
+
+            MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED, targetFanSpeed)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED, targetFanSpeed)
+
+            UniversalCanRepository.updateHvacFanSpeedRaw(targetFanSpeed)
+            UniversalCanRepository.execute(MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.HVAC_POWER, targetAcPower))
+
+            Log.i("DashboardAppNav", "sendToggleHvacPower turnOn=$turnOn (fan=$targetFanSpeed, ac=$targetAcPower)")
+        } catch (e: Exception) {
+            Log.e("DashboardAppNav", "sendToggleHvacPower failed", e)
+        }
+    }
+}
+
 internal fun sendToggleHvacAc(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacAcToggleLock) {
@@ -341,7 +393,7 @@ private var hvacFanDirectionCycleBlockedUntilMs = 0L
 private val trunkOpenLock = Any()
 private var trunkOpenBlockedUntilMs = 0L
 
-/** Cycle fan speed 10% .. 100% (1..10 dots). When 100% (10), wraps around to 10% (1). */
+/** Cycle fan speed 1..7 dots. When speed is 7, wraps around to 1. If currently 0 (off), goes to 1. */
 internal fun sendCycleHvacFanSpeed(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacFanSpeedAdjustLock) {
@@ -351,8 +403,9 @@ internal fun sendCycleHvacFanSpeed(context: Context) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED
-            val got = MbCanEngineFacade.canGetVehicleParam(propertyId) ?: 1
-            val next = if (got >= 10) 1 else got + 1
+            val current = UniversalCanRepository.hvacFanSpeedRawState.value
+            val got = MbCanEngineFacade.canGetVehicleParam(propertyId) ?: current
+            val next = if (got >= 7) 1 else (got.coerceAtLeast(0) + 1)
             val written = MbCanEngineFacade.canSetVehicleParam(propertyId, next)
             if (written == null) {
                 sendSetMbCanProperty(context, propertyId, next)

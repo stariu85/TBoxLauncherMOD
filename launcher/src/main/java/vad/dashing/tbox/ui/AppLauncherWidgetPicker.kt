@@ -173,14 +173,14 @@ private fun pickPrimaryLaunchEntry(
 
 @Composable
 internal fun rememberLaunchableAppEntries(
-    settingsViewModel: SettingsViewModel,
+    settingsViewModel: SettingsViewModel? = null,
     launcherIconRevision: Int = 0,
 ): List<LaunchableAppEntry> {
     val context = LocalContext.current
     val appContext = context.applicationContext
     LauncherAppListVersion.ensurePackageChangeReceiver(appContext)
     val appListRevision = LauncherAppListVersion.version
-    val iconLookup = rememberLauncherAppIconLookup(settingsViewModel)
+    val iconLookup = if (settingsViewModel != null) rememberLauncherAppIconLookup(settingsViewModel) else LauncherAppIconPaths.Lookup.None
     // Match the largest on-screen use (drawer ~56dp) with headroom for sharp scaling.
     // Previous ceiling of 96px forced upscale and looked soft on HU density.
     val iconSizePx = remember(appContext) {

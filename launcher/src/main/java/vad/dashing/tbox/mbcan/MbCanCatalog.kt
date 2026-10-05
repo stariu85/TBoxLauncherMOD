@@ -428,7 +428,7 @@ object MbCanCommandRegistry {
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED,
-            policy = MbCanCommandPolicy.SetExact(allowedValues = (0..8).toSet()),
+            policy = MbCanCommandPolicy.SetExact(allowedValues = (0..7).toSet()),
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.VEHICLE_PLG_CONTROL,
