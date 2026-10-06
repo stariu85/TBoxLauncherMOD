@@ -81,6 +81,9 @@ internal fun LauncherTopHeaderBar(
     val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
     val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
 
+    val cpuUsage = rememberCpuUsagePercentage()
+    val ramUsage = rememberRamUsagePercentage()
+
     var fuelShowsRange by remember {
         mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
     }
@@ -117,17 +120,17 @@ internal fun LauncherTopHeaderBar(
         SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(clockNowMs))
     }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.topHeaderBottomPx = rect.bottom.toInt()
             },
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Left side: Temp, fuel, battery voltage
         Row(
+            modifier = Modifier.align(Alignment.CenterStart),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -186,7 +189,34 @@ internal fun LauncherTopHeaderBar(
             }
         }
 
+        // Center side: CPU and RAM usage percentage
         Row(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "CPU $cpuUsage%",
+                color = StatusIconTint,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = "·",
+                color = StatusIconTint.copy(alpha = 0.5f),
+                fontSize = 13.sp,
+            )
+            Text(
+                text = "RAM $ramUsage%",
+                color = StatusIconTint,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
+        // Right side: Status icons + Time/Date
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -212,8 +242,6 @@ internal fun LauncherHeaderStatusIcons(
     val wifiConnected = rememberWifiConnected()
     val wifiLevel = rememberWifiLevel(wifiConnected)
     val bluetoothConnected = rememberBluetoothConnected()
-    val cpuUsage = rememberCpuUsagePercentage()
-    val ramUsage = rememberRamUsagePercentage()
     val networkType = mobileNetworkTypeLabel(netState.netStatus)
 
     Row(
@@ -240,18 +268,6 @@ internal fun LauncherHeaderStatusIcons(
                 colorFilter = ColorFilter.tint(StatusIconTint),
             )
         }
-        Text(
-            text = "CPU $cpuUsage%",
-            color = StatusIconTint,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-        )
-        Text(
-            text = "RAM $ramUsage%",
-            color = StatusIconTint,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-        )
         if (tboxConnected) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),

@@ -1,5 +1,6 @@
 package vad.dashing.tbox
 
+import java.util.Locale
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 
 const val DRIVE_MODE_WIDGET_DATA_KEY = "driveModeWidget"
@@ -59,6 +60,13 @@ val DRIVE_MODE_WIDGET_OPTIONS: List<DriveModeWidgetOption> = listOf(
         propertyValue = 3
     ),
     DriveModeWidgetOption(
+        rawValue = 6,
+        label = "SMART",
+        widgetLabel = "SMART",
+        propertyId = MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE,
+        propertyValue = 6
+    ),
+    DriveModeWidgetOption(
         rawValue = 101,
         label = "ECO (6DCT)",
         widgetLabel = "ECO",
@@ -91,4 +99,36 @@ fun normalizeDriveModeWidgetRawValue(rawValue: Int): Int {
 fun resolveDriveModeWidgetOption(rawValue: Int): DriveModeWidgetOption {
     val normalized = normalizeDriveModeWidgetRawValue(rawValue)
     return DRIVE_MODE_WIDGET_OPTIONS.first { it.rawValue == normalized }
+}
+
+fun resolveDriveModeDisplayLabel(
+    driveModeRaw: Int?,
+    driveModeWetRaw: Int?,
+    gearBoxDriveMode: String?,
+): String {
+    if (driveModeRaw != null) {
+        val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
+            it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE && it.propertyValue == driveModeRaw
+        }
+        if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
+    }
+    if (driveModeWetRaw != null) {
+        val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
+            it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET && it.propertyValue == driveModeWetRaw
+        }
+        if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
+    }
+    if (!gearBoxDriveMode.isNullOrBlank() && gearBoxDriveMode != "N/A") {
+        return when (gearBoxDriveMode.uppercase(Locale.ROOT)) {
+            "ECO", "ЭКО" -> "ECO"
+            "NOR", "NORMAL", "COMFORT", "КОМФОРТ", "НОРМА" -> "NOR"
+            "SPT", "SPORT", "СПОРТ" -> "SPT"
+            "SNOW", "СНЕГ" -> "SNOW"
+            "MUD", "ГРЯЗЬ" -> "MUD"
+            "SAND", "ПЕСОК" -> "SAND"
+            "SMART", "СМАРТ" -> "SMART"
+            else -> gearBoxDriveMode
+        }
+    }
+    return ""
 }

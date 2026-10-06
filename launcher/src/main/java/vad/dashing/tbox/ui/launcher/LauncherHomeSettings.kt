@@ -741,7 +741,7 @@ private fun GridColumnsSlider() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Колонки сетки (10..20)",
+                text = "Колонки сетки (5..20)",
                 color = LauncherColors.TextPrimary,
                 fontSize = 16.sp,
             )

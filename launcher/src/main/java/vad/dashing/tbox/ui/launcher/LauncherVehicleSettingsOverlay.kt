@@ -249,7 +249,14 @@ internal fun LauncherVehicleSettingsContent(
     val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
     val climateSet by canViewModel.climateSetTemperature1.collectAsStateWithLifecycle()
     val climateSetPassenger by canViewModel.climateSetTemperature2.collectAsStateWithLifecycle()
-    val driveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
+    val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
+    val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
+    val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
+    val driveMode = vad.dashing.tbox.resolveDriveModeDisplayLabel(
+        driveModeRaw = driveModeRaw,
+        driveModeWetRaw = driveModeWetRaw,
+        gearBoxDriveMode = gearBoxDriveMode,
+    )
     val wheelPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
     val wheelTemp by canViewModel.wheelsTemperature.collectAsStateWithLifecycle()
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
