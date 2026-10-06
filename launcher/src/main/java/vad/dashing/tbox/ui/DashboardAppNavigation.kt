@@ -518,6 +518,25 @@ internal fun sendToggleDoorIgnOffUnlock(context: Context) =
 internal fun sendToggleMirrorAutofold(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_AUTOFOLD)
 
+internal fun sendAdjustAudioVolume(context: Context, delta: Int) {
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+    val current = UniversalCanRepository.audioVolumeState.value
+        ?: audioManager?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+        ?: 10
+    val max = audioManager?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 30
+    val target = (current + delta).coerceIn(0, max)
+
+    audioManager?.adjustStreamVolume(
+        android.media.AudioManager.STREAM_MUSIC,
+        if (delta > 0) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
+        0,
+    )
+
+    CoroutineScope(Dispatchers.IO).launch {
+        UniversalCanRepository.setAudioVolume(target)
+    }
+}
+
 internal fun sendToggleMirrorReverseTurn(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_REVERSE_TURN)
 

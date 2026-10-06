@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import android.media.AudioManager
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +102,7 @@ import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
 import vad.dashing.tbox.ui.sendCycleFrontSeatVent
 import vad.dashing.tbox.ui.sendCycleHvacFanDirection
+import vad.dashing.tbox.ui.sendAdjustAudioVolume
 import vad.dashing.tbox.ui.sendCycleHvacFanSpeed
 import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
 import vad.dashing.tbox.ui.sendToggleHvacAc
@@ -180,8 +182,8 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
     LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_3),
     LauncherDockButtonDescriptor("temp_driver", "Температура водителя", R.drawable.ic_widget_hvac_auto),
-    LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", R.drawable.ic_widget_hvac_auto),
     LauncherDockButtonDescriptor("temp_pass", "Температура пассажира", R.drawable.ic_widget_hvac_auto),
+    LauncherDockButtonDescriptor("audio_volume", "Громкость медиа", R.drawable.ic_widget_media_note),
     LauncherDockButtonDescriptor("seat_heat_right", "Подогрев пассажира", R.drawable.ic_widget_seat_heat_right),
     LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_3),
     LauncherDockButtonDescriptor("recirc", "Рециркуляция", R.drawable.ic_widget_hvac_air_recirculation),
@@ -555,7 +557,7 @@ fun LauncherBottomBar(
                             continue
                         }
                         val itemId = slotsUnified.getOrNull(index)
-                        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass") 2 else 1
+                        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
                         if (itemSpan > 1) {
                             skipCount = itemSpan - 1
                         }
@@ -915,6 +917,18 @@ private fun LauncherBottomDockButtonContent(
             onDown = { sendAdjustHvacTemperature(context, passTemp, -1.0f, HvacTempZone.Passenger) },
             onUp = { sendAdjustHvacTemperature(context, passTemp, 1.0f, HvacTempZone.Passenger) },
         )
+        "audio_volume" -> {
+            val canVolume by UniversalCanRepository.audioVolumeState.collectAsStateWithLifecycle()
+            val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
+            val volumeLevel = canVolume ?: remember(audioManager) { audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) }
+            val volumeText = volumeLevel?.toString() ?: "—"
+
+            LauncherVolumeStepper(
+                volumeText = volumeText,
+                onDown = { sendAdjustAudioVolume(context, -1) },
+                onUp = { sendAdjustAudioVolume(context, 1) },
+            )
+        }
         "hvac_auto" -> LauncherDockIcon(onClick = { sendToggleHvacAuto(context) }) {
             LauncherHvacIcon(R.drawable.ic_widget_hvac_auto, hvacAuto)
         }
@@ -1056,6 +1070,43 @@ private fun LauncherTempStepper(
             Icon(
                 Icons.Filled.KeyboardArrowUp,
                 null,
+                tint = LauncherColors.TextSecondary,
+                modifier = Modifier.size(dockDp(22f)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherVolumeStepper(
+    volumeText: String,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        LauncherDockIcon(onClick = onDown) {
+            Text(
+                text = "−",
+                color = LauncherColors.TextSecondary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(
+            text = volumeText,
+            style = MaterialTheme.typography.tboxCaption,
+            color = LauncherColors.TextPrimary,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        )
+        LauncherDockIcon(onClick = onUp) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "Увеличить громкость",
                 tint = LauncherColors.TextSecondary,
                 modifier = Modifier.size(dockDp(22f)),
             )
