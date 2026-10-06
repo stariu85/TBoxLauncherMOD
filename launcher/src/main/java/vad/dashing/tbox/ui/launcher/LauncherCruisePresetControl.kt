@@ -1,22 +1,20 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.os.SystemClock
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,15 +30,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import vad.dashing.tbox.CanDataViewModel
@@ -48,7 +42,7 @@ import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val ButtonHeight = 50.dp
-private const val POPUP_DISMISS_TIMEOUT_MS = 4000L
+private const val SUBMODE_DISMISS_TIMEOUT_MS = 4000L
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -79,34 +73,100 @@ fun LauncherCruisePresetControl(
     val engaged = adas.accActive || adas.accStandby || (tboxCruise != null && tboxCruise!! > 0u)
     val displaySpeed = if (engaged) (activeSpeed ?: lastSpeed) else lastSpeed
 
+    var subModeExpanded by remember { mutableStateOf(false) }
+    var popupDismissTimeMs by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(subModeExpanded, popupDismissTimeMs) {
+        if (!subModeExpanded) return@LaunchedEffect
+        while (SystemClock.uptimeMillis() < popupDismissTimeMs) {
+            delay(100)
+        }
+        subModeExpanded = false
+    }
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Button 1: Cruise ON/OFF toggle with long-press popup for NGP & Time Gap
+        // Slot 1: Main Cruise ON/OFF Button (long press toggles NGP & DIST sub-mode)
         CruiseToggleChip(
             engaged = engaged,
             setSpeed = displaySpeed,
-            ngpEnabled = ngpEnabled,
-            timeGapLevel = timeGapLevel,
-            onClick = { LauncherCruisePresetController.toggleCruise(context) },
+            onClick = {
+                LauncherCruisePresetController.toggleCruise(context)
+                if (subModeExpanded) {
+                    popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
+                }
+            },
+            onLongClick = {
+                subModeExpanded = true
+                popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
+            },
             modifier = Modifier
                 .weight(1f)
                 .height(ButtonHeight),
         )
 
-        // Buttons 2, 3, 4: Speed preset buttons from settings
-        presets.forEach { kmh ->
-            val isSelected = engaged && displaySpeed == kmh
-            CruisePresetChip(
-                label = kmh.toString(),
-                selected = isSelected,
-                onClick = { LauncherCruisePresetController.applyPreset(context, kmh) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(ButtonHeight),
-            )
+        // Slot 2: Smooth crossfade between Speed Presets and NGP + DIST sub-menu
+        Crossfade(
+            targetState = subModeExpanded,
+            animationSpec = tween(300),
+            modifier = Modifier
+                .weight(3f)
+                .height(ButtonHeight),
+            label = "cruiseSubModeCrossfade",
+        ) { isSubMode ->
+            if (isSubMode) {
+                // NGP and DIST buttons sharing remaining space equally
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CruiseNgpPopupButton(
+                        enabled = ngpEnabled,
+                        onClick = {
+                            val nextNgp = !ngpEnabled
+                            LauncherCruisePresetController.setNgpEnabled(context, nextNgp)
+                            popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight),
+                    )
+
+                    CruiseDistancePopupButton(
+                        onClick = {
+                            val nextLevel = if (timeGapLevel >= 3) 1 else timeGapLevel + 1
+                            LauncherCruisePresetController.setTimeGap(context, nextLevel)
+                            popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight),
+                    )
+                }
+            } else {
+                // Default 3 Speed Preset buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    presets.forEach { kmh ->
+                        val isSelected = engaged && displaySpeed == kmh
+                        CruisePresetChip(
+                            label = kmh.toString(),
+                            selected = isSelected,
+                            onClick = { LauncherCruisePresetController.applyPreset(context, kmh) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(ButtonHeight),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -116,121 +176,51 @@ fun LauncherCruisePresetControl(
 private fun CruiseToggleChip(
     engaged: Boolean,
     setSpeed: Int?,
-    ngpEnabled: Boolean,
-    timeGapLevel: Int,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val activeTint = LauncherColors.AccentCyan
     val inactiveTint = LauncherColors.LeftTextPrimary
     val tint = if (engaged) activeTint else inactiveTint
 
-    var popupExpanded by remember { mutableStateOf(false) }
-    var popupDismissTimeMs by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(popupExpanded, popupDismissTimeMs) {
-        if (!popupExpanded) return@LaunchedEffect
-        while (SystemClock.uptimeMillis() < popupDismissTimeMs) {
-            delay(100)
-        }
-        popupExpanded = false
-    }
-
-    BoxWithConstraints(modifier = modifier) {
-        val chipWidth = maxWidth
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(ButtonHeight)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (engaged) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
-                )
-                .then(
-                    if (engaged) {
-                        Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
-                    } else {
-                        Modifier
-                    }
-                )
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = {
-                        popupDismissTimeMs = SystemClock.uptimeMillis() + POPUP_DISMISS_TIMEOUT_MS
-                        popupExpanded = true
-                    },
-                ),
-            contentAlignment = Alignment.Center,
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (engaged) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
+            )
+            .then(
+                if (engaged) {
+                    Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_launcher_cruise),
-                    contentDescription = stringResource(R.string.launcher_cruise_presets),
-                    modifier = Modifier.size(18.dp),
-                    colorFilter = ColorFilter.tint(tint),
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_cruise),
+                contentDescription = stringResource(R.string.launcher_cruise_presets),
+                modifier = Modifier.size(18.dp),
+                colorFilter = ColorFilter.tint(tint),
+            )
+            if (setSpeed != null && setSpeed > 0) {
+                Text(
+                    text = setSpeed.toString(),
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = tint,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
                 )
-                if (setSpeed != null && setSpeed > 0) {
-                    Text(
-                        text = setSpeed.toString(),
-                        style = MaterialTheme.typography.tboxCaption,
-                        color = tint,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-        }
-
-        if (popupExpanded) {
-            val density = LocalDensity.current.density
-            Popup(
-                alignment = Alignment.TopStart,
-                offset = IntOffset(x = 0, y = -(132.dp.value * density).toInt()),
-                onDismissRequest = { popupExpanded = false },
-                properties = PopupProperties(focusable = true, clippingEnabled = false),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(chipWidth)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                popupDismissTimeMs = SystemClock.uptimeMillis() + POPUP_DISMISS_TIMEOUT_MS
-                            },
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    // Top dropup button: Distance setting
-                    CruiseDistancePopupButton(
-                        onClick = {
-                            val nextLevel = if (timeGapLevel >= 3) 1 else timeGapLevel + 1
-                            LauncherCruisePresetController.setTimeGap(context, nextLevel)
-                            popupDismissTimeMs = SystemClock.uptimeMillis() + POPUP_DISMISS_TIMEOUT_MS
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(ButtonHeight),
-                    )
-
-                    // Middle dropup button: NGP ON/OFF toggle
-                    CruiseNgpPopupButton(
-                        enabled = ngpEnabled,
-                        onClick = {
-                            val nextNgp = !ngpEnabled
-                            LauncherAppConfigStore.setNgpEnabled(context, nextNgp)
-                            popupDismissTimeMs = SystemClock.uptimeMillis() + POPUP_DISMISS_TIMEOUT_MS
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(ButtonHeight),
-                    )
-                }
             }
         }
     }

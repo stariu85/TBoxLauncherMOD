@@ -112,6 +112,22 @@ fun LauncherVirtualRoad(
 
     val leadSprites = rememberLeadObjectSprites()
     val leadVisual = rememberLeadObjectVisual(adas)
+    val lanesActive = adas.leftLane != LauncherAdasLaneVisualization.Hidden ||
+        adas.rightLane != LauncherAdasLaneVisualization.Hidden
+    val isCruiseActive = adas.accActive || adas.accStandby || ((adas.accSetSpeedKmh ?: 0) > 0)
+
+    val laneAnimProgress by animateFloatAsState(
+        targetValue = if (lanesActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "laneGlowAnimProgress",
+    )
+
+    val cruiseBeamProgress by animateFloatAsState(
+        targetValue = if (isCruiseActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "cruiseBeamAnimProgress",
+    )
+
     if (driveBlend <= 0.01f) return
     Canvas(
         modifier = modifier
@@ -128,6 +144,8 @@ fun LauncherVirtualRoad(
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
             density = density,
             storedTimeGap = storedTimeGap,
+            laneProgress = laneAnimProgress,
+            beamProgress = cruiseBeamProgress,
         )
     }
 }
@@ -340,6 +358,8 @@ private fun DrawScope.drawVirtualRoad(
     distanceLabelOffsetRatio: Float = 0.15f,
     density: Float = 1.5f,
     storedTimeGap: Int = 2,
+    laneProgress: Float = 1f,
+    beamProgress: Float = 1f,
 ) {
     val w = size.width
     val h = size.height
@@ -365,6 +385,7 @@ private fun DrawScope.drawVirtualRoad(
 
     drawAdasLaneAssist(
         adas = adas,
+        laneProgress = laneProgress,
         centerXAt = ::centerXAt,
         laneOffsetAt = ::laneOffsetAt,
         yAt = ::yAt,
@@ -405,14 +426,15 @@ private fun DrawScope.drawVirtualRoad(
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
 
     val now = android.os.SystemClock.uptimeMillis()
-    val showDistanceSteps = adas.timeGapFlashUntilMs > now
+    val showDistanceSteps = beamProgress > 0.05f && (adas.timeGapFlashUntilMs > now)
     val timeGapLevel = (adas.timeGapLevel?.takeIf { it in 1..3 } ?: storedTimeGap).coerceIn(1, 3)
 
     val frontDistance = leadVisual?.distanceM ?: adas.frontObject.displayDistanceM
     if (leadVisual != null) {
-        if ((adas.accActive || adas.accStandby || showDistanceSteps) && (adas.timeGapLevel != null || showDistanceSteps)) {
+        if (beamProgress > 0.005f) {
             drawAccBeam(
                 objectDistanceM = frontDistance,
+                beamProgress = beamProgress,
                 centerXAt = ::centerXAt,
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
@@ -441,10 +463,11 @@ private fun DrawScope.drawVirtualRoad(
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
         )
     } else {
-        if ((adas.accActive || adas.accStandby || showDistanceSteps) && (adas.timeGapLevel != null || showDistanceSteps)) {
+        if (beamProgress > 0.005f) {
             // No target ahead — stretch the ACC path to the horizon.
             drawAccBeam(
                 objectDistanceM = null,
+                beamProgress = beamProgress,
                 toHorizon = true,
                 centerXAt = ::centerXAt,
                 laneOffsetAt = ::laneOffsetAt,
@@ -532,38 +555,44 @@ private fun DrawScope.drawHorizonHaze(horizonY: Float, canvasHeight: Float) {
  *  confined to the center (ego) lane — not the outer road shoulders. */
 private fun DrawScope.drawAccBeam(
     objectDistanceM: Int?,
+    beamProgress: Float = 1f,
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
     alert: Boolean,
     toHorizon: Boolean = false,
 ) {
-    val targetDepth = if (toHorizon || objectDistanceM == null) {
+    if (beamProgress < 0.005f) return
+
+    val fullTargetDepth = if (toHorizon || objectDistanceM == null) {
         0.05f
     } else {
         distanceToRoadDepth(objectDistanceM)
     }
     // Start in front of the 3D car's front bumper on the road ahead.
     val egoDepth = 0.48f
+    val animatedTargetDepth = egoDepth - (egoDepth - fullTargetDepth) * beamProgress.coerceIn(0f, 1f)
+
     val nearHalf = laneOffsetAt(egoDepth) * 0.85f
-    val farHalf = laneOffsetAt(targetDepth) * 0.70f
+    val farHalf = laneOffsetAt(animatedTargetDepth) * 0.70f
     val beam = Path().apply {
         moveTo(centerXAt(egoDepth) - nearHalf, yAt(egoDepth))
-        lineTo(centerXAt(targetDepth) - farHalf, yAt(targetDepth))
-        lineTo(centerXAt(targetDepth) + farHalf, yAt(targetDepth))
+        lineTo(centerXAt(animatedTargetDepth) - farHalf, yAt(animatedTargetDepth))
+        lineTo(centerXAt(animatedTargetDepth) + farHalf, yAt(animatedTargetDepth))
         lineTo(centerXAt(egoDepth) + nearHalf, yAt(egoDepth))
         close()
     }
     val tint = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
+    val alphaFactor = beamProgress.coerceIn(0f, 1f)
     drawPath(
         path = beam,
         brush = Brush.verticalGradient(
             0.00f to tint.copy(alpha = 0f),
-            0.20f to tint.copy(alpha = 0.08f),
-            0.50f to tint.copy(alpha = 0.22f),
-            0.80f to tint.copy(alpha = 0.08f),
+            0.20f to tint.copy(alpha = 0.08f * alphaFactor),
+            0.50f to tint.copy(alpha = 0.22f * alphaFactor),
+            0.80f to tint.copy(alpha = 0.08f * alphaFactor),
             1.00f to tint.copy(alpha = 0f),
-            startY = yAt(targetDepth),
+            startY = yAt(animatedTargetDepth),
             endY = yAt(egoDepth),
         ),
     )
@@ -602,39 +631,75 @@ private fun DrawScope.drawAccDistanceSteps(
     }
 }
 
+private val DarkPinkGlowCore = Color(0xFF9D174D)
+private val DarkPinkGlowOuter = Color(0xFFBE185D)
+
 private fun DrawScope.drawAdasLaneAssist(
     adas: LauncherAdasState,
+    laneProgress: Float,
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
 ) {
-    fun laneColor(side: LauncherAdasLaneVisualization, warning: Boolean): Color = when {
-        warning -> Color(0xFFEF4444).copy(alpha = 0.72f)
-        side == LauncherAdasLaneVisualization.Intervention -> LauncherColors.AccentCyan.copy(alpha = 0.55f)
-        side == LauncherAdasLaneVisualization.Tracking -> LauncherColors.AccentBlue.copy(alpha = 0.42f)
-        else -> Color.Transparent
-    }
+    if (laneProgress < 0.01f) return
+
+    val minT = (1f - laneProgress).coerceIn(0f, 1f)
+    val alphaFactor = laneProgress.coerceIn(0f, 1f)
+
     listOf(
         adas.leftLane to -1f,
         adas.rightLane to 1f,
     ).forEach { (lane, side) ->
-        if (lane == LauncherAdasLaneVisualization.Hidden) return@forEach
-        val warning = lane == LauncherAdasLaneVisualization.Warning
-        val color = laneColor(lane, warning)
-        if (color == Color.Transparent) return@forEach
-        // Track the borders of the center (ego) lane, not the outer road edges.
-        var prev = Offset(
-            centerXAt(1f) + side * laneOffsetAt(1f),
-            yAt(1f),
-        )
-        for (i in 8 downTo 0) {
-            val t = i / 8f
-            val next = Offset(
+        if (lane == LauncherAdasLaneVisualization.Hidden && laneProgress >= 0.99f) return@forEach
+        val isWarning = lane == LauncherAdasLaneVisualization.Warning
+
+        val lanePath = Path()
+        var first = true
+        val steps = 16
+        for (i in 0..steps) {
+            val fraction = i / steps.toFloat()
+            val t = 1f - (1f - minT) * fraction
+            val pt = Offset(
                 centerXAt(t) + side * laneOffsetAt(t),
                 yAt(t),
             )
-            drawLine(color = color, start = prev, end = next, strokeWidth = if (warning) 3.5f else 2.5f)
-            prev = next
+            if (first) {
+                lanePath.moveTo(pt.x, pt.y)
+                first = false
+            } else {
+                lanePath.lineTo(pt.x, pt.y)
+            }
+        }
+
+        if (isWarning) {
+            val warningColor = Color(0xFFEF4444)
+            drawPath(
+                path = lanePath,
+                color = warningColor.copy(alpha = 0.35f * alphaFactor),
+                style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+            drawPath(
+                path = lanePath,
+                color = warningColor.copy(alpha = 0.90f * alphaFactor),
+                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        } else {
+            // NGP / Lane Keeping active: Solid Dark Pink with subtle, soft glow animating bottom-to-top
+            drawPath(
+                path = lanePath,
+                color = DarkPinkGlowOuter.copy(alpha = 0.12f * alphaFactor),
+                style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+            drawPath(
+                path = lanePath,
+                color = DarkPinkGlowCore.copy(alpha = 0.28f * alphaFactor),
+                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+            drawPath(
+                path = lanePath,
+                color = DarkPinkGlowCore.copy(alpha = 0.70f * alphaFactor),
+                style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
         }
     }
 }

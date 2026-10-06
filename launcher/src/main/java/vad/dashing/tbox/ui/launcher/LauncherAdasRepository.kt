@@ -558,6 +558,11 @@ object LauncherAdasRepository {
         publish()
     }
 
+    fun clearTimeGapFlash() {
+        timeGapFlashUntilMs = 0L
+        publish()
+    }
+
     private fun clearSnapshots() {
         frmAccMode = 0
         frmVSetDis = 0

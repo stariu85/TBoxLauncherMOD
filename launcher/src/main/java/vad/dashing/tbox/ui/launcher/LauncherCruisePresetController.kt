@@ -58,14 +58,33 @@ internal object LauncherCruisePresetController {
         }
     }
 
+    fun setNgpEnabled(context: Context, enabled: Boolean) {
+        LauncherAppConfigStore.setNgpEnabled(context, enabled)
+        val cruiseActive = isCruiseEngaged()
+        if (LauncherDevVehicleState.simulateEnabled) {
+            LauncherDevVehicleState.adasLanesActive = cruiseActive && enabled
+            return
+        }
+        if (cruiseActive) {
+            scope.launch {
+                MbCanEngineFacade.canSetVehicleParam(
+                    MbCanKnownVehiclePropertyId.TJA_ICA,
+                    if (enabled) 2 else 1,
+                )
+            }
+        }
+    }
+
     fun toggleCruise(context: Context) {
         val currentlyEngaged = isCruiseEngaged()
         if (currentlyEngaged) {
             currentSetSpeed()?.let { LauncherAppConfigStore.setLastCruiseSpeedKmh(context, it) }
             CanDataRepository.updateCruiseSetSpeed(0u)
+            LauncherAdasRepository.clearTimeGapFlash()
             if (LauncherDevVehicleState.simulateEnabled) {
                 LauncherDevVehicleState.adasCruiseActive = false
                 LauncherDevVehicleState.adasLanesActive = false
+                LauncherDevVehicleState.clearTimeGapFlash()
             } else {
                 scope.launch {
                     pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)

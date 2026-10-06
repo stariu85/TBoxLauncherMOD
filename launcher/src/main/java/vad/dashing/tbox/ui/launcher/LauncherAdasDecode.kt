@@ -315,9 +315,17 @@ internal fun buildLauncherAdasState(
     var leftLane = LauncherAdasLaneVisualization.fromCode(byteToUnsigned(leftLaneRaw))
     var rightLane = LauncherAdasLaneVisualization.fromCode(byteToUnsigned(rightLaneRaw))
     val lkaStatus = byteToUnsigned(lkaStatusRaw)
-    // While ACC/LKA assist is engaged, keep soft lane guides even if FCM reports Hidden
-    // (OEM often only pulses Warning on departure).
-    if ((accActive || lkaStatus != 0)) {
+    val adasTakeOver = byteToUnsigned(adasTakeOverRaw) == 2
+    val slaLimit = decodeSlaSpeedLimitKmh(slaSpdLimitRaw)
+    val slaWarn = byteToUnsigned(slaSpdLimitWarningRaw) == 2 ||
+        (slaLimit != null && setSpeed != null && setSpeed > slaLimit)
+    val hma = decodeAssistIcon(hmaRaw)
+    val tja = decodeAssistIcon(tjaRaw)
+    val tjaActive = tja == LauncherAdasAssistIcon.Active || tja == LauncherAdasAssistIcon.Dark
+    val srrSystem = decodeSrrSystemState(srrSystemRaw)
+
+    // While NGP/TJA or LKA assist is engaged, keep lane guides active
+    if ((tjaActive || lkaStatus != 0)) {
         if (leftLane == LauncherAdasLaneVisualization.Hidden) {
             leftLane = LauncherAdasLaneVisualization.Tracking
         }
@@ -325,13 +333,6 @@ internal fun buildLauncherAdasState(
             rightLane = LauncherAdasLaneVisualization.Tracking
         }
     }
-    val adasTakeOver = byteToUnsigned(adasTakeOverRaw) == 2
-    val slaLimit = decodeSlaSpeedLimitKmh(slaSpdLimitRaw)
-    val slaWarn = byteToUnsigned(slaSpdLimitWarningRaw) == 2 ||
-        (slaLimit != null && setSpeed != null && setSpeed > slaLimit)
-    val hma = decodeAssistIcon(hmaRaw)
-    val tja = decodeAssistIcon(tjaRaw)
-    val srrSystem = decodeSrrSystemState(srrSystemRaw)
     val hasAlert = fcw || distWarn || aeb || takeOver || override || adasTakeOver || slaWarn ||
         leftLane == LauncherAdasLaneVisualization.Warning ||
         rightLane == LauncherAdasLaneVisualization.Warning ||

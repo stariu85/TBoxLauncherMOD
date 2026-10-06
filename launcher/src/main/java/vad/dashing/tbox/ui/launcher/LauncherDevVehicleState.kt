@@ -68,6 +68,10 @@ object LauncherDevVehicleState {
         adasTimeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
     }
 
+    fun clearTimeGapFlash() {
+        adasTimeGapFlashUntilMs = 0L
+    }
+
     fun toggleAdasLanes() {
         simulateEnabled = true
         motionPreviewEnabled = false
@@ -177,7 +181,7 @@ object LauncherDevVehicleState {
             rearRightCm = pdcCm(LauncherPdcChannel.RearRight),
             rearSideRightCm = pdcCm(LauncherPdcChannel.RearSideRight),
         )
-        val lanes = if (adasLanesActive || adasCruiseActive) {
+        val lanes = if (adasLanesActive) {
             LauncherAdasLaneVisualization.Tracking
         } else {
             LauncherAdasLaneVisualization.Hidden
