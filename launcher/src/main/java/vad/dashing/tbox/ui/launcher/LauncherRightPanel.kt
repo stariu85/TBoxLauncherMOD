@@ -30,7 +30,6 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -95,8 +94,8 @@ fun LauncherRightPanel(
     canViewModel: CanDataViewModel,
     settingsViewModel: SettingsViewModel,
     tboxViewModel: TboxViewModel,
-    onOpenConsole: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onOpenApps: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onOpenConsole: () -> Unit = {},
+    @Suppress("UNUSED_PARAMETER") onOpenApps: () -> Unit = {},
     configRevision: Int = 0,
     onConfigChanged: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -775,33 +774,14 @@ fun LauncherRightPanel(
             }
         }
 
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 6.dp)
                 .onGloballyPositioned { coordinates ->
                     val rect = coordinates.boundsInWindow()
                     LauncherEmbeddedBoundsState.rightFooterBottomPx = rect.bottom.toInt()
                 },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "v${vad.dashing.tbox.BuildConfig.VERSION_NAME}",
-                color = LauncherColors.TextMuted,
-                fontSize = 11.sp,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LauncherFooterIconPill(onClick = onOpenConsole) {
-                    androidx.compose.material3.Icon(
-                        Icons.Filled.Info,
-                        contentDescription = stringResource(R.string.action_configure),
-                        tint = LauncherColors.AccentCyan,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-            }
-        }
+        )
     }
 }
 
@@ -1176,6 +1156,7 @@ private fun LauncherMetricCard(
     }
 }
 
+@Suppress("UNUSED")
 @Composable
 private fun LauncherFooterIconPill(
     onClick: () -> Unit,

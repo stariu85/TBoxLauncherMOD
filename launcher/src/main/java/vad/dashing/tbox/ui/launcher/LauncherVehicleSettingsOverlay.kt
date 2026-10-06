@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import kotlin.math.roundToInt
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,6 +112,7 @@ fun LauncherVehicleSettingsOverlay(
 ) {
     if (!visible && transitionProgress <= 0.001f) return
 
+    val context = LocalContext.current
     var expandedSection by remember { mutableStateOf<VehicleSettingsSection?>(VehicleSettingsSection.Status) }
     val progress = transitionProgress.coerceIn(0f, 1f)
     Box(
@@ -167,14 +170,36 @@ fun LauncherVehicleSettingsOverlay(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.launcher_vehicle_settings_title),
-                            style = MaterialTheme.typography.tboxCaption,
-                            color = LauncherColors.TextPrimary,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_vehicle_settings_title),
+                                style = MaterialTheme.typography.tboxCaption,
+                                color = LauncherColors.TextPrimary,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "v${vad.dashing.tbox.BuildConfig.VERSION_NAME.substringBefore('-')}",
+                                color = LauncherColors.TextMuted,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Normal,
+                            )
+                            IconButton(
+                                onClick = { launchTBoxSettings(context) },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Info,
+                                    contentDescription = stringResource(R.string.action_configure),
+                                    tint = LauncherColors.AccentCyan,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                         Text(
                             text = stringResource(R.string.launcher_vs_overlay_hint),
                             color = LauncherColors.TextSecondary,

@@ -1,6 +1,14 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.app.ActivityManager
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -8,38 +16,38 @@ import android.net.wifi.WifiManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -181,22 +190,13 @@ internal fun LauncherTopHeaderBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
             Text(
                 text = "$timeText  ·  $dateText",
                 color = LauncherColors.TextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Light,
             )
-            val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
-            Box(
-                modifier = Modifier
-                    .size(9.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
-                    ),
-            )
-            LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
         }
     }
 }
@@ -211,6 +211,9 @@ internal fun LauncherHeaderStatusIcons(
     val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
     val wifiConnected = rememberWifiConnected()
     val wifiLevel = rememberWifiLevel(wifiConnected)
+    val bluetoothConnected = rememberBluetoothConnected()
+    val cpuUsage = rememberCpuUsagePercentage()
+    val ramUsage = rememberRamUsagePercentage()
     val networkType = mobileNetworkTypeLabel(netState.netStatus)
 
     Row(
@@ -218,9 +221,37 @@ internal fun LauncherHeaderStatusIcons(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            modifier = Modifier
+                .size(9.dp)
+                .clip(CircleShape)
+                .background(
+                    if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
+                ),
+        )
         if (wifiConnected) {
             WifiArcsIcon(level = wifiLevel.coerceIn(1, 4), tint = StatusIconTint)
         }
+        if (bluetoothConnected) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_bluetooth),
+                contentDescription = stringResource(R.string.launcher_vs_bluetooth),
+                modifier = Modifier.size(18.dp),
+                colorFilter = ColorFilter.tint(StatusIconTint),
+            )
+        }
+        Text(
+            text = "CPU $cpuUsage%",
+            color = StatusIconTint,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = "RAM $ramUsage%",
+            color = StatusIconTint,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
         if (tboxConnected) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -372,5 +403,166 @@ private fun readWifiSignalLevel(context: Context): Int {
         val info = wifiManager.connectionInfo ?: return 0
         if (info.networkId == -1) return 0
         WifiManager.calculateSignalLevel(info.rssi, 5).coerceIn(0, 4)
+    }.getOrDefault(0)
+}
+
+@Composable
+private fun rememberBluetoothConnected(): Boolean {
+    val context = LocalContext.current
+    var isConnected by remember { mutableStateOf(readBluetoothConnected(context)) }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val action = intent?.action
+                if (action == BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED) {
+                    val state = intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1)
+                    if (state == BluetoothAdapter.STATE_CONNECTED) {
+                        isConnected = true
+                        return
+                    } else if (state == BluetoothAdapter.STATE_DISCONNECTED) {
+                        isConnected = false
+                        return
+                    }
+                } else if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
+                    isConnected = true
+                    return
+                } else if (action == BluetoothDevice.ACTION_ACL_DISCONNECTED) {
+                    isConnected = readBluetoothConnected(context)
+                    return
+                }
+                isConnected = readBluetoothConnected(context)
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        runCatching { context.registerReceiver(receiver, filter) }
+        onDispose {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(5000L)
+            isConnected = readBluetoothConnected(context)
+        }
+    }
+
+    return isConnected
+}
+
+@Suppress("MissingPermission")
+private fun readBluetoothConnected(context: Context): Boolean {
+    return runCatching {
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter = bluetoothManager?.adapter ?: @Suppress("DEPRECATION") BluetoothAdapter.getDefaultAdapter()
+        if (adapter == null || !adapter.isEnabled) return false
+
+        val a2dp = adapter.getProfileConnectionState(BluetoothProfile.A2DP)
+        val headset = adapter.getProfileConnectionState(BluetoothProfile.HEADSET)
+        val gatt = adapter.getProfileConnectionState(BluetoothProfile.GATT)
+
+        a2dp == BluetoothProfile.STATE_CONNECTED ||
+                headset == BluetoothProfile.STATE_CONNECTED ||
+                gatt == BluetoothProfile.STATE_CONNECTED
+    }.getOrDefault(false)
+}
+
+@Composable
+private fun rememberCpuUsagePercentage(): Int {
+    var cpuUsage by remember { mutableIntStateOf(0) }
+    val tracker = remember { CpuUsageTracker() }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            cpuUsage = tracker.readCpuUsage()
+            delay(2500L)
+        }
+    }
+    return cpuUsage
+}
+
+@Composable
+private fun rememberRamUsagePercentage(): Int {
+    val context = LocalContext.current
+    var ramUsage by remember { mutableIntStateOf(readRamUsagePercentage(context)) }
+    LaunchedEffect(context) {
+        while (isActive) {
+            ramUsage = readRamUsagePercentage(context)
+            delay(3000L)
+        }
+    }
+    return ramUsage
+}
+
+private class CpuUsageTracker {
+    private var lastTotalTime = 0L
+    private var lastIdleTime = 0L
+
+    fun readCpuUsage(): Int {
+        return runCatching {
+            val statFile = File("/proc/stat")
+            if (statFile.canRead()) {
+                val line = statFile.useLines { lines ->
+                    lines.firstOrNull { it.startsWith("cpu ") }
+                }
+                if (line != null) {
+                    val toks = line.trim().split("\\s+".toRegex())
+                    if (toks.size >= 5) {
+                        val user = toks[1].toLongOrNull() ?: 0L
+                        val nice = toks[2].toLongOrNull() ?: 0L
+                        val system = toks[3].toLongOrNull() ?: 0L
+                        val idle = toks[4].toLongOrNull() ?: 0L
+                        val iowait = toks.getOrNull(5)?.toLongOrNull() ?: 0L
+                        val irq = toks.getOrNull(6)?.toLongOrNull() ?: 0L
+                        val softirq = toks.getOrNull(7)?.toLongOrNull() ?: 0L
+                        val steal = toks.getOrNull(8)?.toLongOrNull() ?: 0L
+
+                        val total = user + nice + system + idle + iowait + irq + softirq + steal
+                        val idleTime = idle + iowait
+
+                        val totalDiff = total - lastTotalTime
+                        val idleDiff = idleTime - lastIdleTime
+
+                        lastTotalTime = total
+                        lastIdleTime = idleTime
+
+                        if (totalDiff > 0) {
+                            val usage = ((totalDiff - idleDiff).toDouble() / totalDiff.toDouble() * 100.0).toInt()
+                            return usage.coerceIn(0, 100)
+                        }
+                    }
+                }
+            }
+            readLoadAvgCpuUsage()
+        }.getOrDefault(0)
+    }
+
+    private fun readLoadAvgCpuUsage(): Int {
+        return runCatching {
+            val loadFile = File("/proc/loadavg")
+            if (loadFile.canRead()) {
+                val text = loadFile.readText().trim()
+                val toks = text.split("\\s+".toRegex())
+                val load = toks.firstOrNull()?.toFloatOrNull() ?: return 0
+                val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+                ((load / cores) * 100f).toInt().coerceIn(0, 100)
+            } else 0
+        }.getOrDefault(0)
+    }
+}
+
+private fun readRamUsagePercentage(context: Context): Int {
+    return runCatching {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return 0
+        val mi = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(mi)
+        if (mi.totalMem <= 0) return 0
+        val used = mi.totalMem - mi.availMem
+        ((used.toDouble() / mi.totalMem.toDouble()) * 100.0).toInt().coerceIn(0, 100)
     }.getOrDefault(0)
 }

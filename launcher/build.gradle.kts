@@ -26,7 +26,7 @@ android {
         minSdk = 28
         targetSdk = 36
         versionCode = 55
-        versionName = "0.4.24"
+        versionName = "0.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TBOX_PROXY_VERSION", "\"${libs.versions.tboxProxy.get()}\"")
