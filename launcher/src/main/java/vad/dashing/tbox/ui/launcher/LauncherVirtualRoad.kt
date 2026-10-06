@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -93,6 +94,7 @@ fun LauncherVirtualRoad(
     }
 
     val context = LocalContext.current
+    val density = LocalDensity.current.density
     val textSizeRevision by LauncherAppConfigStore.adasDistanceTextSizeRevisionFlow.collectAsStateWithLifecycle()
     val distanceTextSizeSp = remember(context, textSizeRevision) {
         LauncherAppConfigStore.adasDistanceTextSize(context)
@@ -118,6 +120,7 @@ fun LauncherVirtualRoad(
             leadVisual = leadVisual,
             distanceTextSizeSp = distanceTextSizeSp,
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
+            density = density,
         )
     }
 }
@@ -328,19 +331,20 @@ private fun DrawScope.drawVirtualRoad(
     leadVisual: LeadObjectVisual?,
     distanceTextSizeSp: Int = 14,
     distanceLabelOffsetRatio: Float = 0.15f,
+    density: Float = 1.5f,
 ) {
     val w = size.width
     val h = size.height
     val horizonY = h * 0.24f
     // Keep road straight — car body no longer yaws with steering in drive mode.
     val vanishX = w / 2f
-    // The road deliberately overflows the panel at the bottom: neighbouring lanes run
-    // off both edges, which is what keeps the ego car from looking oversized.
+    // Cap ego lane geometry at reference panel width 240dp so the car model and lane lines stay calibrated.
+    val roadW = w.coerceAtMost(240f * density)
     fun halfWidthAt(t: Float): Float =
         (w * 0.14f) * (1f - t).pow(1.25f) + (w * 1.10f) * t.pow(1.05f)
-    // Ego (center) lane half-width — ACC beam and LKA sit on this strip, not the
-    // outer road shoulders.
-    fun laneOffsetAt(t: Float): Float = halfWidthAt(t) * 0.30f
+    // Ego (center) lane half-width — ACC beam and LKA sit on this strip.
+    fun laneOffsetAt(t: Float): Float =
+        ((roadW * 0.14f) * (1f - t).pow(1.25f) + (roadW * 1.10f) * t.pow(1.05f)) * 0.30f
     fun yAt(t: Float): Float = horizonY + (h - horizonY) * t
     fun centerXAt(t: Float): Float = vanishX
 

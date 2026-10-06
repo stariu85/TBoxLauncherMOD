@@ -58,13 +58,15 @@ private const val SETTINGS_YAW_DEG = 45f
 
 private val TOP_CAMERA_POS = Float3(0f, 4.8f, 0.08f)
 private val TOP_CAMERA_TARGET = Float3(0f, 0f, 0f)
-private val DRIVE_CAMERA_POS = Float3(0f, 1.05f, 3.7f)
-private val DRIVE_CAMERA_TARGET = Float3(0f, 0.25f, -2.2f)
+/** Raised by +15° in elevation pitch to align the car perspective with the road canvas. */
+private val DRIVE_CAMERA_POS = Float3(0f, 2.55f, 3.4f)
+private val DRIVE_CAMERA_TARGET = Float3(0f, 0.20f, -2.2f)
 /** Settings camera keeps the whole car in frame and clear of the near clipping plane. */
 private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val HOME_MODEL_SCALE = 0.52f
+private const val SKIP_FRAME_THRESHOLD_NS = 30_000_000L // Throttles rendering to 30 FPS
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
@@ -427,11 +429,14 @@ private fun LauncherCarFilamentContent(
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     runCatching {
+                        if (lastFrameNs != 0L && frameNs - lastFrameNs < SKIP_FRAME_THRESHOLD_NS) {
+                            return@runCatching
+                        }
                         val node = modelNodeRef.get() ?: return@runCatching
                         val dt = if (lastFrameNs == 0L) {
-                            0.016f
+                            0.033f
                         } else {
-                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.05f)
+                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
                         }
                         lastFrameNs = frameNs
                         if (!lowPowerPreview) {
@@ -499,13 +504,14 @@ private fun LauncherCarFilamentContent(
                             val yRear = (rl.y + rr.y) / 2f
                             val horizonY = heightPx * 0.24f
                             val tRear = ((yRear - horizonY) / (heightPx - horizonY)).coerceIn(0f, 1f)
-                            val halfWidthAtT = (widthPx * 0.14f) * (1f - tRear).pow(1.25f) + (widthPx * 1.10f) * tRear.pow(1.05f)
+                            val roadW = widthPx.toFloat().coerceAtMost(240f * density)
+                            val halfWidthAtT = (roadW * 0.14f) * (1f - tRear).pow(1.25f) + (roadW * 1.10f) * tRear.pow(1.05f)
                             val laneOffsetAtT = halfWidthAtT * 0.30f
                             val laneWidthPx = 2f * laneOffsetAtT
-                            val margin10dpPx = 10f * density
-                            val targetTrackPx = (laneWidthPx - 2f * margin10dpPx).coerceAtLeast(10f)
+                            val margin35dpPx = 35f * density
+                            val targetTrackPx = (laneWidthPx - 2f * margin35dpPx).coerceAtLeast(10f)
                             if (currentTrackPx > 10f && renderedScale > 0.05f) {
-                                autoDriveScale = (renderedScale * (targetTrackPx / currentTrackPx)).coerceIn(0.20f, 1.20f)
+                                autoDriveScale = (renderedScale * (targetTrackPx / currentTrackPx)).coerceIn(0.20f, 0.65f)
                             }
                         }
 

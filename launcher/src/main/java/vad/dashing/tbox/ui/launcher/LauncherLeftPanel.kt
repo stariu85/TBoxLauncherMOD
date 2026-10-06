@@ -205,7 +205,7 @@ fun LauncherLeftPanel(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(top = 8.dp),
+                .padding(top = 8.dp, bottom = 60.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (!carHidden) {
