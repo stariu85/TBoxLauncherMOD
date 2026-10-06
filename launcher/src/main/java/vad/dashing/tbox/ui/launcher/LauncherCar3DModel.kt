@@ -10,6 +10,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +31,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -66,7 +71,9 @@ private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val HOME_MODEL_SCALE = 0.52f
-private const val SKIP_FRAME_THRESHOLD_NS = 30_000_000L // Throttles rendering to 30 FPS
+private const val DYNAMIC_FRAME_INTERVAL_NS = 30_000_000L // 30 FPS when dynamic
+private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS when static
+private const val DYNAMIC_GRACE_PERIOD_NS = 1_200_000_000L // 1.2s grace after activity
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
@@ -107,17 +114,6 @@ fun LauncherCar3DModel(
     projectHeadlights: Boolean = false,
     textureSurface: Boolean = false,
 ) {
-    val interactionModifier = if (onClick != null || onLongClick != null) {
-        Modifier.combinedClickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = { onClick?.invoke() },
-            onLongClick = { onLongClick?.invoke() },
-        )
-    } else {
-        Modifier
-    }
-
     Box(modifier = modifier) {
         if (showRoad) {
             LauncherVirtualRoad(
@@ -130,6 +126,8 @@ fun LauncherCar3DModel(
         }
         LauncherCarFilamentModel(
             modifier = Modifier.fillMaxSize(),
+            onClick = onClick,
+            onLongClick = onLongClick,
             modelRevision = modelRevision,
             paintId = paintId,
             rigState = rigState,
@@ -152,19 +150,14 @@ fun LauncherCar3DModel(
             textureSurface = textureSurface,
             lowPowerPreview = settingsView || settingsProgress > 0.5f,
         )
-        if (onClick != null || onLongClick != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(interactionModifier),
-            )
-        }
     }
 }
 
 @Composable
 private fun LauncherCarFilamentModel(
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     modelRevision: Int,
     paintId: String,
     rigState: LauncherCarRigState,
@@ -211,6 +204,8 @@ private fun LauncherCarFilamentModel(
         key(if (lowPowerPreview) 0 else surfaceEpoch, modelRevision) {
             LauncherCarFilamentContent(
                 modifier = Modifier.fillMaxSize(),
+                onClick = onClick,
+                onLongClick = onLongClick,
                 paintId = paintId,
                 rigState = rigState,
                 speedKmh = speedKmh,
@@ -239,6 +234,8 @@ private fun LauncherCarFilamentModel(
 @Composable
 private fun LauncherCarFilamentContent(
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     paintId: String,
     rigState: LauncherCarRigState,
     speedKmh: Float,
@@ -262,6 +259,16 @@ private fun LauncherCarFilamentContent(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current.density
+    val interactionModifier = if (onClick != null || onLongClick != null) {
+        Modifier.combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = { onClick?.invoke() },
+            onLongClick = { onLongClick?.invoke() },
+        )
+    } else {
+        Modifier
+    }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val cameraNode = rememberCameraNode(engine)
@@ -310,6 +317,9 @@ private fun LauncherCarFilamentContent(
         animationSpec = tween(durationMillis = 50),
         label = "launcherCarModelAlpha",
     )
+    var lastDynamicNs by remember(modelInstance) { mutableLongStateOf(System.nanoTime()) }
+    var lastSteeringDeg by remember(modelInstance) { mutableFloatStateOf(steeringDeg) }
+    var lastRigState by remember(modelInstance) { mutableStateOf(rigState) }
     val modelNodeRef = remember(modelInstance) {
         AtomicReference<ModelNode?>(null)
     }
@@ -429,7 +439,32 @@ private fun LauncherCarFilamentContent(
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     runCatching {
-                        if (lastFrameNs != 0L && frameNs - lastFrameNs < SKIP_FRAME_THRESHOLD_NS) {
+                        val currentDriveBlend = driveBlendRef.value
+                        val currentRigState = rigStateRef.value
+                        val currentSteering = steeringDeg
+                        val orbit = settingsOrbitRef.value
+                        val transition = settingsProgress.coerceIn(0f, 1f)
+
+                        val isMoving = speedKmh > 0.5f || steerPreview
+                        val steeringChanged = abs(currentSteering - lastSteeringDeg) > 0.1f
+                        val rigChanged = currentRigState != lastRigState
+                        val settingsTransitioning = transition > 0.01f && transition < 0.99f
+                        val isOrbiting = orbit != null && (orbit.interacting || abs(orbit.yawVelocityDegPerSec) > 1f)
+                        val isInitializing = preparedFrames < 10
+
+                        if (isMoving || steeringChanged || rigChanged ||
+                            settingsTransitioning || isOrbiting || isInitializing
+                        ) {
+                            lastDynamicNs = frameNs
+                        }
+
+                        lastSteeringDeg = currentSteering
+                        lastRigState = currentRigState
+
+                        val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
+                        val requiredIntervalNs = if (isDynamic) DYNAMIC_FRAME_INTERVAL_NS else STATIC_FRAME_INTERVAL_NS
+
+                        if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
                             return@runCatching
                         }
                         val node = modelNodeRef.get() ?: return@runCatching
@@ -443,8 +478,7 @@ private fun LauncherCarFilamentContent(
                             LauncherCarSurfaceRecovery.onFrameObserved()
                         }
 
-                        val transition = settingsProgress.coerceIn(0f, 1f)
-                        val driveBlend = driveBlendRef.value
+                        val driveBlend = currentDriveBlend
 
                         // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
                         val drivePos = Float3(
@@ -469,7 +503,6 @@ private fun LauncherCarFilamentContent(
                                 lerp(driveTargetPos.z, SETTINGS_CAMERA_TARGET.z, transition),
                             ),
                         )
-                        val orbit = settingsOrbitRef.value
                         orbit?.tickFling(dt)
                         val userYaw = orbit?.yawDeg ?: settingsUserYawRef.value
                         val userScale = orbit?.scale ?: settingsUserScaleRef.value
@@ -624,6 +657,21 @@ private fun LauncherCarFilamentContent(
                     },
                 )
             }
+        }
+        if (onClick != null || onLongClick != null) {
+            val tapWidth = lerp(200.dp, 170.dp, composedDriveBlend)
+            val tapHeight = lerp(260.dp, 210.dp, composedDriveBlend)
+            val tapOffsetY = 115.dp * composedDriveBlend
+
+            Box(
+                modifier = Modifier
+                    .size(width = tapWidth, height = tapHeight)
+                    .align(Alignment.Center)
+                    .graphicsLayer {
+                        translationY = tapOffsetY.toPx()
+                    }
+                    .then(interactionModifier),
+            )
         }
     }
 }

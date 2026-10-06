@@ -186,125 +186,119 @@ fun LauncherLeftPanel(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (racing) {
-                LauncherEggRaceCloseBar()
-            }
-            if (!racing) {
-                LauncherCruisePresetControl(
-                    canViewModel = canViewModel,
-                    adas = adas,
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 60.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (!carHidden) {
-                val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
-                LauncherCar3DModel(
-                    rigState = rigState,
-                    speedKmh = effectiveSpeed,
-                    steeringDeg = effectiveSteer,
-                    steerPreview = steerPreview,
-                    inDriveGear = showDriveView,
-                    modelRevision = modelRevision,
-                    paintRevision = paintRevision,
-                    paintId = paintId,
-                    showRoad = false,
-                    settingsView = settingsProgress > 0.02f,
-                    settingsProgress = settingsProgress,
-                    settingsUserYawDeg = settingsUserYawDeg,
-                    customModelScale = carModelScale,
-                    onWheelAnchorsChanged = { wheelAnchors = it },
-                    onPdcRingsChanged = { pdcRings = it },
-                    onHeadlightFrameChanged = { headlightFrame = it },
-                    onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
-                    projectHeadlights = !racing && headlightBeams.any,
-                    textureSurface = racing,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationX = with(density) { carLaneShift.toPx() }
-                        },
-                )
-                if (settingsProgress < 0.15f && !racing) {
-                    LauncherTireBadges(
-                        state = effectiveTires,
-                        // ADAS strip shows a small pressure-only pill next to the wheel.
-                        compact = true,
-                        wheelAnchorsPx = wheelAnchors,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    if (!bodyRigAvailable) {
-                        LauncherDoorBadges(
-                            body = effectiveBody,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                    LauncherAdasTimeGapFlash(
-                        timeGapLevel = adas.timeGapLevel,
-                        timeGapFlashUntilMs = adas.timeGapFlashUntilMs,
-                    )
-                    LauncherRearThreatOverlay(
-                        threats = adas.rearThreats,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    LauncherPdcOverlay(
-                        pdc = adas.pdc,
-                        rings = pdcRings,
-                        driving = inDriveGear || steerPreview,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    LauncherBsdOverlay(
-                        threats = adas.rearThreats,
-                        rings = pdcRings,
-                        driving = inDriveGear || steerPreview,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    LauncherHeadlightOverlay(
-                        beams = headlightBeams,
-                        frame = headlightFrame,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    LauncherSpeedLimitOverlay(
-                        adas = adas,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 4.dp, end = 4.dp),
-                    )
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = 2.dp, top = 2.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (racing) {
+                    LauncherEggRaceCloseBar()
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        LauncherAdasStrip(canViewModel = canViewModel)
-                        LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
+                        Column(
+                            modifier = Modifier.weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            LauncherCruisePresetControl(
+                                canViewModel = canViewModel,
+                                adas = adas,
+                            )
+                            LauncherAdasStrip(canViewModel = canViewModel)
+                            LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
+                        }
+                        LauncherSpeedLimitOverlay(
+                            adas = adas,
+                            modifier = Modifier.padding(start = 8.dp, top = 2.dp),
+                        )
                     }
                 }
             }
-            if (!racing) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onOpenVehicleSettings,
-                            onLongClick = onColorPickerOpen,
-                        ),
-                )
-            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 60.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (!carHidden) {
+                    val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
+                    LauncherCar3DModel(
+                        rigState = rigState,
+                        speedKmh = effectiveSpeed,
+                        steeringDeg = effectiveSteer,
+                        steerPreview = steerPreview,
+                        inDriveGear = showDriveView,
+                        modelRevision = modelRevision,
+                        paintRevision = paintRevision,
+                        paintId = paintId,
+                        showRoad = false,
+                        settingsView = settingsProgress > 0.02f,
+                        settingsProgress = settingsProgress,
+                        settingsUserYawDeg = settingsUserYawDeg,
+                        customModelScale = carModelScale,
+                        onClick = if (!racing) onOpenVehicleSettings else null,
+                        onLongClick = if (!racing) onColorPickerOpen else null,
+                        onWheelAnchorsChanged = { wheelAnchors = it },
+                        onPdcRingsChanged = { pdcRings = it },
+                        onHeadlightFrameChanged = { headlightFrame = it },
+                        onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
+                        projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
+                        projectHeadlights = !racing && headlightBeams.any,
+                        textureSurface = racing,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationX = with(density) { carLaneShift.toPx() }
+                            },
+                    )
+                    if (settingsProgress < 0.15f && !racing) {
+                        LauncherTireBadges(
+                            state = effectiveTires,
+                            // ADAS strip shows a small pressure-only pill next to the wheel.
+                            compact = true,
+                            wheelAnchorsPx = wheelAnchors,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (!bodyRigAvailable) {
+                            LauncherDoorBadges(
+                                body = effectiveBody,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        LauncherAdasTimeGapFlash(
+                            timeGapLevel = adas.timeGapLevel,
+                            timeGapFlashUntilMs = adas.timeGapFlashUntilMs,
+                        )
+                        LauncherRearThreatOverlay(
+                            threats = adas.rearThreats,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        LauncherPdcOverlay(
+                            pdc = adas.pdc,
+                            rings = pdcRings,
+                            driving = inDriveGear || steerPreview,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        LauncherBsdOverlay(
+                            threats = adas.rearThreats,
+                            rings = pdcRings,
+                            driving = inDriveGear || steerPreview,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        LauncherHeadlightOverlay(
+                            beams = headlightBeams,
+                            frame = headlightFrame,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             if (racing) {
                 Box(
                     modifier = Modifier
