@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
@@ -95,6 +97,10 @@ fun LauncherVirtualRoad(
 
     val context = LocalContext.current
     val density = LocalDensity.current.density
+    val presetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow.collectAsStateWithLifecycle()
+    val storedTimeGap = remember(context, presetsRevision) {
+        LauncherAppConfigStore.timeGapLevel(context)
+    }
     val textSizeRevision by LauncherAppConfigStore.adasDistanceTextSizeRevisionFlow.collectAsStateWithLifecycle()
     val distanceTextSizeSp = remember(context, textSizeRevision) {
         LauncherAppConfigStore.adasDistanceTextSize(context)
@@ -121,6 +127,7 @@ fun LauncherVirtualRoad(
             distanceTextSizeSp = distanceTextSizeSp,
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
             density = density,
+            storedTimeGap = storedTimeGap,
         )
     }
 }
@@ -332,6 +339,7 @@ private fun DrawScope.drawVirtualRoad(
     distanceTextSizeSp: Int = 14,
     distanceLabelOffsetRatio: Float = 0.15f,
     density: Float = 1.5f,
+    storedTimeGap: Int = 2,
 ) {
     val w = size.width
     val h = size.height
@@ -396,15 +404,28 @@ private fun DrawScope.drawVirtualRoad(
 
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
 
+    val now = android.os.SystemClock.uptimeMillis()
+    val showDistanceSteps = adas.timeGapFlashUntilMs > now
+    val timeGapLevel = (adas.timeGapLevel?.takeIf { it in 1..3 } ?: storedTimeGap).coerceIn(1, 3)
+
     val frontDistance = leadVisual?.distanceM ?: adas.frontObject.displayDistanceM
     if (leadVisual != null) {
-        if ((adas.accActive || adas.accStandby) && adas.timeGapLevel != null) {
+        if ((adas.accActive || adas.accStandby || showDistanceSteps) && (adas.timeGapLevel != null || showDistanceSteps)) {
             drawAccBeam(
                 objectDistanceM = frontDistance,
                 centerXAt = ::centerXAt,
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 alert = adas.fcwActive || adas.distanceWarning,
+            )
+        }
+        if (showDistanceSteps) {
+            drawAccDistanceSteps(
+                activeLevel = timeGapLevel,
+                centerXAt = ::centerXAt,
+                laneOffsetAt = ::laneOffsetAt,
+                yAt = ::yAt,
+                tint = if (adas.fcwActive || adas.distanceWarning) Color(0xFFEF4444) else LauncherColors.AccentCyan,
             )
         }
         drawFrontObject(
@@ -419,16 +440,27 @@ private fun DrawScope.drawVirtualRoad(
             distanceTextSizeSp = distanceTextSizeSp,
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
         )
-    } else if ((adas.accActive || adas.accStandby) && adas.timeGapLevel != null) {
-        // No target ahead — stretch the ACC path to the horizon.
-        drawAccBeam(
-            objectDistanceM = null,
-            toHorizon = true,
-            centerXAt = ::centerXAt,
-            laneOffsetAt = ::laneOffsetAt,
-            yAt = ::yAt,
-            alert = false,
-        )
+    } else {
+        if ((adas.accActive || adas.accStandby || showDistanceSteps) && (adas.timeGapLevel != null || showDistanceSteps)) {
+            // No target ahead — stretch the ACC path to the horizon.
+            drawAccBeam(
+                objectDistanceM = null,
+                toHorizon = true,
+                centerXAt = ::centerXAt,
+                laneOffsetAt = ::laneOffsetAt,
+                yAt = ::yAt,
+                alert = false,
+            )
+        }
+        if (showDistanceSteps) {
+            drawAccDistanceSteps(
+                activeLevel = timeGapLevel,
+                centerXAt = ::centerXAt,
+                laneOffsetAt = ::laneOffsetAt,
+                yAt = ::yAt,
+                tint = LauncherColors.AccentCyan,
+            )
+        }
     }
 
 }
@@ -511,8 +543,8 @@ private fun DrawScope.drawAccBeam(
     } else {
         distanceToRoadDepth(objectDistanceM)
     }
-    // Start in front of the 3D car on the road ahead (not underneath the car body).
-    val egoDepth = 0.82f
+    // Start in front of the 3D car's front bumper on the road ahead.
+    val egoDepth = 0.48f
     val nearHalf = laneOffsetAt(egoDepth) * 0.85f
     val farHalf = laneOffsetAt(targetDepth) * 0.70f
     val beam = Path().apply {
@@ -535,6 +567,39 @@ private fun DrawScope.drawAccBeam(
             endY = yAt(egoDepth),
         ),
     )
+}
+
+private fun DrawScope.drawAccDistanceSteps(
+    activeLevel: Int,
+    centerXAt: (Float) -> Float,
+    laneOffsetAt: (Float) -> Float,
+    yAt: (Float) -> Float,
+    tint: Color,
+) {
+    // 3 steps in front of the car on the road ahead (1 = Near/Близко, 2 = Mid/Средне, 3 = Far/Далеко)
+    val depths = floatArrayOf(0.42f, 0.28f, 0.16f)
+    depths.forEachIndexed { idx, t ->
+        val stepNumber = idx + 1
+        val isActive = stepNumber <= activeLevel
+        val y = yAt(t)
+        val cx = centerXAt(t)
+        val halfW = laneOffsetAt(t) * 0.72f
+        val chevronH = 8.dp.toPx() * (0.6f + t * 0.4f)
+        val stepPath = Path().apply {
+            moveTo(cx - halfW, y + chevronH)
+            lineTo(cx, y)
+            lineTo(cx + halfW, y + chevronH)
+        }
+        drawPath(
+            path = stepPath,
+            color = if (isActive) tint.copy(alpha = 0.90f) else tint.copy(alpha = 0.20f),
+            style = Stroke(
+                width = if (isActive) 4.5.dp.toPx() else 2.0.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
+        )
+    }
 }
 
 private fun DrawScope.drawAdasLaneAssist(

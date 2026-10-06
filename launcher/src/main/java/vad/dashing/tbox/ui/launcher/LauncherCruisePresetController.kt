@@ -40,15 +40,21 @@ internal object LauncherCruisePresetController {
 
     fun applyPreset(context: Context, targetKmh: Int) {
         val kmh = targetKmh.coerceIn(30, 160)
+        val ngp = LauncherAppConfigStore.ngpEnabled(context)
         LauncherAppConfigStore.setLastCruiseSpeedKmh(context, kmh)
         CanDataRepository.updateCruiseSetSpeed(kmh.toUInt())
         if (LauncherDevVehicleState.simulateEnabled) {
             LauncherDevVehicleState.adasCruiseActive = true
+            LauncherDevVehicleState.adasLanesActive = ngp
+            LauncherAdasRepository.triggerTimeGapFlash(3000L)
             return
         }
         job?.cancel()
         job = scope.launch {
-            mutex.withLock { runPreset(kmh) }
+            mutex.withLock {
+                MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.TJA_ICA, if (ngp) 2 else 1)
+                runPreset(kmh)
+            }
         }
     }
 
@@ -58,7 +64,8 @@ internal object LauncherCruisePresetController {
             currentSetSpeed()?.let { LauncherAppConfigStore.setLastCruiseSpeedKmh(context, it) }
             CanDataRepository.updateCruiseSetSpeed(0u)
             if (LauncherDevVehicleState.simulateEnabled) {
-                LauncherDevVehicleState.toggleAdasCruise()
+                LauncherDevVehicleState.adasCruiseActive = false
+                LauncherDevVehicleState.adasLanesActive = false
             } else {
                 scope.launch {
                     pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
@@ -67,6 +74,20 @@ internal object LauncherCruisePresetController {
         } else {
             val targetKmh = LauncherAppConfigStore.lastCruiseSpeedKmh(context)
             applyPreset(context, targetKmh)
+        }
+    }
+
+    fun setTimeGap(context: Context, level: Int) {
+        val validLevel = level.coerceIn(1, 3)
+        LauncherAppConfigStore.setTimeGapLevel(context, validLevel)
+        LauncherDevVehicleState.adasTimeGapLevel = validLevel
+        LauncherDevVehicleState.triggerTimeGapFlash(3000L)
+        LauncherAdasRepository.triggerTimeGapFlash(3000L)
+        if (LauncherDevVehicleState.simulateEnabled) {
+            return
+        }
+        scope.launch {
+            pulse(MbCanKnownVehiclePropertyId.MFS_TIME_GAP)
         }
     }
 

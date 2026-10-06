@@ -277,10 +277,6 @@ fun LauncherLeftPanel(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                        LauncherAdasTimeGapFlash(
-                            timeGapLevel = adas.timeGapLevel,
-                            timeGapFlashUntilMs = adas.timeGapFlashUntilMs,
-                        )
                         LauncherRearThreatOverlay(
                             threats = adas.rearThreats,
                             modifier = Modifier.fillMaxSize(),

@@ -119,6 +119,8 @@ internal const val CRUISE_PRESET_STEP_KMH = 5
 private const val KEY_CRUISE_PRESETS = "cruise_presets_kmh"
 private const val KEY_LAST_CRUISE_SPEED = "last_cruise_speed_kmh"
 private const val KEY_CRUISE_PANEL_VISIBLE = "cruise_panel_visible"
+private const val KEY_NGP_ENABLED = "ngp_enabled"
+private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 internal const val GRID_SLOT_COUNT = 9
 private const val DOCK_SLOT_COUNT = 4
 
@@ -165,6 +167,8 @@ internal object LauncherAppConfigStore {
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
     private val cruisePanelRevision = MutableStateFlow(0)
     internal val cruisePanelRevisionFlow: StateFlow<Int> = cruisePanelRevision
+    private val ngpRevision = MutableStateFlow(0)
+    internal val ngpRevisionFlow: StateFlow<Int> = ngpRevision
     private val gridColumnsRevision = MutableStateFlow(0)
     internal val gridColumnsRevisionFlow: StateFlow<Int> = gridColumnsRevision
     private val gridRowsRevision = MutableStateFlow(0)
@@ -504,6 +508,23 @@ internal object LauncherAppConfigStore {
     fun setCruisePanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CRUISE_PANEL_VISIBLE, visible).apply()
         cruisePanelRevision.value++
+    }
+
+    fun ngpEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NGP_ENABLED, true)
+
+    fun setNgpEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NGP_ENABLED, enabled).apply()
+        ngpRevision.value++
+    }
+
+    fun timeGapLevel(context: Context): Int =
+        prefs(context).getInt(KEY_TIME_GAP_LEVEL, 2).coerceIn(1, 3)
+
+    fun setTimeGapLevel(context: Context, level: Int) {
+        val valid = level.coerceIn(1, 3)
+        prefs(context).edit().putInt(KEY_TIME_GAP_LEVEL, valid).apply()
+        cruisePresetsRevision.value++
     }
 
     fun isFullscreenLaunch(context: Context, packageName: String): Boolean =

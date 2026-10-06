@@ -553,6 +553,11 @@ object LauncherAdasRepository {
         )
     }
 
+    fun triggerTimeGapFlash(ms: Long = 3000L) {
+        timeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
+        publish()
+    }
+
     private fun clearSnapshots() {
         frmAccMode = 0
         frmVSetDis = 0

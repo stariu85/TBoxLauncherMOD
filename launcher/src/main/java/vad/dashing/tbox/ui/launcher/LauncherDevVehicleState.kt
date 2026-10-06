@@ -2,6 +2,8 @@ package vad.dashing.tbox.ui.launcher
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import vad.dashing.tbox.mbcan.VehicleBodyState
@@ -31,6 +33,8 @@ object LauncherDevVehicleState {
     // --- ADAS simulation (cruise / lanes / BSD / front object / parking sensors) ---
     var adasCruiseActive by mutableStateOf(false)
     var adasLanesActive by mutableStateOf(false)
+    var adasTimeGapLevel by mutableIntStateOf(2)
+    var adasTimeGapFlashUntilMs by mutableLongStateOf(0L)
     var adasBsdLeft by mutableStateOf(LauncherRearThreatLevel.Off)
     var adasBsdRight by mutableStateOf(LauncherRearThreatLevel.Off)
     /** Lead vehicle distance in metres; 0 = no object. */
@@ -57,6 +61,11 @@ object LauncherDevVehicleState {
         simulateEnabled = true
         motionPreviewEnabled = false
         adasCruiseActive = !adasCruiseActive
+    }
+
+    fun triggerTimeGapFlash(ms: Long = 3000L) {
+        simulateEnabled = true
+        adasTimeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
     }
 
     fun toggleAdasLanes() {
@@ -182,7 +191,8 @@ object LauncherDevVehicleState {
             accMode = if (adasCruiseActive) LauncherAdasAccMode.ActiveBlue else LauncherAdasAccMode.Off,
             accSetSpeedKmh = setSpeed,
             accActive = adasCruiseActive,
-            timeGapLevel = if (adasCruiseActive) 1 else null,
+            timeGapLevel = adasTimeGapLevel,
+            timeGapFlashUntilMs = adasTimeGapFlashUntilMs,
             frontObject = LauncherAdasFrontObject(
                 valid = frontM > 0,
                 type = if (frontM > 0) adasFrontObjectType else LauncherAdasFrontObjectType.None,

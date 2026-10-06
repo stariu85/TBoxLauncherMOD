@@ -246,6 +246,8 @@ object MbCanKnownVehiclePropertyId {
     const val MFS_CANCEL = 212
     const val MFS_RES_PLUS = 213
     const val MFS_SET_MINUS = 214
+    const val MFS_TIME_GAP = 217
+    const val TJA_ICA = 23
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_SWTICH] — 1 off, 2 on. */
     const val FCW_SWITCH = 96
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_HDC_SWITCH] — 1 off, 2 on. */

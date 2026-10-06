@@ -105,6 +105,11 @@
     <string name="launcher_vs_section_cruise_sub">Panel visibility and speed presets</string>
     <string name="launcher_cruise_panel_visible_title">Cruise control panel</string>
     <string name="launcher_cruise_panel_visible_desc">Show cruise control buttons at the bottom of the left panel</string>
+    <string name="launcher_cruise_ngp_title">NGP</string>
+    <string name="launcher_cruise_distance_title">Distance</string>
+    <string name="launcher_cruise_distance_near">Near</string>
+    <string name="launcher_cruise_distance_mid">Medium</string>
+    <string name="launcher_cruise_distance_far">Far</string>
     <string name="launcher_vs_section_adas_sub">Parking sensors and cruise</string>
     <string name="launcher_adas_tsr_chip">TSR %1$d</string>
     <string name="launcher_adas_bsd_left">BSD ←</string>
