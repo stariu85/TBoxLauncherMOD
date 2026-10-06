@@ -507,15 +507,14 @@ private fun DrawScope.drawAccBeam(
     toHorizon: Boolean = false,
 ) {
     val targetDepth = if (toHorizon || objectDistanceM == null) {
-        0.02f
+        0.05f
     } else {
         distanceToRoadDepth(objectDistanceM)
     }
-    // Start under the 3D car (near the bottom of the road) and run to the
-    // horizon / lead object. Soft fade at both ends.
-    val egoDepth = 0.96f
-    val nearHalf = laneOffsetAt(egoDepth) * 0.92f
-    val farHalf = laneOffsetAt(targetDepth) * 0.72f
+    // Start in front of the 3D car on the road ahead (not underneath the car body).
+    val egoDepth = 0.82f
+    val nearHalf = laneOffsetAt(egoDepth) * 0.85f
+    val farHalf = laneOffsetAt(targetDepth) * 0.70f
     val beam = Path().apply {
         moveTo(centerXAt(egoDepth) - nearHalf, yAt(egoDepth))
         lineTo(centerXAt(targetDepth) - farHalf, yAt(targetDepth))
@@ -528,9 +527,9 @@ private fun DrawScope.drawAccBeam(
         path = beam,
         brush = Brush.verticalGradient(
             0.00f to tint.copy(alpha = 0f),
-            0.16f to tint.copy(alpha = 0.10f),
-            0.48f to tint.copy(alpha = 0.36f),
-            0.82f to tint.copy(alpha = 0.16f),
+            0.20f to tint.copy(alpha = 0.08f),
+            0.50f to tint.copy(alpha = 0.22f),
+            0.80f to tint.copy(alpha = 0.08f),
             1.00f to tint.copy(alpha = 0f),
             startY = yAt(targetDepth),
             endY = yAt(egoDepth),

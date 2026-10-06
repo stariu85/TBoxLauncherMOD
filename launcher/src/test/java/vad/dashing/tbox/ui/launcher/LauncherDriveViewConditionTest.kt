@@ -7,26 +7,22 @@ import org.junit.Test
 class LauncherDriveViewConditionTest {
 
     @Test
-    fun topViewWhenBelow15KmhAndCruiseOff() {
+    fun topViewWhenBelow15Kmh() {
         assertFalse(isDriveViewActive(speedKmh = 0f, cruiseOn = false))
         assertFalse(isDriveViewActive(speedKmh = 5f, cruiseOn = false))
         assertFalse(isDriveViewActive(speedKmh = 14.9f, cruiseOn = false))
+        assertFalse(isDriveViewActive(speedKmh = 0f, cruiseOn = true))
+        assertFalse(isDriveViewActive(speedKmh = 5f, cruiseOn = true))
+        assertFalse(isDriveViewActive(speedKmh = 14.9f, cruiseOn = true))
     }
 
     @Test
-    fun driveViewWhenAtOrAbove15KmhAndCruiseOff() {
+    fun driveViewWhenAtOrAbove15Kmh() {
         assertTrue(isDriveViewActive(speedKmh = 15.0f, cruiseOn = false))
         assertTrue(isDriveViewActive(speedKmh = 20.0f, cruiseOn = false))
         assertTrue(isDriveViewActive(speedKmh = 100.0f, cruiseOn = false))
-    }
-
-    @Test
-    fun driveViewWhenCruiseOnRegardlessOfSpeed() {
-        assertTrue(isDriveViewActive(speedKmh = 0f, cruiseOn = true))
-        assertTrue(isDriveViewActive(speedKmh = 5f, cruiseOn = true))
-        assertTrue(isDriveViewActive(speedKmh = 10f, cruiseOn = true))
-        assertTrue(isDriveViewActive(speedKmh = 14.9f, cruiseOn = true))
-        assertTrue(isDriveViewActive(speedKmh = 30f, cruiseOn = true))
+        assertTrue(isDriveViewActive(speedKmh = 15.0f, cruiseOn = true))
+        assertTrue(isDriveViewActive(speedKmh = 30.0f, cruiseOn = true))
     }
 
     @Test

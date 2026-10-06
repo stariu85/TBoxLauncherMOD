@@ -2,21 +2,20 @@ package vad.dashing.tbox.ui.launcher
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,16 +26,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.theme.tboxCaption
 
-private val CruiseChipWidth = 76.dp
-private val CruiseChipHeight = 62.dp
-private val CruiseChipGap = 8.dp
+private val ButtonHeight = 50.dp
 
 @Composable
 fun LauncherCruisePresetControl(
@@ -48,71 +43,91 @@ fun LauncherCruisePresetControl(
     val presetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
         .collectAsStateWithLifecycle()
     val presets = remember(context, presetsRevision) {
-        LauncherAppConfigStore.cruisePresetsKmh(context)
+        LauncherAppConfigStore.cruisePresetsKmh(context).take(3)
     }
     val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
-    val setSpeed = adas.accSetSpeedKmh
-        ?: tboxCruise?.toInt()?.takeIf { it > 0 }
-    val engaged = adas.accActive || adas.accStandby || (setSpeed != null && setSpeed > 0)
-    var expanded by remember { mutableStateOf(false) }
-    LaunchedEffect(engaged) {
-        if (!engaged) expanded = false
+    val lastSpeed = remember(context, presetsRevision, tboxCruise) {
+        LauncherAppConfigStore.lastCruiseSpeedKmh(context)
     }
-    if (!engaged) return
-    val tint = LauncherColors.AccentCyan
+    val activeSpeed = tboxCruise?.toInt()?.takeIf { it > 0 } ?: adas.accSetSpeedKmh
+    val engaged = adas.accActive || adas.accStandby || (tboxCruise != null && tboxCruise!! > 0u)
+    val displaySpeed = if (engaged) (activeSpeed ?: lastSpeed) else lastSpeed
 
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Box(
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Button 1: Cruise ON/OFF toggle with target speed display
+        CruiseToggleChip(
+            engaged = engaged,
+            setSpeed = displaySpeed,
+            onClick = { LauncherCruisePresetController.toggleCruise(context) },
             modifier = Modifier
-                .size(width = CruiseChipWidth, height = CruiseChipHeight)
-                .clip(RoundedCornerShape(12.dp))
-                .background(tint.copy(alpha = 0.18f))
-                .clickable { expanded = !expanded },
-            contentAlignment = Alignment.Center,
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Buttons 2, 3, 4: Speed preset buttons from settings
+        presets.forEach { kmh ->
+            val isSelected = engaged && displaySpeed == kmh
+            CruisePresetChip(
+                label = kmh.toString(),
+                selected = isSelected,
+                onClick = { LauncherCruisePresetController.applyPreset(context, kmh) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(ButtonHeight),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CruiseToggleChip(
+    engaged: Boolean,
+    setSpeed: Int?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val activeTint = LauncherColors.AccentCyan
+    val inactiveTint = LauncherColors.LeftTextPrimary
+    val tint = if (engaged) activeTint else inactiveTint
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (engaged) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
+            )
+            .then(
+                if (engaged) {
+                    Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            if (setSpeed != null) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_cruise),
+                contentDescription = stringResource(R.string.launcher_cruise_presets),
+                modifier = Modifier.size(18.dp),
+                colorFilter = ColorFilter.tint(tint),
+            )
+            if (setSpeed != null && setSpeed > 0) {
                 Text(
                     text = setSpeed.toString(),
                     style = MaterialTheme.typography.tboxCaption,
                     color = tint,
-                    fontSize = 20.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                 )
-            } else {
-                Image(
-                    painter = painterResource(R.drawable.ic_launcher_cruise),
-                    contentDescription = stringResource(R.string.launcher_cruise_presets),
-                    modifier = Modifier.size(28.dp),
-                    colorFilter = ColorFilter.tint(tint),
-                )
-            }
-        }
-        if (expanded) {
-            Popup(
-                alignment = Alignment.CenterStart,
-                onDismissRequest = { expanded = false },
-                properties = PopupProperties(focusable = true, clippingEnabled = false),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(CruiseChipGap),
-                ) {
-                    Spacer(
-                        modifier = Modifier
-                            .size(width = CruiseChipWidth, height = CruiseChipHeight)
-                            .clickable { expanded = false },
-                    )
-                    presets.forEach { kmh ->
-                        CruisePresetChip(
-                            label = kmh.toString(),
-                            selected = setSpeed == kmh,
-                            onClick = {
-                                LauncherCruisePresetController.applyPreset(kmh)
-                                expanded = false
-                            },
-                        )
-                    }
-                }
             }
         }
     }
@@ -123,14 +138,24 @@ private fun CruisePresetChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val tint = if (selected) LauncherColors.AccentCyan else LauncherColors.LeftTextPrimary
+    val activeTint = LauncherColors.AccentCyan
+    val inactiveTint = LauncherColors.LeftTextPrimary
+    val tint = if (selected) activeTint else inactiveTint
+
     Box(
-        modifier = Modifier
-            .size(width = CruiseChipWidth, height = CruiseChipHeight)
+        modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (selected) tint.copy(alpha = 0.22f) else LauncherColors.LeftPanelCard,
+                if (selected) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
+            )
+            .then(
+                if (selected) {
+                    Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                } else {
+                    Modifier
+                }
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -139,7 +164,7 @@ private fun CruisePresetChip(
             text = label,
             style = MaterialTheme.typography.tboxCaption,
             color = tint,
-            fontSize = 20.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
     }

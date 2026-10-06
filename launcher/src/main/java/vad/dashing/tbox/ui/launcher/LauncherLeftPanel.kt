@@ -1,7 +1,5 @@
 package vad.dashing.tbox.ui.launcher
 
-import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -15,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -53,11 +52,11 @@ private const val ROAD_ANIMATION_SPEED_THRESHOLD_KMH = 15f
 
 internal fun isDriveViewActive(
     speedKmh: Float,
-    cruiseOn: Boolean,
+    cruiseOn: Boolean = false,
     racing: Boolean = false,
     speedThresholdKmh: Float = ROAD_ANIMATION_SPEED_THRESHOLD_KMH,
 ): Boolean {
-    return racing || cruiseOn || speedKmh >= speedThresholdKmh
+    return racing || speedKmh >= speedThresholdKmh
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -143,6 +142,11 @@ fun LauncherLeftPanel(
     }
     val activeGear = parsedGear ?: latchedGear
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
+    val cruisePanelRevision by LauncherAppConfigStore.cruisePanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val cruisePanelVisible = remember(context, cruisePanelRevision) {
+        LauncherAppConfigStore.cruisePanelVisible(context)
+    }
     val cruiseOn = adas.accActive || adas.accStandby ||
         (adas.accSetSpeedKmh ?: 0) > 0 ||
         (cruiseSpeed ?: 0u) > 0u
@@ -186,7 +190,7 @@ fun LauncherLeftPanel(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(
@@ -205,11 +209,12 @@ fun LauncherLeftPanel(
                             modifier = Modifier.weight(1f, fill = false),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            LauncherCruisePresetControl(
-                                canViewModel = canViewModel,
-                                adas = adas,
-                            )
-                            LauncherAdasStrip(canViewModel = canViewModel)
+                            Box(
+                                modifier = Modifier.heightIn(min = 28.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                LauncherAdasStrip(canViewModel = canViewModel)
+                            }
                             LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
                         }
                         LauncherSpeedLimitOverlay(
@@ -224,7 +229,7 @@ fun LauncherLeftPanel(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 60.dp),
+                    .padding(top = 8.dp, bottom = if (cruisePanelVisible) 12.dp else 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 if (!carHidden) {
@@ -299,26 +304,7 @@ fun LauncherLeftPanel(
                         )
                     }
                 }
-            if (racing) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                        ),
-                ) {
-                    LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
-                }
-            } else {
-                val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
-                    .collectAsStateWithLifecycle()
-                val miniPlayerVisible = remember(context, miniPlayerRevision) {
-                    LauncherAppConfigStore.mediaMiniPlayerVisible(context)
-                }
-                if (miniPlayerVisible) {
+                if (racing) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -329,24 +315,47 @@ fun LauncherLeftPanel(
                                 onClick = {},
                             ),
                     ) {
+                        LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                if (colorPickerVisible) {
+                    LauncherCarColorPicker(
+                        selectedId = paintId,
+                        onSelect = { id ->
+                            onPaintChanged(id)
+                            LauncherAppConfigStore.setCarPaintId(context, id)
+                        },
+                        onDismiss = onColorPickerDismiss,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 8.dp),
+                    )
+                }
+            }
+
+            val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
+                .collectAsStateWithLifecycle()
+            val miniPlayerVisible = remember(context, miniPlayerRevision) {
+                LauncherAppConfigStore.mediaMiniPlayerVisible(context)
+            }
+
+            if (!racing && (miniPlayerVisible || cruisePanelVisible)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (miniPlayerVisible) {
                         LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                    }
+                    if (cruisePanelVisible) {
+                        LauncherCruisePresetControl(
+                            canViewModel = canViewModel,
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
             }
-            if (colorPickerVisible) {
-                LauncherCarColorPicker(
-                    selectedId = paintId,
-                    onSelect = { id ->
-                        onPaintChanged(id)
-                        LauncherAppConfigStore.setCarPaintId(context, id)
-                    },
-                    onDismiss = onColorPickerDismiss,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 8.dp),
-                )
-            }
-        }
         }
         if (racing) {
             LauncherEggRaceCarsLayer(

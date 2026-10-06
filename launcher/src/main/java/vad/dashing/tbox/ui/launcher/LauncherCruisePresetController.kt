@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,11 +38,35 @@ internal object LauncherCruisePresetController {
     private val mutex = Mutex()
     private var job: Job? = null
 
-    fun applyPreset(targetKmh: Int) {
+    fun applyPreset(context: Context, targetKmh: Int) {
         val kmh = targetKmh.coerceIn(30, 160)
+        LauncherAppConfigStore.setLastCruiseSpeedKmh(context, kmh)
+        CanDataRepository.updateCruiseSetSpeed(kmh.toUInt())
+        if (LauncherDevVehicleState.simulateEnabled) {
+            LauncherDevVehicleState.adasCruiseActive = true
+            return
+        }
         job?.cancel()
         job = scope.launch {
             mutex.withLock { runPreset(kmh) }
+        }
+    }
+
+    fun toggleCruise(context: Context) {
+        val currentlyEngaged = isCruiseEngaged()
+        if (currentlyEngaged) {
+            currentSetSpeed()?.let { LauncherAppConfigStore.setLastCruiseSpeedKmh(context, it) }
+            CanDataRepository.updateCruiseSetSpeed(0u)
+            if (LauncherDevVehicleState.simulateEnabled) {
+                LauncherDevVehicleState.toggleAdasCruise()
+            } else {
+                scope.launch {
+                    pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
+                }
+            }
+        } else {
+            val targetKmh = LauncherAppConfigStore.lastCruiseSpeedKmh(context)
+            applyPreset(context, targetKmh)
         }
     }
 
@@ -58,7 +83,7 @@ internal object LauncherCruisePresetController {
             pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
             delay(SETTLE_MS)
         }
-        var current = currentSetSpeed() ?: vehicleSpeedKmh() ?: return
+        var current = adasSetSpeed() ?: vehicleSpeedKmh() ?: targetKmh
         if (current == targetKmh) return
         var step = 1
         var unchanged = 0
@@ -71,7 +96,7 @@ internal object LauncherCruisePresetController {
             }
             pulse(key)
             delay(PULSE_GAP_MS)
-            val next = currentSetSpeed()
+            val next = adasSetSpeed()
             if (next != null) {
                 val delta = abs(next - current)
                 if (delta >= 2) step = delta
@@ -98,6 +123,10 @@ internal object LauncherCruisePresetController {
         if (adas.accActive || adas.accStandby) return true
         val tbox = CanDataRepository.cruiseSetSpeed.value
         return tbox != null && tbox > 0u
+    }
+
+    private fun adasSetSpeed(): Int? {
+        return LauncherAdasRepository.state.value.accSetSpeedKmh?.takeIf { it > 0 }
     }
 
     private fun currentSetSpeed(): Int? {

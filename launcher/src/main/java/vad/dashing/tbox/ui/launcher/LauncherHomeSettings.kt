@@ -68,7 +68,6 @@ internal fun LauncherHomeSettingsContent() {
     GridRowsSlider()
     HomeIconScaleSlider()
     HiddenAppsSettings()
-    CruisePresetsSettings()
 }
 
 @Composable
@@ -629,6 +628,32 @@ private fun AdasDistanceOffsetSlider() {
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
         )
+    }
+}
+
+@Composable
+fun CruiseControlSettingsContent() {
+    val context = LocalContext.current
+    val cruisePanelRevision by LauncherAppConfigStore.cruisePanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val cruisePanelVisible = remember(context, cruisePanelRevision) {
+        LauncherAppConfigStore.cruisePanelVisible(context)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_cruise_panel_visible_title),
+            active = cruisePanelVisible,
+            onClick = {
+                LauncherAppConfigStore.setCruisePanelVisible(context, !cruisePanelVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_cruise_panel_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        CruisePresetsSettings()
     }
 }
 

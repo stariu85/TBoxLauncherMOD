@@ -670,6 +670,16 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
+            title = stringResource(R.string.launcher_vs_section_cruise),
+            subtitle = stringResource(R.string.launcher_vs_section_cruise_sub),
+            icon = VehicleSettingsSectionIcons.Cruise,
+            expanded = expandedSection == VehicleSettingsSection.Cruise,
+            onToggle = { onSectionToggle(VehicleSettingsSection.Cruise) },
+        ) {
+            CruiseControlSettingsContent()
+        }
+
+        LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_launcher),
             subtitle = stringResource(R.string.launcher_vs_section_launcher_sub),
             icon = VehicleSettingsSectionIcons.Launcher,

@@ -117,6 +117,8 @@ internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
 internal const val CRUISE_PRESET_STEP_KMH = 5
 private const val KEY_CRUISE_PRESETS = "cruise_presets_kmh"
+private const val KEY_LAST_CRUISE_SPEED = "last_cruise_speed_kmh"
+private const val KEY_CRUISE_PANEL_VISIBLE = "cruise_panel_visible"
 internal const val GRID_SLOT_COUNT = 9
 private const val DOCK_SLOT_COUNT = 4
 
@@ -161,6 +163,8 @@ internal object LauncherAppConfigStore {
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
+    private val cruisePanelRevision = MutableStateFlow(0)
+    internal val cruisePanelRevisionFlow: StateFlow<Int> = cruisePanelRevision
     private val gridColumnsRevision = MutableStateFlow(0)
     internal val gridColumnsRevisionFlow: StateFlow<Int> = gridColumnsRevision
     private val gridRowsRevision = MutableStateFlow(0)
@@ -478,6 +482,28 @@ internal object LauncherAppConfigStore {
         next[index] = kmh.coerceIn(CRUISE_PRESET_MIN_KMH, CRUISE_PRESET_MAX_KMH)
         prefs(context).edit().putString(KEY_CRUISE_PRESETS, next.joinToString(",")).apply()
         cruisePresetsRevision.value++
+    }
+
+    fun lastCruiseSpeedKmh(context: Context): Int {
+        val saved = prefs(context).getInt(KEY_LAST_CRUISE_SPEED, 0)
+        if (saved in CRUISE_PRESET_MIN_KMH..CRUISE_PRESET_MAX_KMH) {
+            return saved
+        }
+        return cruisePresetsKmh(context).firstOrNull() ?: 110
+    }
+
+    fun setLastCruiseSpeedKmh(context: Context, kmh: Int) {
+        val validKmh = kmh.coerceIn(CRUISE_PRESET_MIN_KMH, CRUISE_PRESET_MAX_KMH)
+        prefs(context).edit().putInt(KEY_LAST_CRUISE_SPEED, validKmh).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun cruisePanelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CRUISE_PANEL_VISIBLE, true)
+
+    fun setCruisePanelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CRUISE_PANEL_VISIBLE, visible).apply()
+        cruisePanelRevision.value++
     }
 
     fun isFullscreenLaunch(context: Context, packageName: String): Boolean =
