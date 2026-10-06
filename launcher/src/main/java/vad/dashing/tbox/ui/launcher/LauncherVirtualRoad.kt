@@ -63,7 +63,6 @@ fun LauncherVirtualRoad(
 ) {
     val driveTarget = when {
         inDriveGear -> 1f
-        speedKmh > 0.5f -> 1f
         steerPreview -> 1f
         else -> 0f
     }

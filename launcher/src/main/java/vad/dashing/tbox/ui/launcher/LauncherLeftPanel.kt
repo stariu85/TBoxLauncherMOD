@@ -49,6 +49,17 @@ import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
 
+private const val ROAD_ANIMATION_SPEED_THRESHOLD_KMH = 15f
+
+internal fun isDriveViewActive(
+    speedKmh: Float,
+    cruiseOn: Boolean,
+    racing: Boolean = false,
+    speedThresholdKmh: Float = ROAD_ANIMATION_SPEED_THRESHOLD_KMH,
+): Boolean {
+    return racing || cruiseOn || speedKmh >= speedThresholdKmh
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LauncherLeftPanel(
@@ -131,7 +142,12 @@ fun LauncherLeftPanel(
         if (parsedGear != null) latchedGear = parsedGear
     }
     val activeGear = parsedGear ?: latchedGear
+    val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
+    val cruiseOn = adas.accActive || adas.accStandby ||
+        (adas.accSetSpeedKmh ?: 0) > 0 ||
+        (cruiseSpeed ?: 0u) > 0u
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
+    val showDriveView = isDriveViewActive(effectiveSpeed, cruiseOn, racing)
 
     Box(
         modifier = modifier
@@ -154,7 +170,7 @@ fun LauncherLeftPanel(
                 steerAngleDeg = effectiveSteer,
                 adas = if (racing) LauncherAdasState() else adas,
                 steerPreview = steerPreview,
-                inDriveGear = inDriveGear,
+                inDriveGear = showDriveView,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -199,7 +215,7 @@ fun LauncherLeftPanel(
                     speedKmh = effectiveSpeed,
                     steeringDeg = effectiveSteer,
                     steerPreview = steerPreview,
-                    inDriveGear = inDriveGear,
+                    inDriveGear = showDriveView,
                     modelRevision = modelRevision,
                     paintRevision = paintRevision,
                     paintId = paintId,

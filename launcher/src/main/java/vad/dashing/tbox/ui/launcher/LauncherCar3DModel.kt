@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -47,7 +48,9 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.pow
 
 // Calibrated against the GLB's authored forward axis so the nose points to screen top.
 private const val MODEL_YAW_DEG = 135f
@@ -256,6 +259,7 @@ private fun LauncherCarFilamentContent(
     lowPowerPreview: Boolean = false,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current.density
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val cameraNode = rememberCameraNode(engine)
@@ -475,7 +479,39 @@ private fun LauncherCarFilamentContent(
                             y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
                             z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, transition),
                         )
-                        val baseScale = lerp(HOME_MODEL_SCALE, SETTINGS_MODEL_SCALE, transition)
+
+                        val viewport = cameraNode.viewport
+                        val widthPx = viewport?.width ?: 0
+                        val heightPx = viewport?.height ?: 0
+                        val wheels = runCatching {
+                            rigController?.projectWheelAnchors(
+                                cameraNode = cameraNode,
+                                viewportWidthPx = widthPx,
+                                viewportHeightPx = heightPx,
+                            )
+                        }.getOrNull()
+
+                        var autoDriveScale = HOME_MODEL_SCALE
+                        val rl = wheels?.get(LauncherWheelCorner.RL)
+                        val rr = wheels?.get(LauncherWheelCorner.RR)
+                        if (rl != null && rr != null && widthPx > 0 && heightPx > 0) {
+                            val currentTrackPx = abs(rr.x - rl.x)
+                            val yRear = (rl.y + rr.y) / 2f
+                            val horizonY = heightPx * 0.24f
+                            val tRear = ((yRear - horizonY) / (heightPx - horizonY)).coerceIn(0f, 1f)
+                            val halfWidthAtT = (widthPx * 0.14f) * (1f - tRear).pow(1.25f) + (widthPx * 1.10f) * tRear.pow(1.05f)
+                            val laneOffsetAtT = halfWidthAtT * 0.30f
+                            val laneWidthPx = 2f * laneOffsetAtT
+                            val margin10dpPx = 10f * density
+                            val targetTrackPx = (laneWidthPx - 2f * margin10dpPx).coerceAtLeast(10f)
+                            if (currentTrackPx > 10f && renderedScale > 0.05f) {
+                                autoDriveScale = (renderedScale * (targetTrackPx / currentTrackPx)).coerceIn(0.20f, 1.20f)
+                            }
+                        }
+
+                        val topViewScale = HOME_MODEL_SCALE * customModelScale
+                        val homeScale = lerp(topViewScale, autoDriveScale, driveBlend)
+                        val baseScale = lerp(homeScale, SETTINGS_MODEL_SCALE, transition)
                         val pinchScale = lerp(
                             1f,
                             userScale.coerceIn(
@@ -484,7 +520,8 @@ private fun LauncherCarFilamentContent(
                             ),
                             transition,
                         )
-                        val targetScale = baseScale * pinchScale * customModelScale
+                        val settingsCustomScale = lerp(1f, customModelScale, transition)
+                        val targetScale = baseScale * pinchScale * settingsCustomScale
                         node.isVisible = true
                         if (!modelReady) {
                             renderedScale = targetScale
@@ -503,16 +540,6 @@ private fun LauncherCarFilamentContent(
                         val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
                         if (frameNs - lastAnchorPublishNs >= publishNs) {
                             lastAnchorPublishNs = frameNs
-                            val viewport = cameraNode.viewport
-                            val widthPx = viewport?.width ?: 0
-                            val heightPx = viewport?.height ?: 0
-                            val wheels = runCatching {
-                                rigController?.projectWheelAnchors(
-                                    cameraNode = cameraNode,
-                                    viewportWidthPx = widthPx,
-                                    viewportHeightPx = heightPx,
-                                )
-                            }.getOrNull()
                             val doors = runCatching {
                                 rigController?.projectDoorAnchors(
                                     cameraNode = cameraNode,
