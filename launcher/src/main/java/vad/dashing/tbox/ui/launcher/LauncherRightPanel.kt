@@ -22,15 +22,18 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -43,7 +46,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,28 +64,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.roundToInt
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
-import vad.dashing.tbox.resolveDriveModeWidgetOption
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.rememberLaunchableAppEntries
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
+import kotlin.math.roundToInt
 
 private sealed class HomeDockEntry(val key: String) {
     data class App(val entry: LaunchableAppEntry, val index: Int) : HomeDockEntry("app_${entry.packageName}_$index")
@@ -144,6 +139,7 @@ fun LauncherRightPanel(
     var settingsIndex by remember { mutableIntStateOf(-1) }
     var isDragMode by remember { mutableStateOf(false) }
     var showHiddenDialogVisible by remember { mutableStateOf(false) }
+    var vehicleStatusDialogVisible by remember { mutableStateOf(false) }
 
     var activeDraggingEntry by remember { mutableStateOf<HomeDockEntry?>(null) }
     var activeDraggingX by remember { mutableFloatStateOf(0f) }
@@ -159,7 +155,7 @@ fun LauncherRightPanel(
     val homeIconScale = remember(context, homeIconScaleRevision) { LauncherAppConfigStore.homeIconScale(context) }
 
     val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible || showHiddenDialogVisible ||
-        contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
+        vehicleStatusDialogVisible || contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
     LaunchedEffect(anyLocalDialog) {
         LauncherOverlayElevator.setHoldSource("right_panel_dialog", anyLocalDialog)
     }
@@ -605,6 +601,12 @@ fun LauncherRightPanel(
         )
     }
 
+    if (vehicleStatusDialogVisible) {
+        LauncherVehicleStatusDialog(
+            onDismissRequest = { vehicleStatusDialogVisible = false },
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -685,9 +687,8 @@ fun LauncherRightPanel(
                         value = cabinTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
-                    LauncherMetricCard(
-                        label = stringResource(R.string.launcher_drive_mode_label),
-                        value = driveLabel.ifBlank { "—" },
+                    LauncherVehicleStatusCard(
+                        onClick = { vehicleStatusDialogVisible = true },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -1109,7 +1110,7 @@ private fun LauncherDraggableHomeDockEntry(
                 contentAlignment = Alignment.Center,
             ) {
                 if (isDragMode) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Filled.Add,
                         contentDescription = "Добавить иконку",
                         tint = LauncherColors.AccentCyan.copy(alpha = 0.6f),
@@ -1180,7 +1181,7 @@ private fun LauncherAutostartBadge(modifier: Modifier = Modifier) {
             .background(LauncherColors.AccentCyan),
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.material3.Icon(
+        Icon(
             Icons.Filled.PlayArrow,
             contentDescription = null,
             tint = LauncherColors.SurfaceDark,
@@ -1315,4 +1316,387 @@ private fun LauncherFooterIconPill(
     ) {
         content()
     }
+}
+
+private enum class LauncherVehicleHealthStatus {
+    Ok,       // Зелёный значок OK в кругу
+    Warning,  // Жёлтый значок "восклицательный знак в треугольнике"
+    Error,    // Красный значок Warning! в прямоугольной рамке
+}
+
+@Composable
+private fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
+    val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
+    val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val simShowAll = LauncherDevVehicleState.showAllIndicators
+
+    val alerts = if (simShowAll) alertsState.alerts else alertsState.alerts.filterNot { it.id.isBodyOpenAlert }
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasState
+
+    val hasCritical = simShowAll ||
+        alerts.any { it.severity == LauncherAlertSeverity.Critical } ||
+        tiresState.hasAttention ||
+        adas.fcwActive || adas.aebHint || adas.accTakeOver || adas.adasTakeOver ||
+        adas.srrSystem == LauncherSrrSystemState.Fault
+
+    if (hasCritical) return LauncherVehicleHealthStatus.Error
+
+    val hasWarning = alerts.any { it.severity == LauncherAlertSeverity.Warning } ||
+        adas.hasAnyAlert || adas.rearThreats.hasAny || adas.speedLimitWarning
+
+    if (hasWarning) return LauncherVehicleHealthStatus.Warning
+
+    return LauncherVehicleHealthStatus.Ok
+}
+
+private data class LauncherVehicleStatusDetailItem(
+    val title: String,
+    val description: String,
+    val severity: LauncherAlertSeverity,
+)
+
+private val LauncherAlertId.detailDescription: String
+    get() = when (this) {
+        LauncherAlertId.SeatBeltDriver -> "Водитель не пристёгнут. Зафиксируйте ремень безопасности перед началом движения."
+        LauncherAlertId.SeatBeltPassenger -> "Передний пассажир не пристёгнут. Зафиксируйте ремень безопасности."
+        LauncherAlertId.SeatBeltRearLeft -> "Пассажир на заднем левом сиденье не пристёгнут."
+        LauncherAlertId.SeatBeltRearMid -> "Пассажир на заднем среднем сиденье не пристёгнут."
+        LauncherAlertId.SeatBeltRearRight -> "Пассажир на заднем правом сиденье не пристёгнут."
+        LauncherAlertId.DoorDriver -> "Водительская дверь не закрыта полностью."
+        LauncherAlertId.DoorPassenger -> "Передняя пассажирская дверь не закрыта полностью."
+        LauncherAlertId.DoorRearLeft -> "Задняя левая дверь не закрыта полностью."
+        LauncherAlertId.DoorRearRight -> "Задняя правая дверь не закрыта полностью."
+        LauncherAlertId.HoodOpen -> "Крышка капота неплотно закрыта. Проверьте фиксацию защёлки."
+        LauncherAlertId.TrunkOpen -> "Дверь багажного отделения открыта."
+        LauncherAlertId.TirePressure -> "Давление в колёсах ниже рекомендуемого порога (2.0 bar)."
+        LauncherAlertId.LowFuel -> "Минимальный остаток топлива в баке. Пополните запас топлива."
+        LauncherAlertId.Speeding -> "Текущая скорость превышает установленное ограничение."
+        LauncherAlertId.HighTemperature -> "Высокая температура охлаждающей жидкости. Остановите движение и дайте двигателю остыть."
+        LauncherAlertId.PressBrake -> "Для продолжения или смены режима нажмите педаль тормоза."
+        LauncherAlertId.SysFault -> "Зафиксирована ошибка системы управления ICM или блоков CAN."
+        LauncherAlertId.BattFault -> "Неисправность аккумулятора 12V или системы контроля батареи."
+        LauncherAlertId.ChargeFault -> "Ошибка процесса зарядки АКБ или генератора."
+        LauncherAlertId.HvFaultStop -> "Критический сбой высоковольтной системы HV. Требуется остановка и сервисная диагностика."
+        LauncherAlertId.PowerModeFail -> "Ошибка переключения режимов питания Power Mode."
+        LauncherAlertId.LowBatterySoc -> "Низкий уровень заряда аккумулятора (Low SOC)."
+    }
+
+@Composable
+private fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetailItem> {
+    val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
+    val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val simShowAll = LauncherDevVehicleState.showAllIndicators
+
+    val alerts = if (simShowAll) alertsState.alerts else alertsState.alerts.filterNot { it.id.isBodyOpenAlert }
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasState
+
+    return buildList {
+        alerts.forEach { alert ->
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = stringResource(alert.id.labelRes),
+                    description = alert.id.detailDescription,
+                    severity = alert.severity,
+                )
+            )
+        }
+
+        if (tiresState.hasAttention) {
+            val lowCorners = listOf(
+                "Переднее левое" to tiresState.fl,
+                "Переднее правое" to tiresState.fr,
+                "Заднее левое" to tiresState.rl,
+                "Заднее правое" to tiresState.rr,
+            ).filter { it.second.needsAttention }
+
+            lowCorners.forEach { (cornerName, wheel) ->
+                val press = wheel.pressureBar?.let { "${(it * 10).roundToInt() / 10f} bar" } ?: "—"
+                add(
+                    LauncherVehicleStatusDetailItem(
+                        title = "Низкое давление: $cornerName",
+                        description = "Текущее давление $press ниже норматива (2.0 bar). Проверьте колесо.",
+                        severity = LauncherAlertSeverity.Critical,
+                    )
+                )
+            }
+        }
+
+        if (adas.fcwActive || adas.distanceWarning) {
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = "Риск лобового столкновения (FCW)",
+                    description = "Обнаружено опасное сближение с объектом впереди.",
+                    severity = LauncherAlertSeverity.Critical,
+                )
+            )
+        }
+
+        if (adas.aebHint) {
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = "Экстренное торможение (AEB)",
+                    description = "Задействовано автоматическое экстренное торможение.",
+                    severity = LauncherAlertSeverity.Critical,
+                )
+            )
+        }
+
+        if (adas.accTakeOver || adas.adasTakeOver) {
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = "Требование вмешательства водителя",
+                    description = "Возьмите рулевое управление и задействуйте тормоз.",
+                    severity = LauncherAlertSeverity.Critical,
+                )
+            )
+        }
+
+        if (adas.srrSystem == LauncherSrrSystemState.Fault) {
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = "Ошибка боковых радаров (SRR)",
+                    description = "Неисправность или перекрытие датчиков слепых зон.",
+                    severity = LauncherAlertSeverity.Critical,
+                )
+            )
+        }
+
+        if (adas.rearThreats.hasAny) {
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = "Помеха в слепой зоне (BSD / RCTA)",
+                    description = "Фиксируется транспортное средство в слепой зоне или при поперечном выезде.",
+                    severity = LauncherAlertSeverity.Warning,
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherVehicleStatusCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val status = rememberVehicleHealthStatus()
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(LauncherColors.CardDark)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.launcher_vehicle_status_label),
+            style = MaterialTheme.typography.tboxCaption,
+            color = LauncherColors.TextSecondary,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 2.dp),
+        ) {
+            when (status) {
+                LauncherVehicleHealthStatus.Ok -> {
+                    Text(
+                        text = stringResource(R.string.launcher_vehicle_status_ok),
+                        color = Color(0xFF22C55E),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                LauncherVehicleHealthStatus.Warning -> {
+                    Icon(
+                        imageVector = Icons.Filled.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color(0xFFF59E0B),
+                    )
+                    Text(
+                        text = stringResource(R.string.launcher_vehicle_status_warning),
+                        color = Color(0xFFF59E0B),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                LauncherVehicleHealthStatus.Error -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .border(width = 1.2.dp, color = Color(0xFFEF4444), shape = RoundedCornerShape(4.dp))
+                            .background(Color(0xFFEF4444).copy(alpha = 0.16f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Warning!",
+                            color = Color(0xFFEF4444),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherVehicleStatusDialog(
+    onDismissRequest: () -> Unit,
+) {
+    val items = rememberVehicleStatusDetailItems()
+    val status = rememberVehicleHealthStatus()
+
+    LauncherDarkAlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Состояние систем авто",
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                when (status) {
+                    LauncherVehicleHealthStatus.Ok -> {
+                        Text(
+                            text = "В норме",
+                            color = Color(0xFF22C55E),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    LauncherVehicleHealthStatus.Warning -> {
+                        Text(
+                            text = "Внимание",
+                            color = Color(0xFFF59E0B),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    LauncherVehicleHealthStatus.Error -> {
+                        Text(
+                            text = "Ошибка!",
+                            color = Color(0xFFEF4444),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (items.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E).copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "✓",
+                                    color = Color(0xFF22C55E),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Text(
+                                text = "Тут нечего смотреть, у Дашки всё отлично!",
+                                color = LauncherColors.TextPrimary,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                } else {
+                    items.forEach { item ->
+                        val tint = when (item.severity) {
+                            LauncherAlertSeverity.Critical -> Color(0xFFEF4444)
+                            LauncherAlertSeverity.Warning -> Color(0xFFF59E0B)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(LauncherColors.SurfaceDark)
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(tint.copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Warning,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = tint,
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = item.title,
+                                    color = tint,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = item.description,
+                                    color = LauncherColors.TextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Normal,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(stringResource(R.string.action_close), color = LauncherColors.AccentCyan)
+            }
+        },
+    )
 }

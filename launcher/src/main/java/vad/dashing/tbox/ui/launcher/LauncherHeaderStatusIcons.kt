@@ -21,6 +21,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -55,15 +56,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val StatusIconTint = LauncherColors.TextSecondary
 
@@ -123,26 +124,40 @@ internal fun LauncherTopHeaderBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .fillMaxHeight()
             .onGloballyPositioned { coordinates ->
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.topHeaderBottomPx = rect.bottom.toInt()
             },
+        contentAlignment = Alignment.Center,
     ) {
-        // Left side: Temp, fuel, battery voltage
+        // Left side: ADAS assist zone indicators
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            LauncherAdasStrip(canViewModel = canViewModel)
+        }
+
+        // Center: Temp, Fuel, Voltage, CPU, RAM centered both horizontally and vertically
         Row(
-            modifier = Modifier.align(Alignment.CenterStart),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxHeight(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
                 color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier.clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -156,14 +171,14 @@ internal fun LauncherTopHeaderBar(
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_fuel),
                     contentDescription = stringResource(R.string.launcher_vs_fuel),
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(16.dp),
                     colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
                 )
                 Text(
                     text = fuelText,
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary,
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                 )
             }
@@ -187,36 +202,35 @@ internal fun LauncherTopHeaderBar(
                     fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
                 )
             }
-        }
-
-        // Center side: CPU and RAM usage percentage
-        Row(
-            modifier = Modifier.align(Alignment.Center),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+            Text(
+                text = "·",
+                color = StatusIconTint.copy(alpha = 0.5f),
+                fontSize = 14.sp,
+            )
             Text(
                 text = "CPU $cpuUsage%",
                 color = StatusIconTint,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
             )
             Text(
                 text = "·",
                 color = StatusIconTint.copy(alpha = 0.5f),
-                fontSize = 13.sp,
+                fontSize = 14.sp,
             )
             Text(
                 text = "RAM $ramUsage%",
                 color = StatusIconTint,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
             )
         }
 
         // Right side: Status icons + Time/Date
         Row(
-            modifier = Modifier.align(Alignment.CenterEnd),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -249,6 +263,7 @@ internal fun LauncherHeaderStatusIcons(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        LauncherVehicleAlertsStrip()
         Box(
             modifier = Modifier
                 .size(9.dp)
@@ -257,16 +272,19 @@ internal fun LauncherHeaderStatusIcons(
                     if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
                 ),
         )
+        val bluetoothTint = if (bluetoothConnected) {
+            if (LauncherThemeState.darkTheme) Color.White else Color.Black
+        } else {
+            LauncherColors.TextMuted
+        }
+        Image(
+            painter = painterResource(R.drawable.ic_launcher_bluetooth),
+            contentDescription = stringResource(R.string.launcher_vs_bluetooth),
+            modifier = Modifier.size(18.dp),
+            colorFilter = ColorFilter.tint(bluetoothTint),
+        )
         if (wifiConnected) {
             WifiArcsIcon(level = wifiLevel.coerceIn(1, 4), tint = StatusIconTint)
-        }
-        if (bluetoothConnected) {
-            Image(
-                painter = painterResource(R.drawable.ic_launcher_bluetooth),
-                contentDescription = stringResource(R.string.launcher_vs_bluetooth),
-                modifier = Modifier.size(18.dp),
-                colorFilter = ColorFilter.tint(StatusIconTint),
-            )
         }
         if (tboxConnected) {
             Row(
@@ -366,7 +384,7 @@ private fun rememberWifiConnected(): Boolean {
             }
 
             override fun onCapabilitiesChanged(
-                network: android.net.Network,
+                network: Network,
                 networkCapabilities: NetworkCapabilities,
             ) {
                 wifiConnected = readWifiConnected(cm)

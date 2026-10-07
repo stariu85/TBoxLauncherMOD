@@ -1,13 +1,23 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.SystemClock
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,37 +25,77 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.theme.tboxCaption
+import kotlin.math.roundToInt
+
+private const val FLASH_DURATION_MS = 5_000L
+
+@Composable
+private fun rememberAdasFlashingAlpha(key: String, activationTimeMs: Long): Float {
+    var isFlashing by remember(key, activationTimeMs) {
+        mutableStateOf((SystemClock.uptimeMillis() - activationTimeMs) < FLASH_DURATION_MS)
+    }
+
+    LaunchedEffect(key, activationTimeMs) {
+        val elapsed = SystemClock.uptimeMillis() - activationTimeMs
+        val remainingMs = FLASH_DURATION_MS - elapsed
+        if (remainingMs > 0) {
+            isFlashing = true
+            delay(remainingMs)
+            isFlashing = false
+        } else {
+            isFlashing = false
+        }
+    }
+
+    return if (isFlashing) {
+        val infiniteTransition = rememberInfiniteTransition(label = "adas_flash_$key")
+        val animatedAlpha by infiniteTransition.animateFloat(
+            initialValue = 1.0f,
+            targetValue = 0.15f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 350, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "adas_alpha_$key",
+        )
+        animatedAlpha
+    } else {
+        1.0f
+    }
+}
 
 /** Compact ADAS status chips aligned with launcher palette. */
 @Composable
@@ -53,29 +103,78 @@ fun LauncherAdasStrip(
     canViewModel: CanDataViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val topBarRevision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
+    val topBarHeightDp = remember(context, topBarRevision) {
+        LauncherAppConfigStore.topBarHeightDp(context)
+    }
+
+    val scale = (topBarHeightDp / 40f).coerceIn(0.5f, 2.0f)
+    val iconBoxSizeDp = (28 * scale).roundToInt().coerceIn(14, 56)
+    val innerIconSizeDp = (18 * scale).roundToInt().coerceIn(9, 36)
+    val speedFontSizeSp = (11 * scale).roundToInt().coerceIn(7, 22)
+    val chipFontSizeSp = (10 * scale).roundToInt().coerceIn(7, 20)
+    val alertIconSizeDp = (12 * scale).roundToInt().coerceIn(8, 24)
+    val paddingHDp = (8 * scale).roundToInt().coerceIn(3, 16)
+    val paddingVDp = (4 * scale).roundToInt().coerceIn(2, 10)
+    val spacingDp = (6 * scale).roundToInt().coerceIn(2, 12)
+
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
-    val adas by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+    val showAll = LauncherDevVehicleState.showAllIndicators
 
-    val pasOn = parkingRadar is MbCanBinaryState.On
-    val cruiseActive = (cruiseSpeed ?: 0u) > 0u
-    val showAcc = adas.accActive || adas.accStandby
+    val pasOn = (parkingRadar is MbCanBinaryState.On) || showAll
+    val cruiseActive = (cruiseSpeed ?: 0u) > 0u || showAll
+    val showAcc = adas.accActive || adas.accStandby || showAll
     val showAlerts = adas.fcwActive || adas.distanceWarning || adas.aebHint ||
-        adas.accTakeOver || adas.adasTakeOver || adas.accOverride || adas.speedLimitWarning
-    val showLanes = adas.laneAssistEngaged
-    val showSla = adas.speedLimitKmh != null
-    val showHma = adas.hma != LauncherAdasAssistIcon.Hidden
-    val showTja = adas.tja != LauncherAdasAssistIcon.Hidden
-    val showSrr = adas.srrSystem != LauncherSrrSystemState.Hidden
+        adas.accTakeOver || adas.adasTakeOver || adas.accOverride || adas.speedLimitWarning || showAll
+    val showLanes = adas.laneAssistEngaged || showAll
+    val showSla = adas.speedLimitKmh != null || showAll
+    val showHma = adas.hma != LauncherAdasAssistIcon.Hidden || showAll
+    val showTja = adas.tja != LauncherAdasAssistIcon.Hidden || showAll
+    val showSrr = adas.srrSystem != LauncherSrrSystemState.Hidden || showAll
     if (!pasOn && !cruiseActive && !showAcc && !showAlerts &&
         !showLanes && !showSla && !showHma && !showTja && !showSrr
     ) {
         return
     }
 
+    val activeKeys = buildSet {
+        if (pasOn) add("pas")
+        if (showHma) add("hma")
+        if (showTja) add("tja")
+        if (adas.srrSystem == LauncherSrrSystemState.Fault || showAll) add("srr_fault")
+        if (showAcc || cruiseActive) add("acc")
+        if (adas.speedLimitKmh != null) add("speed_limit")
+        if (adas.fcwActive || adas.distanceWarning || showAll) add("fcw")
+        if (adas.aebHint || showAll) add("aeb")
+        if (adas.accTakeOver || adas.adasTakeOver || showAll) add("takeover")
+        if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes || showAll) add("lka")
+        if (adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off || showAll) add("bsd_l")
+        if (adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off || showAll) add("bsd_r")
+        if (adas.rearThreats.rctaLeft != LauncherRearThreatLevel.Off || showAll) add("rcta_l")
+        if (adas.rearThreats.rctaRight != LauncherRearThreatLevel.Off || showAll) add("rcta_r")
+        if (adas.rearThreats.dowLeft != LauncherRearThreatLevel.Off || showAll) add("dow_l")
+        if (adas.rearThreats.dowRight != LauncherRearThreatLevel.Off || showAll) add("dow_r")
+        if (adas.rearThreats.rcw != LauncherRearThreatLevel.Off || showAll) add("rcw")
+    }
+
+    val activationTimes = remember { mutableMapOf<String, Long>() }
+    SideEffect {
+        activationTimes.keys.retainAll(activeKeys)
+        val now = SystemClock.uptimeMillis()
+        for (key in activeKeys) {
+            if (!activationTimes.containsKey(key)) {
+                activationTimes[key] = now
+            }
+        }
+    }
+
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacingDp.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (pasOn) {
@@ -83,6 +182,10 @@ fun LauncherAdasStrip(
                 contentDescription = stringResource(R.string.launcher_adas_pas_on),
                 tint = LauncherColors.AccentBlue,
                 iconRes = R.drawable.ic_widget_parking_radar,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "pas",
+                activationTimeMs = activationTimes["pas"] ?: 0L,
             )
         }
         if (showHma) {
@@ -90,6 +193,10 @@ fun LauncherAdasStrip(
                 contentDescription = stringResource(R.string.launcher_adas_hma),
                 tint = assistTint(adas.hma),
                 iconRes = R.drawable.ic_adas_hma,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "hma",
+                activationTimeMs = activationTimes["hma"] ?: 0L,
             )
         }
         if (showTja) {
@@ -97,13 +204,21 @@ fun LauncherAdasStrip(
                 contentDescription = stringResource(R.string.launcher_adas_tja),
                 tint = assistTint(adas.tja),
                 iconRes = R.drawable.ic_adas_tja,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "tja",
+                activationTimeMs = activationTimes["tja"] ?: 0L,
             )
         }
-        if (adas.srrSystem == LauncherSrrSystemState.Fault) {
+        if (adas.srrSystem == LauncherSrrSystemState.Fault || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_srr_fault),
                 tint = Color(0xFFEF4444),
                 iconRes = R.drawable.ic_adas_fcw,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "srr_fault",
+                activationTimeMs = activationTimes["srr_fault"] ?: 0L,
             )
         }
         if (showAcc) {
@@ -113,41 +228,81 @@ fun LauncherAdasStrip(
                 adas.accMode == LauncherAdasAccMode.ActiveBlue -> LauncherColors.AccentCyan
                 else -> LauncherColors.AccentBlue
             }
+            val accTime = activationTimes["acc"] ?: 0L
             adas.accSetSpeedKmh?.let { speed ->
-                LauncherAdasSpeedBadge(speed = speed.toString(), tint = accTint)
+                LauncherAdasSpeedBadge(
+                    speed = speed.toString(),
+                    tint = accTint,
+                    fontSizeSp = speedFontSizeSp,
+                    paddingHDp = paddingHDp,
+                    paddingVDp = paddingVDp,
+                    activationKey = "acc",
+                    activationTimeMs = accTime,
+                )
             } ?: LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_acc_standby),
                 tint = accTint,
                 iconRes = R.drawable.ic_launcher_cruise,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "acc",
+                activationTimeMs = accTime,
             )
         } else if (cruiseActive) {
-            LauncherAdasSpeedBadge(speed = cruiseSpeed.toString())
+            LauncherAdasSpeedBadge(
+                speed = cruiseSpeed.toString(),
+                fontSizeSp = speedFontSizeSp,
+                paddingHDp = paddingHDp,
+                paddingVDp = paddingVDp,
+                activationKey = "acc",
+                activationTimeMs = activationTimes["acc"] ?: 0L,
+            )
         }
         adas.speedLimitKmh?.let { limit ->
             LauncherAdasSpeedBadge(
                 speed = limit.toString(),
                 tint = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
+                fontSizeSp = speedFontSizeSp,
+                paddingHDp = paddingHDp,
+                paddingVDp = paddingVDp,
+                activationKey = "speed_limit",
+                activationTimeMs = activationTimes["speed_limit"] ?: 0L,
             )
         }
-        // Camera TSR is drawn as the round sign over the 3D area, not as a "TSR" chip.
-        if (adas.fcwActive || adas.distanceWarning) {
+        if (adas.fcwActive || adas.distanceWarning || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_fcw),
                 tint = Color(0xFFEF4444),
                 iconRes = R.drawable.ic_adas_fcw,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "fcw",
+                activationTimeMs = activationTimes["fcw"] ?: 0L,
             )
         }
-        if (adas.aebHint) {
+        if (adas.aebHint || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_aeb),
                 tint = Color(0xFFEF4444),
                 iconRes = R.drawable.ic_adas_aeb,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "aeb",
+                activationTimeMs = activationTimes["aeb"] ?: 0L,
             )
         }
-        if (adas.accTakeOver || adas.adasTakeOver) {
-            LauncherAdasAlertChip(text = stringResource(R.string.launcher_adas_takeover))
+        if (adas.accTakeOver || adas.adasTakeOver || showAll) {
+            LauncherAdasAlertChip(
+                text = stringResource(R.string.launcher_adas_takeover),
+                fontSizeSp = chipFontSizeSp,
+                iconSizeDp = alertIconSizeDp,
+                paddingHDp = paddingHDp,
+                paddingVDp = paddingVDp,
+                activationKey = "takeover",
+                activationTimeMs = activationTimes["takeover"] ?: 0L,
+            )
         }
-        if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes) {
+        if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_lka),
                 tint = when {
@@ -155,38 +310,59 @@ fun LauncherAdasStrip(
                     else -> LauncherColors.AccentBlue
                 },
                 iconRes = R.drawable.ic_adas_lka,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "lka",
+                activationTimeMs = activationTimes["lka"] ?: 0L,
+            )
+        }
+        if (adas.rearThreats.hasAny || showAll) {
+            LauncherRearThreatChips(
+                threats = adas.rearThreats,
+                activationTimes = activationTimes,
+                fontSizeSp = chipFontSizeSp,
+                alertIconSizeDp = alertIconSizeDp,
+                paddingHDp = paddingHDp,
+                paddingVDp = paddingVDp,
             )
         }
     }
 }
 
 @Composable
-private fun LauncherRearThreatChips(threats: LauncherRearThreats) {
+private fun LauncherRearThreatChips(
+    threats: LauncherRearThreats,
+    activationTimes: Map<String, Long>,
+    fontSizeSp: Int = 10,
+    alertIconSizeDp: Int = 12,
+    paddingHDp: Int = 8,
+    paddingVDp: Int = 4,
+) {
     fun tint(level: LauncherRearThreatLevel): Color = when (level) {
         LauncherRearThreatLevel.Alert -> Color(0xFFEF4444)
         LauncherRearThreatLevel.Caution -> Color(0xFFF59E0B)
         LauncherRearThreatLevel.Off -> LauncherColors.TextSecondary
     }
     if (threats.bsdLeft != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_bsd_left), tint(threats.bsdLeft))
+        LauncherAdasChip(stringResource(R.string.launcher_adas_bsd_left), tint(threats.bsdLeft), fontSizeSp, paddingHDp, paddingVDp, "bsd_l", activationTimes["bsd_l"] ?: 0L)
     }
     if (threats.bsdRight != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_bsd_right), tint(threats.bsdRight))
+        LauncherAdasChip(stringResource(R.string.launcher_adas_bsd_right), tint(threats.bsdRight), fontSizeSp, paddingHDp, paddingVDp, "bsd_r", activationTimes["bsd_r"] ?: 0L)
     }
     if (threats.rctaLeft != LauncherRearThreatLevel.Off) {
-        LauncherAdasAlertChip(stringResource(R.string.launcher_adas_rcta_left))
+        LauncherAdasAlertChip(stringResource(R.string.launcher_adas_rcta_left), fontSizeSp, alertIconSizeDp, paddingHDp, paddingVDp, "rcta_l", activationTimes["rcta_l"] ?: 0L)
     }
     if (threats.rctaRight != LauncherRearThreatLevel.Off) {
-        LauncherAdasAlertChip(stringResource(R.string.launcher_adas_rcta_right))
+        LauncherAdasAlertChip(stringResource(R.string.launcher_adas_rcta_right), fontSizeSp, alertIconSizeDp, paddingHDp, paddingVDp, "rcta_r", activationTimes["rcta_r"] ?: 0L)
     }
     if (threats.dowLeft != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_dow_left), tint(threats.dowLeft))
+        LauncherAdasChip(stringResource(R.string.launcher_adas_dow_left), tint(threats.dowLeft), fontSizeSp, paddingHDp, paddingVDp, "dow_l", activationTimes["dow_l"] ?: 0L)
     }
     if (threats.dowRight != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_dow_right), tint(threats.dowRight))
+        LauncherAdasChip(stringResource(R.string.launcher_adas_dow_right), tint(threats.dowRight), fontSizeSp, paddingHDp, paddingVDp, "dow_r", activationTimes["dow_r"] ?: 0L)
     }
     if (threats.rcw != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_rcw), tint(threats.rcw))
+        LauncherAdasChip(stringResource(R.string.launcher_adas_rcw), tint(threats.rcw), fontSizeSp, paddingHDp, paddingVDp, "rcw", activationTimes["rcw"] ?: 0L)
     }
 }
 
@@ -202,10 +378,16 @@ private fun LauncherAdasIcon(
     contentDescription: String,
     tint: Color,
     iconRes: Int,
+    iconBoxSizeDp: Int = 28,
+    innerIconSizeDp: Int = 18,
+    activationKey: String? = null,
+    activationTimeMs: Long = 0L,
 ) {
+    val alpha = if (activationKey != null) rememberAdasFlashingAlpha(activationKey, activationTimeMs) else 1.0f
     Box(
         modifier = Modifier
-            .size(28.dp)
+            .graphicsLayer { this.alpha = alpha }
+            .size(iconBoxSizeDp.dp)
             .clip(CircleShape)
             .background(tint.copy(alpha = 0.14f)),
         contentAlignment = Alignment.Center,
@@ -213,7 +395,7 @@ private fun LauncherAdasIcon(
         Image(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(innerIconSizeDp.dp),
             colorFilter = ColorFilter.tint(tint),
             contentScale = ContentScale.Fit,
         )
@@ -224,19 +406,26 @@ private fun LauncherAdasIcon(
 private fun LauncherAdasSpeedBadge(
     speed: String,
     tint: Color = LauncherColors.AccentCyan,
+    fontSizeSp: Int = 11,
+    paddingHDp: Int = 8,
+    paddingVDp: Int = 4,
+    activationKey: String? = null,
+    activationTimeMs: Long = 0L,
 ) {
+    val alpha = if (activationKey != null) rememberAdasFlashingAlpha(activationKey, activationTimeMs) else 1.0f
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .graphicsLayer { this.alpha = alpha }
+            .clip(RoundedCornerShape((paddingVDp * 2).dp))
             .background(tint.copy(alpha = 0.14f))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = paddingHDp.dp, vertical = paddingVDp.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = speed,
             style = MaterialTheme.typography.tboxCaption,
             color = tint,
-            fontSize = 11.sp,
+            fontSize = fontSizeSp.sp,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -246,18 +435,25 @@ private fun LauncherAdasSpeedBadge(
 private fun LauncherAdasChip(
     text: String,
     tint: Color,
+    fontSizeSp: Int = 10,
+    paddingHDp: Int = 8,
+    paddingVDp: Int = 4,
+    activationKey: String? = null,
+    activationTimeMs: Long = 0L,
 ) {
+    val alpha = if (activationKey != null) rememberAdasFlashingAlpha(activationKey, activationTimeMs) else 1.0f
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .graphicsLayer { this.alpha = alpha }
+            .clip(RoundedCornerShape((paddingVDp * 2).dp))
             .background(tint.copy(alpha = 0.12f))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = paddingHDp.dp, vertical = paddingVDp.dp),
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.tboxCaption,
             color = tint,
-            fontSize = 10.sp,
+            fontSize = fontSizeSp.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -274,13 +470,13 @@ fun BoxScope.LauncherAdasTimeGapFlash(
     tint: Color = LauncherColors.AccentCyan,
 ) {
     val level = timeGapLevel ?: return
-    var now by remember { mutableLongStateOf(android.os.SystemClock.uptimeMillis()) }
+    var now by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
     LaunchedEffect(timeGapFlashUntilMs) {
-        while (android.os.SystemClock.uptimeMillis() < timeGapFlashUntilMs) {
+        while (SystemClock.uptimeMillis() < timeGapFlashUntilMs) {
             delay(160)
-            now = android.os.SystemClock.uptimeMillis()
+            now = SystemClock.uptimeMillis()
         }
-        now = android.os.SystemClock.uptimeMillis()
+        now = SystemClock.uptimeMillis()
     }
     if (timeGapFlashUntilMs <= now) return
     val bars = (level + 1).coerceIn(1, 3)
@@ -302,7 +498,7 @@ fun BoxScope.LauncherAdasTimeGapFlash(
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTimeGapSchema(
+private fun DrawScope.drawTimeGapSchema(
     bars: Int,
     tint: Color,
 ) {
@@ -378,29 +574,39 @@ private fun LauncherAdasTimeGapChip(
 }
 
 @Composable
-private fun LauncherAdasAlertChip(text: String) {
+private fun LauncherAdasAlertChip(
+    text: String,
+    fontSizeSp: Int = 10,
+    iconSizeDp: Int = 12,
+    paddingHDp: Int = 8,
+    paddingVDp: Int = 4,
+    activationKey: String? = null,
+    activationTimeMs: Long = 0L,
+) {
+    val alpha = if (activationKey != null) rememberAdasFlashingAlpha(activationKey, activationTimeMs) else 1.0f
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .graphicsLayer { this.alpha = alpha }
+            .clip(RoundedCornerShape((paddingVDp * 2).dp))
             .background(Color(0xFFEF4444).copy(alpha = 0.16f))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = paddingHDp.dp, vertical = paddingVDp.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy((paddingHDp / 2).coerceAtLeast(2).dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = Icons.Filled.Warning,
                 contentDescription = null,
-                modifier = Modifier.size(12.dp),
+                modifier = Modifier.size(iconSizeDp.dp),
                 tint = Color(0xFFEF4444),
             )
             Text(
                 text = text,
                 style = MaterialTheme.typography.tboxCaption,
                 color = Color(0xFFEF4444),
-                fontSize = 10.sp,
+                fontSize = fontSizeSp.sp,
                 fontWeight = FontWeight.Bold,
             )
         }

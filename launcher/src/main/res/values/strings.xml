@@ -147,9 +147,9 @@
     <string name="launcher_adas_time_gap_label">Дист.</string>
     <string name="launcher_adas_tsr_chip">TSR %1$d</string>
     <string name="launcher_adas_object_chip">%1$s · %2$d м</string>
-    <string name="launcher_adas_fcw">Столкновение</string>
+    <string name="launcher_adas_fcw">СТОЛКНОВЕНИЕ!</string>
     <string name="launcher_adas_aeb">Торможение</string>
-    <string name="launcher_adas_takeover">Руль</string>
+    <string name="launcher_adas_takeover">ТОРМОЗИ!</string>
     <string name="launcher_adas_lka">Удержание полосы</string>
     <string name="launcher_adas_obj_car">Авто</string>
     <string name="launcher_adas_obj_truck">Грузовик</string>
@@ -375,6 +375,11 @@
     <string name="launcher_vs_section_simulation">Симуляция</string>
     <string name="launcher_vs_section_simulation_sub">Тестовые данные для интерфейса</string>
     <string name="launcher_vs_sim_hint">Эти значения перекрывают реальные показания CAN и отображаются на 3D-модели, бейджах шин и движении.</string>
+    <string name="launcher_vs_sim_all_indicators">Показать все индикаторы</string>
+    <string name="launcher_vehicle_status_label">Состояние авто</string>
+    <string name="launcher_vehicle_status_ok">В норме</string>
+    <string name="launcher_vehicle_status_warning">Внимание</string>
+    <string name="launcher_vehicle_status_error">Ошибка!</string>
     <string name="launcher_vs_sim_door_fl">Дверь передняя левая</string>
     <string name="launcher_vs_sim_door_fr">Дверь передняя правая</string>
     <string name="launcher_vs_sim_door_rl">Дверь задняя левая</string>

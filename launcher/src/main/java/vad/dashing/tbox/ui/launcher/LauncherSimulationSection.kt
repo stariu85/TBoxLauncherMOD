@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,10 +24,8 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -116,6 +113,11 @@ fun SimulationSectionCard(
                     color = SimulationRed,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_all_indicators),
+                    active = LauncherDevVehicleState.showAllIndicators,
+                    onClick = { LauncherDevVehicleState.toggleShowAllIndicators() },
                 )
                 SimulationToggleRow(
                     label = stringResource(R.string.launcher_vs_sim_door_fl),

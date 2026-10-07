@@ -12,6 +12,7 @@ import kotlin.math.roundToInt
 /** Debug overrides for launcher vehicle animation when not in the car. */
 object LauncherDevVehicleState {
     var simulateEnabled by mutableStateOf(false)
+    var showAllIndicators by mutableStateOf(false)
     /**
      * Preview steer animation from the physical wheel while stationary (real CAN steer, speed visual = 0).
      */
@@ -151,9 +152,117 @@ object LauncherDevVehicleState {
         LauncherRearThreatLevel.Alert -> LauncherRearThreatLevel.Off
     }
 
+    fun toggleShowAllIndicators() {
+        applyShowAllIndicators(!showAllIndicators)
+    }
+
+    fun applyShowAllIndicators(enabled: Boolean) {
+        showAllIndicators = enabled
+        if (enabled) {
+            simulateEnabled = true
+            motionPreviewEnabled = false
+            doorFlOpen = true
+            doorFrOpen = true
+            doorRlOpen = true
+            doorRrOpen = true
+            tailgateOpen = true
+            seatBeltDriver = true
+            seatBeltPassenger = true
+            lowBeam = true
+            highBeam = true
+            adasCruiseActive = true
+            adasLanesActive = true
+            adasBsdLeft = LauncherRearThreatLevel.Alert
+            adasBsdRight = LauncherRearThreatLevel.Alert
+            adasFrontObjectM = 35f
+            adasFrontObjectType = LauncherAdasFrontObjectType.Car
+            setPdcFrontGroup(20f)
+            setPdcRearGroup(20f)
+            tirePressureOverride = mapOf(
+                LauncherWheelCorner.FL to 1.5f,
+                LauncherWheelCorner.FR to 1.5f,
+                LauncherWheelCorner.RL to 1.5f,
+                LauncherWheelCorner.RR to 1.5f,
+            )
+        } else {
+            lowBeam = false
+            highBeam = false
+            doorFlOpen = false
+            doorFrOpen = false
+            doorRlOpen = false
+            doorRrOpen = false
+            tailgateOpen = false
+            seatBeltDriver = false
+            seatBeltPassenger = false
+            adasCruiseActive = false
+            adasLanesActive = false
+            adasBsdLeft = LauncherRearThreatLevel.Off
+            adasBsdRight = LauncherRearThreatLevel.Off
+            adasFrontObjectM = 0f
+            pdcChannels.clear()
+            tirePressureOverride = emptyMap()
+        }
+        LauncherVehicleAlertsRepository.refresh()
+    }
+
     /** Simulated ADAS state, or null when no ADAS sim values are set (live data shows). */
     fun adasStateOrNull(): LauncherAdasState? {
         if (!simulateEnabled) return null
+        if (showAllIndicators) {
+            return LauncherAdasState(
+                accMode = LauncherAdasAccMode.ActiveBlue,
+                accSetSpeedKmh = 90,
+                accActive = true,
+                accStandby = false,
+                accOverride = true,
+                accTakeOver = true,
+                timeGapLevel = 2,
+                frontObject = LauncherAdasFrontObject(
+                    valid = true,
+                    type = LauncherAdasFrontObjectType.Car,
+                    objectDxM = 35,
+                    targetDxM = 35,
+                ),
+                fcwActive = true,
+                distanceWarning = true,
+                aebHint = true,
+                leftLane = LauncherAdasLaneVisualization.Warning,
+                rightLane = LauncherAdasLaneVisualization.Warning,
+                lkaStatusCode = 1,
+                adasTakeOver = true,
+                speedLimitKmh = 90,
+                speedLimitWarning = true,
+                tsr = LauncherAdasTsrSign(valid = true, speedLimitKmh = 90),
+                rearThreats = LauncherRearThreats(
+                    bsdLeft = LauncherRearThreatLevel.Alert,
+                    bsdRight = LauncherRearThreatLevel.Alert,
+                    rctaLeft = LauncherRearThreatLevel.Alert,
+                    rctaRight = LauncherRearThreatLevel.Alert,
+                    dowLeft = LauncherRearThreatLevel.Alert,
+                    dowRight = LauncherRearThreatLevel.Alert,
+                    rcw = LauncherRearThreatLevel.Alert,
+                ),
+                pdc = LauncherPdcZones(
+                    frontSideLeftCm = 30,
+                    frontLeftCm = 30,
+                    frontMidLeftCm = 30,
+                    frontMidRightCm = 30,
+                    frontRightCm = 30,
+                    frontSideRightCm = 30,
+                    rearSideLeftCm = 30,
+                    rearLeftCm = 30,
+                    rearMidLeftCm = 30,
+                    rearMidRightCm = 30,
+                    rearRightCm = 30,
+                    rearSideRightCm = 30,
+                ),
+                hma = LauncherAdasAssistIcon.Active,
+                tja = LauncherAdasAssistIcon.Active,
+                srrSystem = LauncherSrrSystemState.Fault,
+                hasAnyAlert = true,
+                hasAnyAssist = true,
+            )
+        }
         val frontM = adasFrontObjectM.roundToInt()
         val anySet = adasCruiseActive || adasLanesActive ||
             adasBsdLeft != LauncherRearThreatLevel.Off ||
@@ -337,6 +446,7 @@ object LauncherDevVehicleState {
     }
 
     fun resetSimulation() {
+        showAllIndicators = false
         simulateEnabled = false
         motionPreviewEnabled = false
         speedKmh = 0f

@@ -1,7 +1,5 @@
 package vad.dashing.tbox.ui.launcher
 
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Proxy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,6 +13,8 @@ import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.MbCanAvailability
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.VehicleBodyState
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Proxy
 
 /**
  * Aggregates OEM-style vehicle reminders for the launcher:
@@ -261,28 +261,45 @@ object LauncherVehicleAlertsRepository {
             fun add(id: LauncherAlertId, on: Boolean, severity: LauncherAlertSeverity) {
                 if (on) add(LauncherVehicleAlert(id, severity))
             }
-            add(LauncherAlertId.SeatBeltDriver, driverBelt || LauncherDevVehicleState.seatBeltDriver, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.SeatBeltPassenger, passengerBelt || LauncherDevVehicleState.seatBeltPassenger, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.SeatBeltRearLeft, rearLeftBelt, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.SeatBeltRearMid, rearMidBelt, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.SeatBeltRearRight, rearRightBelt, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.DoorDriver, body.doorFlOpen, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.DoorPassenger, body.doorFrOpen, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.DoorRearLeft, body.doorRlOpen, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.DoorRearRight, body.doorRrOpen, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.TirePressure, tires.hasAttention, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.LowFuel, lowFuel, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.PressBrake, pressBrake, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.SysFault, sysFault, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.BattFault, battFault || packThermal, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.ChargeFault, chargeFault, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.HvFaultStop, hvFaultStop, LauncherAlertSeverity.Critical)
-            add(LauncherAlertId.PowerModeFail, powerModeFail, LauncherAlertSeverity.Warning)
-            add(LauncherAlertId.LowBatterySoc, lowSoc, LauncherAlertSeverity.Warning)
+            if (LauncherDevVehicleState.showAllIndicators) {
+                LauncherAlertId.entries.forEach { id ->
+                    val severity = when (id) {
+                        LauncherAlertId.SeatBeltDriver,
+                        LauncherAlertId.SeatBeltPassenger,
+                        LauncherAlertId.TirePressure,
+                        LauncherAlertId.HighTemperature,
+                        LauncherAlertId.SysFault,
+                        LauncherAlertId.BattFault,
+                        LauncherAlertId.ChargeFault,
+                        LauncherAlertId.HvFaultStop -> LauncherAlertSeverity.Critical
+                        else -> LauncherAlertSeverity.Warning
+                    }
+                    add(LauncherVehicleAlert(id, severity))
+                }
+            } else {
+                add(LauncherAlertId.SeatBeltDriver, driverBelt || LauncherDevVehicleState.seatBeltDriver, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.SeatBeltPassenger, passengerBelt || LauncherDevVehicleState.seatBeltPassenger, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.SeatBeltRearLeft, rearLeftBelt, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.SeatBeltRearMid, rearMidBelt, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.SeatBeltRearRight, rearRightBelt, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.DoorDriver, body.doorFlOpen, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.DoorPassenger, body.doorFrOpen, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.DoorRearLeft, body.doorRlOpen, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.DoorRearRight, body.doorRrOpen, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.TirePressure, tires.hasAttention, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.LowFuel, lowFuel, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.PressBrake, pressBrake, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.SysFault, sysFault, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.BattFault, battFault || packThermal, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.ChargeFault, chargeFault, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.HvFaultStop, hvFaultStop, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.PowerModeFail, powerModeFail, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.LowBatterySoc, lowSoc, LauncherAlertSeverity.Warning)
+            }
         }
         _state.value = LauncherVehicleAlertsState(list)
     }
