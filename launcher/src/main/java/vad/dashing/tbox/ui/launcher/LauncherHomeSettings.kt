@@ -54,7 +54,6 @@ internal fun LauncherHomeSettingsContent() {
     CarModelScaleSlider()
     SidebarWidthSlider()
     AdasDistanceTextSizeSlider()
-    AdasDistanceOffsetSlider()
     NavButtonsToggle()
     FloatingHomeToggle()
     FloatingHomeSizeSlider()
@@ -587,49 +586,7 @@ private fun AdasDistanceTextSizeSlider() {
     }
 }
 
-@Composable
-private fun AdasDistanceOffsetSlider() {
-    val context = LocalContext.current
-    var offsetRatio by remember {
-        mutableFloatStateOf(LauncherAppConfigStore.adasDistanceLabelOffset(context))
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.launcher_adas_distance_offset_title),
-                color = LauncherColors.TextPrimary,
-                fontSize = 16.sp,
-            )
-            Text(
-                text = "${(offsetRatio * 100f).roundToInt()}%",
-                color = LauncherColors.TextSecondary,
-                fontSize = 16.sp,
-            )
-        }
-        Text(
-            text = stringResource(R.string.launcher_adas_distance_offset_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-        Slider(
-            value = offsetRatio,
-            onValueChange = { next ->
-                offsetRatio = next
-                LauncherAppConfigStore.setAdasDistanceLabelOffset(context, next)
-            },
-            valueRange = ADAS_DISTANCE_LABEL_OFFSET_MIN..ADAS_DISTANCE_LABEL_OFFSET_MAX,
-            colors = SliderDefaults.colors(
-                thumbColor = LauncherColors.AccentCyan,
-                activeTrackColor = LauncherColors.AccentCyan,
-                inactiveTrackColor = LauncherColors.TextMuted,
-            ),
-        )
-    }
-}
+
 
 @Composable
 fun CruiseControlSettingsContent() {

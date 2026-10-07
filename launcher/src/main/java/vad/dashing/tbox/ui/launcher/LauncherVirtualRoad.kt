@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
-import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.isActive
 import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.R
 import kotlin.math.abs
@@ -355,7 +355,7 @@ private fun DrawScope.drawVirtualRoad(
     leadSprites: LeadObjectSprites,
     leadVisual: LeadObjectVisual?,
     distanceTextSizeSp: Int = 14,
-    distanceLabelOffsetRatio: Float = 0.15f,
+    distanceLabelOffsetRatio: Float = 0.50f,
     density: Float = 1.5f,
     storedTimeGap: Int = 2,
     laneProgress: Float = 1f,
@@ -444,6 +444,7 @@ private fun DrawScope.drawVirtualRoad(
         if (showDistanceSteps) {
             drawAccDistanceSteps(
                 activeLevel = timeGapLevel,
+                targetDepth = distanceToRoadDepth(leadVisual.distanceM),
                 centerXAt = ::centerXAt,
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
@@ -570,11 +571,11 @@ private fun DrawScope.drawAccBeam(
         distanceToRoadDepth(objectDistanceM)
     }
     // Start in front of the 3D car's front bumper on the road ahead.
-    val egoDepth = 0.48f
+    val egoDepth = 0.72f
     val animatedTargetDepth = egoDepth - (egoDepth - fullTargetDepth) * beamProgress.coerceIn(0f, 1f)
 
     val nearHalf = laneOffsetAt(egoDepth) * 0.85f
-    val farHalf = laneOffsetAt(animatedTargetDepth) * 0.70f
+    val farHalf = laneOffsetAt(animatedTargetDepth) * 0.85f
     val beam = Path().apply {
         moveTo(centerXAt(egoDepth) - nearHalf, yAt(egoDepth))
         lineTo(centerXAt(animatedTargetDepth) - farHalf, yAt(animatedTargetDepth))
@@ -600,17 +601,29 @@ private fun DrawScope.drawAccBeam(
 
 private fun DrawScope.drawAccDistanceSteps(
     activeLevel: Int,
+    targetDepth: Float? = null,
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
     tint: Color,
 ) {
     // 3 steps in front of the car on the road ahead (1 = Near/Близко, 2 = Mid/Средне, 3 = Far/Далеко)
-    val depths = floatArrayOf(0.42f, 0.28f, 0.16f)
+    val egoDepth = 0.72f
+    val depths = if (targetDepth != null) {
+        val startD = (egoDepth - 0.16f).coerceAtMost(0.54f)
+        val endD = (targetDepth + 0.04f).coerceAtMost(startD - 0.06f)
+        floatArrayOf(
+            startD,
+            startD - (startD - endD) * 0.5f,
+            endD,
+        )
+    } else {
+        floatArrayOf(0.42f, 0.28f, 0.16f)
+    }
     depths.forEachIndexed { idx, t ->
         val stepNumber = idx + 1
         val isActive = stepNumber <= activeLevel
-        val y = yAt(t)
+        val y = yAt(t) - 20.dp.toPx()
         val cx = centerXAt(t)
         val halfW = laneOffsetAt(t) * 0.72f
         val chevronH = 8.dp.toPx() * (0.6f + t * 0.4f)
@@ -738,11 +751,12 @@ private fun DrawScope.drawFrontObject(
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
     distanceTextSizeSp: Int = 14,
-    distanceLabelOffsetRatio: Float = 0.15f,
+    distanceLabelOffsetRatio: Float = 0.50f,
 ) {
     val depth = distanceToRoadDepth(distanceM)
     val cx = centerXAt(depth)
-    val cy = yAt(depth)
+    val nearFactor = (1f - (distanceM.coerceIn(1, 120) - 1f) / 119f).coerceIn(0f, 1f)
+    val cy = yAt(depth) + 20.dp.toPx() * nearFactor
     val roadHalf = halfWidthAt(depth)
     val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
@@ -787,14 +801,19 @@ private fun DrawScope.drawFrontObject(
         }
     }
 
-    // Distance label position along the ACC beam between lead car depth and ego car depth (0.92f)
+    // Distance label position along the ACC beam: midpoint minus 25dp (away from hood)
     val egoDepth = 0.92f
     val labelDepth = (depth + (egoDepth - depth) * distanceLabelOffsetRatio).coerceIn(0.02f, 0.88f)
     val labelCx = centerXAt(labelDepth)
-    val labelCy = yAt(labelDepth) + 10f
+    val labelCy = yAt(labelDepth) - 25.dp.toPx()
 
-    val labelColor = (if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan)
-        .copy(alpha = objectAlpha)
+    val distanceColor = when {
+        alert -> Color(0xFFEF4444)
+        distanceM < 5 -> Color(0xFFEF4444)
+        distanceM < 10 -> Color(0xFFFFA000)
+        else -> LauncherColors.AccentCyan
+    }
+    val labelColor = distanceColor.copy(alpha = objectAlpha)
 
     val text = "${distanceM} м"
     val baseSizeSp = distanceTextSizeSp.toFloat()
@@ -1084,12 +1103,12 @@ private fun DrawScope.drawSpeedLimitSign(
         center = Offset(cx, cy),
         style = Stroke(width = 4.5f),
     )
-    val paint = android.graphics.Paint().apply {
+    val paint = Paint().apply {
         isAntiAlias = true
         color = Color(0xFF111827).toArgb()
-        textAlign = android.graphics.Paint.Align.CENTER
+        textAlign = Paint.Align.CENTER
         textSize = 18f
-        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        typeface = Typeface.DEFAULT_BOLD
     }
     drawContext.canvas.nativeCanvas.drawText(
         limitKmh.toString(),
@@ -1098,12 +1117,12 @@ private fun DrawScope.drawSpeedLimitSign(
         paint,
     )
     if (!caption.isNullOrBlank()) {
-        val cap = android.graphics.Paint().apply {
+        val cap = Paint().apply {
             isAntiAlias = true
             color = accent.toArgb()
-            textAlign = android.graphics.Paint.Align.CENTER
+            textAlign = Paint.Align.CENTER
             textSize = 9f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
         }
         drawContext.canvas.nativeCanvas.drawText(
             caption,
