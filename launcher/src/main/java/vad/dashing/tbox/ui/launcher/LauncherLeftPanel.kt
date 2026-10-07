@@ -168,6 +168,11 @@ fun LauncherLeftPanel(
     val cruisePanelVisible = remember(context, cruisePanelRevision) {
         LauncherAppConfigStore.cruisePanelVisible(context)
     }
+    val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow
+        .collectAsStateWithLifecycle()
+    val driveModeBarVisible = remember(context, driveModeBarRevision) {
+        LauncherAppConfigStore.driveModeBarVisible(context)
+    }
     val cruiseOn = adas.accActive || adas.accStandby ||
         (adas.accSetSpeedKmh ?: 0) > 0 ||
         (cruiseSpeed ?: 0u) > 0u
@@ -216,6 +221,11 @@ fun LauncherLeftPanel(
         ) {
             if (racing) {
                 LauncherEggRaceCloseBar()
+            } else if (driveModeBarVisible) {
+                LauncherDriveModeBar(
+                    canViewModel = canViewModel,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Box(

@@ -621,8 +621,26 @@ fun CruiseControlSettingsContent() {
     val cruisePanelVisible = remember(context, cruisePanelRevision) {
         LauncherAppConfigStore.cruisePanelVisible(context)
     }
+    val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow
+        .collectAsStateWithLifecycle()
+    val driveModeBarVisible = remember(context, driveModeBarRevision) {
+        LauncherAppConfigStore.driveModeBarVisible(context)
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_drive_mode_bar_visible_title),
+            active = driveModeBarVisible,
+            onClick = {
+                LauncherAppConfigStore.setDriveModeBarVisible(context, !driveModeBarVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_drive_mode_bar_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         LauncherSettingsToggleRow(
             label = stringResource(R.string.launcher_cruise_panel_visible_title),
             active = cruisePanelVisible,

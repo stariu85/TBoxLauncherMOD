@@ -281,6 +281,8 @@
     <string name="launcher_vs_section_cruise_sub">Панель и пресеты скорости</string>
     <string name="launcher_cruise_panel_visible_title">Панель круиз-контроля</string>
     <string name="launcher_cruise_panel_visible_desc">Отображать кнопки круиз-контроля внизу левой зоны</string>
+    <string name="launcher_drive_mode_bar_visible_title">Панель режимов движения</string>
+    <string name="launcher_drive_mode_bar_visible_desc">Отображать передачи и выбор режима езды (ECO, NOR, SPT) вверху левой зоны</string>
     <string name="launcher_cruise_ngp_title">NGP</string>
     <string name="launcher_cruise_distance_title">Дистанция</string>
     <string name="launcher_cruise_distance_near">Близко</string>
