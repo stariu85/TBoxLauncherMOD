@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -102,6 +103,7 @@ private fun rememberAdasFlashingAlpha(key: String, activationTimeMs: Long): Floa
 fun LauncherAdasStrip(
     canViewModel: CanDataViewModel,
     modifier: Modifier = Modifier,
+    isVertical: Boolean = false,
 ) {
     val context = LocalContext.current
     val topBarRevision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
@@ -172,11 +174,7 @@ fun LauncherAdasStrip(
         }
     }
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(spacingDp.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    val itemsContent: @Composable () -> Unit = {
         if (pasOn) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_pas_on),
@@ -325,6 +323,24 @@ fun LauncherAdasStrip(
                 paddingHDp = paddingHDp,
                 paddingVDp = paddingVDp,
             )
+        }
+    }
+
+    if (isVertical) {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(spacingDp.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            itemsContent()
+        }
+    } else {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(spacingDp.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            itemsContent()
         }
     }
 }

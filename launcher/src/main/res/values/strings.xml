@@ -206,6 +206,8 @@
     <string name="launcher_car_model_scale_desc">Размер 3D-модели автомобиля на экране</string>
     <string name="launcher_sidebar_width_title">Ширина левой панели</string>
     <string name="launcher_sidebar_width_desc">Изменяет ширину панели с машиной и зону Freeform</string>
+    <string name="launcher_adas_alerts_placement_title">Расположение ADAS и предупреждений</string>
+    <string name="launcher_adas_alerts_placement_desc">Отображать в левой панели вокруг 3D-модели (вместо верхней панели)</string>
     <string name="launcher_nav_buttons_title">Кнопки навигации</string>
     <string name="launcher_nav_buttons_desc">Отображать кнопки «Домой» и «Назад» на нижней панели</string>
     <string name="launcher_adas_distance_text_size_title">Размер текста дистанции ACC</string>

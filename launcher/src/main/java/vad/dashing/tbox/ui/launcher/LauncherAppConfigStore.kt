@@ -27,6 +27,9 @@ private const val KEY_FLOATING_HOME_VISIBLE = "floating_home_visible"
 private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
+private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
+private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
+private const val KEY_SPEED_LIMIT_Y_RATIO = "speed_limit_y_ratio"
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
@@ -157,6 +160,10 @@ internal object LauncherAppConfigStore {
     internal val adasDistanceTextSizeRevisionFlow: StateFlow<Int> = adasDistanceTextSizeRevision
     private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
+    private val adasAlertsPlacementRevision = MutableStateFlow(0)
+    internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
+    private val speedLimitPositionRevision = MutableStateFlow(0)
+    internal val speedLimitPositionRevisionFlow: StateFlow<Int> = speedLimitPositionRevision
     private val climateControlsRevision = MutableStateFlow(0)
     internal val climateControlsRevisionFlow: StateFlow<Int> = climateControlsRevision
     private val climateCardBgRevision = MutableStateFlow(0)
@@ -359,6 +366,28 @@ internal object LauncherAppConfigStore {
         val next = offsetRatio.coerceIn(ADAS_DISTANCE_LABEL_OFFSET_MIN, ADAS_DISTANCE_LABEL_OFFSET_MAX)
         prefs(context).edit().putFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET, next).apply()
         adasDistanceLabelOffsetRevision.value++
+    }
+
+    fun adasAlertsInLeftPanel(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, false)
+
+    fun setAdasAlertsInLeftPanel(context: Context, inLeftPanel: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, inLeftPanel).apply()
+        adasAlertsPlacementRevision.value++
+    }
+
+    fun speedLimitXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_SPEED_LIMIT_X_RATIO, 0.5f).coerceIn(0f, 1f)
+
+    fun speedLimitYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_SPEED_LIMIT_Y_RATIO, 0.14f).coerceIn(0f, 1f)
+
+    fun setSpeedLimitPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_SPEED_LIMIT_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_SPEED_LIMIT_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        speedLimitPositionRevision.value++
     }
 
     fun climateControlsVisible(context: Context): Boolean =

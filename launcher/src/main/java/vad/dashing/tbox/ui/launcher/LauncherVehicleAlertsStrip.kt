@@ -33,6 +33,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.layout.Column
 import kotlinx.coroutines.delay
 import vad.dashing.tbox.R
 import kotlin.math.roundToInt
@@ -46,6 +47,7 @@ private const val FLASH_DURATION_MS = 5_000L
 @Composable
 fun LauncherVehicleAlertsStrip(
     modifier: Modifier = Modifier,
+    isVertical: Boolean = false,
 ) {
     val context = LocalContext.current
     val topBarRevision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
@@ -78,20 +80,39 @@ fun LauncherVehicleAlertsStrip(
         }
     }
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(spacingDp.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        alerts.forEach { alert ->
-            val activationTimeMs = activationTimes[alert.id] ?: SystemClock.uptimeMillis()
-            LauncherVehicleAlertIcon(
-                alert = alert,
-                activationTimeMs = activationTimeMs,
-                iconSizeDp = iconSizeDp,
-                paddingDp = paddingDp,
-                cornerRadiusDp = cornerRadiusDp,
-            )
+    if (isVertical) {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(spacingDp.dp),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            alerts.forEach { alert ->
+                val activationTimeMs = activationTimes[alert.id] ?: SystemClock.uptimeMillis()
+                LauncherVehicleAlertIcon(
+                    alert = alert,
+                    activationTimeMs = activationTimeMs,
+                    iconSizeDp = iconSizeDp,
+                    paddingDp = paddingDp,
+                    cornerRadiusDp = cornerRadiusDp,
+                )
+            }
+        }
+    } else {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(spacingDp.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            alerts.forEach { alert ->
+                val activationTimeMs = activationTimes[alert.id] ?: SystemClock.uptimeMillis()
+                LauncherVehicleAlertIcon(
+                    alert = alert,
+                    activationTimeMs = activationTimeMs,
+                    iconSizeDp = iconSizeDp,
+                    paddingDp = paddingDp,
+                    cornerRadiusDp = cornerRadiusDp,
+                )
+            }
         }
     }
 }

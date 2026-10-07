@@ -8,8 +8,17 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import kotlinx.coroutines.withTimeout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -35,7 +44,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -1051,35 +1059,76 @@ private fun DrawScope.drawFrontObjectSilhouette(
     }
 }
 
-/** Round SLA/TSR signs in the 3D area (not on the full-panel road canvas / header). */
+/** Round speed limit sign in the 3D area (not on the full-panel road canvas / header). */
 @Composable
 fun LauncherSpeedLimitOverlay(
     adas: LauncherAdasState,
+    onDragStart: () -> Unit = {},
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val sla = adas.speedLimitKmh
-    val tsr = adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
-    if (sla == null && tsr == null) return
-    val two = sla != null && tsr != null
-    Canvas(modifier = modifier.size(if (two) 118.dp else 56.dp, 58.dp)) {
-        if (sla != null) {
+    val limit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+    if (limit == null) return
+
+    var isDragging by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                if (isDragging) {
+                    scaleX = 1.18f
+                    scaleY = 1.18f
+                    alpha = 0.85f
+                }
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+
+                    val longPressSucceeded = try {
+                        withTimeout(2000L) {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    return@withTimeout false
+                                }
+                                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                    return@withTimeout false
+                                }
+                            }
+                            false
+                        }
+                    } catch (e: PointerEventTimeoutCancellationException) {
+                        true
+                    }
+
+                    if (longPressSucceeded) {
+                        isDragging = true
+                        onDragStart()
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            val dragAmount = change.positionChange()
+                            if (dragAmount != Offset.Zero) {
+                                change.consume()
+                                onDrag(dragAmount)
+                            }
+                        }
+                        isDragging = false
+                        onDragEnd()
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(48.dp)) {
             drawSpeedLimitSign(
-                limitKmh = sla,
+                limitKmh = limit,
                 warning = adas.speedLimitWarning,
-                canvasWidth = size.width,
-                offsetFromRight = 4f,
                 accent = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
-                caption = null,
-            )
-        }
-        if (tsr != null) {
-            drawSpeedLimitSign(
-                limitKmh = tsr,
-                warning = false,
-                canvasWidth = size.width,
-                offsetFromRight = if (sla != null) 62f else 4f,
-                accent = Color(0xFF2563EB),
-                caption = null,
             )
         }
     }
@@ -1088,14 +1137,11 @@ fun LauncherSpeedLimitOverlay(
 private fun DrawScope.drawSpeedLimitSign(
     limitKmh: Int,
     warning: Boolean,
-    canvasWidth: Float,
-    offsetFromRight: Float = 14f,
     accent: Color = if (warning) Color(0xFFEF4444) else Color(0xFFE11D48),
-    caption: String? = null,
 ) {
-    val radius = 22f
-    val cx = canvasWidth - radius - offsetFromRight
-    val cy = radius + 6f
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val radius = minOf(cx, cy) - 3f
     drawCircle(color = Color.White.copy(alpha = 0.92f), radius = radius, center = Offset(cx, cy))
     drawCircle(
         color = accent,
@@ -1107,7 +1153,7 @@ private fun DrawScope.drawSpeedLimitSign(
         isAntiAlias = true
         color = Color(0xFF111827).toArgb()
         textAlign = Paint.Align.CENTER
-        textSize = 18f
+        textSize = radius * 0.95f
         typeface = Typeface.DEFAULT_BOLD
     }
     drawContext.canvas.nativeCanvas.drawText(
@@ -1116,21 +1162,6 @@ private fun DrawScope.drawSpeedLimitSign(
         cy - (paint.ascent() + paint.descent()) / 2f,
         paint,
     )
-    if (!caption.isNullOrBlank()) {
-        val cap = Paint().apply {
-            isAntiAlias = true
-            color = accent.toArgb()
-            textAlign = Paint.Align.CENTER
-            textSize = 9f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        drawContext.canvas.nativeCanvas.drawText(
-            caption,
-            cx,
-            cy + radius + 12f,
-            cap,
-        )
-    }
 }
 
 private fun leadSpriteWidth(type: LauncherAdasFrontObjectType, roadHalf: Float): Float {

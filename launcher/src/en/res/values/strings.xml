@@ -19,6 +19,8 @@
     <string name="launcher_car_model_scale_desc">Size of the 3D car model on screen</string>
     <string name="launcher_sidebar_width_title">Left panel width</string>
     <string name="launcher_sidebar_width_desc">Changes the width of the car panel and Freeform zone</string>
+    <string name="launcher_adas_alerts_placement_title">ADAS &amp; alerts placement</string>
+    <string name="launcher_adas_alerts_placement_desc">Display in the left panel around 3D model (instead of top bar)</string>
     <string name="launcher_nav_buttons_title">Navigation buttons</string>
     <string name="launcher_nav_buttons_desc">Show Home and Back buttons on the bottom panel</string>
     <string name="launcher_adas_distance_text_size_title">ACC distance text size</string>

@@ -14,11 +14,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -89,6 +92,19 @@ fun LauncherLeftPanel(
     val modelScaleRevision by LauncherAppConfigStore.carModelScaleRevisionFlow.collectAsStateWithLifecycle()
     val carModelScale = remember(context, modelScaleRevision) {
         LauncherAppConfigStore.carModelScale(context)
+    }
+    val adasAlertsPlacementRevision by LauncherAppConfigStore.adasAlertsPlacementRevisionFlow
+        .collectAsStateWithLifecycle()
+    val adasAlertsInLeftPanel = remember(context, adasAlertsPlacementRevision) {
+        LauncherAppConfigStore.adasAlertsInLeftPanel(context)
+    }
+    val speedLimitPositionRevision by LauncherAppConfigStore.speedLimitPositionRevisionFlow
+        .collectAsStateWithLifecycle()
+    var speedLimitXRatio by remember(context, speedLimitPositionRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.speedLimitXRatio(context))
+    }
+    var speedLimitYRatio by remember(context, speedLimitPositionRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.speedLimitYRatio(context))
     }
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
@@ -280,13 +296,68 @@ fun LauncherLeftPanel(
 
                 // Overlay layer for 3D speed limit sign floating over the 3D car area
                 if (!racing) {
-                    LauncherSpeedLimitOverlay(
-                        adas = adas,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .zIndex(100f)
-                            .padding(end = 8.dp, top = 2.dp),
-                    )
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val signSizePx = with(density) { 48.dp.toPx() }
+                        val containerWidthPx = with(density) { maxWidth.toPx() }
+                        val containerHeightPx = with(density) { maxHeight.toPx() }
+
+                        val centerX = containerWidthPx * speedLimitXRatio
+                        val centerY = containerHeightPx * speedLimitYRatio
+
+                        val leftPx = (centerX - signSizePx / 2f).coerceIn(0f, (containerWidthPx - signSizePx).coerceAtLeast(0f))
+                        val topPx = (centerY - signSizePx / 2f).coerceIn(0f, (containerHeightPx - signSizePx).coerceAtLeast(0f))
+
+                        val leftDp = with(density) { leftPx.toDp() }
+                        val topDp = with(density) { topPx.toDp() }
+
+                        LauncherSpeedLimitOverlay(
+                            adas = adas,
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentCenterX = containerWidthPx * speedLimitXRatio
+                                    val currentCenterY = containerHeightPx * speedLimitYRatio
+                                    val newCenterX = (currentCenterX + delta.x).coerceIn(signSizePx / 2f, containerWidthPx - signSizePx / 2f)
+                                    val newCenterY = (currentCenterY + delta.y).coerceIn(signSizePx / 2f, containerHeightPx - signSizePx / 2f)
+                                    speedLimitXRatio = newCenterX / containerWidthPx
+                                    speedLimitYRatio = newCenterY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setSpeedLimitPosition(context, speedLimitXRatio, speedLimitYRatio)
+                            },
+                            modifier = Modifier
+                                .offset(x = leftDp, y = topDp)
+                                .zIndex(160f),
+                        )
+
+                        if (adasAlertsInLeftPanel) {
+                            val alertsTopOffset = maxHeight * 0.25f
+
+                            // Left vertical section: Telltale alerts (Индикаторы предупреждений)
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(start = 8.dp, top = alertsTopOffset)
+                                    .zIndex(150f),
+                            ) {
+                                LauncherVehicleAlertsStrip(isVertical = true)
+                            }
+
+                            // Right vertical section: ADAS (Системы помощи водителю и безопасности)
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 8.dp, top = alertsTopOffset)
+                                    .zIndex(150f),
+                            ) {
+                                LauncherAdasStrip(
+                                    canViewModel = canViewModel,
+                                    isVertical = true,
+                                )
+                            }
+                        }
+                    }
+
                     LauncherCriticalCollisionWarningBanner(
                         adas = adas,
                         showAll = simulateEnabled && LauncherDevVehicleState.showAllIndicators,

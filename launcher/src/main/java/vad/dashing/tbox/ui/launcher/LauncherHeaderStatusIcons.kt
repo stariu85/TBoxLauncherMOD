@@ -85,6 +85,12 @@ internal fun LauncherTopHeaderBar(
     val cpuUsage = rememberCpuUsagePercentage()
     val ramUsage = rememberRamUsagePercentage()
 
+    val adasAlertsRevision by LauncherAppConfigStore.adasAlertsPlacementRevisionFlow
+        .collectAsStateWithLifecycle()
+    val adasAlertsInLeftPanel = remember(context, adasAlertsRevision) {
+        LauncherAppConfigStore.adasAlertsInLeftPanel(context)
+    }
+
     var fuelShowsRange by remember {
         mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
     }
@@ -138,7 +144,9 @@ internal fun LauncherTopHeaderBar(
                 .fillMaxHeight(),
             contentAlignment = Alignment.CenterStart,
         ) {
-            LauncherAdasStrip(canViewModel = canViewModel)
+            if (!adasAlertsInLeftPanel) {
+                LauncherAdasStrip(canViewModel = canViewModel)
+            }
         }
 
         // Center: Temp, Fuel, Voltage, CPU, RAM centered both horizontally and vertically
@@ -234,7 +242,10 @@ internal fun LauncherTopHeaderBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LauncherHeaderStatusIcons(tboxViewModel = tboxViewModel)
+            LauncherHeaderStatusIcons(
+                tboxViewModel = tboxViewModel,
+                showVehicleAlerts = !adasAlertsInLeftPanel,
+            )
             Text(
                 text = "$timeText  ·  $dateText",
                 color = LauncherColors.TextPrimary,
@@ -249,6 +260,7 @@ internal fun LauncherTopHeaderBar(
 internal fun LauncherHeaderStatusIcons(
     tboxViewModel: TboxViewModel,
     modifier: Modifier = Modifier,
+    showVehicleAlerts: Boolean = true,
 ) {
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val netState by tboxViewModel.netState.collectAsStateWithLifecycle()
@@ -263,7 +275,9 @@ internal fun LauncherHeaderStatusIcons(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LauncherVehicleAlertsStrip()
+        if (showVehicleAlerts) {
+            LauncherVehicleAlertsStrip()
+        }
         Box(
             modifier = Modifier
                 .size(9.dp)
