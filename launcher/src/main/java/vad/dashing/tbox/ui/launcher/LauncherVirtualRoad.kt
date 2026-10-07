@@ -809,12 +809,6 @@ private fun DrawScope.drawFrontObject(
         }
     }
 
-    // Distance label position along the ACC beam: midpoint minus 25dp (away from hood)
-    val egoDepth = 0.92f
-    val labelDepth = (depth + (egoDepth - depth) * distanceLabelOffsetRatio).coerceIn(0.02f, 0.88f)
-    val labelCx = centerXAt(labelDepth)
-    val labelCy = yAt(labelDepth) - 25.dp.toPx()
-
     val distanceColor = when {
         alert -> Color(0xFFEF4444)
         distanceM < 5 -> Color(0xFFEF4444)
@@ -829,7 +823,7 @@ private fun DrawScope.drawFrontObject(
         isAntiAlias = true
         color = labelColor.toArgb()
         textAlign = Paint.Align.CENTER
-        textSize = (baseSizeSp * (0.85f + labelDepth * 0.3f)).coerceIn(12f, 50f)
+        textSize = (baseSizeSp * 1.0f).coerceIn(12f, 50f)
         typeface = Typeface.DEFAULT_BOLD
     }
 
@@ -837,6 +831,16 @@ private fun DrawScope.drawFrontObject(
     val textHeight = abs(paint.ascent()) + paint.descent()
     val paddingX = 10f
     val paddingY = 4f
+    val halfPillHeight = textHeight / 2f + paddingY
+
+    val leadCarBottomY = cy
+    val egoCarFrontY = yAt(0.49f) // Exact top windshield boundary of 3D car model on screen
+    val targetLabelCy = leadCarBottomY + 8.dp.toPx() + halfPillHeight
+    val maxAllowedCy = egoCarFrontY - halfPillHeight + 14.dp.toPx() // lowered by 16dp at min distance
+
+    val labelCx = cx
+    val labelCy = minOf(targetLabelCy, maxAllowedCy)
+
     val pillRect = RectF(
         labelCx - textWidth / 2f - paddingX,
         labelCy - textHeight / 2f - paddingY,
