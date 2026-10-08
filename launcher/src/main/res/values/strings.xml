@@ -240,7 +240,7 @@
     <string name="launcher_icon_menu_title">Иконка</string>
     <string name="launcher_icon_menu_hide">Скрыть</string>
     <string name="launcher_icon_menu_configure">Настроить</string>
-    <string name="launcher_icon_menu_remove">Убрать с экрана</string>
+    <string name="launcher_icon_menu_remove">Удалить</string>
     <string name="launcher_icon_menu_fullscreen">Запуск на весь экран</string>
     <string name="launcher_icon_menu_mode_title">Режим запуска</string>
     <string name="launcher_icon_menu_mode_embedded">Встроенное (справа)</string>
@@ -251,6 +251,7 @@
     <string name="launcher_icon_menu_mode_fullscreen_desc">Во весь экран поверх всех панелей</string>
     <string name="launcher_icon_menu_change_app">Сменить приложение</string>
     <string name="launcher_icon_menu_autostart">Автозапуск при старте</string>
+    <string name="launcher_icon_menu_drag">Перетащить</string>
     <string name="launcher_icon_settings_title">Настройки ярлыка</string>
     <string name="launcher_vehicle_settings_title">Настройки авто</string>
     <string name="launcher_vs_section_model">3D-модель</string>

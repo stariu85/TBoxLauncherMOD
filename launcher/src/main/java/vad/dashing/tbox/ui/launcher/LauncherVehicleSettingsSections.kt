@@ -17,9 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -178,7 +178,6 @@ fun LauncherSettingsToggleRow(
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .then(
                 if (enabled && onClick != null) {
                     Modifier.clickable(onClick = onClick)

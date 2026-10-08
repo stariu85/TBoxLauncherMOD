@@ -305,7 +305,6 @@ private fun SimulationToggleRow(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -337,7 +336,6 @@ private fun SimulationGearRow(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -387,7 +385,6 @@ private fun SimulationFrontObjectTypeRow() {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -445,7 +442,6 @@ private fun SimulationSliderRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Row(
@@ -485,7 +481,6 @@ private fun SimulationPdcChannelsBlock() {
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .clickable { expanded = !expanded }
             .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -542,7 +537,6 @@ private fun SimulationThreatRow(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -579,7 +573,8 @@ private fun SimulationThreatRow(
 }
 
 @Composable
-private fun SimulationTireRow(    label: String,
+private fun SimulationTireRow(
+    label: String,
     corner: LauncherWheelCorner,
 ) {
     val current = LauncherDevVehicleState.tirePressureOverride[corner] ?: 2.4f
@@ -588,7 +583,6 @@ private fun SimulationTireRow(    label: String,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Row(

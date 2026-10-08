@@ -274,7 +274,7 @@ fun LauncherRightPanel(
         val item = homeItems.firstOrNull { it.slotIndex == contextMenuIndex }
         LauncherDarkAlertDialog(
             onDismissRequest = { contextMenuIndex = -1 },
-            title = { Text(stringResource(R.string.launcher_icon_menu_title)) },
+            title = { Text(stringResource(R.string.launcher_icon_menu_title), color = LauncherColors.TextPrimary) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (item is LauncherHomeItem.App) {
@@ -284,19 +284,6 @@ fun LauncherRightPanel(
                                 .fillMaxWidth()
                                 .clickable {
                                     settingsIndex = contextMenuIndex
-                                    contextMenuIndex = -1
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.AccentCyan,
-                        )
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_hide),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    LauncherAppConfigStore.hidePackage(context, item.packageName)
-                                    LauncherHomeStore.removeAtSlot(context, contextMenuIndex)
-                                    onConfigChanged()
                                     contextMenuIndex = -1
                                 }
                                 .padding(12.dp),
@@ -314,12 +301,12 @@ fun LauncherRightPanel(
                                     splitCreateVisible = true
                                 }
                                 .padding(12.dp),
-                            color = LauncherColors.AccentCyan,
+                            color = LauncherColors.TextPrimary,
                         )
                     }
                     if (item != null) {
                         Text(
-                            text = "Режим перетаскивания",
+                            text = stringResource(R.string.launcher_icon_menu_drag),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
@@ -327,21 +314,8 @@ fun LauncherRightPanel(
                                     contextMenuIndex = -1
                                 }
                                 .padding(12.dp),
-                            color = LauncherColors.AccentCyan,
+                            color = LauncherColors.TextPrimary,
                         )
-                        if (hidden.isNotEmpty()) {
-                            Text(
-                                text = "Показать скрытое (${hidden.size})",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        contextMenuIndex = -1
-                                        showHiddenDialogVisible = true
-                                    }
-                                    .padding(12.dp),
-                                color = LauncherColors.AccentCyan,
-                            )
-                        }
                         val isAutostart = item.key == autostartKey
                         Text(
                             text = stringResource(R.string.launcher_icon_menu_autostart) +
@@ -357,7 +331,7 @@ fun LauncherRightPanel(
                                     contextMenuIndex = -1
                                 }
                                 .padding(12.dp),
-                            color = if (isAutostart) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
+                            color = LauncherColors.TextPrimary,
                         )
                     }
                     Text(
@@ -370,13 +344,13 @@ fun LauncherRightPanel(
                                 contextMenuIndex = -1
                             }
                             .padding(12.dp),
-                        color = LauncherColors.TextSecondary,
+                        color = LauncherColors.WarningRed,
                     )
                 }
             },
             confirmButton = {
                 TextButton(onClick = { contextMenuIndex = -1 }) {
-                    Text(stringResource(R.string.action_cancel))
+                    Text(stringResource(R.string.action_cancel), color = LauncherColors.TextSecondary)
                 }
             },
         )

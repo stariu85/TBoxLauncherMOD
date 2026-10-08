@@ -1044,8 +1044,9 @@
     <string name="launcher_home_cd">Home</string>
     <string name="launcher_home_long_press_settings">Hold: Vehicle Settings</string>
     <string name="launcher_icon_menu_configure">Configure</string>
+    <string name="launcher_icon_menu_drag">Drag</string>
     <string name="launcher_icon_menu_hide">Hide</string>
-    <string name="launcher_icon_menu_remove">Remove from screen</string>
+    <string name="launcher_icon_menu_remove">Delete</string>
     <string name="launcher_icon_menu_title">Icon</string>
     <string name="launcher_media_bind_player">Bind Player</string>
     <string name="launcher_media_no_track">Not Playing</string>

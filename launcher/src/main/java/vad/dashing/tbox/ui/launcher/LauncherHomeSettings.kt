@@ -314,6 +314,7 @@ private fun NavButtonsToggle() {
                     navButtonsVisible = enabled
                     LauncherAppConfigStore.setNavButtonsVisible(context, enabled)
                 },
+                colors = launcherSwitchColors(),
             )
         }
         Text(
@@ -348,6 +349,7 @@ private fun ClimateControlsToggle() {
                     climateVisible = enabled
                     LauncherAppConfigStore.setClimateControlsVisible(context, enabled)
                 },
+                colors = launcherSwitchColors(),
             )
         }
         Text(
@@ -427,6 +429,7 @@ private fun FloatingHomeToggle() {
                     homeVisible = enabled
                     LauncherAppConfigStore.setFloatingHomeVisible(context, enabled)
                 },
+                colors = launcherSwitchColors(),
             )
         }
         Text(
@@ -461,6 +464,7 @@ private fun ClimateCardBgToggle() {
                     climateCardBgVisible = enabled
                     LauncherAppConfigStore.setClimateCardBgVisible(context, enabled)
                 },
+                colors = launcherSwitchColors(),
             )
         }
         Text(

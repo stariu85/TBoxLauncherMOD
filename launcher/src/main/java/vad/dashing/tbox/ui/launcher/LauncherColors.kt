@@ -1,5 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /** Tesla reference palette. Left-panel colors follow [LauncherThemeState.darkTheme]. */
@@ -51,3 +54,14 @@ object LauncherColors {
     val DrawerScrim = Color(0xCC070A14)
     val DrawerSurface = Color(0xF01D1D1D)
 }
+
+@Composable
+fun launcherSwitchColors(): SwitchColors = SwitchDefaults.colors(
+    checkedThumbColor = LauncherColors.CanvasDark,
+    checkedTrackColor = LauncherColors.AccentCyan,
+    checkedBorderColor = LauncherColors.AccentCyan,
+    checkedIconColor = LauncherColors.CanvasDark,
+    uncheckedThumbColor = LauncherColors.TextMuted,
+    uncheckedTrackColor = LauncherColors.SurfaceDark,
+    uncheckedBorderColor = LauncherColors.TextMuted,
+)

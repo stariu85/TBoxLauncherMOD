@@ -205,6 +205,7 @@ fun LauncherSettingsScreen(
                 onCheckedChange = { enabled ->
                     updateViewModel.saveUpdateCheckEnabled(enabled)
                 },
+                colors = launcherSwitchColors(),
             )
         }
 
