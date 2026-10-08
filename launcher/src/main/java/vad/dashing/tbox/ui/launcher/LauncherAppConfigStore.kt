@@ -16,6 +16,7 @@ private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
+private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
@@ -119,7 +120,7 @@ internal const val HOME_ICON_SCALE_MAX = 1.80f
 internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
-internal const val CRUISE_PRESET_STEP_KMH = 5
+internal const val CRUISE_PRESET_STEP_KMH = 1
 private const val KEY_CRUISE_PRESETS = "cruise_presets_kmh"
 private const val KEY_LAST_CRUISE_SPEED = "last_cruise_speed_kmh"
 private const val KEY_CRUISE_PANEL_VISIBLE = "cruise_panel_visible"
@@ -146,6 +147,8 @@ internal object LauncherAppConfigStore {
     internal val dockIconScaleRevisionFlow: StateFlow<Int> = dockIconScaleRevision
     private val topBarHeightRevision = MutableStateFlow(0)
     internal val topBarHeightRevisionFlow: StateFlow<Int> = topBarHeightRevision
+    private val topBarLeftIndicatorsRevision = MutableStateFlow(0)
+    internal val topBarLeftIndicatorsRevisionFlow: StateFlow<Int> = topBarLeftIndicatorsRevision
     private val bottomBarHeightRevision = MutableStateFlow(0)
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
     private val floatingHomeSizeRevision = MutableStateFlow(0)
@@ -244,6 +247,14 @@ internal object LauncherAppConfigStore {
         val next = heightDp.coerceIn(TOP_BAR_HEIGHT_MIN, TOP_BAR_HEIGHT_MAX)
         prefs(context).edit().putInt(KEY_TOP_BAR_HEIGHT, next).apply()
         topBarHeightRevision.value++
+    }
+
+    fun topBarLeftIndicatorsVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE, true)
+
+    fun setTopBarLeftIndicatorsVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE, visible).apply()
+        topBarLeftIndicatorsRevision.value++
     }
 
     fun bottomBarHeightDp(context: Context): Int =

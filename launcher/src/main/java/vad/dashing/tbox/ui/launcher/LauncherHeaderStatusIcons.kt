@@ -92,6 +92,12 @@ internal fun LauncherTopHeaderBar(
         LauncherAppConfigStore.adasAlertsInLeftPanel(context)
     }
 
+    val topBarLeftIndicatorsRevision by LauncherAppConfigStore.topBarLeftIndicatorsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val topBarLeftIndicatorsVisible = remember(context, topBarLeftIndicatorsRevision) {
+        LauncherAppConfigStore.topBarLeftIndicatorsVisible(context)
+    }
+
     var fuelShowsRange by remember {
         mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
     }
@@ -150,86 +156,88 @@ internal fun LauncherTopHeaderBar(
             if (!adasAlertsInLeftPanel) {
                 LauncherAdasStrip(canViewModel = canViewModel)
             }
-            Text(
-                text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
-                style = MaterialTheme.typography.tboxCaption,
-                color = LauncherColors.TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        val next = !fuelShowsRange
-                        fuelShowsRange = next
-                        LauncherAppConfigStore.setFuelShowsRange(context, next)
-                    },
-                ),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_launcher_fuel),
-                    contentDescription = stringResource(R.string.launcher_vs_fuel),
-                    modifier = Modifier.size(16.dp),
-                    colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
-                )
+            if (topBarLeftIndicatorsVisible) {
                 Text(
-                    text = fuelText,
+                    text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            val next = !fuelShowsRange
+                            fuelShowsRange = next
+                            LauncherAppConfigStore.setFuelShowsRange(context, next)
+                        },
+                    ),
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_launcher_fuel),
+                        contentDescription = stringResource(R.string.launcher_vs_fuel),
+                        modifier = Modifier.size(16.dp),
+                        colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+                    )
+                    Text(
+                        text = fuelText,
+                        style = MaterialTheme.typography.tboxCaption,
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (voltageLow) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_launcher_battery),
+                            contentDescription = stringResource(R.string.data_title_voltage),
+                            modifier = Modifier.size(14.dp),
+                            colorFilter = ColorFilter.tint(LauncherColors.WarningRed),
+                        )
+                    }
+                    Text(
+                        text = voltageText,
+                        style = MaterialTheme.typography.tboxCaption,
+                        color = voltageColor,
+                        fontSize = 15.sp,
+                        fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
+                    )
+                }
+                Text(
+                    text = "·",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = StatusIconTint.copy(alpha = 0.5f),
+                    fontSize = 15.sp,
+                )
+                Text(
+                    text = "CPU $cpuUsage%",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = StatusIconTint,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = "·",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = StatusIconTint.copy(alpha = 0.5f),
+                    fontSize = 15.sp,
+                )
+                Text(
+                    text = "RAM $ramUsage%",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = StatusIconTint,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                 )
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                if (voltageLow) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_launcher_battery),
-                        contentDescription = stringResource(R.string.data_title_voltage),
-                        modifier = Modifier.size(14.dp),
-                        colorFilter = ColorFilter.tint(LauncherColors.WarningRed),
-                    )
-                }
-                Text(
-                    text = voltageText,
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = voltageColor,
-                    fontSize = 15.sp,
-                    fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
-                )
-            }
-            Text(
-                text = "·",
-                style = MaterialTheme.typography.tboxCaption,
-                color = StatusIconTint.copy(alpha = 0.5f),
-                fontSize = 15.sp,
-            )
-            Text(
-                text = "CPU $cpuUsage%",
-                style = MaterialTheme.typography.tboxCaption,
-                color = StatusIconTint,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = "·",
-                style = MaterialTheme.typography.tboxCaption,
-                color = StatusIconTint.copy(alpha = 0.5f),
-                fontSize = 15.sp,
-            )
-            Text(
-                text = "RAM $ramUsage%",
-                style = MaterialTheme.typography.tboxCaption,
-                color = StatusIconTint,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-            )
         }
 
         // Right side: Status icons + Time/Date

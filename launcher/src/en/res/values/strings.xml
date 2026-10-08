@@ -995,6 +995,8 @@
     <string name="reg_no">no registration</string>
     <string name="reg_home">home network</string>
     <string name="reg_search">searching network</string>
+    <string name="launcher_top_bar_left_indicators_title">Top bar left indicators</string>
+    <string name="launcher_top_bar_left_indicators_desc">Show temperature, fuel level, battery voltage, CPU and RAM usage in top bar left corner</string>
     <string name="reg_reject">registration rejected</string>
     <string name="reg_roaming">roaming</string>
 

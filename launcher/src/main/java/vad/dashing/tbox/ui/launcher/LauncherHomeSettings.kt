@@ -63,6 +63,7 @@ internal fun LauncherHomeSettingsContent() {
     ClimateControlsScaleSlider()
     ResetBottomSlotsButton()
     TopBarHeightSlider()
+    TopBarLeftIndicatorsToggle()
     BottomBarHeightSlider()
     GridColumnsSlider()
     GridRowsSlider()
@@ -154,6 +155,41 @@ private fun TopBarHeightSlider() {
                 activeTrackColor = LauncherColors.AccentCyan,
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
+        )
+    }
+}
+
+@Composable
+private fun TopBarLeftIndicatorsToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.topBarLeftIndicatorsRevisionFlow.collectAsStateWithLifecycle()
+    var visible by remember(context, revision) {
+        mutableStateOf(LauncherAppConfigStore.topBarLeftIndicatorsVisible(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_top_bar_left_indicators_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = visible,
+                onCheckedChange = { enabled ->
+                    visible = enabled
+                    LauncherAppConfigStore.setTopBarLeftIndicatorsVisible(context, enabled)
+                },
+                colors = launcherSwitchColors(),
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_top_bar_left_indicators_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
         )
     }
 }

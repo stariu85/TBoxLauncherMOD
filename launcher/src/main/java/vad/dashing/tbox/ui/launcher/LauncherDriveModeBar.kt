@@ -41,6 +41,7 @@ private val ButtonHeight = 50.dp
 fun LauncherDriveModeBar(
     canViewModel: CanDataViewModel,
     modifier: Modifier = Modifier,
+    onModeSelected: ((String) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -81,6 +82,7 @@ fun LauncherDriveModeBar(
 
     val onSelectMode: (String) -> Unit = { mode ->
         pendingMode = mode
+        onModeSelected?.invoke(mode)
         scope.launch {
             val isWet6Dct = UniversalCanRepository.carSettingsDriveMode6dctWet.value != null
             val (propertyId, value) = when (mode) {

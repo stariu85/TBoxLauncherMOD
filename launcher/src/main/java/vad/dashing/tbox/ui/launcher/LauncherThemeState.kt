@@ -14,12 +14,12 @@ object LauncherThemeState {
     private const val PREFS = "tbox_launcher_theme"
     private const val KEY_DARK = "dark_theme"
 
-    var darkTheme by mutableStateOf(false)
+    var darkTheme by mutableStateOf(true)
         private set
 
     fun init(context: Context) {
         darkTheme = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_DARK, false)
+            .getBoolean(KEY_DARK, true)
     }
 
     fun setDarkTheme(context: Context, enabled: Boolean) {

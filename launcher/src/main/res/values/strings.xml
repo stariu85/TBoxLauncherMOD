@@ -1273,4 +1273,6 @@
     <string name="settings_grid_rows_desc">Количество строк сетки для ярлыков правой зоны</string>
     <string name="settings_home_icon_scale_title">Размер иконок правой зоны</string>
     <string name="settings_home_icon_scale_desc">Масштаб ярлыков приложений в правой панели</string>
+    <string name="launcher_top_bar_left_indicators_title">Индикаторы левого угла верхней панели</string>
+    <string name="launcher_top_bar_left_indicators_desc">Показывать температуру, топливо, напряжение, загрузку CPU и RAM в левом углу верхней панели</string>
 </resources>

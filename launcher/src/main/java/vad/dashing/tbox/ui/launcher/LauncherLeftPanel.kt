@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
@@ -55,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
+import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.resolveDriveModeDisplayLabel
 
 private const val ROAD_ANIMATION_SPEED_THRESHOLD_KMH = 15f
 
@@ -179,6 +184,46 @@ fun LauncherLeftPanel(
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
     val showDriveView = isDriveViewActive(effectiveSpeed, cruiseOn, racing)
 
+    // Drive mode glow highlighting
+    val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
+    val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
+    val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
+
+    val resolvedDriveMode = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode) {
+        resolveDriveModeDisplayLabel(
+            driveModeRaw = driveModeRaw,
+            driveModeWetRaw = driveModeWetRaw,
+            gearBoxDriveMode = gearBoxDriveMode,
+        ).uppercase()
+    }
+
+    var driveModePending by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(resolvedDriveMode) {
+        driveModePending = null
+    }
+    val activeDriveMode = driveModePending ?: resolvedDriveMode
+
+    val isEco = activeDriveMode == "ECO"
+    val isNor = activeDriveMode == "NOR" || activeDriveMode == "NORMAL" || activeDriveMode == "COMFORT"
+    val isSpt = activeDriveMode == "SPT" || activeDriveMode == "SPORT"
+
+    val isMoving = effectiveSpeed > 0.5f
+
+    val baseGlowColor = when {
+        isEco -> Color(0xFF22C55E) // Green
+        isNor -> Color(0xFF3B82F6) // Blue
+        isSpt -> Color(0xFFEF4444) // Red
+        else -> Color.Transparent
+    }
+
+    val targetGlowColor = if (isMoving) baseGlowColor else baseGlowColor.copy(alpha = 0f)
+
+    val animatedGlowColor by animateColorAsState(
+        targetValue = targetGlowColor,
+        animationSpec = tween(durationMillis = 600),
+        label = "driveModeGlowColor",
+    )
+
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -204,6 +249,23 @@ fun LauncherLeftPanel(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        if (animatedGlowColor.alpha > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.30f)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                animatedGlowColor.copy(alpha = animatedGlowColor.alpha * 0.45f),
+                                animatedGlowColor.copy(alpha = animatedGlowColor.alpha * 0.18f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+        }
         if (racing) {
             // Past the bumper: draw under the 3D so a dodge continues beside/behind the body.
             LauncherEggRaceCarsLayer(
@@ -224,6 +286,7 @@ fun LauncherLeftPanel(
             } else if (driveModeBarVisible) {
                 LauncherDriveModeBar(
                     canViewModel = canViewModel,
+                    onModeSelected = { pending -> driveModePending = pending },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
