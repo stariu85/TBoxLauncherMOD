@@ -8,7 +8,7 @@ data class UpdateReleaseInfo(
     val versionName: String,
     val flavor: String,
     val apkFileName: String,
-    val sha256: String,
+    val sha256: String = "",
     val apkSizeBytes: Long? = null,
     val minSupportedVersionCode: Long = 0L,
     val changelog: String = "",
@@ -37,7 +37,7 @@ data class UpdateManifest(
                     val sha256 = item.optString("sha256").lowercase()
                     val apkSizeBytes = item.optLong("apkSizeBytes", -1L).takeIf { it > 0L }
                     if (versionCode < 0L || versionName.isBlank() || flavor.isBlank() ||
-                        apkFileName.isBlank() || sha256.isBlank()
+                        apkFileName.isBlank()
                     ) {
                         continue
                     }

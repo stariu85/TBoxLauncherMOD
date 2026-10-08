@@ -285,7 +285,7 @@ class UpdateRepository(
         if (!file.exists() || file.length() <= 0L) {
             throw IOException("Downloaded APK is missing")
         }
-        if (!ApkVerifier.verifySha256(file, info.sha256)) {
+        if (info.sha256.isNotBlank() && !ApkVerifier.verifySha256(file, info.sha256)) {
             file.delete()
             throw IOException("APK checksum mismatch")
         }
