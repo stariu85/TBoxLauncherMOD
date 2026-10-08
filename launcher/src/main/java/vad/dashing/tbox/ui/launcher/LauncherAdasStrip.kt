@@ -154,8 +154,6 @@ fun LauncherAdasStrip(
         if (adas.aebHint || showAll) add("aeb")
         if (adas.accTakeOver || adas.adasTakeOver || showAll) add("takeover")
         if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes || showAll) add("lka")
-        if (adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off || showAll) add("bsd_l")
-        if (adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off || showAll) add("bsd_r")
         if (adas.rearThreats.rctaLeft != LauncherRearThreatLevel.Off || showAll) add("rcta_l")
         if (adas.rearThreats.rctaRight != LauncherRearThreatLevel.Off || showAll) add("rcta_r")
         if (adas.rearThreats.dowLeft != LauncherRearThreatLevel.Off || showAll) add("dow_l")
@@ -314,7 +312,12 @@ fun LauncherAdasStrip(
                 activationTimeMs = activationTimes["lka"] ?: 0L,
             )
         }
-        if (adas.rearThreats.hasAny || showAll) {
+        val hasOtherRearThreats = adas.rearThreats.rctaLeft != LauncherRearThreatLevel.Off ||
+            adas.rearThreats.rctaRight != LauncherRearThreatLevel.Off ||
+            adas.rearThreats.dowLeft != LauncherRearThreatLevel.Off ||
+            adas.rearThreats.dowRight != LauncherRearThreatLevel.Off ||
+            adas.rearThreats.rcw != LauncherRearThreatLevel.Off
+        if (hasOtherRearThreats || showAll) {
             LauncherRearThreatChips(
                 threats = adas.rearThreats,
                 activationTimes = activationTimes,
@@ -358,12 +361,6 @@ private fun LauncherRearThreatChips(
         LauncherRearThreatLevel.Alert -> Color(0xFFEF4444)
         LauncherRearThreatLevel.Caution -> Color(0xFFF59E0B)
         LauncherRearThreatLevel.Off -> LauncherColors.TextSecondary
-    }
-    if (threats.bsdLeft != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_bsd_left), tint(threats.bsdLeft), fontSizeSp, paddingHDp, paddingVDp, "bsd_l", activationTimes["bsd_l"] ?: 0L)
-    }
-    if (threats.bsdRight != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_bsd_right), tint(threats.bsdRight), fontSizeSp, paddingHDp, paddingVDp, "bsd_r", activationTimes["bsd_r"] ?: 0L)
     }
     if (threats.rctaLeft != LauncherRearThreatLevel.Off) {
         LauncherAdasAlertChip(stringResource(R.string.launcher_adas_rcta_left), fontSizeSp, alertIconSizeDp, paddingHDp, paddingVDp, "rcta_l", activationTimes["rcta_l"] ?: 0L)

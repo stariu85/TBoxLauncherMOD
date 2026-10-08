@@ -3,26 +3,23 @@ package vad.dashing.tbox.ui.launcher
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.ui.platform.LocalContext
-import java.util.UUID
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,6 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.theme.tboxCaption
+import java.util.UUID
+import kotlin.math.roundToInt
 
 @Composable
 internal fun LauncherAppPickerDialog(
@@ -99,6 +101,23 @@ internal fun LauncherAppPickerDialog(
 }
 
 @Composable
+private fun rememberSplitPaneWidthsDp(ratio: Float): Pair<Int, Int> {
+    val density = LocalDensity.current.density
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val splitBoundsPx = LauncherEmbeddedBoundsState.splitBounds()?.width()
+    val totalWidthDp = remember(splitBoundsPx, density, screenWidthDp) {
+        if (splitBoundsPx != null && splitBoundsPx > 0) {
+            (splitBoundsPx / density).roundToInt()
+        } else {
+            screenWidthDp
+        }
+    }
+    val leftDp = (totalWidthDp * ratio).roundToInt()
+    val rightDp = (totalWidthDp - leftDp).coerceAtLeast(0)
+    return leftDp to rightDp
+}
+
+@Composable
 internal fun LauncherSplitPresetCreateDialog(
     visible: Boolean,
     apps: List<LaunchableAppEntry>,
@@ -146,6 +165,9 @@ internal fun LauncherSplitPresetCreateDialog(
     var ratio by remember(draft.id) { mutableFloatStateOf(draft.leftRatio) }
     val leftLabel = apps.firstOrNull { it.packageName == draft.leftPackage }?.label ?: draft.leftPackage
     val rightLabel = apps.firstOrNull { it.packageName == draft.rightPackage }?.label ?: draft.rightPackage
+    val (leftDp, rightDp) = rememberSplitPaneWidthsDp(ratio)
+    val leftPct = (ratio * 100).roundToInt()
+    val rightPct = 100 - leftPct
 
     LauncherDarkAlertDialog(
         onDismissRequest = onDismiss,
@@ -175,7 +197,7 @@ internal fun LauncherSplitPresetCreateDialog(
                     { pickSide = "right" },
                 )
                 Text(
-                    "${stringResource(R.string.launcher_split_ratio)}: ${(ratio * 100).toInt()}% / ${((1f - ratio) * 100).toInt()}%",
+                    "${stringResource(R.string.launcher_split_ratio)}: $leftPct% ($leftDp dp) / $rightPct% ($rightDp dp)",
                     fontSize = 12.sp,
                     color = LauncherColors.TextSecondary,
                 )
@@ -247,6 +269,10 @@ internal fun LauncherSplitPresetsDialog(
         var ratio by remember(draft.id) { mutableFloatStateOf(draft.leftRatio) }
         val leftLabel = apps.firstOrNull { it.packageName == draft.leftPackage }?.label ?: draft.leftPackage
         val rightLabel = apps.firstOrNull { it.packageName == draft.rightPackage }?.label ?: draft.rightPackage
+        val (leftDp, rightDp) = rememberSplitPaneWidthsDp(ratio)
+        val leftPct = (ratio * 100).roundToInt()
+        val rightPct = 100 - leftPct
+
         LauncherDarkAlertDialog(
             onDismissRequest = { editing = null },
             title = { Text(stringResource(R.string.launcher_split_edit_preset)) },
@@ -255,7 +281,7 @@ internal fun LauncherSplitPresetsDialog(
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.launcher_split_preset_name)) })
                     LauncherSplitPickRow(stringResource(R.string.launcher_split_left), leftLabel.takeIf { draft.leftPackage.isNotBlank() }?.let { LaunchableAppEntry(draft.leftPackage, it, null, null) }, { pickSide = "left" })
                     LauncherSplitPickRow(stringResource(R.string.launcher_split_right), rightLabel.takeIf { draft.rightPackage.isNotBlank() }?.let { LaunchableAppEntry(draft.rightPackage, it, null, null) }, { pickSide = "right" })
-                    Text("${stringResource(R.string.launcher_split_ratio)}: ${(ratio * 100).toInt()}% / ${((1f - ratio) * 100).toInt()}%", fontSize = 12.sp, color = LauncherColors.TextSecondary)
+                    Text("${stringResource(R.string.launcher_split_ratio)}: $leftPct% ($leftDp dp) / $rightPct% ($rightDp dp)", fontSize = 12.sp, color = LauncherColors.TextSecondary)
                     Slider(value = ratio, onValueChange = { ratio = it }, valueRange = 0.2f..0.8f)
                 }
             },
@@ -284,6 +310,9 @@ internal fun LauncherSplitPresetsDialog(
                     Text(stringResource(R.string.launcher_split_no_presets), fontSize = 13.sp, color = LauncherColors.TextSecondary)
                 }
                 presets.forEach { preset ->
+                    val (leftDp, rightDp) = rememberSplitPaneWidthsDp(preset.leftRatio)
+                    val leftPct = (preset.leftRatio * 100).roundToInt()
+                    val rightPct = 100 - leftPct
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -297,7 +326,7 @@ internal fun LauncherSplitPresetsDialog(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(preset.name, color = LauncherColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Text(
-                                "${(preset.leftRatio * 100).toInt()}/${((1f - preset.leftRatio) * 100).toInt()} · ${preset.leftPackage.substringAfterLast('.')} | ${preset.rightPackage.substringAfterLast('.')}",
+                                "$leftPct% ($leftDp dp) / $rightPct% ($rightDp dp) · ${preset.leftPackage.substringAfterLast('.')} | ${preset.rightPackage.substringAfterLast('.')}",
                                 color = LauncherColors.TextMuted,
                                 fontSize = 11.sp,
                                 maxLines = 1,

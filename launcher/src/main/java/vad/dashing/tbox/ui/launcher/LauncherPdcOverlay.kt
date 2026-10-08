@@ -241,22 +241,12 @@ private fun angleWithinDeg(angle: Float, start: Float, end: Float): Boolean {
  */
 @Composable
 fun LauncherBsdOverlay(
-    threats: LauncherRearThreats,
-    rings: LauncherPdcRingFrame?,
-    driving: Boolean,
-    modifier: Modifier = Modifier,
+    @Suppress("UNUSED_PARAMETER") threats: LauncherRearThreats,
+    @Suppress("UNUSED_PARAMETER") rings: LauncherPdcRingFrame?,
+    @Suppress("UNUSED_PARAMETER") driving: Boolean,
+    @Suppress("UNUSED_PARAMETER") modifier: Modifier = Modifier,
 ) {
-    if (rings == null) return
-    if (!threats.hasBsd) return
-    val pulse by rememberInfiniteTransition(label = "bsdPulse").animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(430), RepeatMode.Reverse),
-        label = "bsdPulseValue",
-    )
-    Canvas(modifier = modifier.fillMaxSize()) {
-        drawBsdDiagonals(threats, rings, driving, pulse)
-    }
+    // BSD is rendered exclusively on the road canvas in LauncherVirtualRoad.
 }
 
 private fun DrawScope.drawBsdDiagonals(

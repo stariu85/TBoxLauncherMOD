@@ -5,7 +5,11 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,12 +17,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import kotlinx.coroutines.withTimeout
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -29,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -44,8 +43,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.imageResource
@@ -72,6 +75,21 @@ fun LauncherVirtualRoad(
     /** Show road only in Drive (D), not when the engine merely starts. */
     inDriveGear: Boolean = false,
 ) {
+    val bsdLeftActive = inDriveGear && adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off
+    val bsdRightActive = inDriveGear && adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off
+
+    val bsdLeftProgress by animateFloatAsState(
+        targetValue = if (bsdLeftActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "bsdLeftProgress",
+    )
+
+    val bsdRightProgress by animateFloatAsState(
+        targetValue = if (bsdRightActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "bsdRightProgress",
+    )
+
     val driveTarget = when {
         inDriveGear -> 1f
         steerPreview -> 1f
@@ -136,6 +154,16 @@ fun LauncherVirtualRoad(
         label = "cruiseBeamAnimProgress",
     )
 
+    val bsdRoadPulse by rememberInfiniteTransition(label = "bsdRoadPulse").animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bsdRoadPulseValue",
+    )
+
     if (driveBlend <= 0.01f) return
     Canvas(
         modifier = modifier
@@ -154,6 +182,9 @@ fun LauncherVirtualRoad(
             storedTimeGap = storedTimeGap,
             laneProgress = laneAnimProgress,
             beamProgress = cruiseBeamProgress,
+            bsdPulse = bsdRoadPulse,
+            bsdLeftProgress = bsdLeftProgress,
+            bsdRightProgress = bsdRightProgress,
         )
     }
 }
@@ -368,6 +399,9 @@ private fun DrawScope.drawVirtualRoad(
     storedTimeGap: Int = 2,
     laneProgress: Float = 1f,
     beamProgress: Float = 1f,
+    bsdPulse: Float = 1f,
+    bsdLeftProgress: Float = 0f,
+    bsdRightProgress: Float = 0f,
 ) {
     val w = size.width
     val h = size.height
@@ -402,6 +436,7 @@ private fun DrawScope.drawVirtualRoad(
     val dashSpacing = (58f + speedKmh * 0.42f).coerceIn(48f, 128f)
     val phase = roadPhase % dashSpacing
     var y = horizonY + phase
+
     while (y < h) {
         val t = ((y - horizonY) / (h - horizonY)).coerceIn(0f, 1f)
         val dashLen = (22f + t * 40f).coerceAtLeast(16f)
@@ -432,6 +467,16 @@ private fun DrawScope.drawVirtualRoad(
     }
 
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
+
+    drawBsdBeam(
+        threats = adas.rearThreats,
+        pulse = bsdPulse,
+        leftProgress = bsdLeftProgress,
+        rightProgress = bsdRightProgress,
+        centerXAt = ::centerXAt,
+        laneOffsetAt = ::laneOffsetAt,
+        yAt = ::yAt,
+    )
 
     val now = android.os.SystemClock.uptimeMillis()
     val showDistanceSteps = beamProgress > 0.05f && (adas.timeGapFlashUntilMs > now)
@@ -558,6 +603,68 @@ private fun DrawScope.drawHorizonHaze(horizonY: Float, canvasHeight: Float) {
         topLeft = Offset(0f, horizonY - canvasHeight * 0.06f),
         size = Size(size.width, hazeBottom - horizonY + canvasHeight * 0.06f),
     )
+}
+
+/**
+ * BSD adjacent lane glowing beam: a glowing corridor beam along the lane to the right or left
+ * of the car model, drawn in the same style as [drawAccBeam].
+ */
+private fun DrawScope.drawBsdBeam(
+    threats: LauncherRearThreats,
+    pulse: Float,
+    leftProgress: Float,
+    rightProgress: Float,
+    centerXAt: (Float) -> Float,
+    laneOffsetAt: (Float) -> Float,
+    yAt: (Float) -> Float,
+) {
+    if (leftProgress < 0.005f && rightProgress < 0.005f) return
+
+    val farDepth = 0.62f // Start of BSD beam at 62% from horizon
+    val nearDepth = 1.00f
+
+    listOf(
+        Triple(threats.bsdLeft, -1f, leftProgress),  // Lane to the left of the car model
+        Triple(threats.bsdRight, 1f, rightProgress),  // Lane to the right of the car model
+    ).forEach { (level, side, progress) ->
+        if (progress < 0.005f) return@forEach
+
+        val (tint, isPulsing, maxAlpha) = when (level) {
+            LauncherRearThreatLevel.Alert -> Triple(Color(0xFFFF1744), true, 0.65f) // High-intensity bright red, pulsing
+            LauncherRearThreatLevel.Caution -> Triple(Color(0xFFFFAB00), false, 0.52f) // Saturated vibrant yellow/amber, steady
+            LauncherRearThreatLevel.Off -> Triple(Color(0xFFFFAB00), false, 0.52f) // Fade-out color
+        }
+
+        val farCenter = centerXAt(farDepth) + side * 2.0f * laneOffsetAt(farDepth)
+        val farHalf = laneOffsetAt(farDepth) * 0.85f
+
+        val nearCenter = centerXAt(nearDepth) + side * 2.0f * laneOffsetAt(nearDepth)
+        val nearHalf = laneOffsetAt(nearDepth) * 0.85f
+
+        val beam = Path().apply {
+            moveTo(farCenter - farHalf, yAt(farDepth))
+            lineTo(farCenter + farHalf, yAt(farDepth))
+            lineTo(nearCenter + nearHalf, yAt(nearDepth))
+            lineTo(nearCenter - nearHalf, yAt(nearDepth))
+            close()
+        }
+
+        val pulseFactor = if (isPulsing) pulse.coerceIn(0.25f, 1f) else 1.0f
+        val effectiveMaxAlpha = maxAlpha * progress.coerceIn(0f, 1f) * pulseFactor
+
+        drawPath(
+            path = beam,
+            brush = Brush.verticalGradient(
+                0.00f to tint.copy(alpha = 0f),
+                0.20f to tint.copy(alpha = effectiveMaxAlpha * 0.35f),
+                0.55f to tint.copy(alpha = effectiveMaxAlpha),
+                0.85f to tint.copy(alpha = effectiveMaxAlpha * 0.55f),
+                1.00f to tint.copy(alpha = 0f),
+                startY = yAt(farDepth),
+                endY = yAt(nearDepth),
+            ),
+        )
+    }
 }
 
 /** ACC following beam: a glowing wedge from ego up to the tracked target,
