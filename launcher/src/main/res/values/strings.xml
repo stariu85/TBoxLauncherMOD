@@ -1257,4 +1257,16 @@
     <string name="reg_roaming">роуминг</string>
 
     <string name="net_no">нет сети</string>
+    <string name="launcher_grid_empty_hint">Для добавления программы зажмите и подержите в пустом месте, затем нажмите на любой + . Для добавления или редактирования кнопок климата в нижнем меню, зажмите и подержите любую иконку климат контроля или в пустом месте, далее нажмите + или перетащите иконку в нужное место</string>
+    <string name="launcher_grid_edit_banner">Настройка сетки: %1$d × %2$d · Масштаб %3$d%%</string>
+    <string name="launcher_grid_columns_label">Столбцы (X)</string>
+    <string name="launcher_grid_rows_label">Строки (Y)</string>
+    <string name="launcher_grid_scale_label">Масштаб</string>
+    <string name="launcher_grid_add_icon_cd">Добавить иконку</string>
+    <string name="settings_grid_columns_title">Колонки сетки (5..20)</string>
+    <string name="settings_grid_columns_desc">Количество столбцов сетки для ярлыков правой зоны</string>
+    <string name="settings_grid_rows_title">Строки сетки (1..10)</string>
+    <string name="settings_grid_rows_desc">Количество строк сетки для ярлыков правой зоны</string>
+    <string name="settings_home_icon_scale_title">Размер иконок правой зоны</string>
+    <string name="settings_home_icon_scale_desc">Масштаб ярлыков приложений в правой панели</string>
 </resources>

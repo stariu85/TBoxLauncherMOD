@@ -741,7 +741,7 @@ private fun GridColumnsSlider() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Колонки сетки (5..20)",
+                text = stringResource(R.string.settings_grid_columns_title),
                 color = LauncherColors.TextPrimary,
                 fontSize = 16.sp,
             )
@@ -752,7 +752,7 @@ private fun GridColumnsSlider() {
             )
         }
         Text(
-            text = "Количество столбцов сетки для ярлыков правой зоны",
+            text = stringResource(R.string.settings_grid_columns_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -787,7 +787,7 @@ private fun GridRowsSlider() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Строки сетки (1..10)",
+                text = stringResource(R.string.settings_grid_rows_title),
                 color = LauncherColors.TextPrimary,
                 fontSize = 16.sp,
             )
@@ -798,7 +798,7 @@ private fun GridRowsSlider() {
             )
         }
         Text(
-            text = "Количество строк сетки для ярлыков правой зоны",
+            text = stringResource(R.string.settings_grid_rows_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -833,7 +833,7 @@ private fun HomeIconScaleSlider() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Размер иконок правой зоны",
+                text = stringResource(R.string.settings_home_icon_scale_title),
                 color = LauncherColors.TextPrimary,
                 fontSize = 16.sp,
             )
@@ -844,7 +844,7 @@ private fun HomeIconScaleSlider() {
             )
         }
         Text(
-            text = "Масштаб ярлыков приложений в правой панели",
+            text = stringResource(R.string.settings_home_icon_scale_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )

@@ -665,29 +665,182 @@ fun LauncherRightPanel(
                 }
             }
             Column(modifier = Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    LauncherMetricCard(
-                        label = stringResource(R.string.data_title_odometer),
-                        value = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
-                        modifier = Modifier.weight(1f),
-                    )
-                    LauncherMetricCard(
-                        label = stringResource(R.string.launcher_metric_range),
-                        value = distanceToFuelEmpty?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
-                        modifier = Modifier.weight(1f),
-                    )
-                    LauncherMetricCard(
-                        label = stringResource(R.string.launcher_metric_cabin),
-                        value = cabinTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
-                        modifier = Modifier.weight(1f),
-                    )
-                    LauncherVehicleStatusCard(
-                        onClick = { vehicleStatusDialogVisible = true },
-                        modifier = Modifier.weight(1f),
-                    )
+                if (isDragMode) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LauncherColors.CardDark)
+                            .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.40f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Column X Slider
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.launcher_grid_columns_label),
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = LauncherColors.TextSecondary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = gridColumns.toString(),
+                                    color = LauncherColors.AccentCyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Slider(
+                                value = gridColumns.toFloat(),
+                                onValueChange = { next ->
+                                    LauncherAppConfigStore.setGridColumns(context, next.roundToInt())
+                                    onConfigChanged()
+                                },
+                                valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
+                                steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
+                                modifier = Modifier.height(18.dp),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = LauncherColors.AccentCyan,
+                                    activeTrackColor = LauncherColors.AccentCyan,
+                                    inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                                ),
+                            )
+                        }
+
+                        // Row Y Slider
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.launcher_grid_rows_label),
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = LauncherColors.TextSecondary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = gridRows.toString(),
+                                    color = LauncherColors.AccentCyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Slider(
+                                value = gridRows.toFloat(),
+                                onValueChange = { next ->
+                                    LauncherAppConfigStore.setGridRows(context, next.roundToInt())
+                                    onConfigChanged()
+                                },
+                                valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
+                                steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
+                                modifier = Modifier.height(18.dp),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = LauncherColors.AccentCyan,
+                                    activeTrackColor = LauncherColors.AccentCyan,
+                                    inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                                ),
+                            )
+                        }
+
+                        // Icon Scale Slider
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.launcher_grid_scale_label),
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = LauncherColors.TextSecondary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = "${(homeIconScale * 100).roundToInt()}%",
+                                    color = LauncherColors.AccentCyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            Slider(
+                                value = homeIconScale,
+                                onValueChange = { next ->
+                                    LauncherAppConfigStore.setHomeIconScale(context, next)
+                                    onConfigChanged()
+                                },
+                                valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
+                                steps = 23,
+                                modifier = Modifier.height(18.dp),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = LauncherColors.AccentCyan,
+                                    activeTrackColor = LauncherColors.AccentCyan,
+                                    inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                                ),
+                            )
+                        }
+
+                        // Done Button on the right
+                        TextButton(
+                            onClick = { isDragMode = false },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_app_drawer_done),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        LauncherMetricCard(
+                            label = stringResource(R.string.data_title_odometer),
+                            value = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                            modifier = Modifier.weight(1f),
+                        )
+                        LauncherMetricCard(
+                            label = stringResource(R.string.launcher_metric_range),
+                            value = distanceToFuelEmpty?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                            modifier = Modifier.weight(1f),
+                        )
+                        LauncherMetricCard(
+                            label = stringResource(R.string.launcher_metric_cabin),
+                            value = cabinTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
+                            modifier = Modifier.weight(1f),
+                        )
+                        LauncherVehicleStatusCard(
+                            onClick = { vehicleStatusDialogVisible = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -771,7 +924,7 @@ fun LauncherRightPanel(
 
                     if (!hasShortcuts) {
                         Text(
-                            text = "Для добавления программы зажмите и подержите в пустом месте, затем нажмите на любой + . Для добавления или редактирования кнопок климата в нижнем меню, зажмите и подержите любую иконку климат контроля или в пустом месте, далее нажмите + или перетащите иконку в нужное место",
+                            text = stringResource(R.string.launcher_grid_empty_hint),
                             color = Color.White.copy(alpha = 0.6f),
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
@@ -779,163 +932,6 @@ fun LauncherRightPanel(
                             modifier = Modifier
                                 .padding(horizontal = 32.dp, vertical = 16.dp),
                         )
-                    }
-                }
-
-                if (isDragMode) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LauncherColors.SurfaceDark)
-                            .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.40f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Настройка сетки: ${gridColumns} × $gridRows · Масштаб ${(homeIconScale * 100).roundToInt()}%",
-                                color = LauncherColors.TextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            TextButton(
-                                onClick = { isDragMode = false },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            ) {
-                                Text(
-                                    text = "Готово",
-                                    color = LauncherColors.AccentCyan,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // Column X Slider
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "Столбцы (X)",
-                                        color = LauncherColors.TextSecondary,
-                                        fontSize = 11.sp,
-                                    )
-                                    Text(
-                                        text = "$gridColumns",
-                                        color = LauncherColors.AccentCyan,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                }
-                                Slider(
-                                    value = gridColumns.toFloat(),
-                                    onValueChange = { next ->
-                                        LauncherAppConfigStore.setGridColumns(context, next.roundToInt())
-                                        onConfigChanged()
-                                    },
-                                    valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
-                                    steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
-                                    modifier = Modifier.height(24.dp),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = LauncherColors.AccentCyan,
-                                        activeTrackColor = LauncherColors.AccentCyan,
-                                        inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                                    ),
-                                )
-                            }
-
-                            // Row Y Slider
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "Строки (Y)",
-                                        color = LauncherColors.TextSecondary,
-                                        fontSize = 11.sp,
-                                    )
-                                    Text(
-                                        text = "$gridRows",
-                                        color = LauncherColors.AccentCyan,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                }
-                                Slider(
-                                    value = gridRows.toFloat(),
-                                    onValueChange = { next ->
-                                        LauncherAppConfigStore.setGridRows(context, next.roundToInt())
-                                        onConfigChanged()
-                                    },
-                                    valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
-                                    steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
-                                    modifier = Modifier.height(24.dp),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = LauncherColors.AccentCyan,
-                                        activeTrackColor = LauncherColors.AccentCyan,
-                                        inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                                    ),
-                                )
-                            }
-
-                            // Icon Scale Slider
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "Масштаб",
-                                        color = LauncherColors.TextSecondary,
-                                        fontSize = 11.sp,
-                                    )
-                                    Text(
-                                        text = "${(homeIconScale * 100).roundToInt()}%",
-                                        color = LauncherColors.AccentCyan,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                }
-                                Slider(
-                                    value = homeIconScale,
-                                    onValueChange = { next ->
-                                        LauncherAppConfigStore.setHomeIconScale(context, next)
-                                        onConfigChanged()
-                                    },
-                                    valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
-                                    steps = 23,
-                                    modifier = Modifier.height(24.dp),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = LauncherColors.AccentCyan,
-                                        activeTrackColor = LauncherColors.AccentCyan,
-                                        inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                                    ),
-                                )
-                            }
-                        }
                     }
                 }
             }
