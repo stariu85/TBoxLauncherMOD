@@ -210,7 +210,7 @@ fun LauncherLeftPanel(
     val isMoving = effectiveSpeed > 0.5f
 
     val baseGlowColor = when {
-        isEco -> Color(0xFF22C55E) // Green
+        isEco -> Color(0xFF16A34A) // Green
         isNor -> Color(0xFF3B82F6) // Blue
         isSpt -> Color(0xFFEF4444) // Red
         else -> Color.Transparent
@@ -258,8 +258,8 @@ fun LauncherLeftPanel(
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                animatedGlowColor.copy(alpha = animatedGlowColor.alpha * 0.45f),
-                                animatedGlowColor.copy(alpha = animatedGlowColor.alpha * 0.18f),
+                                animatedGlowColor.copy(alpha = animatedGlowColor.alpha * 0.35f),
+                                animatedGlowColor.copy(alpha = animatedGlowColor.alpha * 0.14f),
                                 Color.Transparent,
                             ),
                         ),

@@ -127,7 +127,7 @@ fun LauncherDriveModeBar(
         DriveModeChip(
             label = "ECO",
             selected = isEco,
-            activeColor = Color(0xFF22C55E), // Green
+            activeColor = Color(0xFF16A34A), // Green
             onClick = { onSelectMode("ECO") },
             modifier = Modifier
                 .weight(1f)
