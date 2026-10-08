@@ -82,7 +82,7 @@ internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
 internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
 internal const val DOCK_ICON_SCALE_MIN = 1.00f
 internal const val DOCK_ICON_SCALE_MAX = 1.45f
-internal const val TOP_BAR_HEIGHT_DEFAULT = 40
+internal const val TOP_BAR_HEIGHT_DEFAULT = 32
 internal const val TOP_BAR_HEIGHT_MIN = 28
 internal const val TOP_BAR_HEIGHT_MAX = 72
 internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 65
@@ -91,7 +91,7 @@ internal const val BOTTOM_BAR_HEIGHT_MAX = 110
 internal const val FLOATING_HOME_SIZE_DEFAULT = 55
 internal const val FLOATING_HOME_SIZE_MIN = 32
 internal const val FLOATING_HOME_SIZE_MAX = 96
-internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
+internal const val CAR_MODEL_SCALE_DEFAULT = 1.20f
 internal const val CAR_MODEL_SCALE_MIN = 0.50f
 internal const val CAR_MODEL_SCALE_MAX = 1.80f
 internal const val SIDEBAR_WIDTH_DEFAULT = 300
@@ -109,10 +109,10 @@ internal const val CLIMATE_SCALE_MAX = 1.40f
 internal const val GRID_COLUMNS_DEFAULT = 12
 internal const val GRID_COLUMNS_MIN = 5
 internal const val GRID_COLUMNS_MAX = 20
-internal const val GRID_ROWS_DEFAULT = 8
+internal const val GRID_ROWS_DEFAULT = 7
 internal const val GRID_ROWS_MIN = 1
 internal const val GRID_ROWS_MAX = 10
-internal const val HOME_ICON_SCALE_DEFAULT = 1.00f
+internal const val HOME_ICON_SCALE_DEFAULT = 1.35f
 internal const val HOME_ICON_SCALE_MIN = 0.60f
 internal const val HOME_ICON_SCALE_MAX = 1.80f
 internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
@@ -372,7 +372,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun adasAlertsInLeftPanel(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, false)
+        prefs(context).getBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, true)
 
     fun setAdasAlertsInLeftPanel(context: Context, inLeftPanel: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, inLeftPanel).apply()
@@ -412,7 +412,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun climateCardBgVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CLIMATE_CARD_BG_VISIBLE, true)
+        prefs(context).getBoolean(KEY_CLIMATE_CARD_BG_VISIBLE, false)
 
     fun setClimateCardBgVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CLIMATE_CARD_BG_VISIBLE, visible).apply()
@@ -457,17 +457,28 @@ internal object LauncherAppConfigStore {
         context: Context,
         itemId: String,
         currentIndex: Int,
-        slotsShift: Int,
+        targetIndex: Int,
     ) {
         val slots = bottomSlotsUnified(context).toMutableList()
         val floatingHomeOn = floatingHomeVisible(context)
         val minSlot = if (floatingHomeOn) 1 else 0
-        val targetIndex = (currentIndex + slotsShift).coerceIn(minSlot, GRID_SLOTS_TOTAL_COUNT - 1)
-        if (targetIndex == currentIndex) return
+        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+        val maxTarget = if (itemSpan > 1) GRID_SLOTS_TOTAL_COUNT - 2 else GRID_SLOTS_TOTAL_COUNT - 1
+        val validTarget = targetIndex.coerceIn(minSlot, maxTarget)
+        if (validTarget == currentIndex) return
 
-        val targetOld = slots[targetIndex]
+        val targetOld = slots[validTarget]
         slots[currentIndex] = targetOld
-        slots[targetIndex] = itemId
+        slots[validTarget] = itemId
+
+        if (itemSpan > 1 && validTarget + 1 < GRID_SLOTS_TOTAL_COUNT) {
+            val absorbedOld = slots[validTarget + 1]
+            slots[validTarget + 1] = null
+            if (absorbedOld != null && slots[currentIndex] == null) {
+                slots[currentIndex] = absorbedOld
+            }
+        }
+
         if (floatingHomeOn) {
             slots[0] = null
         }

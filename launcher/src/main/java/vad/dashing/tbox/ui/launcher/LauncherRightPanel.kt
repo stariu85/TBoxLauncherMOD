@@ -166,12 +166,9 @@ fun LauncherRightPanel(
 
     val totalGridSlots = gridColumns * gridRows
     val itemsBySlot = remember(homeItems) { homeItems.associateBy { it.slotIndex } }
-    val maxOccupiedSlot = remember(homeItems) { homeItems.maxOfOrNull { it.slotIndex } ?: -1 }
 
-    val dockEntries = remember(itemsBySlot, maxOccupiedSlot, splitPresets, appsByPackage, isDragMode, totalGridSlots, gridColumns) {
-        val minSlots = maxOf(maxOccupiedSlot + 1, gridColumns)
-        val totalSlotsToRender = if (isDragMode) totalGridSlots else minSlots.coerceAtMost(totalGridSlots)
-        List(totalSlotsToRender) { slotIdx ->
+    val dockEntries = remember(itemsBySlot, splitPresets, appsByPackage, totalGridSlots) {
+        List(totalGridSlots) { slotIdx ->
             val item = itemsBySlot[slotIdx]
             when {
                 item is LauncherHomeItem.App -> {
@@ -695,66 +692,92 @@ fun LauncherRightPanel(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridColumns),
+                val hasShortcuts = remember(dockEntries) {
+                    dockEntries.any { it is HomeDockEntry.App || it is HomeDockEntry.Split }
+                }
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .onGloballyPositioned { coordinates ->
-                            val rect = coordinates.boundsInWindow()
-                            LauncherEmbeddedBoundsState.dockGridTopPx = rect.top.toInt()
-                        },
-                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = { isDragMode = true },
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    itemsIndexed(dockEntries, key = { _, entry -> entry.key }) { _, entry ->
-                        val slotIdx = when (entry) {
-                            is HomeDockEntry.App -> entry.index
-                            is HomeDockEntry.Split -> entry.index
-                            is HomeDockEntry.Empty -> entry.index
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridColumns),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { coordinates ->
+                                val rect = coordinates.boundsInWindow()
+                                LauncherEmbeddedBoundsState.dockGridTopPx = rect.top.toInt()
+                            },
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        itemsIndexed(dockEntries, key = { _, entry -> entry.key }) { _, entry ->
+                            val slotIdx = when (entry) {
+                                is HomeDockEntry.App -> entry.index
+                                is HomeDockEntry.Split -> entry.index
+                                is HomeDockEntry.Empty -> entry.index
+                            }
+                            LauncherDraggableHomeDockEntry(
+                                entry = entry,
+                                slotIndex = slotIdx,
+                                autostartKey = autostartKey,
+                                appsByPackage = appsByPackage,
+                                homeItems = homeItems,
+                                visibleApps = visibleApps,
+                                isDragMode = isDragMode,
+                                gridColumns = gridColumns,
+                                gridRows = gridRows,
+                                iconScale = homeIconScale,
+                                context = context,
+                                onEnableDragMode = { isDragMode = true },
+                                onOpenAddMenu = { targetSlot ->
+                                    LauncherOverlayElevator.bringLauncherToFront(context)
+                                    pickerSlotIndex = targetSlot
+                                    addMenuVisible = true
+                                },
+                                onOpenContextMenu = { targetSlot -> contextMenuIndex = targetSlot },
+                                onMoveItem = { fromSlot, toSlot ->
+                                    LauncherHomeStore.moveItem(context, fromSlot, toSlot)
+                                    onConfigChanged()
+                                },
+                                onRemoveItem = { targetSlot ->
+                                    LauncherHomeStore.removeAtSlot(context, targetSlot)
+                                    onConfigChanged()
+                                },
+                                onStartDrag = { dragEntry, startX, startY ->
+                                    activeDraggingEntry = dragEntry
+                                    activeDraggingX = startX
+                                    activeDraggingY = startY
+                                },
+                                onDragUpdate = { dx, dy ->
+                                    activeDraggingX += dx
+                                    activeDraggingY += dy
+                                },
+                                onEndDrag = {
+                                    activeDraggingEntry = null
+                                },
+                                activeDraggingKey = activeDraggingEntry?.key,
+                                onConfigChanged = onConfigChanged,
+                            )
                         }
-                        LauncherDraggableHomeDockEntry(
-                            entry = entry,
-                            slotIndex = slotIdx,
-                            autostartKey = autostartKey,
-                            appsByPackage = appsByPackage,
-                            homeItems = homeItems,
-                            visibleApps = visibleApps,
-                            isDragMode = isDragMode,
-                            gridColumns = gridColumns,
-                            gridRows = gridRows,
-                            iconScale = homeIconScale,
-                            context = context,
-                            onEnableDragMode = { isDragMode = true },
-                            onOpenAddMenu = { targetSlot ->
-                                LauncherOverlayElevator.bringLauncherToFront(context)
-                                pickerSlotIndex = targetSlot
-                                addMenuVisible = true
-                            },
-                            onOpenContextMenu = { targetSlot -> contextMenuIndex = targetSlot },
-                            onMoveItem = { fromSlot, toSlot ->
-                                LauncherHomeStore.moveItem(context, fromSlot, toSlot)
-                                onConfigChanged()
-                            },
-                            onRemoveItem = { targetSlot ->
-                                LauncherHomeStore.removeAtSlot(context, targetSlot)
-                                onConfigChanged()
-                            },
-                            onStartDrag = { dragEntry, startX, startY ->
-                                activeDraggingEntry = dragEntry
-                                activeDraggingX = startX
-                                activeDraggingY = startY
-                            },
-                            onDragUpdate = { dx, dy ->
-                                activeDraggingX += dx
-                                activeDraggingY += dy
-                            },
-                            onEndDrag = {
-                                activeDraggingEntry = null
-                            },
-                            activeDraggingKey = activeDraggingEntry?.key,
-                            onConfigChanged = onConfigChanged,
+                    }
+
+                    if (!hasShortcuts) {
+                        Text(
+                            text = "Для добавления программы зажмите и подержите в пустом месте, затем нажмите на любой + . Для добавления или редактирования кнопок климата в нижнем меню, зажмите и подержите любую иконку климат контроля или в пустом месте, далее нажмите + или перетащите иконку в нужное место",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .padding(horizontal = 32.dp, vertical = 16.dp),
                         )
                     }
                 }

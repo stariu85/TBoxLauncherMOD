@@ -1,6 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
+import android.media.AudioManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -24,7 +25,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
@@ -37,7 +37,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import android.media.AudioManager
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -70,10 +69,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,18 +89,18 @@ import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.MbCanSeatModeState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.HvacTempZone
-import vad.dashing.tbox.ui.LaunchableAppEntry
-import vad.dashing.tbox.ui.rememberLaunchableAppEntries
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
 import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
+import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.refreshHvacTemperaturesFromMbCan
+import vad.dashing.tbox.ui.rememberLaunchableAppEntries
+import vad.dashing.tbox.ui.sendAdjustAudioVolume
 import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
 import vad.dashing.tbox.ui.sendCycleFrontSeatVent
 import vad.dashing.tbox.ui.sendCycleHvacFanDirection
-import vad.dashing.tbox.ui.sendAdjustAudioVolume
 import vad.dashing.tbox.ui.sendCycleHvacFanSpeed
 import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
 import vad.dashing.tbox.ui.sendToggleHvacAc
@@ -444,7 +442,7 @@ private fun formatHvacSetTemp(celsius: Float?): String {
     return "${celsius.roundToInt()}°"
 }
 
-private val LocalClimateCardBgVisible = compositionLocalOf { true }
+private val LocalClimateCardBgVisible = compositionLocalOf { false }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -539,6 +537,9 @@ fun LauncherBottomBar(
                 label = "plusIconAlpha",
             )
 
+            var rowLeftX by remember { mutableFloatStateOf(0f) }
+            var rowWidthPx by remember { mutableFloatStateOf(1f) }
+
             CompositionLocalProvider(
                 LocalDockIconScale provides (dockScale * climateScale),
                 LocalClimateCardBgVisible provides climateCardBgVisible,
@@ -546,7 +547,12 @@ fun LauncherBottomBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.CenterStart),
+                        .align(Alignment.CenterStart)
+                        .onGloballyPositioned { coordinates ->
+                            val bounds = coordinates.boundsInWindow()
+                            rowLeftX = bounds.left
+                            rowWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
+                        },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -561,7 +567,6 @@ fun LauncherBottomBar(
                         if (itemSpan > 1) {
                             skipCount = itemSpan - 1
                         }
-                        val itemWidthDp = slotUnitWidthDp * itemSpan
 
                         Box(
                             modifier = Modifier
@@ -575,7 +580,8 @@ fun LauncherBottomBar(
                                     context = context,
                                     canViewModel = canViewModel,
                                     index = index,
-                                    slotWidthDp = itemWidthDp,
+                                    rowLeftX = rowLeftX,
+                                    rowWidthPx = rowWidthPx,
                                     onDragStateChange = { dragging ->
                                         isDraggingAnySlot = dragging
                                         if (dragging) {
@@ -672,7 +678,8 @@ private fun LauncherDraggableUnifiedSlot(
     context: Context,
     canViewModel: CanDataViewModel,
     index: Int,
-    slotWidthDp: Dp,
+    rowLeftX: Float,
+    rowWidthPx: Float,
     onDragStateChange: (Boolean) -> Unit,
     onCloseVehicleSettings: () -> Unit,
     onOpenVehicleSettings: () -> Unit,
@@ -680,21 +687,18 @@ private fun LauncherDraggableUnifiedSlot(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
+    var itemLeftX by remember { mutableFloatStateOf(0f) }
 
     val density = LocalDensity.current
     val trashThresholdPx = remember(density) { with(density) { -36.dp.toPx() } }
     val isTrashThreshold = isDragging && offsetY < trashThresholdPx
+    val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
 
     Box(
         modifier = Modifier
             .zIndex(if (isDragging) 200f else 0f)
-            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-            .graphicsLayer {
-                if (isDragging) {
-                    scaleX = if (isTrashThreshold) 1.05f else 1.15f
-                    scaleY = if (isTrashThreshold) 1.05f else 1.15f
-                    shadowElevation = 16f
-                }
+            .onGloballyPositioned { coordinates ->
+                itemLeftX = coordinates.boundsInWindow().left
             }
             .pointerInput(itemId, index) {
                 detectDragGesturesAfterLongPress(
@@ -712,14 +716,19 @@ private fun LauncherDraggableUnifiedSlot(
                             // Dragged UP out of bottom panel -> Remove icon from slot!
                             LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, null)
                         } else {
-                            val slotWidthPx = slotWidthDp.toPx()
-                            val slotsShift = (offsetX / slotWidthPx).roundToInt()
-                            if (slotsShift != 0) {
+                            val unitSlotWidthPx = (rowWidthPx / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(1f)
+                            val droppedLeftX = itemLeftX + offsetX
+                            val maxTarget = if (itemSpan > 1) GRID_SLOTS_TOTAL_COUNT - 2 else GRID_SLOTS_TOTAL_COUNT - 1
+                            val targetSlot = ((droppedLeftX - rowLeftX + unitSlotWidthPx / 2f) / unitSlotWidthPx)
+                                .toInt()
+                                .coerceIn(minSlot, maxTarget)
+
+                            if (targetSlot != index) {
                                 LauncherAppConfigStore.reorderUnifiedSlot(
                                     context = context,
                                     itemId = itemId,
                                     currentIndex = index,
-                                    slotsShift = slotsShift,
+                                    targetIndex = targetSlot,
                                 )
                             }
                         }
@@ -738,6 +747,14 @@ private fun LauncherDraggableUnifiedSlot(
                         offsetY += dragAmount.y
                     },
                 )
+            }
+            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .graphicsLayer {
+                if (isDragging) {
+                    scaleX = if (isTrashThreshold) 1.05f else 1.15f
+                    scaleY = if (isTrashThreshold) 1.05f else 1.15f
+                    shadowElevation = 16f
+                }
             },
         contentAlignment = Alignment.Center,
     ) {

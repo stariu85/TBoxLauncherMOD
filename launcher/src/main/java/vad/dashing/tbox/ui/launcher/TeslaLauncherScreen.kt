@@ -175,7 +175,7 @@ fun TeslaLauncherScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(topBarHeightDp.dp)
-                            .padding(start = 5.dp, end = 20.dp),
+                            .padding(end = 20.dp),
                     )
                     Row(
                         modifier = Modifier

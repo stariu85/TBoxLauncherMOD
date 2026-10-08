@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -137,28 +138,21 @@ internal fun LauncherTopHeaderBar(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Left side: ADAS assist zone indicators
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxHeight(),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            if (!adasAlertsInLeftPanel) {
-                LauncherAdasStrip(canViewModel = canViewModel)
-            }
-        }
-
-        // Center: Temp, Fuel, Voltage, CPU, RAM centered both horizontally and vertically
+        // Left side: ADAS assist zone (if in top bar) + Info items (Temp, Fuel, Voltage, CPU, RAM)
         Row(
             modifier = Modifier
-                .align(Alignment.Center)
+                .align(Alignment.CenterStart)
+                .padding(start = 10.dp)
                 .fillMaxHeight(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (!adasAlertsInLeftPanel) {
+                LauncherAdasStrip(canViewModel = canViewModel)
+            }
             Text(
                 text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
+                style = MaterialTheme.typography.tboxCaption,
                 color = LauncherColors.TextPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -212,24 +206,28 @@ internal fun LauncherTopHeaderBar(
             }
             Text(
                 text = "·",
+                style = MaterialTheme.typography.tboxCaption,
                 color = StatusIconTint.copy(alpha = 0.5f),
-                fontSize = 14.sp,
+                fontSize = 15.sp,
             )
             Text(
                 text = "CPU $cpuUsage%",
+                style = MaterialTheme.typography.tboxCaption,
                 color = StatusIconTint,
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
             Text(
                 text = "·",
+                style = MaterialTheme.typography.tboxCaption,
                 color = StatusIconTint.copy(alpha = 0.5f),
-                fontSize = 14.sp,
+                fontSize = 15.sp,
             )
             Text(
                 text = "RAM $ramUsage%",
+                style = MaterialTheme.typography.tboxCaption,
                 color = StatusIconTint,
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
         }
