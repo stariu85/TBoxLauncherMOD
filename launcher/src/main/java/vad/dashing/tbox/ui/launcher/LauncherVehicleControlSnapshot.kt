@@ -33,6 +33,7 @@ data class LauncherVehicleControlSnapshot(
     // Experimental — polled only when [includeExperimental] is true.
     val welcomeLamp: Boolean? = null,
     val musicalRhythm: Boolean? = null,
+    val atmoLightAssociateDrivingMode: Boolean? = null,
     val breathingUnlock: Boolean? = null,
     val breathingLock: Boolean? = null,
     val unlockAnimation: Boolean? = null,
@@ -101,6 +102,7 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
     return core.copy(
         welcomeLamp = onOff12(get(MbCanKnownVehiclePropertyId.WELCOME_LAMP)),
         musicalRhythm = onOff12(get(MbCanKnownVehiclePropertyId.MUSICAL_RHYTHM)),
+        atmoLightAssociateDrivingMode = onOff12(get(MbCanKnownVehiclePropertyId.ATMO_LIGHT_ASSOCIATE_DRIVING_MODE)),
         breathingUnlock = onOff12(get(MbCanKnownVehiclePropertyId.BREATHING_UNLOCK)),
         breathingLock = onOff12(get(MbCanKnownVehiclePropertyId.BREATHING_LOCK)),
         unlockAnimation = onOff12(get(MbCanKnownVehiclePropertyId.UNLOCK_ANIMATION)),

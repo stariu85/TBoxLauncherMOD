@@ -364,6 +364,7 @@
     <string name="launcher_vs_exp_unlock_animation">Анимация отпирания</string>
     <string name="launcher_vs_exp_lock_animation">Анимация запирания</string>
     <string name="launcher_vs_exp_musical_rhythm">Свет в ритм музыки</string>
+    <string name="launcher_vs_exp_atmo_light_drive_mode">Привязка подсветки к режиму вождения</string>
     <string name="launcher_vs_exp_static_effect">Режим атмосферного света</string>
     <string name="launcher_vs_exp_static_off">Выкл</string>
     <string name="launcher_vs_exp_static_mono">Одноцветный</string>

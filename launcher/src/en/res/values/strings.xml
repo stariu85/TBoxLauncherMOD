@@ -1148,6 +1148,7 @@
     <string name="launcher_vs_exp_iss">Start-Stop System (ISS)</string>
     <string name="launcher_vs_exp_lock_animation">Lock Animation</string>
     <string name="launcher_vs_exp_musical_rhythm">Ambient Light Music Sync</string>
+    <string name="launcher_vs_exp_atmo_light_drive_mode">Tie Ambient Light to Drive Mode</string>
     <string name="launcher_vs_exp_note">Some settings are hardware-dependent. If a switch does not respond, it is unavailable on this head unit.</string>
     <string name="launcher_vs_exp_static_effect">Ambient Light Mode</string>
     <string name="launcher_vs_exp_static_full">Multicolor</string>

@@ -260,6 +260,8 @@ object MbCanKnownVehiclePropertyId {
     // --- Experimental / OEM body & light effects (launcher «Экспериментальные») ---
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_MUSICAL_RHYTHM] — 1 off, 2 on. */
     const val MUSICAL_RHYTHM = 30
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_ATMO_LIGHT_ASSOCIATE_DRIVING_MODE] — 1 off, 2 on. */
+    const val ATMO_LIGHT_ASSOCIATE_DRIVING_MODE = 31
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_WELCOME_LAMP] — 1 off, 2 on. */
     const val WELCOME_LAMP = 32
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_FRAGRANCE_SWITCH] — 1 off, 2 on. */
@@ -603,6 +605,10 @@ object MbCanCommandRegistry {
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.MUSICAL_RHYTHM,
+            policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.ATMO_LIGHT_ASSOCIATE_DRIVING_MODE,
             policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
         ),
         MbCanCommandSpec(

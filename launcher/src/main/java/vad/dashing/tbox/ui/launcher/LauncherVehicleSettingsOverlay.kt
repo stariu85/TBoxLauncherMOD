@@ -853,6 +853,13 @@ internal fun LauncherVehicleSettingsContent(
                 active = vehicleControls.musicalRhythm == true,
                 onClick = { sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MUSICAL_RHYTHM) },
             )
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_exp_atmo_light_drive_mode),
+                active = vehicleControls.atmoLightAssociateDrivingMode == true,
+                onClick = {
+                    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.ATMO_LIGHT_ASSOCIATE_DRIVING_MODE)
+                },
+            )
             LauncherSettingsValueRow(
                 stringResource(R.string.launcher_vs_exp_static_effect),
                 when (vehicleControls.staticEffect) {

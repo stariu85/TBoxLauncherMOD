@@ -805,6 +805,12 @@ object Android10VhalRepository {
         else -> MbCanBinaryState.Unknown
     }
 
+    private fun decodeVhalBinaryTwoIsOn(raw: Int): MbCanBinaryState = when (raw) {
+        2 -> MbCanBinaryState.On
+        0, 1 -> MbCanBinaryState.Off
+        else -> MbCanBinaryState.Unknown
+    }
+
     private fun isVhalBinaryToggleProperty(propertyId: Int): Boolean = when (propertyId) {
         MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH,
         MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH,
@@ -821,13 +827,14 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION ->
             MbCanSignalStateEngine.decodeHvacAirRecirculationRaw(raw)
         MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH,
-        MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH,
+        MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH ->
+            decodeVhalBinaryOneIsOn(raw)
         MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH,
         MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE ->
-            decodeVhalBinaryOneIsOn(raw)
+            decodeVhalBinaryTwoIsOn(raw)
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION ->
             MbCanSignalStateEngine.decodeHvacFrontDefrostVhalRaw(raw)
         else -> MbCanBinaryState.Unknown
@@ -885,15 +892,15 @@ object Android10VhalRepository {
                 }
             resolved(MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH) ->
                 raw?.let {
-                    stateEngine.applyParkingRadarCandidate(decodeVhalBinaryOneIsOn(it))
+                    stateEngine.applyParkingRadarCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
             resolved(MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH) ->
                 raw?.let {
-                    stateEngine.applyWindshieldHeatCandidate(decodeVhalBinaryOneIsOn(it))
+                    stateEngine.applyWindshieldHeatCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
             resolved(MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH) ->
                 raw?.let {
-                    stateEngine.applyHvacDefrosterCandidate(decodeVhalBinaryOneIsOn(it))
+                    stateEngine.applyHvacDefrosterCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
             resolved(MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION) ->
                 raw?.let {
@@ -901,11 +908,11 @@ object Android10VhalRepository {
                 }
             resolved(MbCanKnownVehiclePropertyId.HVAC_POWER) ->
                 raw?.let {
-                    stateEngine.applyHvacAcPowerCandidate(decodeVhalBinaryOneIsOn(it))
+                    stateEngine.applyHvacAcPowerCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
             resolved(MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE) ->
                 raw?.let {
-                    stateEngine.applyHvacAutoStateCandidate(decodeVhalBinaryOneIsOn(it))
+                    stateEngine.applyHvacAutoStateCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
             resolved(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION) ->
                 raw?.let {
@@ -1116,7 +1123,7 @@ object Android10VhalRepository {
                     ?: MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH
                 val raw = bridge?.getIntProperty(propertyId)
                 stateEngine.applyParkingRadarCandidate(
-                    raw?.let(::decodeVhalBinaryOneIsOn) ?: MbCanBinaryState.Unknown
+                    raw?.let(::decodeVhalBinaryTwoIsOn) ?: MbCanBinaryState.Unknown
                 )
             }
             MbCanSignal.FrontWindscreenHeat -> {
@@ -1125,7 +1132,7 @@ object Android10VhalRepository {
                     ?: MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH
                 val raw = bridge?.getIntProperty(propertyId)
                 stateEngine.applyWindshieldHeatCandidate(
-                    raw?.let(::decodeVhalBinaryOneIsOn) ?: MbCanBinaryState.Unknown
+                    raw?.let(::decodeVhalBinaryTwoIsOn) ?: MbCanBinaryState.Unknown
                 )
             }
             MbCanSignal.HvacDefroster -> {
@@ -1134,7 +1141,7 @@ object Android10VhalRepository {
                     ?: MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH
                 val raw = bridge?.getIntProperty(propertyId)
                 stateEngine.applyHvacDefrosterCandidate(
-                    raw?.let(::decodeVhalBinaryOneIsOn) ?: MbCanBinaryState.Unknown
+                    raw?.let(::decodeVhalBinaryTwoIsOn) ?: MbCanBinaryState.Unknown
                 )
             }
             MbCanSignal.HvacAirRecirculation -> {
@@ -1152,7 +1159,7 @@ object Android10VhalRepository {
                     ?: MbCanKnownVehiclePropertyId.HVAC_POWER
                 val raw = bridge?.getIntProperty(propertyId)
                 stateEngine.applyHvacAcPowerCandidate(
-                    raw?.let(::decodeVhalBinaryOneIsOn) ?: MbCanBinaryState.Unknown
+                    raw?.let(::decodeVhalBinaryTwoIsOn) ?: MbCanBinaryState.Unknown
                 )
             }
             MbCanSignal.HvacAutoState -> {
@@ -1161,7 +1168,7 @@ object Android10VhalRepository {
                     ?: MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE
                 val raw = bridge?.getIntProperty(propertyId)
                 stateEngine.applyHvacAutoStateCandidate(
-                    raw?.let(::decodeVhalBinaryOneIsOn) ?: MbCanBinaryState.Unknown
+                    raw?.let(::decodeVhalBinaryTwoIsOn) ?: MbCanBinaryState.Unknown
                 )
             }
             MbCanSignal.HvacDefrosterFront -> {
@@ -1327,6 +1334,7 @@ object Android10VhalRepository {
                     ?: return MbCanCommandResult(false, "No command policy for propertyId=${command.propertyId}")
                 val allowedValues = when (val policy = spec.policy) {
                     is MbCanCommandPolicy.SetExact -> policy.allowedValues
+                    is MbCanCommandPolicy.ToggleBinary -> setOf(policy.offValue, policy.onValue)
                     is MbCanCommandPolicy.ToggleHvacFrontDefrost -> setOf(
                         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE,
                         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT,
