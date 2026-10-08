@@ -253,6 +253,16 @@ fun SimulationSectionCard(
                     active = LauncherDevVehicleState.highBeam,
                     onClick = { LauncherDevVehicleState.toggleHighBeam() },
                 )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_turn_left),
+                    active = LauncherDevVehicleState.turnLeft,
+                    onClick = { LauncherDevVehicleState.toggleTurnLeft() },
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_turn_right),
+                    active = LauncherDevVehicleState.turnRight,
+                    onClick = { LauncherDevVehicleState.toggleTurnRight() },
+                )
 
                 Spacer(Modifier.height(4.dp))
                 SimulationTireRow(

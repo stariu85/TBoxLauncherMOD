@@ -25,12 +25,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalContext
-import kotlin.math.roundToInt
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -56,15 +57,15 @@ import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.MbCanSeatModeState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.HvacTempZone
-import vad.dashing.tbox.ui.sendAdjustHvacTemperature
-import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
-import vad.dashing.tbox.ui.sendCycleFrontSeatVent
-import vad.dashing.tbox.ui.sendCycleDriverUnlockMode
-import vad.dashing.tbox.ui.sendCycleHomelightDelay
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
 import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
+import vad.dashing.tbox.ui.sendAdjustHvacTemperature
+import vad.dashing.tbox.ui.sendCycleDriverUnlockMode
+import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
+import vad.dashing.tbox.ui.sendCycleFrontSeatVent
+import vad.dashing.tbox.ui.sendCycleHomelightDelay
 import vad.dashing.tbox.ui.sendCycleLasSensitivity
 import vad.dashing.tbox.ui.sendCycleStaticEffect
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
@@ -88,9 +89,7 @@ import vad.dashing.tbox.ui.sendToggleSteeringWheelHeat
 import vad.dashing.tbox.ui.sendToggleWiperMaintenance
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.ui.graphics.Color
+import kotlin.math.roundToInt
 
 @Composable
 fun LauncherVehicleSettingsOverlay(
@@ -599,6 +598,17 @@ internal fun LauncherVehicleSettingsContent(
                 label = stringResource(R.string.launcher_adas_pas_on),
                 active = pasOn,
                 onClick = { sendToggleParkingRadar(context) },
+            )
+            val bsdAlertOverlayRevision by LauncherAppConfigStore.adasBsdAlertOverlayRevisionFlow.collectAsStateWithLifecycle()
+            val bsdAlertOverlayEnabled = remember(context, bsdAlertOverlayRevision) {
+                LauncherAppConfigStore.adasBsdAlertOverlayEnabled(context)
+            }
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_bsd_alert_overlay),
+                active = bsdAlertOverlayEnabled,
+                onClick = {
+                    LauncherAppConfigStore.setAdasBsdAlertOverlayEnabled(context, !bsdAlertOverlayEnabled)
+                },
             )
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_fcw),

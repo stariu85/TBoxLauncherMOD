@@ -28,6 +28,7 @@ private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
+private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
 private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
 private const val KEY_SPEED_LIMIT_Y_RATIO = "speed_limit_y_ratio"
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
@@ -163,6 +164,8 @@ internal object LauncherAppConfigStore {
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
     private val adasAlertsPlacementRevision = MutableStateFlow(0)
     internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
+    private val adasBsdAlertOverlayRevision = MutableStateFlow(0)
+    internal val adasBsdAlertOverlayRevisionFlow: StateFlow<Int> = adasBsdAlertOverlayRevision
     private val speedLimitPositionRevision = MutableStateFlow(0)
     internal val speedLimitPositionRevisionFlow: StateFlow<Int> = speedLimitPositionRevision
     private val climateControlsRevision = MutableStateFlow(0)
@@ -377,6 +380,14 @@ internal object LauncherAppConfigStore {
     fun setAdasAlertsInLeftPanel(context: Context, inLeftPanel: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, inLeftPanel).apply()
         adasAlertsPlacementRevision.value++
+    }
+
+    fun adasBsdAlertOverlayEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ADAS_BSD_ALERT_OVERLAY, true)
+
+    fun setAdasBsdAlertOverlayEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ADAS_BSD_ALERT_OVERLAY, enabled).apply()
+        adasBsdAlertOverlayRevision.value++
     }
 
     fun speedLimitXRatio(context: Context): Float =

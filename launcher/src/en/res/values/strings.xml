@@ -161,6 +161,8 @@
     <string name="launcher_vs_sim_lights_header">Lights</string>
     <string name="launcher_vs_sim_low_beam">Low beam</string>
     <string name="launcher_vs_sim_high_beam">High beam</string>
+    <string name="launcher_vs_sim_turn_left">Left turn signal</string>
+    <string name="launcher_vs_sim_turn_right">Right turn signal</string>
     <string name="action_send">Send</string>
     <string name="action_get_all_sms">Get all SMS</string>
 
@@ -1007,6 +1009,7 @@
     <string name="launcher_adas_takeover">BRAKE!</string>
     <string name="launcher_adas_time_gap">Gap %1$d</string>
     <string name="launcher_adas_title">Driver Assists</string>
+    <string name="launcher_vs_bsd_alert_overlay">BSD Alert screen overlay</string>
     <string name="launcher_app_drawer_done">Done</string>
     <string name="launcher_app_drawer_drag_hint">Hold and drag an app to the home screen</string>
     <string name="launcher_app_drawer_edit_hint">Tap cross to hide. Drag to grid or dock.</string>

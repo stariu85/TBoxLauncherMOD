@@ -134,6 +134,7 @@
     <string name="launcher_fan_down_cd">Вентилятор −</string>
     <string name="launcher_trunk_long_press_cd">Багажник (удерживайте)</string>
     <string name="launcher_adas_title">Ассистенты</string>
+    <string name="launcher_vs_bsd_alert_overlay">Экранный оверлей BSD Alert</string>
     <string name="launcher_adas_pas_on">Парктроник вкл.</string>
     <string name="launcher_adas_pas_off">Парктроник выкл.</string>
     <string name="launcher_adas_cruise">Круиз %1$s</string>
@@ -417,6 +418,8 @@
     <string name="launcher_vs_sim_lights_header">Свет</string>
     <string name="launcher_vs_sim_low_beam">Ближний свет</string>
     <string name="launcher_vs_sim_high_beam">Дальний свет</string>
+    <string name="launcher_vs_sim_turn_left">Левый поворотник</string>
+    <string name="launcher_vs_sim_turn_right">Правый поворотник</string>
     <string name="launcher_vs_dark_theme">Тёмная тема лаунчера</string>
     <string name="launcher_pdc_fsl">Перед · левый боковой</string>
     <string name="launcher_pdc_fl">Перед · левый</string>

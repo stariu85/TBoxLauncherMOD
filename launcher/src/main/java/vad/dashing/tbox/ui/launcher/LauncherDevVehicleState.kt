@@ -45,6 +45,8 @@ object LauncherDevVehicleState {
     val pdcChannels = androidx.compose.runtime.mutableStateMapOf<LauncherPdcChannel, Float>()
     var lowBeam by mutableStateOf(false)
     var highBeam by mutableStateOf(false)
+    var turnLeft by mutableStateOf(false)
+    var turnRight by mutableStateOf(false)
 
     fun cycleBsdLeft() {
         simulateEnabled = true
@@ -142,6 +144,18 @@ object LauncherDevVehicleState {
         if (highBeam) lowBeam = true
     }
 
+    fun toggleTurnLeft() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        turnLeft = !turnLeft
+    }
+
+    fun toggleTurnRight() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        turnRight = !turnRight
+    }
+
     fun pdcFrontGroupValue(): Float = pdcChannels[LauncherPdcChannel.FrontSideLeft] ?: 150f
 
     fun pdcRearGroupValue(): Float = pdcChannels[LauncherPdcChannel.RearLeft] ?: 150f
@@ -170,6 +184,8 @@ object LauncherDevVehicleState {
             seatBeltPassenger = true
             lowBeam = true
             highBeam = true
+            turnLeft = true
+            turnRight = true
             adasCruiseActive = true
             adasLanesActive = true
             adasBsdLeft = LauncherRearThreatLevel.Alert
@@ -187,6 +203,8 @@ object LauncherDevVehicleState {
         } else {
             lowBeam = false
             highBeam = false
+            turnLeft = false
+            turnRight = false
             doorFlOpen = false
             doorFrOpen = false
             doorRlOpen = false
@@ -470,6 +488,8 @@ object LauncherDevVehicleState {
         pdcChannels.clear()
         lowBeam = false
         highBeam = false
+        turnLeft = false
+        turnRight = false
         LauncherVehicleAlertsRepository.refresh()
     }
 }

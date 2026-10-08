@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -120,6 +121,13 @@ fun TeslaLauncherScreen(
 
     LaunchedEffect(configRevision, iconRevision) {
         carPaintId = LauncherAppConfigStore.carPaintId(context)
+    }
+
+    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+
+    SideEffect {
+        LauncherBsdAlertOverlayWindow.update(context, adas)
     }
 
     // Standalone launcher is dark-first; TBox theme channel is idle without the proxy.
@@ -291,6 +299,13 @@ fun TeslaLauncherScreen(
                     sidebarWidth = sidebarWidth,
                 )
             }
+
+            LauncherBsdAlertOverlay(
+                adas = adas,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1000f),
+            )
         }
 
         val currentVersionCode = remember(context) {
