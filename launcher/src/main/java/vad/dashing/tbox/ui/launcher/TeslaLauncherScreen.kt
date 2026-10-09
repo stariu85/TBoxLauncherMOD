@@ -89,6 +89,20 @@ fun TeslaLauncherScreen(
         }
     }
 
+    val headlightBeams = rememberHeadlightBeams()
+    LaunchedEffect(headlightBeams.any, LauncherThemeState.autoThemeHeadlightsEnabled) {
+        if (LauncherThemeState.autoThemeHeadlightsEnabled) {
+            LauncherThemeState.setDarkTheme(context, headlightBeams.any)
+        }
+    }
+
+    val solarDaytime = rememberSolarDaytimeState()
+    LaunchedEffect(solarDaytime, LauncherThemeState.autoThemeSolarEnabled) {
+        if (LauncherThemeState.autoThemeSolarEnabled && solarDaytime != null) {
+            LauncherThemeState.setDarkTheme(context, !solarDaytime)
+        }
+    }
+
     val sidebarWidth = rememberLauncherSidebarWidth()
     val settingsOpen = LauncherVehicleSettingsUiState.open
     val isDraggingApp = LauncherDropTargetState.draggingPackage != null

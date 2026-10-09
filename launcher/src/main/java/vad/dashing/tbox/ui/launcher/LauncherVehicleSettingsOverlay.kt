@@ -732,6 +732,16 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
+            title = stringResource(R.string.launcher_vs_section_theme),
+            subtitle = stringResource(R.string.launcher_vs_section_theme_sub),
+            icon = VehicleSettingsSectionIcons.Theme,
+            expanded = expandedSection == VehicleSettingsSection.Theme,
+            onToggle = { onSectionToggle(VehicleSettingsSection.Theme) },
+        ) {
+            ThemeSettingsContent()
+        }
+
+        LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_system),
             subtitle = stringResource(R.string.launcher_vs_section_system_sub),
             icon = VehicleSettingsSectionIcons.System,

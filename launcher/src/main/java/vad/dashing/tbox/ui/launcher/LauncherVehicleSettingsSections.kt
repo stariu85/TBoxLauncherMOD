@@ -48,6 +48,7 @@ enum class VehicleSettingsSection {
     Comfort,
     Cruise,
     Launcher,
+    Theme,
     System,
     Experimental,
     Simulation,
@@ -128,6 +129,7 @@ object VehicleSettingsSectionIcons {
     val Comfort = Icons.Filled.Settings
     val Cruise = Icons.Filled.PlayArrow
     val Launcher = Icons.Filled.Menu
+    val Theme = Icons.Filled.Star
     val System = Icons.Filled.Settings
     val Experimental = Icons.Filled.Build
     val Simulation = Icons.Filled.Warning

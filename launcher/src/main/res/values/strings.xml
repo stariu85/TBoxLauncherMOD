@@ -278,7 +278,13 @@
     <string name="launcher_vs_section_comfort">Комфорт</string>
     <string name="launcher_vs_section_comfort_sub">Подогревы и сиденья</string>
     <string name="launcher_vs_section_launcher">Лаунчер</string>
-    <string name="launcher_vs_section_launcher_sub">Плеер и тема</string>
+    <string name="launcher_vs_section_launcher_sub">Плеер и макет</string>
+    <string name="launcher_vs_section_theme">Тема</string>
+    <string name="launcher_vs_section_theme_sub">Настройки светлой и тёмной темы</string>
+    <string name="launcher_vs_auto_theme_headlights">Темная тема по ближнему свету</string>
+    <string name="launcher_vs_auto_theme_headlights_desc">Автоматически включать тёмную тему при включении фар</string>
+    <string name="launcher_vs_auto_theme_solar">Авто-тема по восходу/закату (GPS)</string>
+    <string name="launcher_vs_auto_theme_solar_desc">Светлая тема днём, тёмная ночью по астрономическому времени</string>
     <string name="launcher_vs_section_cruise">Круиз-контроль</string>
     <string name="launcher_vs_section_cruise_sub">Панель и пресеты скорости</string>
     <string name="launcher_cruise_panel_visible_title">Панель круиз-контроля</string>

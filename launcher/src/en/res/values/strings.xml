@@ -102,7 +102,13 @@
     <string name="launcher_cruise_preset_n">Preset %1$d</string>
     <string name="launcher_cruise_preset_value">%1$d km/h</string>
     <string name="launcher_vs_section_launcher">Launcher</string>
-    <string name="launcher_vs_section_launcher_sub">Player and theme</string>
+    <string name="launcher_vs_section_launcher_sub">Player and layout</string>
+    <string name="launcher_vs_section_theme">Theme</string>
+    <string name="launcher_vs_section_theme_sub">Light and dark theme settings</string>
+    <string name="launcher_vs_auto_theme_headlights">Dark theme by headlights</string>
+    <string name="launcher_vs_auto_theme_headlights_desc">Automatically switch to dark theme when headlights are turned on</string>
+    <string name="launcher_vs_auto_theme_solar">Auto theme by sunrise/sunset (GPS)</string>
+    <string name="launcher_vs_auto_theme_solar_desc">Light theme during the day, dark theme at night by solar time</string>
     <string name="launcher_vs_section_cruise">Cruise Control</string>
     <string name="launcher_vs_section_cruise_sub">Panel visibility and speed presets</string>
     <string name="launcher_cruise_panel_visible_title">Cruise control panel</string>

@@ -10,6 +10,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,13 +27,66 @@ import vad.dashing.tbox.R
 import kotlin.math.roundToInt
 
 @Composable
+fun ThemeSettingsContent() {
+    val context = LocalContext.current
+    val headlightBeams = rememberHeadlightBeams()
+    val solarDaytime = rememberSolarDaytimeState()
+
+    LaunchedEffect(headlightBeams.any, LauncherThemeState.autoThemeHeadlightsEnabled) {
+        if (LauncherThemeState.autoThemeHeadlightsEnabled) {
+            LauncherThemeState.setDarkTheme(context, headlightBeams.any)
+        }
+    }
+
+    LaunchedEffect(solarDaytime, LauncherThemeState.autoThemeSolarEnabled) {
+        if (LauncherThemeState.autoThemeSolarEnabled && solarDaytime != null) {
+            LauncherThemeState.setDarkTheme(context, !solarDaytime)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_dark_theme),
+            active = LauncherThemeState.darkTheme,
+            onClick = { LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme) },
+            enabled = !LauncherThemeState.autoThemeHeadlightsEnabled && !LauncherThemeState.autoThemeSolarEnabled,
+        )
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_auto_theme_headlights),
+            active = LauncherThemeState.autoThemeHeadlightsEnabled,
+            onClick = {
+                LauncherThemeState.setAutoThemeHeadlightsEnabled(
+                    context,
+                    !LauncherThemeState.autoThemeHeadlightsEnabled,
+                )
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_auto_theme_headlights_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_auto_theme_solar),
+            active = LauncherThemeState.autoThemeSolarEnabled,
+            onClick = {
+                LauncherThemeState.setAutoThemeSolarEnabled(
+                    context,
+                    !LauncherThemeState.autoThemeSolarEnabled,
+                )
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_auto_theme_solar_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
 internal fun LauncherHomeSettingsContent() {
     val context = LocalContext.current
-    LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_vs_dark_theme),
-        active = LauncherThemeState.darkTheme,
-        onClick = { LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme) },
-    )
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
     val miniPlayerVisible = remember(context, miniPlayerRevision) {
