@@ -36,7 +36,12 @@ object LauncherEmbeddedBoundsState {
 
     fun embeddedBounds(): Rect? {
         val row = contentRowBounds ?: return null
-        val leftEdge = (leftPanelBounds?.right ?: row.left) + MARGIN_LEFT_PX
+        val leftPanel = leftPanelBounds
+        val leftEdge = if (leftPanel != null && leftPanel.width() > 0 && leftPanel.right > row.left) {
+            leftPanel.right + MARGIN_LEFT_PX
+        } else {
+            row.left + MARGIN_LEFT_PX
+        }
         val right = row.right + BLEED_RIGHT_PX
         val top = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
         val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
@@ -44,7 +49,7 @@ object LauncherEmbeddedBoundsState {
         val rect = Rect(leftEdge, top, right, bottom)
         android.util.Log.w(
             "LauncherAppLaunch",
-            "embeddedBounds=$rect leftPanel=${leftPanelBounds?.right} rowRight=${row.right}",
+            "embeddedBounds=$rect leftPanel=${leftPanel?.right} rowRight=${row.right}",
         )
         return rect
     }

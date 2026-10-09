@@ -402,8 +402,8 @@ internal fun decodeRearThreatLevel(raw: Byte, hardOnly: Boolean = false): Launch
 internal fun distanceToRoadDepth(distanceM: Int): Float {
     val clamped = distanceM.coerceIn(1, 120).toFloat()
     val t = (clamped - 1f) / 119f // 0 = near (1 m), 1 = far (120 m)
-    // Near (1 m) → 0.30 (in front of our 3D car's front bumper), far (120 m) → 0.12.
-    return (0.30f - t * 0.18f).coerceIn(0.12f, 0.30f)
+    // Near (1 m) → 0.55 (~50dp in front of our 3D car's front bumper), far (120 m) → 0.12.
+    return (0.55f - t * 0.43f).coerceIn(0.12f, 0.55f)
 }
 
 /** Parking-sensor urgency buckets derived from the raw centimetre distance. */

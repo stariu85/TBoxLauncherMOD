@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -238,6 +239,12 @@ fun LauncherLeftPanel(
         animationSpec = tween(durationMillis = 600),
         label = "driveModeGlowColor",
     )
+
+    DisposableEffect(Unit) {
+        onDispose {
+            LauncherEmbeddedBoundsState.leftPanelBounds = null
+        }
+    }
 
     Box(
         modifier = modifier

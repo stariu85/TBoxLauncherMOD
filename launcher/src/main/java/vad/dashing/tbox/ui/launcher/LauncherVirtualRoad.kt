@@ -890,8 +890,7 @@ private fun DrawScope.drawFrontObject(
 ) {
     val depth = distanceToRoadDepth(distanceM)
     val cx = centerXAt(depth)
-    val nearFactor = (1f - (distanceM.coerceIn(1, 120) - 1f) / 119f).coerceIn(0f, 1f)
-    val cy = yAt(depth) + 20.dp.toPx() * nearFactor
+    val cy = yAt(depth)
     val roadHalf = halfWidthAt(depth)
     val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan

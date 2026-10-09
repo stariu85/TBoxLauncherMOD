@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,8 +17,16 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import vad.dashing.tbox.AppDataManager
+import vad.dashing.tbox.R
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.SettingsViewModel
@@ -104,6 +114,17 @@ fun TeslaLauncherScreen(
     }
 
     val sidebarWidth = rememberLauncherSidebarWidth()
+    val adasPanelRevision by LauncherAppConfigStore.adasPanelVisibleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val adasPanelVisible = remember(context, adasPanelRevision, configRevision) {
+        LauncherAppConfigStore.adasPanelVisible(context)
+    }
+
+    LaunchedEffect(adasPanelVisible) {
+        if (!adasPanelVisible) {
+            LauncherEmbeddedBoundsState.leftPanelBounds = null
+        }
+    }
     val settingsOpen = LauncherVehicleSettingsUiState.open
     val isDraggingApp = LauncherDropTargetState.draggingPackage != null
 
@@ -213,29 +234,31 @@ fun TeslaLauncherScreen(
                                 )
                             },
                     ) {
-                        LauncherLeftPanel(
-                            tboxViewModel = tboxViewModel,
-                            canViewModel = canViewModel,
-                            onOpenVehicleSettings = openVehicleSettings,
-                            modelRevision = 0,
-                            paintId = carPaintId,
-                            paintRevision = paintRevision,
-                            onCarBoundsChanged = {},
-                            colorPickerVisible = colorPickerVisible && !settingsOpen,
-                            roadVisible = !settingsOpen,
-                            carHidden = false,
-                            settingsTransitionProgress = 0f,
-                            settingsUserYawDeg = 0f,
-                            onColorPickerOpen = { colorPickerVisible = true },
-                            onColorPickerDismiss = { colorPickerVisible = false },
-                            onPaintChanged = { id ->
-                                carPaintId = id
-                                paintRevision++
-                            },
-                            modifier = Modifier
-                                .width(sidebarWidth)
-                                .fillMaxHeight(),
-                        )
+                        if (adasPanelVisible) {
+                            LauncherLeftPanel(
+                                tboxViewModel = tboxViewModel,
+                                canViewModel = canViewModel,
+                                onOpenVehicleSettings = openVehicleSettings,
+                                modelRevision = 0,
+                                paintId = carPaintId,
+                                paintRevision = paintRevision,
+                                onCarBoundsChanged = {},
+                                colorPickerVisible = colorPickerVisible && !settingsOpen,
+                                roadVisible = !settingsOpen,
+                                carHidden = false,
+                                settingsTransitionProgress = 0f,
+                                settingsUserYawDeg = 0f,
+                                onColorPickerOpen = { colorPickerVisible = true },
+                                onColorPickerDismiss = { colorPickerVisible = false },
+                                onPaintChanged = { id ->
+                                    carPaintId = id
+                                    paintRevision++
+                                },
+                                modifier = Modifier
+                                    .width(sidebarWidth)
+                                    .fillMaxHeight(),
+                            )
+                        }
                         LauncherRightPanel(
                             canViewModel = canViewModel,
                             settingsViewModel = settingsViewModel,
@@ -310,8 +333,38 @@ fun TeslaLauncherScreen(
                 )
                 LauncherAppDragOverlay(
                     dragging = isDraggingApp,
-                    sidebarWidth = sidebarWidth,
+                    sidebarWidth = if (adasPanelVisible) sidebarWidth else 0.dp,
                 )
+            }
+
+            if (!adasPanelVisible && !settingsOpen && !appDrawerVisible) {
+                val bottomBarRevision by LauncherAppConfigStore.bottomBarHeightRevisionFlow.collectAsStateWithLifecycle()
+                val bottomBarHeightDp = remember(context, bottomBarRevision) {
+                    LauncherAppConfigStore.bottomBarHeightDp(context)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(200f),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    IconButton(
+                        onClick = openVehicleSettings,
+                        modifier = Modifier
+                            .padding(end = 20.dp, bottom = (bottomBarHeightDp + 16).dp)
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.92f))
+                            .border(1.dp, LauncherColors.SettingsBorder, CircleShape),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.tab_car_settings),
+                            tint = LauncherColors.AccentCyan,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
             }
 
             LauncherBsdAlertOverlay(

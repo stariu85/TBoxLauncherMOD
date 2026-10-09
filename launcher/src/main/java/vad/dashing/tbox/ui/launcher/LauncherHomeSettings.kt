@@ -107,6 +107,7 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardOpacitySlider()
     CarModelScaleSlider()
     SidebarWidthSlider()
+    AdasPanelToggle()
     AdasDistanceTextSizeSlider()
     AdasAlertsPlacementToggle()
     NavButtonsToggle()
@@ -699,6 +700,30 @@ private fun AdasAlertsPlacementToggle() {
         )
         Text(
             text = stringResource(R.string.launcher_adas_alerts_placement_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun AdasPanelToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.adasPanelVisibleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val visible = remember(context, revision) {
+        LauncherAppConfigStore.adasPanelVisible(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_adas_panel_title),
+            active = visible,
+            onClick = {
+                LauncherAppConfigStore.setAdasPanelVisible(context, !visible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_adas_panel_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )

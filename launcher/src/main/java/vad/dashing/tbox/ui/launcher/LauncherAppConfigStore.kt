@@ -28,6 +28,7 @@ private const val KEY_FLOATING_HOME_VISIBLE = "floating_home_visible"
 private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
+private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
 private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
 private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
@@ -166,6 +167,8 @@ internal object LauncherAppConfigStore {
     internal val adasDistanceTextSizeRevisionFlow: StateFlow<Int> = adasDistanceTextSizeRevision
     private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
+    private val adasPanelVisibleRevision = MutableStateFlow(0)
+    internal val adasPanelVisibleRevisionFlow: StateFlow<Int> = adasPanelVisibleRevision
     private val adasAlertsPlacementRevision = MutableStateFlow(0)
     internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
     private val adasBsdAlertOverlayRevision = MutableStateFlow(0)
@@ -386,6 +389,14 @@ internal object LauncherAppConfigStore {
         val next = offsetRatio.coerceIn(ADAS_DISTANCE_LABEL_OFFSET_MIN, ADAS_DISTANCE_LABEL_OFFSET_MAX)
         prefs(context).edit().putFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET, next).apply()
         adasDistanceLabelOffsetRevision.value++
+    }
+
+    fun adasPanelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ADAS_PANEL_VISIBLE, true)
+
+    fun setAdasPanelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ADAS_PANEL_VISIBLE, visible).apply()
+        adasPanelVisibleRevision.value++
     }
 
     fun adasAlertsInLeftPanel(context: Context): Boolean =
