@@ -174,7 +174,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("hvac_ac", "Кондиционер AC", R.drawable.ic_widget_hvac_ac),
     LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", R.drawable.ic_widget_hvac_auto),
     LauncherDockButtonDescriptor("hvac_sync", "Синхронизация SYNC", null),
-    LauncherDockButtonDescriptor("hvac_pm25", "Очистка PM 2.5", R.drawable.ic_widget_pm25_leaf),
+    LauncherDockButtonDescriptor("hvac_pm25", "Очистка PM 2.5", R.drawable.ic_widget_pm25_on),
     LauncherDockButtonDescriptor("hvac_fan_speed", "Скорость вентилятора", R.drawable.ic_widget_fan),
     LauncherDockButtonDescriptor("hvac_fan_direction", "Направление обдува", R.drawable.ic_widget_fan_face_feet),
     LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
@@ -826,9 +826,10 @@ private fun LauncherBottomDockButtonContent(
             val pm25State by UniversalCanRepository.hvacPm25State.collectAsStateWithLifecycle()
             LauncherDockIcon(onClick = { sendToggleHvacPm25(context) }) {
                 val isOn = pm25State is MbCanBinaryState.On
+                val drawableRes = if (isOn) R.drawable.ic_widget_pm25_on else R.drawable.ic_widget_pm25_off
                 val tint = if (isOn) Color(0xFF22C55E) else HvacOffColor
                 Image(
-                    painter = painterResource(R.drawable.ic_widget_pm25_leaf),
+                    painter = painterResource(drawableRes),
                     contentDescription = "Очистка воздуха PM 2.5",
                     colorFilter = ColorFilter.tint(tint),
                     modifier = Modifier.size(dockDp(24f)),
@@ -855,7 +856,7 @@ private fun LauncherBottomDockButtonContent(
             val iconTint = if (isOn) HvacOnColor else HvacOffColor
             LauncherDockIcon(onClick = { sendCycleHvacFanSpeed(context) }) {
                 Box(
-                    modifier = Modifier.size(dockDp(38f)),
+                    modifier = Modifier.size(dockDp(45.6f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     LauncherFanSpeedIcon(
@@ -867,7 +868,7 @@ private fun LauncherBottomDockButtonContent(
                         painter = painterResource(R.drawable.ic_widget_fan),
                         contentDescription = "Скорость вентилятора",
                         colorFilter = ColorFilter.tint(iconTint),
-                        modifier = Modifier.size(dockDp(18f)),
+                        modifier = Modifier.size(dockDp(21.6f)),
                     )
                 }
             }

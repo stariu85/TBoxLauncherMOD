@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
@@ -454,13 +455,31 @@ private fun DrawScope.drawVirtualRoad(
             val x1 = centerXAt(t) + side * laneOffsetAt(t)
             val x2 = centerXAt(nextT) + side * laneOffsetAt(nextT)
             if (x1 < -w * 0.7f || x1 > w * 1.7f) return@forEach
-            val alpha = 0.50f * fade * weight
+            val isEgoLane = abs(side) in 0.5f..2.0f
+            val baseAlpha = if (isEgoLane && laneProgress > 0f) 0.85f else 0.50f
+            val alpha = baseAlpha * fade * weight
             if (alpha < 0.02f) return@forEach
+
+            val laneState = when {
+                side < -0.5f && side > -2.0f -> adas.leftLane
+                side > 0.5f && side < 2.0f -> adas.rightLane
+                else -> LauncherAdasLaneVisualization.Hidden
+            }
+            val inactiveDashColor = Color(0xFF9CA3AF)
+            val lkaActive = adas.lkaStatusCode != 0
+            val activeColor = if (lkaActive) LkaBlueCore else LdwBrightGreen
+
+            val baseDashColor = when {
+                !isEgoLane -> inactiveDashColor
+                laneState == LauncherAdasLaneVisualization.Warning -> Color(0xFFEF4444)
+                else -> lerp(inactiveDashColor, activeColor, laneProgress)
+            }
+
             drawLine(
-                color = Color.White.copy(alpha = alpha),
+                color = baseDashColor.copy(alpha = alpha),
                 start = Offset(x1, y),
                 end = Offset(x2, y + dashLen),
-                strokeWidth = 1.6f + 1.6f * t,
+                strokeWidth = (1.6f + 1.6f * t) * (if (isEgoLane && laneProgress > 0f) 1.25f else 1.0f),
             )
         }
         y += dashSpacing * (0.55f + 0.85f * t)
@@ -759,8 +778,9 @@ private fun DrawScope.drawAccDistanceSteps(
     }
 }
 
-private val DarkPinkGlowCore = Color(0xFF9D174D)
-private val DarkPinkGlowOuter = Color(0xFFBE185D)
+private val LdwBrightGreen = Color(0xFF22C55E)
+private val LkaBlueCore = Color(0xFF3B82F6)
+private val LkaBlueOuter = Color(0xFF60A5FA)
 
 private fun DrawScope.drawAdasLaneAssist(
     adas: LauncherAdasState,
@@ -811,21 +831,21 @@ private fun DrawScope.drawAdasLaneAssist(
                 color = warningColor.copy(alpha = 0.90f * alphaFactor),
                 style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
-        } else {
-            // NGP / Lane Keeping active: Solid Dark Pink with subtle, soft glow animating bottom-to-top
+        } else if (adas.lkaStatusCode != 0) {
+            // NGP / LKA active: Solid Blue with subtle, soft glow animating bottom-to-top
             drawPath(
                 path = lanePath,
-                color = DarkPinkGlowOuter.copy(alpha = 0.12f * alphaFactor),
+                color = LkaBlueOuter.copy(alpha = 0.18f * alphaFactor),
                 style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
             drawPath(
                 path = lanePath,
-                color = DarkPinkGlowCore.copy(alpha = 0.28f * alphaFactor),
+                color = LkaBlueCore.copy(alpha = 0.35f * alphaFactor),
                 style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
             drawPath(
                 path = lanePath,
-                color = DarkPinkGlowCore.copy(alpha = 0.70f * alphaFactor),
+                color = LkaBlueCore.copy(alpha = 0.85f * alphaFactor),
                 style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }

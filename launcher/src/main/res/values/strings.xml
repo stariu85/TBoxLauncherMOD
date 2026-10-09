@@ -285,6 +285,8 @@
     <string name="launcher_cruise_panel_visible_desc">Отображать кнопки круиз-контроля внизу левой зоны</string>
     <string name="launcher_drive_mode_bar_visible_title">Панель режимов движения</string>
     <string name="launcher_drive_mode_bar_visible_desc">Отображать передачи и выбор режима езды (ECO, NOR, SPT) вверху левой зоны</string>
+    <string name="launcher_drive_mode_glow_visible_title">Подсветка режима движения</string>
+    <string name="launcher_drive_mode_glow_visible_desc">Отображать фоновую подсветку вверху зоны ADAS при движении в режимах ECO, NOR, SPT</string>
     <string name="launcher_cruise_ngp_title">NGP</string>
     <string name="launcher_cruise_distance_title">Дистанция</string>
     <string name="launcher_cruise_distance_near">Близко</string>
@@ -405,7 +407,9 @@
     <string name="launcher_vs_sim_reset">Сбросить симуляцию</string>
     <string name="launcher_vs_sim_adas_header">ADAS / ассистенты</string>
     <string name="launcher_vs_sim_acc">Круиз ACC активен</string>
-    <string name="launcher_vs_sim_lanes">Удержание в полосе</string>
+    <string name="launcher_vs_sim_ldw_tracking">Отслеживание полосы (LDW)</string>
+    <string name="launcher_vs_sim_lanes">Удержание в полосе (LKA)</string>
+    <string name="launcher_vs_sim_ldw_warning">Предупреждение LDW (Выезд из полосы)</string>
     <string name="launcher_vs_sim_bsd_left">BSD слева</string>
     <string name="launcher_vs_sim_bsd_right">BSD справа</string>
     <string name="launcher_vs_sim_threat_off">Выкл</string>

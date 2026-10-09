@@ -112,14 +112,15 @@ fun LauncherAdasStrip(
     }
 
     val scale = (topBarHeightDp / 40f).coerceIn(0.5f, 2.0f)
-    val iconBoxSizeDp = (28 * scale).roundToInt().coerceIn(14, 56)
-    val innerIconSizeDp = (18 * scale).roundToInt().coerceIn(9, 36)
-    val speedFontSizeSp = (11 * scale).roundToInt().coerceIn(7, 22)
-    val chipFontSizeSp = (10 * scale).roundToInt().coerceIn(7, 20)
-    val alertIconSizeDp = (12 * scale).roundToInt().coerceIn(8, 24)
-    val paddingHDp = (8 * scale).roundToInt().coerceIn(3, 16)
-    val paddingVDp = (4 * scale).roundToInt().coerceIn(2, 10)
-    val spacingDp = (6 * scale).roundToInt().coerceIn(2, 12)
+    val sizeMultiplier = if (isVertical) 1.25f else 1.0f
+    val iconBoxSizeDp = ((28 * scale) * sizeMultiplier).roundToInt().coerceIn(14, 70)
+    val innerIconSizeDp = ((18 * scale) * sizeMultiplier).roundToInt().coerceIn(9, 45)
+    val speedFontSizeSp = ((11 * scale) * sizeMultiplier).roundToInt().coerceIn(7, 28)
+    val chipFontSizeSp = ((10 * scale) * sizeMultiplier).roundToInt().coerceIn(7, 25)
+    val alertIconSizeDp = ((12 * scale) * sizeMultiplier).roundToInt().coerceIn(8, 30)
+    val paddingHDp = ((8 * scale) * sizeMultiplier).roundToInt().coerceIn(3, 20)
+    val paddingVDp = ((4 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 12)
+    val spacingDp = ((6 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 15)
 
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
@@ -298,12 +299,16 @@ fun LauncherAdasStrip(
                 activationTimeMs = activationTimes["takeover"] ?: 0L,
             )
         }
-        if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes || showAll) {
+        val ldwOrLkaActive = adas.leftLane != LauncherAdasLaneVisualization.Hidden ||
+            adas.rightLane != LauncherAdasLaneVisualization.Hidden ||
+            adas.lkaStatusCode != 0
+        if (ldwOrLkaActive || showLanes || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_lka),
                 tint = when {
                     adas.laneDepartureLeft || adas.laneDepartureRight -> Color(0xFFF59E0B)
-                    else -> LauncherColors.AccentBlue
+                    adas.lkaStatusCode != 0 -> LauncherColors.AccentBlue
+                    else -> Color(0xFF22C55E)
                 },
                 iconRes = R.drawable.ic_adas_lka,
                 iconBoxSizeDp = iconBoxSizeDp,

@@ -56,10 +56,11 @@ fun LauncherVehicleAlertsStrip(
     }
 
     val scale = (topBarHeightDp / 40f).coerceIn(0.5f, 2.0f)
-    val iconSizeDp = (18 * scale).roundToInt().coerceIn(9, 36)
-    val paddingDp = (5 * scale).roundToInt().coerceIn(2, 12)
-    val cornerRadiusDp = (8 * scale).roundToInt().coerceIn(4, 16)
-    val spacingDp = (6 * scale).roundToInt().coerceIn(2, 12)
+    val sizeMultiplier = if (isVertical) 1.25f else 1.0f
+    val iconSizeDp = ((18 * scale) * sizeMultiplier).roundToInt().coerceIn(9, 45)
+    val paddingDp = ((5 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 15)
+    val cornerRadiusDp = ((8 * scale) * sizeMultiplier).roundToInt().coerceIn(4, 20)
+    val spacingDp = ((6 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 15)
 
     val state by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val showAll = LauncherDevVehicleState.showAllIndicators

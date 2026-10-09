@@ -197,9 +197,19 @@ fun SimulationSectionCard(
                     onClick = { LauncherDevVehicleState.toggleAdasCruise() },
                 )
                 SimulationToggleRow(
-                    label = stringResource(R.string.launcher_vs_sim_lanes),
+                    label = stringResource(R.string.launcher_vs_sim_ldw_tracking),
                     active = LauncherDevVehicleState.adasLanesActive,
                     onClick = { LauncherDevVehicleState.toggleAdasLanes() },
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_lanes),
+                    active = LauncherDevVehicleState.adasLkaActive,
+                    onClick = { LauncherDevVehicleState.toggleAdasLka() },
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_ldw_warning),
+                    active = LauncherDevVehicleState.adasLdwWarning,
+                    onClick = { LauncherDevVehicleState.toggleAdasLdwWarning() },
                 )
                 SimulationThreatRow(
                     label = stringResource(R.string.launcher_vs_sim_bsd_left),

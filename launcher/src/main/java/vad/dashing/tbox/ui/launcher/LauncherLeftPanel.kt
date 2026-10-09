@@ -178,6 +178,11 @@ fun LauncherLeftPanel(
     val driveModeBarVisible = remember(context, driveModeBarRevision) {
         LauncherAppConfigStore.driveModeBarVisible(context)
     }
+    val driveModeGlowRevision by LauncherAppConfigStore.driveModeGlowRevisionFlow
+        .collectAsStateWithLifecycle()
+    val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
+        LauncherAppConfigStore.driveModeGlowVisible(context)
+    }
     val cruiseOn = adas.accActive || adas.accStandby ||
         (adas.accSetSpeedKmh ?: 0) > 0 ||
         (cruiseSpeed ?: 0u) > 0u
@@ -216,7 +221,7 @@ fun LauncherLeftPanel(
         else -> Color.Transparent
     }
 
-    val targetGlowColor = if (isMoving) baseGlowColor else baseGlowColor.copy(alpha = 0f)
+    val targetGlowColor = if (isMoving && driveModeGlowVisible) baseGlowColor else baseGlowColor.copy(alpha = 0f)
 
     val animatedGlowColor by animateColorAsState(
         targetValue = targetGlowColor,

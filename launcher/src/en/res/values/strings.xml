@@ -109,6 +109,8 @@
     <string name="launcher_cruise_panel_visible_desc">Show cruise control buttons at the bottom of the left panel</string>
     <string name="launcher_drive_mode_bar_visible_title">Drive mode panel</string>
     <string name="launcher_drive_mode_bar_visible_desc">Show gear indicator and drive mode buttons (ECO, NOR, SPT) at the top of the left panel</string>
+    <string name="launcher_drive_mode_glow_visible_title">Drive mode glow</string>
+    <string name="launcher_drive_mode_glow_visible_desc">Show colored background glow in the top ADAS zone while driving in ECO, NOR, SPT modes</string>
     <string name="launcher_cruise_ngp_title">NGP</string>
     <string name="launcher_cruise_distance_title">Distance</string>
     <string name="launcher_cruise_distance_near">Near</string>
@@ -1209,7 +1211,9 @@
     <string name="launcher_vs_sim_front_object">Front Lead Object</string>
     <string name="launcher_vs_sim_gear">Gear</string>
     <string name="launcher_vs_sim_hint">These values override real CAN data and are displayed on 3D model, tire badges, and motion.</string>
-    <string name="launcher_vs_sim_lanes">Lane Keep</string>
+    <string name="launcher_vs_sim_ldw_tracking">Lane Monitoring (LDW)</string>
+    <string name="launcher_vs_sim_lanes">Lane Keep Assist (LKA)</string>
+    <string name="launcher_vs_sim_ldw_warning">LDW Lane Departure Warning</string>
     <string name="launcher_vs_sim_pdc_channels">Per-channel Sensors</string>
     <string name="launcher_vs_sim_pdc_front">Front Parking Sensors</string>
     <string name="launcher_vs_sim_pdc_rear">Rear Parking Sensors</string>

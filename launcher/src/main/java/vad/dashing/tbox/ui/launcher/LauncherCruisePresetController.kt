@@ -46,6 +46,7 @@ internal object LauncherCruisePresetController {
         if (LauncherDevVehicleState.simulateEnabled) {
             LauncherDevVehicleState.adasCruiseActive = true
             LauncherDevVehicleState.adasLanesActive = ngp
+            LauncherDevVehicleState.adasLkaActive = ngp
             LauncherAdasRepository.triggerTimeGapFlash(3000L)
             return
         }
@@ -63,6 +64,7 @@ internal object LauncherCruisePresetController {
         val cruiseActive = isCruiseEngaged()
         if (LauncherDevVehicleState.simulateEnabled) {
             LauncherDevVehicleState.adasLanesActive = cruiseActive && enabled
+            LauncherDevVehicleState.adasLkaActive = cruiseActive && enabled
             return
         }
         if (cruiseActive) {
@@ -84,6 +86,7 @@ internal object LauncherCruisePresetController {
             if (LauncherDevVehicleState.simulateEnabled) {
                 LauncherDevVehicleState.adasCruiseActive = false
                 LauncherDevVehicleState.adasLanesActive = false
+                LauncherDevVehicleState.adasLkaActive = false
                 LauncherDevVehicleState.clearTimeGapFlash()
             } else {
                 scope.launch {

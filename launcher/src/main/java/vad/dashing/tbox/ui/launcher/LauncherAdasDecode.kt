@@ -323,9 +323,10 @@ internal fun buildLauncherAdasState(
     val tja = decodeAssistIcon(tjaRaw)
     val tjaActive = tja == LauncherAdasAssistIcon.Active || tja == LauncherAdasAssistIcon.Dark
     val srrSystem = decodeSrrSystemState(srrSystemRaw)
+    val effectiveLkaStatus = lkaStatus.takeIf { it != 0 } ?: if (tjaActive) 1 else 0
 
     // While NGP/TJA or LKA assist is engaged, keep lane guides active
-    if ((tjaActive || lkaStatus != 0)) {
+    if ((tjaActive || effectiveLkaStatus != 0)) {
         if (leftLane == LauncherAdasLaneVisualization.Hidden) {
             leftLane = LauncherAdasLaneVisualization.Tracking
         }
@@ -340,7 +341,7 @@ internal fun buildLauncherAdasState(
         hma == LauncherAdasAssistIcon.Warning ||
         tja == LauncherAdasAssistIcon.Warning ||
         srrSystem == LauncherSrrSystemState.Fault
-    val hasAssist = accActive || accStandby || frontObject.valid || lkaStatus != 0 ||
+    val hasAssist = accActive || accStandby || frontObject.valid || effectiveLkaStatus != 0 ||
         leftLane != LauncherAdasLaneVisualization.Hidden ||
         rightLane != LauncherAdasLaneVisualization.Hidden ||
         slaLimit != null || tsr.valid || hasAlert ||
@@ -362,7 +363,7 @@ internal fun buildLauncherAdasState(
         aebHint = aeb,
         leftLane = leftLane,
         rightLane = rightLane,
-        lkaStatusCode = lkaStatus,
+        lkaStatusCode = effectiveLkaStatus,
         adasTakeOver = adasTakeOver,
         speedLimitKmh = slaLimit,
         speedLimitWarning = slaWarn,

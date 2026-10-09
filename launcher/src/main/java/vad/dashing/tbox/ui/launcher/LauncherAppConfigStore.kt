@@ -125,6 +125,7 @@ private const val KEY_CRUISE_PRESETS = "cruise_presets_kmh"
 private const val KEY_LAST_CRUISE_SPEED = "last_cruise_speed_kmh"
 private const val KEY_CRUISE_PANEL_VISIBLE = "cruise_panel_visible"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
+private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
 private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 internal const val GRID_SLOT_COUNT = 9
@@ -183,6 +184,8 @@ internal object LauncherAppConfigStore {
     internal val cruisePanelRevisionFlow: StateFlow<Int> = cruisePanelRevision
     private val driveModeBarRevision = MutableStateFlow(0)
     internal val driveModeBarRevisionFlow: StateFlow<Int> = driveModeBarRevision
+    private val driveModeGlowRevision = MutableStateFlow(0)
+    internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
     private val ngpRevision = MutableStateFlow(0)
     internal val ngpRevisionFlow: StateFlow<Int> = ngpRevision
     private val gridColumnsRevision = MutableStateFlow(0)
@@ -581,6 +584,14 @@ internal object LauncherAppConfigStore {
     fun setDriveModeBarVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_DRIVE_MODE_BAR_VISIBLE, visible).apply()
         driveModeBarRevision.value++
+    }
+
+    fun driveModeGlowVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DRIVE_MODE_GLOW_VISIBLE, true)
+
+    fun setDriveModeGlowVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DRIVE_MODE_GLOW_VISIBLE, visible).apply()
+        driveModeGlowRevision.value++
     }
 
     fun ngpEnabled(context: Context): Boolean =

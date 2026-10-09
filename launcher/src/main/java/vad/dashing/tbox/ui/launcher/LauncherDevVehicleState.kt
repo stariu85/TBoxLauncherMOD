@@ -34,6 +34,8 @@ object LauncherDevVehicleState {
     // --- ADAS simulation (cruise / lanes / BSD / front object / parking sensors) ---
     var adasCruiseActive by mutableStateOf(false)
     var adasLanesActive by mutableStateOf(false)
+    var adasLkaActive by mutableStateOf(false)
+    var adasLdwWarning by mutableStateOf(false)
     var adasTimeGapLevel by mutableIntStateOf(2)
     var adasTimeGapFlashUntilMs by mutableLongStateOf(0L)
     var adasBsdLeft by mutableStateOf(LauncherRearThreatLevel.Off)
@@ -79,6 +81,28 @@ object LauncherDevVehicleState {
         simulateEnabled = true
         motionPreviewEnabled = false
         adasLanesActive = !adasLanesActive
+        adasLkaActive = adasLanesActive
+        if (!adasLanesActive) {
+            adasLdwWarning = false
+        }
+    }
+
+    fun toggleAdasLka() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasLkaActive = !adasLkaActive
+        if (adasLkaActive) {
+            adasLanesActive = true
+        }
+    }
+
+    fun toggleAdasLdwWarning() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasLdwWarning = !adasLdwWarning
+        if (adasLdwWarning) {
+            adasLanesActive = true
+        }
     }
 
     fun setAdasFrontObject(metres: Float) {
@@ -214,6 +238,7 @@ object LauncherDevVehicleState {
             seatBeltPassenger = false
             adasCruiseActive = false
             adasLanesActive = false
+            adasLdwWarning = false
             adasBsdLeft = LauncherRearThreatLevel.Off
             adasBsdRight = LauncherRearThreatLevel.Off
             adasFrontObjectM = 0f
@@ -282,7 +307,7 @@ object LauncherDevVehicleState {
             )
         }
         val frontM = adasFrontObjectM.roundToInt()
-        val anySet = adasCruiseActive || adasLanesActive ||
+        val anySet = adasCruiseActive || adasLanesActive || adasLdwWarning ||
             adasBsdLeft != LauncherRearThreatLevel.Off ||
             adasBsdRight != LauncherRearThreatLevel.Off ||
             frontM > 0 || pdcChannels.isNotEmpty()
@@ -308,10 +333,10 @@ object LauncherDevVehicleState {
             rearRightCm = pdcCm(LauncherPdcChannel.RearRight),
             rearSideRightCm = pdcCm(LauncherPdcChannel.RearSideRight),
         )
-        val lanes = if (adasLanesActive) {
-            LauncherAdasLaneVisualization.Tracking
-        } else {
-            LauncherAdasLaneVisualization.Hidden
+        val laneVis = when {
+            adasLdwWarning -> LauncherAdasLaneVisualization.Warning
+            adasLanesActive -> LauncherAdasLaneVisualization.Tracking
+            else -> LauncherAdasLaneVisualization.Hidden
         }
         val setSpeed = if (adasCruiseActive) {
             speedKmh.roundToInt().takeIf { it > 0 } ?: 90
@@ -330,13 +355,14 @@ object LauncherDevVehicleState {
                 objectDxM = frontM.takeIf { it > 0 },
                 targetDxM = frontM.takeIf { it > 0 },
             ),
-            leftLane = lanes,
-            rightLane = lanes,
+            leftLane = laneVis,
+            rightLane = laneVis,
+            lkaStatusCode = if (adasLkaActive || (adasLanesActive && adasCruiseActive)) 1 else 0,
             rearThreats = threats,
             pdc = pdc,
             srrSystem = if (threats.hasAny) LauncherSrrSystemState.Active else LauncherSrrSystemState.Hidden,
-            hasAnyAlert = threats.hasAny,
-            hasAnyAssist = adasCruiseActive || adasLanesActive || frontM > 0 || pdc.hasAny,
+            hasAnyAlert = threats.hasAny || adasLdwWarning,
+            hasAnyAssist = adasCruiseActive || adasLanesActive || adasLkaActive || adasLdwWarning || frontM > 0 || pdc.hasAny,
         )
     }
 
@@ -481,6 +507,8 @@ object LauncherDevVehicleState {
         gearSlotOverride = null
         adasCruiseActive = false
         adasLanesActive = false
+        adasLkaActive = false
+        adasLdwWarning = false
         adasBsdLeft = LauncherRearThreatLevel.Off
         adasBsdRight = LauncherRearThreatLevel.Off
         adasFrontObjectM = 0f
