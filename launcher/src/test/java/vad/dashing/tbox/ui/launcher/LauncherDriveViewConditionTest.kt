@@ -7,33 +7,35 @@ import org.junit.Test
 class LauncherDriveViewConditionTest {
 
     @Test
-    fun topViewWhenInParkInAnyCase() {
-        // Park gear ALWAYS forces Top View, even if cruise control is reported on
-        assertFalse(isDriveViewActive(pasOn = false, isParkGear = true, cruiseOn = false))
-        assertFalse(isDriveViewActive(pasOn = true, isParkGear = true, cruiseOn = false))
-        assertFalse(isDriveViewActive(pasOn = false, isParkGear = true, cruiseOn = true))
-        assertFalse(isDriveViewActive(pasOn = true, isParkGear = true, cruiseOn = true))
+    fun topViewByDefaultOnStartup() {
+        assertFalse(isDriveViewActive(speedKmh = 0f, pasOn = false, isParkGear = false, accActive = false))
     }
 
     @Test
-    fun topViewWhenPasOnAndCruiseOff() {
-        assertFalse(isDriveViewActive(pasOn = true, isParkGear = false, cruiseOn = false))
+    fun topViewWhenInPark() {
+        assertFalse(isDriveViewActive(speedKmh = 0f, pasOn = false, isParkGear = true, accActive = false))
+        assertFalse(isDriveViewActive(speedKmh = 0f, pasOn = false, isParkGear = true, accActive = true))
     }
 
     @Test
-    fun driveViewWhenPasOffAndNotInPark() {
-        assertTrue(isDriveViewActive(pasOn = false, isParkGear = false, cruiseOn = false))
+    fun topViewWhenPasOn() {
+        assertFalse(isDriveViewActive(speedKmh = 5f, pasOn = true, isParkGear = false, accActive = false))
     }
 
     @Test
-    fun driveViewWhenCruiseOnNotInPark() {
-        // Cruise control forces Drive View when not in Park, even if PAS turns on
-        assertTrue(isDriveViewActive(pasOn = true, isParkGear = false, cruiseOn = true))
-        assertTrue(isDriveViewActive(pasOn = false, isParkGear = false, cruiseOn = true))
+    fun driveViewWhenMovingAboveThresholdWithoutPas() {
+        assertTrue(isDriveViewActive(speedKmh = 5f, pasOn = false, isParkGear = false, accActive = false))
+        assertTrue(isDriveViewActive(speedKmh = 20f, pasOn = false, isParkGear = false, accActive = false))
+    }
+
+    @Test
+    fun driveViewWhenAccActiveEvenAtZeroSpeedNotInPark() {
+        assertTrue(isDriveViewActive(speedKmh = 0f, pasOn = false, isParkGear = false, accActive = true))
+        assertTrue(isDriveViewActive(speedKmh = 0f, pasOn = true, isParkGear = false, accActive = true))
     }
 
     @Test
     fun driveViewWhenRacingActiveNotInPark() {
-        assertTrue(isDriveViewActive(pasOn = true, isParkGear = false, cruiseOn = false, racing = true))
+        assertTrue(isDriveViewActive(speedKmh = 0f, pasOn = true, isParkGear = false, accActive = false, racing = true))
     }
 }

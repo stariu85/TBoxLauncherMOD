@@ -63,15 +63,16 @@ import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
 
 internal fun isDriveViewActive(
+    speedKmh: Float,
     pasOn: Boolean = false,
     isParkGear: Boolean = false,
-    cruiseOn: Boolean = false,
+    accActive: Boolean = false,
     racing: Boolean = false,
 ): Boolean {
     if (isParkGear) return false
-    if (racing || cruiseOn) return true
+    if (racing || accActive) return true
     if (pasOn) return false
-    return true
+    return speedKmh > 0.5f
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -187,14 +188,14 @@ fun LauncherLeftPanel(
     }
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny
-    val cruiseOn = adas.accActive || adas.accStandby ||
-        (adas.accSetSpeedKmh ?: 0) > 0 ||
-        (cruiseSpeed ?: 0u) > 0u
+    val accActive = adas.accActive ||
+        (adas.frontObject.valid && (adas.fcwActive || adas.distanceWarning || adas.aebHint))
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
     val showDriveView = isDriveViewActive(
+        speedKmh = effectiveSpeed,
         pasOn = pasOn,
         isParkGear = activeGear == 'P',
-        cruiseOn = cruiseOn,
+        accActive = accActive,
         racing = racing,
     )
 
