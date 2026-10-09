@@ -127,6 +127,8 @@ fun LauncherAdasStrip(
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val showAll = LauncherDevVehicleState.showAllIndicators
+    val headlightBeams = rememberHeadlightBeams()
+    val showHeadlights = headlightBeams.lowBeam || headlightBeams.highBeam || showAll
 
     val pasOn = (parkingRadar is MbCanBinaryState.On) || showAll
     val cruiseActive = (cruiseSpeed ?: 0u) > 0u || showAll
@@ -139,13 +141,14 @@ fun LauncherAdasStrip(
     val showTja = adas.tja != LauncherAdasAssistIcon.Hidden || showAll
     val showSrr = adas.srrSystem != LauncherSrrSystemState.Hidden || showAll
     if (!pasOn && !cruiseActive && !showAcc && !showAlerts &&
-        !showLanes && !showSla && !showHma && !showTja && !showSrr
+        !showLanes && !showSla && !showHma && !showTja && !showSrr && !showHeadlights
     ) {
         return
     }
 
     val activeKeys = buildSet {
         if (pasOn) add("pas")
+        if (showHeadlights) add("headlights")
         if (showHma) add("hma")
         if (showTja) add("tja")
         if (adas.srrSystem == LauncherSrrSystemState.Fault || showAll) add("srr_fault")
@@ -183,6 +186,17 @@ fun LauncherAdasStrip(
                 innerIconSizeDp = innerIconSizeDp,
                 activationKey = "pas",
                 activationTimeMs = activationTimes["pas"] ?: 0L,
+            )
+        }
+        if (showHeadlights) {
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_vs_headlights),
+                tint = if (headlightBeams.highBeam) LauncherColors.AccentCyan else LauncherColors.AccentBlue,
+                iconRes = R.drawable.ic_widget_headlights,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "headlights",
+                activationTimeMs = activationTimes["headlights"] ?: 0L,
             )
         }
         if (showHma) {
@@ -307,7 +321,7 @@ fun LauncherAdasStrip(
                 contentDescription = stringResource(R.string.launcher_adas_lka),
                 tint = when {
                     adas.laneDepartureLeft || adas.laneDepartureRight -> Color(0xFFF59E0B)
-                    adas.lkaStatusCode != 0 -> LauncherColors.AccentBlue
+                    adas.lkaStatusCode == 2 -> LauncherColors.AccentBlue
                     else -> Color(0xFF22C55E)
                 },
                 iconRes = R.drawable.ic_adas_lka,

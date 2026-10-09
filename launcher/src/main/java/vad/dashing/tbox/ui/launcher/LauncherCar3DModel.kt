@@ -70,8 +70,8 @@ private val DRIVE_CAMERA_TARGET = Float3(0f, 0.20f, -2.2f)
 private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
-private const val HOME_MODEL_SCALE = 0.52f
-private const val DYNAMIC_FRAME_INTERVAL_NS = 30_000_000L // 30 FPS when dynamic
+private const val HOME_MODEL_SCALE = 0.50f
+private const val DRIVE_MODEL_SCALE = 0.36f
 private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS when static
 private const val DYNAMIC_GRACE_PERIOD_NS = 1_200_000_000L // 1.2s grace after activity
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
@@ -258,7 +258,6 @@ private fun LauncherCarFilamentContent(
     lowPowerPreview: Boolean = false,
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current.density
     val interactionModifier = if (onClick != null || onLongClick != null) {
         Modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() },
@@ -462,7 +461,7 @@ private fun LauncherCarFilamentContent(
                         lastRigState = currentRigState
 
                         val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
-                        val requiredIntervalNs = if (isDynamic) DYNAMIC_FRAME_INTERVAL_NS else STATIC_FRAME_INTERVAL_NS
+                        val requiredIntervalNs = if (isDynamic) 0L else STATIC_FRAME_INTERVAL_NS
 
                         if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
                             return@runCatching
@@ -521,35 +520,9 @@ private fun LauncherCarFilamentContent(
                         val viewport = cameraNode.viewport
                         val widthPx = viewport?.width ?: 0
                         val heightPx = viewport?.height ?: 0
-                        val wheels = runCatching {
-                            rigController?.projectWheelAnchors(
-                                cameraNode = cameraNode,
-                                viewportWidthPx = widthPx,
-                                viewportHeightPx = heightPx,
-                            )
-                        }.getOrNull()
 
-                        var autoDriveScale = HOME_MODEL_SCALE
-                        val rl = wheels?.get(LauncherWheelCorner.RL)
-                        val rr = wheels?.get(LauncherWheelCorner.RR)
-                        if (rl != null && rr != null && widthPx > 0 && heightPx > 0) {
-                            val currentTrackPx = abs(rr.x - rl.x)
-                            val yRear = (rl.y + rr.y) / 2f
-                            val horizonY = heightPx * 0.24f
-                            val tRear = ((yRear - horizonY) / (heightPx - horizonY)).coerceIn(0f, 1f)
-                            val roadW = widthPx.toFloat().coerceAtMost(240f * density)
-                            val halfWidthAtT = (roadW * 0.14f) * (1f - tRear).pow(1.25f) + (roadW * 1.10f) * tRear.pow(1.05f)
-                            val laneOffsetAtT = halfWidthAtT * 0.30f
-                            val laneWidthPx = 2f * laneOffsetAtT
-                            val margin35dpPx = 35f * density
-                            val targetTrackPx = (laneWidthPx - 2f * margin35dpPx).coerceAtLeast(10f)
-                            if (currentTrackPx > 10f && renderedScale > 0.05f) {
-                                autoDriveScale = (renderedScale * (targetTrackPx / currentTrackPx)).coerceIn(0.20f, 0.65f)
-                            }
-                        }
-
-                        val topViewScale = HOME_MODEL_SCALE * customModelScale
-                        val homeScale = lerp(topViewScale, autoDriveScale, driveBlend)
+                        val driveModelScale = lerp(HOME_MODEL_SCALE, DRIVE_MODEL_SCALE, driveBlend)
+                        val homeScale = driveModelScale * customModelScale
                         val baseScale = lerp(homeScale, SETTINGS_MODEL_SCALE, transition)
                         val pinchScale = lerp(
                             1f,
@@ -570,8 +543,12 @@ private fun LauncherCarFilamentContent(
                                 modelReady = true
                             }
                         } else {
-                            val scaleResponse = 1f - exp(-dt * 8f)
-                            renderedScale += (targetScale - renderedScale) * scaleResponse
+                            if (abs(targetScale - renderedScale) < 0.0002f) {
+                                renderedScale = targetScale
+                            } else {
+                                val scaleResponse = 1f - exp(-dt * 12f)
+                                renderedScale += (targetScale - renderedScale) * scaleResponse
+                            }
                             node.scale = Scale(renderedScale)
                         }
 
@@ -579,6 +556,13 @@ private fun LauncherCarFilamentContent(
                         val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
                         if (frameNs - lastAnchorPublishNs >= publishNs) {
                             lastAnchorPublishNs = frameNs
+                            val wheels = runCatching {
+                                rigController?.projectWheelAnchors(
+                                    cameraNode = cameraNode,
+                                    viewportWidthPx = widthPx,
+                                    viewportHeightPx = heightPx,
+                                )
+                            }.getOrNull()
                             val doors = runCatching {
                                 rigController?.projectDoorAnchors(
                                     cameraNode = cameraNode,

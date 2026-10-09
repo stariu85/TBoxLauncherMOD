@@ -357,7 +357,11 @@ object LauncherDevVehicleState {
             ),
             leftLane = laneVis,
             rightLane = laneVis,
-            lkaStatusCode = if (adasLkaActive || (adasLanesActive && adasCruiseActive)) 1 else 0,
+            lkaStatusCode = when {
+                adasLkaActive || (adasLanesActive && adasCruiseActive) -> 2
+                adasLanesActive || adasLdwWarning -> 1
+                else -> 0
+            },
             rearThreats = threats,
             pdc = pdc,
             srrSystem = if (threats.hasAny) LauncherSrrSystemState.Active else LauncherSrrSystemState.Hidden,

@@ -720,6 +720,10 @@ object MbCanRepository {
                 }
         MbCanDiagnostics.log("DEBUG", "set result=$setResult propertyId=$propertyId value=$targetValue")
         if (setResult >= 0) {
+            when (propertyId) {
+                MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = targetValue
+                MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = targetValue
+            }
             spec.refreshSignal?.let { MbCanJobManager.requestBurst(it) }
             delay(POST_COMMAND_VERIFY_DELAY_MS)
             val after = MbCanEngineFacade.canGetVehicleParam(propertyId)

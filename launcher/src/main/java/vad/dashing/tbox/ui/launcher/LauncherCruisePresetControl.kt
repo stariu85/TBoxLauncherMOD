@@ -69,9 +69,46 @@ fun LauncherCruisePresetControl(
     val timeGapLevel = remember(context, presetsRevision, adas.timeGapLevel) {
         adas.timeGapLevel?.takeIf { it in 1..3 } ?: LauncherAppConfigStore.timeGapLevel(context)
     }
-    val activeSpeed = tboxCruise?.toInt()?.takeIf { it > 0 } ?: adas.accSetSpeedKmh
-    val engaged = adas.accActive || adas.accStandby || (tboxCruise != null && tboxCruise!! > 0u)
-    val displaySpeed = if (engaged) (activeSpeed ?: lastSpeed) else lastSpeed
+    val carSpeed by canViewModel.carSpeed.collectAsStateWithLifecycle()
+    val carSpeedAccurate by canViewModel.carSpeedAccurate.collectAsStateWithLifecycle()
+    val currentVehicleSpeedKmh = remember(carSpeed, carSpeedAccurate) {
+        val raw = carSpeedAccurate ?: carSpeed
+        raw?.roundToIntOrNull()?.coerceIn(0, 260) ?: 0
+    }
+
+    val activeSpeed = if (LauncherDevVehicleState.simulateEnabled) {
+        lastSpeed
+    } else {
+        adas.accSetSpeedKmh ?: tboxCruise?.toInt()?.takeIf { it > 0 } ?: lastSpeed
+    }
+    val engaged = if (LauncherDevVehicleState.simulateEnabled) {
+        LauncherDevVehicleState.adasCruiseActive
+    } else {
+        adas.accActive || adas.accStandby
+    }
+
+    var pendingTargetSpeed by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(activeSpeed) {
+        if (activeSpeed != null && pendingTargetSpeed == activeSpeed) {
+            pendingTargetSpeed = null
+        }
+    }
+
+    LaunchedEffect(pendingTargetSpeed) {
+        if (pendingTargetSpeed != null) {
+            delay(3500L)
+            pendingTargetSpeed = null
+        }
+    }
+
+    val currentTargetSpeed = pendingTargetSpeed ?: activeSpeed ?: lastSpeed
+    val effectiveEngaged = engaged || pendingTargetSpeed != null
+    val displaySpeed = if (effectiveEngaged) {
+        currentTargetSpeed
+    } else {
+        if (currentVehicleSpeedKmh > 0) currentVehicleSpeedKmh else lastSpeed
+    }
 
     var subModeExpanded by remember { mutableStateOf(false) }
     var popupDismissTimeMs by remember { mutableLongStateOf(0L) }
@@ -91,10 +128,17 @@ fun LauncherCruisePresetControl(
     ) {
         // Slot 1: Main Cruise ON/OFF Button (long press toggles NGP & DIST sub-mode)
         CruiseToggleChip(
-            engaged = engaged,
+            engaged = effectiveEngaged,
             setSpeed = displaySpeed,
             onClick = {
-                LauncherCruisePresetController.toggleCruise(context)
+                if (effectiveEngaged) {
+                    pendingTargetSpeed = null
+                    LauncherCruisePresetController.toggleCruise(context)
+                } else {
+                    val target = if (currentVehicleSpeedKmh >= 30) currentVehicleSpeedKmh else lastSpeed
+                    pendingTargetSpeed = target
+                    LauncherCruisePresetController.toggleCruise(context, currentVehicleSpeedKmh)
+                }
                 if (subModeExpanded) {
                     popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
                 }
@@ -155,11 +199,14 @@ fun LauncherCruisePresetControl(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     presets.forEach { kmh ->
-                        val isSelected = engaged && displaySpeed == kmh
+                        val isSelected = effectiveEngaged && currentTargetSpeed == kmh
                         CruisePresetChip(
                             label = kmh.toString(),
                             selected = isSelected,
-                            onClick = { LauncherCruisePresetController.applyPreset(context, kmh) },
+                            onClick = {
+                                pendingTargetSpeed = kmh
+                                LauncherCruisePresetController.applyPreset(context, kmh)
+                            },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(ButtonHeight),
@@ -323,3 +370,6 @@ private fun CruisePresetChip(
         )
     }
 }
+
+private fun Float.roundToIntOrNull(): Int? =
+    if (this.isFinite()) kotlin.math.round(this).toInt() else null

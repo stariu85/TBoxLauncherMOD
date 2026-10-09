@@ -72,7 +72,15 @@ fun LauncherDriveModeBar(
 
     var pendingMode by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(resolvedLabel) {
-        pendingMode = null
+        if (pendingMode == resolvedLabel) {
+            pendingMode = null
+        }
+    }
+    LaunchedEffect(pendingMode) {
+        if (pendingMode != null) {
+            kotlinx.coroutines.delay(3500L)
+            pendingMode = null
+        }
     }
     val activeMode = pendingMode ?: resolvedLabel
 
@@ -84,26 +92,18 @@ fun LauncherDriveModeBar(
         pendingMode = mode
         onModeSelected?.invoke(mode)
         scope.launch {
-            val isWet6Dct = UniversalCanRepository.carSettingsDriveMode6dctWet.value != null
-            val (propertyId, value) = when (mode) {
-                "ECO" -> if (isWet6Dct) {
-                    MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET to 1
-                } else {
-                    MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE to 2
-                }
-                "NOR" -> if (isWet6Dct) {
-                    MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET to 2
-                } else {
-                    MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE to 0
-                }
-                "SPT" -> if (isWet6Dct) {
-                    MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET to 0
-                } else {
-                    MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE to 1
-                }
-                else -> MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE to 0
+            val (stdValue, wetValue) = when (mode) {
+                "ECO" -> 2 to 1
+                "NOR" -> 0 to 2
+                "SPT" -> 1 to 0
+                else -> 0 to 2
             }
-            UniversalCanRepository.execute(MbCanCommand.SetProperty(propertyId, value))
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE, stdValue)
+            )
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET, wetValue)
+            )
         }
     }
 

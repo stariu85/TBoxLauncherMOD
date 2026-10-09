@@ -510,6 +510,31 @@ object MbCanCommandRegistry {
             refreshSignal = MbCanSignal.CarSettingsVehicleParams
         ),
         MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1)),
+            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MFS_RES_PLUS,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1)),
+            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MFS_SET_MINUS,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1)),
+            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MFS_TIME_GAP,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1)),
+            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.TJA_ICA,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2)),
+            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+        ),
+        MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.SOURCE_STATION_MODE,
             policy = MbCanCommandPolicy.ToggleBinary(
                 offValue = 1,

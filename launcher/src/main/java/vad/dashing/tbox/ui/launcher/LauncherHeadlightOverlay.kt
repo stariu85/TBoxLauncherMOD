@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 
 data class LauncherHeadlightBeams(
@@ -62,8 +63,7 @@ internal fun resolveHeadlightBeams(
     if (simulateEnabled) {
         return LauncherHeadlightBeams(lowBeam = simLowBeam, highBeam = simHighBeam)
     }
-    // Stalk AUTO / position (габариты) must not light the road. Only explicit low beam.
-    val low = lightControlRaw == LIGHT_CONTROL_LOW_BEAM
+    val low = lightControlRaw == LIGHT_CONTROL_LOW_BEAM || lightControlRaw == LIGHT_CONTROL_AUTO
     val high = headlightsSwitch == 3
     return LauncherHeadlightBeams(lowBeam = low || high, highBeam = high)
 }

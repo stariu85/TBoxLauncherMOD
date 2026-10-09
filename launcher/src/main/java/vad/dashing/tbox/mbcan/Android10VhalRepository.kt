@@ -1359,7 +1359,13 @@ object Android10VhalRepository {
                 )
                 val ok = bridge?.setIntProperty(effectivePropertyId, command.value) == true
                 logDebug("SetProperty result=$ok propertyId=$effectivePropertyId value=${command.value}")
-                if (ok) requestBurstPolling()
+                if (ok) {
+                    when (command.propertyId) {
+                        MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = command.value
+                        MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = command.value
+                    }
+                    requestBurstPolling()
+                }
                 spec.refreshSignal?.let { refreshSignal(it) }
                 MbCanCommandResult(ok, if (ok) "Set ok" else "Set failed")
             }

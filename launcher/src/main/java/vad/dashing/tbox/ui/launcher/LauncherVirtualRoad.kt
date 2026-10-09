@@ -466,7 +466,7 @@ private fun DrawScope.drawVirtualRoad(
                 else -> LauncherAdasLaneVisualization.Hidden
             }
             val inactiveDashColor = Color(0xFF9CA3AF)
-            val lkaActive = adas.lkaStatusCode != 0
+            val lkaActive = adas.lkaStatusCode == 2
             val activeColor = if (lkaActive) LkaBlueCore else LdwBrightGreen
 
             val baseDashColor = when {
@@ -831,7 +831,7 @@ private fun DrawScope.drawAdasLaneAssist(
                 color = warningColor.copy(alpha = 0.90f * alphaFactor),
                 style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
-        } else if (adas.lkaStatusCode != 0) {
+        } else if (adas.lkaStatusCode == 2) {
             // NGP / LKA active: Solid Blue with subtle, soft glow animating bottom-to-top
             drawPath(
                 path = lanePath,
