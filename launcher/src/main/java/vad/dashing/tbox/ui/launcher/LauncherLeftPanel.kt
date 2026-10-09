@@ -58,18 +58,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
+import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
 
-private const val ROAD_ANIMATION_SPEED_THRESHOLD_KMH = 15f
-
 internal fun isDriveViewActive(
-    speedKmh: Float,
+    pasOn: Boolean = false,
+    isParkGear: Boolean = false,
     cruiseOn: Boolean = false,
     racing: Boolean = false,
-    speedThresholdKmh: Float = ROAD_ANIMATION_SPEED_THRESHOLD_KMH,
 ): Boolean {
-    return racing || speedKmh >= speedThresholdKmh
+    if (isParkGear) return false
+    if (racing || cruiseOn) return true
+    if (pasOn) return false
+    return true
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -183,11 +185,18 @@ fun LauncherLeftPanel(
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
         LauncherAppConfigStore.driveModeGlowVisible(context)
     }
+    val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
+    val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny
     val cruiseOn = adas.accActive || adas.accStandby ||
         (adas.accSetSpeedKmh ?: 0) > 0 ||
         (cruiseSpeed ?: 0u) > 0u
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
-    val showDriveView = isDriveViewActive(effectiveSpeed, cruiseOn, racing)
+    val showDriveView = isDriveViewActive(
+        pasOn = pasOn,
+        isParkGear = activeGear == 'P',
+        cruiseOn = cruiseOn,
+        racing = racing,
+    )
 
     // Drive mode glow highlighting
     val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
