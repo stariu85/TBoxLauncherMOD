@@ -68,10 +68,11 @@ internal fun resolveHeadlightBeams(
     if (simulateEnabled) {
         return LauncherHeadlightBeams(lowBeam = simLowBeam, highBeam = simHighBeam)
     }
-    val high = (headlightsSwitch == 3) || (bcmHighBeam == true)
+    val high = bcmHighBeam == true
     val low = when {
         high -> true
         bcmLowBeam != null -> bcmLowBeam
+        headlightsSwitch == 3 -> true
         lightControlRaw == LIGHT_CONTROL_LOW_BEAM -> true
         else -> false
     }

@@ -295,17 +295,10 @@ private fun LauncherCarFilamentContent(
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
-    val driveTargetCompose = when {
-        settingsProgress > 0.02f -> 0f
-        inDriveGear || steerPreview -> 1f
-        else -> 0f
+    val inDriveGearRef = rememberUpdatedState(inDriveGear || steerPreview)
+    var currentDriveBlend by remember(modelInstance) {
+        mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
     }
-    val composedDriveBlend by animateFloatAsState(
-        targetValue = driveTargetCompose,
-        animationSpec = tween(280),
-        label = "carDriveBlend",
-    )
-    val driveBlendRef = rememberUpdatedState(composedDriveBlend)
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
@@ -371,17 +364,16 @@ private fun LauncherCarFilamentContent(
     }
     }
 
-    // SceneView otherwise renders one frame with its default camera before onFrame runs.
     SideEffect {
         val initialDrivePos = Float3(
-            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, composedDriveBlend),
-            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, composedDriveBlend),
-            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, composedDriveBlend),
+            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, currentDriveBlend),
+            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, currentDriveBlend),
+            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, currentDriveBlend),
         )
         val initialDriveTarget = Float3(
-            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, composedDriveBlend),
-            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, composedDriveBlend),
-            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, composedDriveBlend),
+            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, currentDriveBlend),
+            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, currentDriveBlend),
+            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, currentDriveBlend),
         )
         cameraNode.worldPosition = Position(
             lerp(initialDrivePos.x, SETTINGS_CAMERA_POS.x, currentTransition),
@@ -438,11 +430,32 @@ private fun LauncherCarFilamentContent(
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     runCatching {
-                        val currentDriveBlend = driveBlendRef.value
                         val currentRigState = rigStateRef.value
                         val currentSteering = steeringDeg
                         val orbit = settingsOrbitRef.value
                         val transition = settingsProgress.coerceIn(0f, 1f)
+
+                        val dt = if (lastFrameNs == 0L) {
+                            0.033f
+                        } else {
+                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
+                        }
+
+                        val targetDriveBlend = if (transition > 0.02f) {
+                            0f
+                        } else if (inDriveGearRef.value) {
+                            1f
+                        } else {
+                            0f
+                        }
+
+                        if (currentDriveBlend < targetDriveBlend) {
+                            currentDriveBlend = (currentDriveBlend + dt / 0.280f).coerceAtMost(targetDriveBlend)
+                        } else if (currentDriveBlend > targetDriveBlend) {
+                            currentDriveBlend = (currentDriveBlend - dt / 0.280f).coerceAtLeast(targetDriveBlend)
+                        }
+
+                        val blendAnimating = abs(currentDriveBlend - targetDriveBlend) > 0.001f
 
                         val isMoving = speedKmh > 0.5f || steerPreview
                         val steeringChanged = abs(currentSteering - lastSteeringDeg) > 0.1f
@@ -452,7 +465,7 @@ private fun LauncherCarFilamentContent(
                         val isInitializing = preparedFrames < 10
 
                         if (isMoving || steeringChanged || rigChanged ||
-                            settingsTransitioning || isOrbiting || isInitializing
+                            settingsTransitioning || isOrbiting || isInitializing || blendAnimating
                         ) {
                             lastDynamicNs = frameNs
                         }
@@ -467,11 +480,6 @@ private fun LauncherCarFilamentContent(
                             return@runCatching
                         }
                         val node = modelNodeRef.get() ?: return@runCatching
-                        val dt = if (lastFrameNs == 0L) {
-                            0.033f
-                        } else {
-                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
-                        }
                         lastFrameNs = frameNs
                         if (!lowPowerPreview) {
                             LauncherCarSurfaceRecovery.onFrameObserved()
@@ -643,9 +651,9 @@ private fun LauncherCarFilamentContent(
             }
         }
         if (onClick != null || onLongClick != null) {
-            val tapWidth = lerp(200.dp, 170.dp, composedDriveBlend)
-            val tapHeight = lerp(260.dp, 210.dp, composedDriveBlend)
-            val tapOffsetY = 115.dp * composedDriveBlend
+            val tapWidth = lerp(200.dp, 170.dp, currentDriveBlend)
+            val tapHeight = lerp(260.dp, 210.dp, currentDriveBlend)
+            val tapOffsetY = 115.dp * currentDriveBlend
 
             Box(
                 modifier = Modifier

@@ -333,8 +333,9 @@ internal fun buildLauncherAdasState(
         else -> 0
     }
 
-    // While NGP/TJA or LKA assist is engaged, keep lane guides active
-    if (effectiveLkaStatusCode != 0) {
+    // Only force Tracking when LKA active steering (2) is engaged.
+    // For LDW passive monitoring (1), keep camera raw visibility so undetected lanes stay Hidden (Gray).
+    if (effectiveLkaStatusCode == 2) {
         if (leftLane == LauncherAdasLaneVisualization.Hidden) {
             leftLane = LauncherAdasLaneVisualization.Tracking
         }

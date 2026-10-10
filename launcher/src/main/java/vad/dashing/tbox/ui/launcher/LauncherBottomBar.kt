@@ -974,16 +974,28 @@ private fun LauncherBottomDockButtonContent(
             LauncherSeatVentIcon(raw = rightRaw, mirrored = true)
         }
         "steering_heat" -> LauncherDockIcon(onClick = { sendToggleSteeringWheelHeat(context) }) {
-            LauncherBinaryTintIcon(R.drawable.ic_widget_steering_wheel_heat, steeringHeat is MbCanBinaryState.On)
+            LauncherBinaryTintIcon(
+                drawableRes = R.drawable.ic_widget_steering_wheel_heat,
+                active = steeringHeat is MbCanBinaryState.On,
+                activeColor = Color(0xFFF97316),
+            )
         }
         "windscreen_heat" -> LauncherDockIcon(onClick = { sendToggleFrontWindscreenHeat(context) }) {
-            LauncherBinaryTintIcon(R.drawable.ic_widget_front_windscreen_heat, windscreenHeat is MbCanBinaryState.On)
+            LauncherBinaryTintIcon(
+                drawableRes = R.drawable.ic_widget_front_windscreen_heat,
+                active = windscreenHeat is MbCanBinaryState.On,
+                activeColor = Color(0xFFF97316),
+            )
         }
         "front_defrost" -> LauncherDockIcon(onClick = { sendToggleHvacDefrosterFront(context) }) {
             LauncherHvacIcon(R.drawable.ic_widget_hvac_defroster_front, hvacDefrost)
         }
         "rear_defrost" -> LauncherDockIcon(onClick = { sendToggleRearWindowMirrorsDefrost(context) }) {
-            LauncherBinaryTintIcon(R.drawable.ic_widget_rear_window_mirrors_defrost, rearDefrost is MbCanBinaryState.On)
+            LauncherBinaryTintIcon(
+                drawableRes = R.drawable.ic_widget_rear_window_mirrors_defrost,
+                active = rearDefrost is MbCanBinaryState.On,
+                activeColor = Color(0xFFF97316),
+            )
         }
         else -> when {
             buttonId.startsWith("split:") -> {
@@ -1241,12 +1253,16 @@ private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
 }
 
 @Composable
-private fun LauncherBinaryTintIcon(drawableRes: Int, active: Boolean) {
+private fun LauncherBinaryTintIcon(
+    drawableRes: Int,
+    active: Boolean,
+    activeColor: Color = HvacOnColor,
+) {
     Image(
         painter = painterResource(drawableRes),
         contentDescription = null,
         modifier = Modifier.size(dockDp(26f)),
-        colorFilter = ColorFilter.tint(if (active) HvacOnColor else HvacOffColor),
+        colorFilter = ColorFilter.tint(if (active) activeColor else HvacOffColor),
     )
 }
 

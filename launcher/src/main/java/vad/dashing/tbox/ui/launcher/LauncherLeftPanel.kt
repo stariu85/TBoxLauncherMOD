@@ -181,6 +181,11 @@ fun LauncherLeftPanel(
     val cruisePanelVisible = remember(context, cruisePanelRevision) {
         LauncherAppConfigStore.cruisePanelVisible(context)
     }
+    val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
+        .collectAsStateWithLifecycle()
+    val miniPlayerVisible = remember(context, miniPlayerRevision) {
+        LauncherAppConfigStore.mediaMiniPlayerVisible(context)
+    }
     val cruisePositionRevision by LauncherAppConfigStore.cruisePanelPositionRevisionFlow
         .collectAsStateWithLifecycle()
     val cruisePosition = remember(context, cruisePositionRevision) {
@@ -321,32 +326,210 @@ fun LauncherLeftPanel(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        Column(
+        val driveModeBarContent: @Composable () -> Unit = {
+            if (driveModeBarVisible) {
+                LauncherDriveModeBar(
+                    canViewModel = canViewModel,
+                    onModeSelected = { pending -> driveModePending = pending },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        val cruisePanelContent: @Composable () -> Unit = {
+            if (cruisePanelVisible) {
+                LauncherCruisePresetControl(
+                    canViewModel = canViewModel,
+                    adas = adas,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        // --- FIXED 3D CAR MODEL LAYER ---
+        // Uses fillMaxSize with fixed padding so the 3D car position never shifts
+        // when top/bottom overlay panels are hidden, shown, or moved.
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 8.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+                .padding(top = 52.dp, bottom = 60.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            val driveModeBarContent: @Composable () -> Unit = {
-                if (driveModeBarVisible) {
-                    LauncherDriveModeBar(
-                        canViewModel = canViewModel,
-                        onModeSelected = { pending -> driveModePending = pending },
-                        modifier = Modifier.fillMaxWidth(),
+            if (!carHidden) {
+                val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
+                LauncherCar3DModel(
+                    rigState = rigState,
+                    speedKmh = effectiveSpeed,
+                    steeringDeg = effectiveSteer,
+                    steerPreview = steerPreview,
+                    inDriveGear = showDriveView,
+                    modelRevision = modelRevision,
+                    paintRevision = paintRevision,
+                    paintId = paintId,
+                    showRoad = false,
+                    settingsView = settingsProgress > 0.02f,
+                    settingsProgress = settingsProgress,
+                    settingsUserYawDeg = settingsUserYawDeg,
+                    customModelScale = carModelScale,
+                    onClick = if (!racing) onOpenVehicleSettings else null,
+                    onLongClick = if (!racing) onColorPickerOpen else null,
+                    onWheelAnchorsChanged = { wheelAnchors = it },
+                    onPdcRingsChanged = { pdcRings = it },
+                    onHeadlightFrameChanged = { headlightFrame = it },
+                    onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
+                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
+                    projectHeadlights = !racing && headlightBeams.any,
+                    textureSurface = racing,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = with(density) { carLaneShift.toPx() }
+                        },
+                )
+                if (settingsProgress < 0.15f && !racing) {
+                    LauncherTireBadges(
+                        state = effectiveTires,
+                        // ADAS strip shows a small pressure-only pill next to the wheel.
+                        compact = true,
+                        wheelAnchorsPx = wheelAnchors,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (!bodyRigAvailable) {
+                        LauncherDoorBadges(
+                            body = effectiveBody,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    LauncherRearThreatOverlay(
+                        threats = adas.rearThreats,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    LauncherPdcOverlay(
+                        pdc = adas.pdc,
+                        rings = pdcRings,
+                        driving = inDriveGear || steerPreview,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    LauncherBsdOverlay(
+                        threats = adas.rearThreats,
+                        rings = pdcRings,
+                        driving = inDriveGear || steerPreview,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    LauncherHeadlightOverlay(
+                        beams = headlightBeams,
+                        frame = headlightFrame,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
 
-            val cruisePanelContent: @Composable () -> Unit = {
-                if (cruisePanelVisible) {
-                    LauncherCruisePresetControl(
-                        canViewModel = canViewModel,
+            // Overlay layer for 3D speed limit sign floating over the 3D car area
+            if (!racing) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val signSizePx = with(density) { 48.dp.toPx() }
+                    val containerWidthPx = with(density) { maxWidth.toPx() }
+                    val containerHeightPx = with(density) { maxHeight.toPx() }
+
+                    val centerX = containerWidthPx * speedLimitXRatio
+                    val centerY = containerHeightPx * speedLimitYRatio
+
+                    val leftPx = (centerX - signSizePx / 2f).coerceIn(0f, (containerWidthPx - signSizePx).coerceAtLeast(0f))
+                    val topPx = (centerY - signSizePx / 2f).coerceIn(0f, (containerHeightPx - signSizePx).coerceAtLeast(0f))
+
+                    val leftDp = with(density) { leftPx.toDp() }
+                    val topDp = with(density) { topPx.toDp() }
+
+                    LauncherSpeedLimitOverlay(
                         adas = adas,
-                        modifier = Modifier.fillMaxWidth(),
+                        onDrag = { delta ->
+                            if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                val currentCenterX = containerWidthPx * speedLimitXRatio
+                                val currentCenterY = containerHeightPx * speedLimitYRatio
+                                val newCenterX = (currentCenterX + delta.x).coerceIn(signSizePx / 2f, containerWidthPx - signSizePx / 2f)
+                                val newCenterY = (currentCenterY + delta.y).coerceIn(signSizePx / 2f, containerHeightPx - signSizePx / 2f)
+                                speedLimitXRatio = newCenterX / containerWidthPx
+                                speedLimitYRatio = newCenterY / containerHeightPx
+                            }
+                        },
+                        onDragEnd = {
+                            LauncherAppConfigStore.setSpeedLimitPosition(context, speedLimitXRatio, speedLimitYRatio)
+                        },
+                        modifier = Modifier
+                            .offset(x = leftDp, y = topDp)
+                            .zIndex(160f),
                     )
+
+                    if (adasAlertsInLeftPanel) {
+                        val alertsTopOffset = maxHeight * 0.25f
+
+                        // Left vertical section: Telltale alerts (Индикаторы предупреждений)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = 8.dp, top = alertsTopOffset)
+                                .zIndex(150f),
+                        ) {
+                            LauncherVehicleAlertsStrip(isVertical = true)
+                        }
+
+                        // Right vertical section: ADAS (Системы помощи водителю и безопасности)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = 8.dp, top = alertsTopOffset)
+                                .zIndex(150f),
+                        ) {
+                            LauncherAdasStrip(
+                                canViewModel = canViewModel,
+                                isVertical = true,
+                            )
+                        }
+                    }
+                }
+
+                LauncherCriticalCollisionWarningBanner(
+                    adas = adas,
+                    showAll = simulateEnabled && LauncherDevVehicleState.showAllIndicators,
+                )
+            }
+            if (racing) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
+                ) {
+                    LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
                 }
             }
+            if (colorPickerVisible) {
+                LauncherCarColorPicker(
+                    selectedId = paintId,
+                    onSelect = { id ->
+                        onPaintChanged(id)
+                        LauncherAppConfigStore.setCarPaintId(context, id)
+                    },
+                    onDismiss = onColorPickerDismiss,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp),
+                )
+            }
+        }
 
+        // --- TOP OVERLAY PANELS LAYER ---
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(start = 8.dp, top = 12.dp, end = 8.dp)
+                .zIndex(200f),
+        ) {
             if (racing) {
                 LauncherEggRaceCloseBar()
             } else {
@@ -371,194 +554,22 @@ fun LauncherLeftPanel(
                     }
                 }
             }
+        }
 
+        // --- BOTTOM OVERLAY PANELS LAYER ---
+        val bottomHasPanel = !racing && (
+            miniPlayerVisible ||
+            (!isCruiseTop && (cruisePanelVisible || driveModeBarVisible))
+        )
+
+        if (bottomHasPanel) {
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = if (cruisePanelVisible) 12.dp else 4.dp),
-                contentAlignment = Alignment.Center,
+                    .padding(start = 8.dp, end = 8.dp, bottom = 8.dp)
+                    .zIndex(200f),
             ) {
-                if (!carHidden) {
-                    val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
-                    LauncherCar3DModel(
-                        rigState = rigState,
-                        speedKmh = effectiveSpeed,
-                        steeringDeg = effectiveSteer,
-                        steerPreview = steerPreview,
-                        inDriveGear = showDriveView,
-                        modelRevision = modelRevision,
-                        paintRevision = paintRevision,
-                        paintId = paintId,
-                        showRoad = false,
-                        settingsView = settingsProgress > 0.02f,
-                        settingsProgress = settingsProgress,
-                        settingsUserYawDeg = settingsUserYawDeg,
-                        customModelScale = carModelScale,
-                        onClick = if (!racing) onOpenVehicleSettings else null,
-                        onLongClick = if (!racing) onColorPickerOpen else null,
-                        onWheelAnchorsChanged = { wheelAnchors = it },
-                        onPdcRingsChanged = { pdcRings = it },
-                        onHeadlightFrameChanged = { headlightFrame = it },
-                        onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                        projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
-                        projectHeadlights = !racing && headlightBeams.any,
-                        textureSurface = racing,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                translationX = with(density) { carLaneShift.toPx() }
-                            },
-                    )
-                    if (settingsProgress < 0.15f && !racing) {
-                        LauncherTireBadges(
-                            state = effectiveTires,
-                            // ADAS strip shows a small pressure-only pill next to the wheel.
-                            compact = true,
-                            wheelAnchorsPx = wheelAnchors,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        if (!bodyRigAvailable) {
-                            LauncherDoorBadges(
-                                body = effectiveBody,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                        LauncherRearThreatOverlay(
-                            threats = adas.rearThreats,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        LauncherPdcOverlay(
-                            pdc = adas.pdc,
-                            rings = pdcRings,
-                            driving = inDriveGear || steerPreview,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        LauncherBsdOverlay(
-                            threats = adas.rearThreats,
-                            rings = pdcRings,
-                            driving = inDriveGear || steerPreview,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        LauncherHeadlightOverlay(
-                            beams = headlightBeams,
-                            frame = headlightFrame,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                // Overlay layer for 3D speed limit sign floating over the 3D car area
-                if (!racing) {
-                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val signSizePx = with(density) { 48.dp.toPx() }
-                        val containerWidthPx = with(density) { maxWidth.toPx() }
-                        val containerHeightPx = with(density) { maxHeight.toPx() }
-
-                        val centerX = containerWidthPx * speedLimitXRatio
-                        val centerY = containerHeightPx * speedLimitYRatio
-
-                        val leftPx = (centerX - signSizePx / 2f).coerceIn(0f, (containerWidthPx - signSizePx).coerceAtLeast(0f))
-                        val topPx = (centerY - signSizePx / 2f).coerceIn(0f, (containerHeightPx - signSizePx).coerceAtLeast(0f))
-
-                        val leftDp = with(density) { leftPx.toDp() }
-                        val topDp = with(density) { topPx.toDp() }
-
-                        LauncherSpeedLimitOverlay(
-                            adas = adas,
-                            onDrag = { delta ->
-                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
-                                    val currentCenterX = containerWidthPx * speedLimitXRatio
-                                    val currentCenterY = containerHeightPx * speedLimitYRatio
-                                    val newCenterX = (currentCenterX + delta.x).coerceIn(signSizePx / 2f, containerWidthPx - signSizePx / 2f)
-                                    val newCenterY = (currentCenterY + delta.y).coerceIn(signSizePx / 2f, containerHeightPx - signSizePx / 2f)
-                                    speedLimitXRatio = newCenterX / containerWidthPx
-                                    speedLimitYRatio = newCenterY / containerHeightPx
-                                }
-                            },
-                            onDragEnd = {
-                                LauncherAppConfigStore.setSpeedLimitPosition(context, speedLimitXRatio, speedLimitYRatio)
-                            },
-                            modifier = Modifier
-                                .offset(x = leftDp, y = topDp)
-                                .zIndex(160f),
-                        )
-
-                        if (adasAlertsInLeftPanel) {
-                            val alertsTopOffset = maxHeight * 0.25f
-
-                            // Left vertical section: Telltale alerts (Индикаторы предупреждений)
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(start = 8.dp, top = alertsTopOffset)
-                                    .zIndex(150f),
-                            ) {
-                                LauncherVehicleAlertsStrip(isVertical = true)
-                            }
-
-                            // Right vertical section: ADAS (Системы помощи водителю и безопасности)
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(end = 8.dp, top = alertsTopOffset)
-                                    .zIndex(150f),
-                            ) {
-                                LauncherAdasStrip(
-                                    canViewModel = canViewModel,
-                                    isVertical = true,
-                                )
-                            }
-                        }
-                    }
-
-                    LauncherCriticalCollisionWarningBanner(
-                        adas = adas,
-                        showAll = simulateEnabled && LauncherDevVehicleState.showAllIndicators,
-                    )
-                }
-                if (racing) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {},
-                            ),
-                    ) {
-                        LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
-                    }
-                }
-                if (colorPickerVisible) {
-                    LauncherCarColorPicker(
-                        selectedId = paintId,
-                        onSelect = { id ->
-                            onPaintChanged(id)
-                            LauncherAppConfigStore.setCarPaintId(context, id)
-                        },
-                        onDismiss = onColorPickerDismiss,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 8.dp),
-                    )
-                }
-            }
-
-            val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
-                .collectAsStateWithLifecycle()
-            val miniPlayerVisible = remember(context, miniPlayerRevision) {
-                LauncherAppConfigStore.mediaMiniPlayerVisible(context)
-            }
-
-            val bottomHasContent = !racing && (
-                miniPlayerVisible ||
-                (isCruiseTop && driveModeBarVisible && swapPanels) ||
-                (!isCruiseTop && (cruisePanelVisible || driveModeBarVisible))
-            )
-
-            if (bottomHasContent) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -572,8 +583,6 @@ fun LauncherLeftPanel(
                         } else {
                             driveModeBarContent()
                         }
-                    } else if (swapPanels) {
-                        driveModeBarContent()
                     }
                 }
             }

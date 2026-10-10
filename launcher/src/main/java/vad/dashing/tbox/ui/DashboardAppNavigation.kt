@@ -289,7 +289,7 @@ internal fun sendToggleHvacDefrosterFront(context: Context) {
         if (now < hvacDefrosterFrontToggleBlockedUntilMs) return
         hvacDefrosterFrontToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH)
+    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
 }
 
 /**

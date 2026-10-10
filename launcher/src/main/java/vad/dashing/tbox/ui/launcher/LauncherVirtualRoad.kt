@@ -467,12 +467,12 @@ private fun DrawScope.drawVirtualRoad(
             }
             val inactiveDashColor = Color(0xFF9CA3AF)
             val lkaActive = adas.lkaStatusCode == 2
-            val activeColor = if (lkaActive) LkaBlueCore else LdwBrightGreen
 
             val baseDashColor = when {
                 !isEgoLane -> inactiveDashColor
                 laneState == LauncherAdasLaneVisualization.Warning -> Color(0xFFEF4444)
-                else -> lerp(inactiveDashColor, activeColor, laneProgress)
+                laneState != LauncherAdasLaneVisualization.Hidden -> if (lkaActive) LkaBlueCore else LdwBrightGreen
+                else -> inactiveDashColor
             }
 
             drawLine(
