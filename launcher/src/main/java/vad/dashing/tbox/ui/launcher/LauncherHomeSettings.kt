@@ -1,9 +1,16 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -106,6 +113,7 @@ internal fun LauncherHomeSettingsContent() {
     )
     MediaCardOpacitySlider()
     CarModelScaleSlider()
+    CameraSwitchModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
     AdasDistanceTextSizeSlider()
@@ -334,6 +342,82 @@ private fun CarModelScaleSlider() {
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
         )
+    }
+}
+
+@Composable
+private fun LauncherSettingsOptionButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (selected) LauncherColors.AccentCyan.copy(alpha = 0.22f)
+                else LauncherColors.CardDarkElevated,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = if (selected) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        )
+    }
+}
+
+@Composable
+private fun CameraSwitchModeSelector() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.cameraSwitchModeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val mode = remember(context, revision) {
+        LauncherAppConfigStore.cameraSwitchMode(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_camera_switch_mode_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+        )
+        Text(
+            text = stringResource(R.string.launcher_camera_switch_mode_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_camera_switch_mode_pas),
+                selected = mode == CAMERA_SWITCH_MODE_PAS_AND_PARK,
+                onClick = {
+                    LauncherAppConfigStore.setCameraSwitchMode(
+                        context,
+                        CAMERA_SWITCH_MODE_PAS_AND_PARK,
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            )
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_camera_switch_mode_drive),
+                selected = mode == CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
+                onClick = {
+                    LauncherAppConfigStore.setCameraSwitchMode(
+                        context,
+                        CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -790,6 +874,47 @@ fun CruiseControlSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+
+        val cruisePositionRevision by LauncherAppConfigStore.cruisePanelPositionRevisionFlow
+            .collectAsStateWithLifecycle()
+        val cruisePosition = remember(context, cruisePositionRevision) {
+            LauncherAppConfigStore.cruisePanelPosition(context)
+        }
+        val isCruiseTop = cruisePosition == "top"
+
+        val swapPanelsRevision by LauncherAppConfigStore.swapTopBottomPanelsRevisionFlow
+            .collectAsStateWithLifecycle()
+        val swapPanels = remember(context, swapPanelsRevision) {
+            LauncherAppConfigStore.swapTopBottomPanels(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_cruise_panel_position_title),
+            active = isCruiseTop,
+            onClick = {
+                val nextPos = if (isCruiseTop) "bottom" else "top"
+                LauncherAppConfigStore.setCruisePanelPosition(context, nextPos)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_cruise_panel_position_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_swap_top_bottom_panels_title),
+            active = swapPanels,
+            onClick = {
+                LauncherAppConfigStore.setSwapTopBottomPanels(context, !swapPanels)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_swap_top_bottom_panels_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         CruisePresetsSettings()
     }
 }

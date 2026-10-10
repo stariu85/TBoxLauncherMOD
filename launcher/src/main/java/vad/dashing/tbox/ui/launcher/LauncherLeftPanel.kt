@@ -67,13 +67,17 @@ internal fun isDriveViewActive(
     speedKmh: Float,
     pasOn: Boolean = false,
     isParkGear: Boolean = false,
+    isDriveGear: Boolean = false,
     accActive: Boolean = false,
     racing: Boolean = false,
+    cameraSwitchMode: Int = CAMERA_SWITCH_MODE_PAS_AND_PARK,
 ): Boolean {
     if (isParkGear) return false
     if (racing || accActive) return true
-    if (pasOn) return false
-    return speedKmh > 0.5f
+    return when (cameraSwitchMode) {
+        CAMERA_SWITCH_MODE_DRIVE_AND_PARK -> isDriveGear
+        else -> if (pasOn) false else speedKmh > 0.5f
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -177,6 +181,19 @@ fun LauncherLeftPanel(
     val cruisePanelVisible = remember(context, cruisePanelRevision) {
         LauncherAppConfigStore.cruisePanelVisible(context)
     }
+    val cruisePositionRevision by LauncherAppConfigStore.cruisePanelPositionRevisionFlow
+        .collectAsStateWithLifecycle()
+    val cruisePosition = remember(context, cruisePositionRevision) {
+        LauncherAppConfigStore.cruisePanelPosition(context)
+    }
+    val isCruiseTop = cruisePosition == "top"
+
+    val swapPanelsRevision by LauncherAppConfigStore.swapTopBottomPanelsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val swapPanels = remember(context, swapPanelsRevision) {
+        LauncherAppConfigStore.swapTopBottomPanels(context)
+    }
+
     val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow
         .collectAsStateWithLifecycle()
     val driveModeBarVisible = remember(context, driveModeBarRevision) {
@@ -191,13 +208,20 @@ fun LauncherLeftPanel(
     val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny
     val accActive = adas.accActive ||
         (adas.frontObject.valid && (adas.fcwActive || adas.distanceWarning || adas.aebHint))
+    val cameraSwitchModeRevision by LauncherAppConfigStore.cameraSwitchModeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val cameraSwitchMode = remember(context, cameraSwitchModeRevision) {
+        LauncherAppConfigStore.cameraSwitchMode(context)
+    }
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
     val showDriveView = isDriveViewActive(
         speedKmh = effectiveSpeed,
         pasOn = pasOn,
         isParkGear = activeGear == 'P',
+        isDriveGear = inDriveGear,
         accActive = accActive,
         racing = racing,
+        cameraSwitchMode = cameraSwitchMode,
     )
 
     // Drive mode glow highlighting
@@ -303,14 +327,49 @@ fun LauncherLeftPanel(
                 .padding(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
+            val driveModeBarContent: @Composable () -> Unit = {
+                if (driveModeBarVisible) {
+                    LauncherDriveModeBar(
+                        canViewModel = canViewModel,
+                        onModeSelected = { pending -> driveModePending = pending },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            val cruisePanelContent: @Composable () -> Unit = {
+                if (cruisePanelVisible) {
+                    LauncherCruisePresetControl(
+                        canViewModel = canViewModel,
+                        adas = adas,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
             if (racing) {
                 LauncherEggRaceCloseBar()
-            } else if (driveModeBarVisible) {
-                LauncherDriveModeBar(
-                    canViewModel = canViewModel,
-                    onModeSelected = { pending -> driveModePending = pending },
+            } else {
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                )
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (isCruiseTop) {
+                        if (!swapPanels) {
+                            driveModeBarContent()
+                            cruisePanelContent()
+                        } else {
+                            cruisePanelContent()
+                            driveModeBarContent()
+                        }
+                    } else {
+                        if (!swapPanels) {
+                            driveModeBarContent()
+                        } else {
+                            cruisePanelContent()
+                        }
+                    }
+                }
             }
 
             Box(
@@ -493,7 +552,13 @@ fun LauncherLeftPanel(
                 LauncherAppConfigStore.mediaMiniPlayerVisible(context)
             }
 
-            if (!racing && (miniPlayerVisible || cruisePanelVisible)) {
+            val bottomHasContent = !racing && (
+                miniPlayerVisible ||
+                (isCruiseTop && driveModeBarVisible && swapPanels) ||
+                (!isCruiseTop && (cruisePanelVisible || driveModeBarVisible))
+            )
+
+            if (bottomHasContent) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -501,12 +566,14 @@ fun LauncherLeftPanel(
                     if (miniPlayerVisible) {
                         LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
                     }
-                    if (cruisePanelVisible) {
-                        LauncherCruisePresetControl(
-                            canViewModel = canViewModel,
-                            adas = adas,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                    if (!isCruiseTop) {
+                        if (!swapPanels) {
+                            cruisePanelContent()
+                        } else {
+                            driveModeBarContent()
+                        }
+                    } else if (swapPanels) {
+                        driveModeBarContent()
                     }
                 }
             }

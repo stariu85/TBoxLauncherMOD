@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -110,6 +111,15 @@ fun LauncherCruisePresetControl(
         if (currentVehicleSpeedKmh > 0) currentVehicleSpeedKmh else lastSpeed
     }
 
+    val chipState = when {
+        LauncherDevVehicleState.simulateEnabled -> {
+            if (LauncherDevVehicleState.adasCruiseActive) CruiseChipState.Active else CruiseChipState.Off
+        }
+        adas.accActive || pendingTargetSpeed != null -> CruiseChipState.Active
+        adas.accStandby -> CruiseChipState.Standby
+        else -> CruiseChipState.Off
+    }
+
     var subModeExpanded by remember { mutableStateOf(false) }
     var popupDismissTimeMs by remember { mutableLongStateOf(0L) }
 
@@ -128,10 +138,10 @@ fun LauncherCruisePresetControl(
     ) {
         // Slot 1: Main Cruise ON/OFF Button (long press toggles NGP & DIST sub-mode)
         CruiseToggleChip(
-            engaged = effectiveEngaged,
+            chipState = chipState,
             setSpeed = displaySpeed,
             onClick = {
-                if (effectiveEngaged) {
+                if (chipState != CruiseChipState.Off) {
                     pendingTargetSpeed = null
                     LauncherCruisePresetController.toggleCruise(context)
                 } else {
@@ -199,10 +209,11 @@ fun LauncherCruisePresetControl(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     presets.forEach { kmh ->
-                        val isSelected = effectiveEngaged && currentTargetSpeed == kmh
+                        val isSelected = chipState != CruiseChipState.Off && currentTargetSpeed == kmh
                         CruisePresetChip(
                             label = kmh.toString(),
-                            selected = isSelected,
+                            chipState = chipState,
+                            isSelected = isSelected,
                             onClick = {
                                 pendingTargetSpeed = kmh
                                 LauncherCruisePresetController.applyPreset(context, kmh)
@@ -218,28 +229,46 @@ fun LauncherCruisePresetControl(
     }
 }
 
+private enum class CruiseChipState {
+    Off,
+    Standby,
+    Active,
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CruiseToggleChip(
-    engaged: Boolean,
+    chipState: CruiseChipState,
     setSpeed: Int?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val activeTint = LauncherColors.AccentCyan
-    val inactiveTint = LauncherColors.LeftTextPrimary
-    val tint = if (engaged) activeTint else inactiveTint
+    val (tint, bg, border) = when (chipState) {
+        CruiseChipState.Active -> Triple(
+            LauncherColors.AccentCyan,
+            LauncherColors.AccentCyan.copy(alpha = 0.25f),
+            LauncherColors.AccentCyan.copy(alpha = 0.85f),
+        )
+        CruiseChipState.Standby -> Triple(
+            Color(0xFFD1D5DB),
+            Color(0xFF4B5563).copy(alpha = 0.45f),
+            Color(0xFF9CA3AF).copy(alpha = 0.75f),
+        )
+        CruiseChipState.Off -> Triple(
+            LauncherColors.LeftTextPrimary,
+            LauncherColors.LeftPanelCard,
+            Color.Transparent,
+        )
+    }
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (engaged) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
-            )
+            .background(bg)
             .then(
-                if (engaged) {
-                    Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                if (chipState != CruiseChipState.Off) {
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }
@@ -337,23 +366,36 @@ private fun CruiseDistancePopupButton(
 @Composable
 private fun CruisePresetChip(
     label: String,
-    selected: Boolean,
+    chipState: CruiseChipState,
+    isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val activeTint = LauncherColors.AccentCyan
-    val inactiveTint = LauncherColors.LeftTextPrimary
-    val tint = if (selected) activeTint else inactiveTint
+    val (tint, bg, border) = when {
+        isSelected && chipState == CruiseChipState.Active -> Triple(
+            LauncherColors.AccentCyan,
+            LauncherColors.AccentCyan.copy(alpha = 0.25f),
+            LauncherColors.AccentCyan.copy(alpha = 0.85f),
+        )
+        isSelected && chipState == CruiseChipState.Standby -> Triple(
+            Color(0xFFD1D5DB),
+            Color(0xFF4B5563).copy(alpha = 0.45f),
+            Color(0xFF9CA3AF).copy(alpha = 0.75f),
+        )
+        else -> Triple(
+            LauncherColors.LeftTextPrimary,
+            LauncherColors.LeftPanelCard,
+            Color.Transparent,
+        )
+    }
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (selected) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
-            )
+            .background(bg)
             .then(
-                if (selected) {
-                    Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                if (isSelected) {
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }

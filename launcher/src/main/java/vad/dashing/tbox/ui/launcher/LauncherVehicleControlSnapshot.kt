@@ -27,6 +27,8 @@ data class LauncherVehicleControlSnapshot(
     val avh: Boolean? = null,
     val headlightsSwitch: Int? = null,
     val lightControlRaw: Int? = null,
+    val bcmLowBeam: Boolean? = null,
+    val bcmHighBeam: Boolean? = null,
     val rearFogLight: Boolean? = null,
     val homelightDelay: Int? = null,
     val lasSensitivity: Int? = null,
@@ -62,7 +64,7 @@ fun rememberLauncherVehicleControlSnapshot(
             snapshot = withContext(Dispatchers.IO) {
                 readVehicleControlSnapshot(includeExperimental = includeExperimental)
             }
-            delay(if (includeExperimental) 2_500L else 1_500L)
+            delay(if (includeExperimental) 2_500L else 400L)
         }
     }
     return snapshot
@@ -82,6 +84,16 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         2 -> false
         else -> null
     }
+    val bcmLights = runCatching {
+        val bcmCls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleBcmStatus")
+        val bcm = MbCanEngineFacade.getMbCanData(21, bcmCls) ?: return@runCatching null
+        val lightSts = bcmCls.getMethod("getLightStatus").invoke(bcm) ?: return@runCatching null
+        val lightCls = Class.forName("com.mengbo.mbCan.entity.MBCanLightStatus")
+        val low = (lightCls.getMethod("getLowBeamSts").invoke(lightSts) as? Number)?.toInt() ?: 0
+        val high = (lightCls.getMethod("getHighBeamSts").invoke(lightSts) as? Number)?.toInt() ?: 0
+        (low != 0) to (high != 0)
+    }.getOrNull()
+
     val core = LauncherVehicleControlSnapshot(
         doorAutoLock = onOff12(get(MbCanKnownVehiclePropertyId.DOOR_AUTO_LOCK)),
         doorIgnOffUnlock = onOff21(get(MbCanKnownVehiclePropertyId.DOOR_IGNOFF_UNLOCK)),
@@ -94,6 +106,8 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         avh = onOff12(get(MbCanKnownVehiclePropertyId.AVH_SWITCH)),
         headlightsSwitch = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_SWITCH)?.takeIf { it in 0..3 },
         lightControlRaw = get(MbCanKnownVehiclePropertyId.LIGHT_CONTROL)?.takeIf { it in 1..4 },
+        bcmLowBeam = bcmLights?.first,
+        bcmHighBeam = bcmLights?.second,
         rearFogLight = onOff12(get(MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)),
         homelightDelay = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_HOMELIGHT_DELAY)?.takeIf { it in 0..3 },
         lasSensitivity = get(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL)?.takeIf { it in 1..3 },

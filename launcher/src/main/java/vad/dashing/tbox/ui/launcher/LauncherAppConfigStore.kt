@@ -20,6 +20,7 @@ private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
+private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
 private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
 private const val KEY_CLIMATE_VISIBLE = "climate_controls_visible"
 private const val KEY_CLIMATE_SCALE = "climate_controls_scale"
@@ -100,6 +101,9 @@ internal const val CAR_MODEL_SCALE_MAX = 1.80f
 internal const val SIDEBAR_WIDTH_DEFAULT = 300
 internal const val SIDEBAR_WIDTH_MIN = 240
 internal const val SIDEBAR_WIDTH_MAX = 400
+internal const val CAMERA_SWITCH_MODE_PAS_AND_PARK = 0
+internal const val CAMERA_SWITCH_MODE_DRIVE_AND_PARK = 1
+internal const val CAMERA_SWITCH_MODE_DEFAULT = 0
 internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
 internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
 internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
@@ -125,6 +129,8 @@ internal const val CRUISE_PRESET_STEP_KMH = 1
 private const val KEY_CRUISE_PRESETS = "cruise_presets_kmh"
 private const val KEY_LAST_CRUISE_SPEED = "last_cruise_speed_kmh"
 private const val KEY_CRUISE_PANEL_VISIBLE = "cruise_panel_visible"
+private const val KEY_CRUISE_PANEL_POSITION = "cruise_panel_position"
+private const val KEY_SWAP_TOP_BOTTOM_PANELS = "swap_top_bottom_panels"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
 private const val KEY_NGP_ENABLED = "ngp_enabled"
@@ -161,6 +167,8 @@ internal object LauncherAppConfigStore {
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
     private val sidebarWidthRevision = MutableStateFlow(0)
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
+    private val cameraSwitchModeRevision = MutableStateFlow(0)
+    internal val cameraSwitchModeRevisionFlow: StateFlow<Int> = cameraSwitchModeRevision
     private val navButtonsRevision = MutableStateFlow(0)
     internal val navButtonsRevisionFlow: StateFlow<Int> = navButtonsRevision
     private val adasDistanceTextSizeRevision = MutableStateFlow(0)
@@ -185,6 +193,10 @@ internal object LauncherAppConfigStore {
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
     private val cruisePanelRevision = MutableStateFlow(0)
     internal val cruisePanelRevisionFlow: StateFlow<Int> = cruisePanelRevision
+    private val cruisePanelPositionRevision = MutableStateFlow(0)
+    internal val cruisePanelPositionRevisionFlow: StateFlow<Int> = cruisePanelPositionRevision
+    private val swapTopBottomPanelsRevision = MutableStateFlow(0)
+    internal val swapTopBottomPanelsRevisionFlow: StateFlow<Int> = swapTopBottomPanelsRevision
     private val driveModeBarRevision = MutableStateFlow(0)
     internal val driveModeBarRevisionFlow: StateFlow<Int> = driveModeBarRevision
     private val driveModeGlowRevision = MutableStateFlow(0)
@@ -541,6 +553,16 @@ internal object LauncherAppConfigStore {
         sidebarWidthRevision.value++
     }
 
+    fun cameraSwitchMode(context: Context): Int =
+        prefs(context).getInt(KEY_CAMERA_SWITCH_MODE, CAMERA_SWITCH_MODE_DEFAULT)
+            .coerceIn(0, 1)
+
+    fun setCameraSwitchMode(context: Context, mode: Int) {
+        val next = mode.coerceIn(0, 1)
+        prefs(context).edit().putInt(KEY_CAMERA_SWITCH_MODE, next).apply()
+        cameraSwitchModeRevision.value++
+    }
+
     fun fuelShowsRange(context: Context): Boolean =
         prefs(context).getBoolean(KEY_FUEL_SHOWS_RANGE, false)
 
@@ -587,6 +609,22 @@ internal object LauncherAppConfigStore {
     fun setCruisePanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CRUISE_PANEL_VISIBLE, visible).apply()
         cruisePanelRevision.value++
+    }
+
+    fun cruisePanelPosition(context: Context): String =
+        prefs(context).getString(KEY_CRUISE_PANEL_POSITION, "bottom") ?: "bottom"
+
+    fun setCruisePanelPosition(context: Context, position: String) {
+        prefs(context).edit().putString(KEY_CRUISE_PANEL_POSITION, position).apply()
+        cruisePanelPositionRevision.value++
+    }
+
+    fun swapTopBottomPanels(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SWAP_TOP_BOTTOM_PANELS, false)
+
+    fun setSwapTopBottomPanels(context: Context, swap: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SWAP_TOP_BOTTOM_PANELS, swap).apply()
+        swapTopBottomPanelsRevision.value++
     }
 
     fun driveModeBarVisible(context: Context): Boolean =

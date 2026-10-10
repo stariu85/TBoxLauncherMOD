@@ -10,7 +10,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 
 data class LauncherHeadlightBeams(
@@ -42,6 +41,8 @@ fun rememberHeadlightBeams(): LauncherHeadlightBeams {
         simHigh,
         snapshot.lightControlRaw,
         snapshot.headlightsSwitch,
+        snapshot.bcmLowBeam,
+        snapshot.bcmHighBeam,
     ) {
         resolveHeadlightBeams(
             simulateEnabled = simulate,
@@ -49,6 +50,8 @@ fun rememberHeadlightBeams(): LauncherHeadlightBeams {
             simHighBeam = simHigh,
             lightControlRaw = snapshot.lightControlRaw,
             headlightsSwitch = snapshot.headlightsSwitch,
+            bcmLowBeam = snapshot.bcmLowBeam,
+            bcmHighBeam = snapshot.bcmHighBeam,
         )
     }
 }
@@ -59,13 +62,20 @@ internal fun resolveHeadlightBeams(
     simHighBeam: Boolean,
     lightControlRaw: Int?,
     headlightsSwitch: Int?,
+    bcmLowBeam: Boolean? = null,
+    bcmHighBeam: Boolean? = null,
 ): LauncherHeadlightBeams {
     if (simulateEnabled) {
         return LauncherHeadlightBeams(lowBeam = simLowBeam, highBeam = simHighBeam)
     }
-    val low = lightControlRaw == LIGHT_CONTROL_LOW_BEAM || lightControlRaw == LIGHT_CONTROL_AUTO
-    val high = headlightsSwitch == 3
-    return LauncherHeadlightBeams(lowBeam = low || high, highBeam = high)
+    val high = (headlightsSwitch == 3) || (bcmHighBeam == true)
+    val low = when {
+        high -> true
+        bcmLowBeam != null -> bcmLowBeam
+        lightControlRaw == LIGHT_CONTROL_LOW_BEAM -> true
+        else -> false
+    }
+    return LauncherHeadlightBeams(lowBeam = low, highBeam = high)
 }
 
 @Composable
@@ -78,16 +88,18 @@ fun LauncherHeadlightOverlay(
     val high = beams.highBeam
     val color = if (high) Color(0xFFEAF4FF) else Color(0xFFFFF1C2)
     val coreAlpha = if (high) 0.58f else 0.36f
+    val leftFan = if (high && frame.leftHighFan.size >= 2) frame.leftHighFan else frame.leftLowFan
+    val rightFan = if (high && frame.rightHighFan.size >= 2) frame.rightHighFan else frame.rightLowFan
     Canvas(modifier = modifier.fillMaxSize()) {
         drawHeadlightCone(
             origin = frame.leftOrigin,
-            fan = if (high) frame.leftHighFan else frame.leftLowFan,
+            fan = leftFan,
             color = color,
             coreAlpha = coreAlpha,
         )
         drawHeadlightCone(
             origin = frame.rightOrigin,
-            fan = if (high) frame.rightHighFan else frame.rightLowFan,
+            fan = rightFan,
             color = color,
             coreAlpha = coreAlpha,
         )

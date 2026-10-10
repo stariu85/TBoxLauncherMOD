@@ -321,14 +321,15 @@ internal fun buildLauncherAdasState(
         (slaLimit != null && setSpeed != null && setSpeed > slaLimit)
     val hma = decodeAssistIcon(hmaRaw)
     val tja = decodeAssistIcon(tjaRaw)
-    val tjaActive = tja == LauncherAdasAssistIcon.Active || tja == LauncherAdasAssistIcon.Dark
+    val tjaRealSteering = tja == LauncherAdasAssistIcon.Active
     val srrSystem = decodeSrrSystemState(srrSystemRaw)
 
     // lkaStatus: 2 = LKA active steering, 1 = LDW passive monitoring.
-    val isLkaEngaged = lkaStatus == 2 || tjaActive
+    // TJA/NGP: Active = real steering guidance (BLUE), Dark = standby (GREEN/LDW).
+    val isLkaEngaged = lkaStatus == 2 || tjaRealSteering
     val effectiveLkaStatusCode = when {
         isLkaEngaged -> 2 // LKA / NGP Active Steering -> BLUE
-        lkaStatus != 0 || leftLane != LauncherAdasLaneVisualization.Hidden || rightLane != LauncherAdasLaneVisualization.Hidden -> 1 // LDW Active -> GREEN
+        lkaStatus != 0 || tja == LauncherAdasAssistIcon.Dark || leftLane != LauncherAdasLaneVisualization.Hidden || rightLane != LauncherAdasLaneVisualization.Hidden -> 1 // LDW / Standby -> GREEN
         else -> 0
     }
 
