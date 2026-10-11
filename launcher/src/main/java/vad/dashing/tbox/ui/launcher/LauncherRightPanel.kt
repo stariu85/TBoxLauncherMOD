@@ -154,8 +154,25 @@ fun LauncherRightPanel(
     val homeIconScaleRevision by LauncherAppConfigStore.homeIconScaleRevisionFlow.collectAsStateWithLifecycle()
     val homeIconScale = remember(context, homeIconScaleRevision) { LauncherAppConfigStore.homeIconScale(context) }
 
+    var wallpaperDialogVisible by remember { mutableStateOf(false) }
+    val wallpaperRevision by LauncherAppConfigStore.wallpaperRevisionFlow.collectAsStateWithLifecycle()
+    val isDarkTheme = LauncherThemeState.darkTheme
+    val activeWallpaperUri = remember(context, isDarkTheme, wallpaperRevision) {
+        if (isDarkTheme) {
+            LauncherAppConfigStore.wallpaperDarkUri(context)
+        } else {
+            LauncherAppConfigStore.wallpaperLightUri(context)
+        }
+    }
+    val wallpaperScaleMode = remember(context, wallpaperRevision) {
+        LauncherAppConfigStore.wallpaperScaleMode(context)
+    }
+    val wallpaperBitmap = remember(context, activeWallpaperUri) {
+        loadWallpaperImageBitmap(context, activeWallpaperUri)
+    }
+
     val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible || showHiddenDialogVisible ||
-        vehicleStatusDialogVisible || contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
+        vehicleStatusDialogVisible || wallpaperDialogVisible || contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
     LaunchedEffect(anyLocalDialog) {
         LauncherOverlayElevator.setHoldSource("right_panel_dialog", anyLocalDialog)
     }
@@ -578,6 +595,11 @@ fun LauncherRightPanel(
         )
     }
 
+    LauncherWallpaperDialog(
+        visible = wallpaperDialogVisible,
+        onDismissRequest = { wallpaperDialogVisible = false },
+    )
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -600,6 +622,21 @@ fun LauncherRightPanel(
                     )
                 },
         ) {
+            if (wallpaperBitmap != null) {
+                val contentScale = when (wallpaperScaleMode) {
+                    WallpaperScaleMode.FILL_HEIGHT -> ContentScale.FillHeight
+                    WallpaperScaleMode.FILL_WIDTH -> ContentScale.FillWidth
+                    WallpaperScaleMode.FILL_BOUNDS -> ContentScale.FillBounds
+                }
+                Image(
+                    bitmap = wallpaperBitmap,
+                    contentDescription = null,
+                    contentScale = contentScale,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(16.dp)),
+                )
+            }
             activeDraggingEntry?.let { entry ->
                 val density = LocalDensity.current
                 val localLeftPx = activeDraggingX - rightPanelLeftPx
@@ -773,21 +810,42 @@ fun LauncherRightPanel(
                             )
                         }
 
-                        // Done Button on the right
-                        TextButton(
-                            onClick = { isDragMode = false },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
-                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        // Wallpaper and Done Buttons on the right
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                text = stringResource(R.string.launcher_app_drawer_done),
-                                color = LauncherColors.AccentCyan,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
+                            TextButton(
+                                onClick = { wallpaperDialogVisible = true },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                    .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.launcher_wallpaper_button),
+                                    color = LauncherColors.AccentCyan,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+
+                            TextButton(
+                                onClick = { isDragMode = false },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                    .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.launcher_app_drawer_done),
+                                    color = LauncherColors.AccentCyan,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                     }
                 } else {

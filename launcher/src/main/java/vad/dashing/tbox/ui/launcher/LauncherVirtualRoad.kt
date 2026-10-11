@@ -1,8 +1,13 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -237,10 +242,31 @@ internal class RaceOncomingSprites(
     }
 }
 
+private fun Drawable.toImageBitmap(): ImageBitmap {
+    if (this is BitmapDrawable && bitmap != null) {
+        return bitmap.asImageBitmap()
+    }
+    val w = intrinsicWidth.takeIf { it > 0 } ?: 128
+    val h = intrinsicHeight.takeIf { it > 0 } ?: 128
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    setBounds(0, 0, w, h)
+    draw(canvas)
+    return bitmap.asImageBitmap()
+}
+
 @Composable
 private fun rememberRoadSprite(id: Int): ImageBitmap {
-    val res = LocalContext.current.resources
-    return remember(id, res) { ImageBitmap.imageResource(res, id) }
+    val context = LocalContext.current
+    return remember(id, context) {
+        runCatching {
+            val drawable = ContextCompat.getDrawable(context, id)
+                ?: return@remember ImageBitmap(1, 1)
+            drawable.toImageBitmap()
+        }.getOrElse {
+            ImageBitmap(1, 1)
+        }
+    }
 }
 
 private data class LeadObjectSprites(

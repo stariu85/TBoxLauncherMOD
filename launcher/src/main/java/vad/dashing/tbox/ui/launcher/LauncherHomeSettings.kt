@@ -862,6 +862,25 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val headlightBeamsRevision by LauncherAppConfigStore.headlightBeamsRevisionFlow
+            .collectAsStateWithLifecycle()
+        val headlightBeamsVisible = remember(context, headlightBeamsRevision) {
+            LauncherAppConfigStore.headlightBeamsVisible(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_headlight_beams_visible_title),
+            active = headlightBeamsVisible,
+            onClick = {
+                LauncherAppConfigStore.setHeadlightBeamsVisible(context, !headlightBeamsVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_headlight_beams_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         LauncherSettingsToggleRow(
             label = stringResource(R.string.launcher_cruise_panel_visible_title),
             active = cruisePanelVisible,

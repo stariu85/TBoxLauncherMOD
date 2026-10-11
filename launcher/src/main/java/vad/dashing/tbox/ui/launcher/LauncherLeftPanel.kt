@@ -209,6 +209,11 @@ fun LauncherLeftPanel(
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
         LauncherAppConfigStore.driveModeGlowVisible(context)
     }
+    val headlightBeamsRevision by LauncherAppConfigStore.headlightBeamsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val headlightBeamsVisible = remember(context, headlightBeamsRevision) {
+        LauncherAppConfigStore.headlightBeamsVisible(context)
+    }
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny
     val accActive = adas.accActive ||
@@ -378,7 +383,7 @@ fun LauncherLeftPanel(
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
                     projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
-                    projectHeadlights = !racing && headlightBeams.any,
+                    projectHeadlights = !racing && headlightBeamsVisible && headlightBeams.any,
                     textureSurface = racing,
                     modifier = Modifier
                         .fillMaxSize()

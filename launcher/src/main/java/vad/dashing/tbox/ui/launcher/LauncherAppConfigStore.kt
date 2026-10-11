@@ -41,6 +41,9 @@ private const val KEY_BOTTOM_SLOTS_UNIFIED = "bottom_slots_unified"
 private const val KEY_GRID_COLUMNS = "home_grid_columns"
 private const val KEY_GRID_ROWS = "home_grid_rows"
 private const val KEY_HOME_ICON_SCALE = "home_icon_scale"
+private const val KEY_WALLPAPER_DARK_URI = "wallpaper_dark_uri"
+private const val KEY_WALLPAPER_LIGHT_URI = "wallpaper_light_uri"
+private const val KEY_WALLPAPER_SCALE_MODE = "wallpaper_scale_mode"
 
 internal const val GRID_SLOTS_TOTAL_COUNT = 20
 
@@ -80,12 +83,26 @@ enum class LauncherAppLaunchMode(val code: String) {
         }
     }
 }
+
+enum class WallpaperScaleMode(val code: Int) {
+    FILL_BOUNDS(0),
+    FILL_WIDTH(1),
+    FILL_HEIGHT(2);
+
+    companion object {
+        fun fromCode(code: Int): WallpaperScaleMode = when (code) {
+            1 -> FILL_WIDTH
+            2 -> FILL_HEIGHT
+            else -> FILL_BOUNDS
+        }
+    }
+}
 internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
 internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
 internal const val DOCK_ICON_SCALE_MIN = 1.00f
-internal const val DOCK_ICON_SCALE_MAX = 1.45f
+internal const val DOCK_ICON_SCALE_MAX = 2.00f
 internal const val TOP_BAR_HEIGHT_DEFAULT = 32
 internal const val TOP_BAR_HEIGHT_MIN = 28
 internal const val TOP_BAR_HEIGHT_MAX = 72
@@ -94,7 +111,7 @@ internal const val BOTTOM_BAR_HEIGHT_MIN = 48
 internal const val BOTTOM_BAR_HEIGHT_MAX = 110
 internal const val FLOATING_HOME_SIZE_DEFAULT = 55
 internal const val FLOATING_HOME_SIZE_MIN = 32
-internal const val FLOATING_HOME_SIZE_MAX = 96
+internal const val FLOATING_HOME_SIZE_MAX = 150
 internal const val CAR_MODEL_SCALE_DEFAULT = 1.20f
 internal const val CAR_MODEL_SCALE_MIN = 0.50f
 internal const val CAR_MODEL_SCALE_MAX = 1.80f
@@ -112,7 +129,7 @@ internal const val ADAS_DISTANCE_LABEL_OFFSET_MIN = 0.00f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
 internal const val CLIMATE_SCALE_DEFAULT = 1.00f
 internal const val CLIMATE_SCALE_MIN = 0.70f
-internal const val CLIMATE_SCALE_MAX = 1.40f
+internal const val CLIMATE_SCALE_MAX = 2.00f
 internal const val GRID_COLUMNS_DEFAULT = 12
 internal const val GRID_COLUMNS_MIN = 5
 internal const val GRID_COLUMNS_MAX = 20
@@ -133,6 +150,7 @@ private const val KEY_CRUISE_PANEL_POSITION = "cruise_panel_position"
 private const val KEY_SWAP_TOP_BOTTOM_PANELS = "swap_top_bottom_panels"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
+private const val KEY_HEADLIGHT_BEAMS_VISIBLE = "headlight_beams_visible"
 private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 internal const val GRID_SLOT_COUNT = 9
@@ -146,6 +164,33 @@ private val DEFAULT_DOCK = listOf(
 )
 
 internal object LauncherAppConfigStore {
+
+    private val wallpaperRevision = MutableStateFlow(0)
+    internal val wallpaperRevisionFlow: StateFlow<Int> = wallpaperRevision
+
+    fun wallpaperDarkUri(context: Context): String =
+        prefs(context).getString(KEY_WALLPAPER_DARK_URI, "").orEmpty()
+
+    fun setWallpaperDarkUri(context: Context, uri: String) {
+        prefs(context).edit().putString(KEY_WALLPAPER_DARK_URI, uri).apply()
+        wallpaperRevision.value++
+    }
+
+    fun wallpaperLightUri(context: Context): String =
+        prefs(context).getString(KEY_WALLPAPER_LIGHT_URI, "").orEmpty()
+
+    fun setWallpaperLightUri(context: Context, uri: String) {
+        prefs(context).edit().putString(KEY_WALLPAPER_LIGHT_URI, uri).apply()
+        wallpaperRevision.value++
+    }
+
+    fun wallpaperScaleMode(context: Context): WallpaperScaleMode =
+        WallpaperScaleMode.fromCode(prefs(context).getInt(KEY_WALLPAPER_SCALE_MODE, 0))
+
+    fun setWallpaperScaleMode(context: Context, mode: WallpaperScaleMode) {
+        prefs(context).edit().putInt(KEY_WALLPAPER_SCALE_MODE, mode.code).apply()
+        wallpaperRevision.value++
+    }
 
     private val mediaCardAlphaRevision = MutableStateFlow(0)
     internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
@@ -201,6 +246,8 @@ internal object LauncherAppConfigStore {
     internal val driveModeBarRevisionFlow: StateFlow<Int> = driveModeBarRevision
     private val driveModeGlowRevision = MutableStateFlow(0)
     internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
+    private val headlightBeamsRevision = MutableStateFlow(0)
+    internal val headlightBeamsRevisionFlow: StateFlow<Int> = headlightBeamsRevision
     private val ngpRevision = MutableStateFlow(0)
     internal val ngpRevisionFlow: StateFlow<Int> = ngpRevision
     private val gridColumnsRevision = MutableStateFlow(0)
@@ -641,6 +688,14 @@ internal object LauncherAppConfigStore {
     fun setDriveModeGlowVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_DRIVE_MODE_GLOW_VISIBLE, visible).apply()
         driveModeGlowRevision.value++
+    }
+
+    fun headlightBeamsVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_HEADLIGHT_BEAMS_VISIBLE, true)
+
+    fun setHeadlightBeamsVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HEADLIGHT_BEAMS_VISIBLE, visible).apply()
+        headlightBeamsRevision.value++
     }
 
     fun ngpEnabled(context: Context): Boolean =
