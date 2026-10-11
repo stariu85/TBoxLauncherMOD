@@ -46,6 +46,7 @@ enum class MbCanSignal(val subscribeDataTypes: Set<String>) {
     HvacAutoState(setOf("eMBCAN_CFG_VEHICLE")),
     HvacDefrosterFront(setOf("eMBCAN_CFG_VEHICLE")),
     WirelessChargingSwitch(setOf("eMBCAN_CFG_VEHICLE")),
+    TjaIca(setOf("eMBCAN_CFG_VEHICLE")),
     /** Vehicle cfg params shown on [vad.dashing.tbox.ui.CarSettingsTab] (poll + push). */
     CarSettingsVehicleParams(setOf("eMBCAN_CFG_VEHICLE")),
     FrontLeftSeatMode(setOf("eMBCAN_CFG_VEHICLE")),
@@ -207,6 +208,8 @@ object MbCanRepository {
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = _hvacDefrosterFrontState.asStateFlow()
     private val _wirelessChargingState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val wirelessChargingState: StateFlow<MbCanBinaryState> = _wirelessChargingState.asStateFlow()
+    private val _tjaIcaState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
+    val tjaIcaState: StateFlow<MbCanBinaryState> = _tjaIcaState.asStateFlow()
     private val _frontLeftSeatModeState = MutableStateFlow<MbCanSeatModeState>(MbCanSeatModeState.Unknown)
     val frontLeftSeatModeState: StateFlow<MbCanSeatModeState> = _frontLeftSeatModeState.asStateFlow()
     private val _frontRightSeatModeState = MutableStateFlow<MbCanSeatModeState>(MbCanSeatModeState.Unknown)
@@ -254,6 +257,7 @@ object MbCanRepository {
         hvacAutoStateFlow = _hvacAutoState,
         hvacDefrosterFrontFlow = _hvacDefrosterFrontState,
         wirelessChargingFlow = _wirelessChargingState,
+        tjaIcaFlow = _tjaIcaState,
         volumeSpeedFlow = _audioVolumeSpeedState,
         frontLeftSeatFlow = _frontLeftSeatModeState,
         frontRightSeatFlow = _frontRightSeatModeState,
@@ -797,6 +801,7 @@ object MbCanRepository {
             MbCanSignal.HvacAutoState -> refreshHvacAutoState()
             MbCanSignal.HvacDefrosterFront -> refreshHvacDefrosterFront()
             MbCanSignal.WirelessChargingSwitch -> refreshWirelessCharging()
+            MbCanSignal.TjaIca -> refreshTjaIca()
             MbCanSignal.CarSettingsVehicleParams -> refreshCarSettingsVehicleParams()
             MbCanSignal.AudioVolume -> refreshAudioVolume()
             MbCanSignal.AudioVolumeSpeed -> refreshAudioVolumeSpeed()
@@ -1136,6 +1141,39 @@ object MbCanRepository {
             MbCanDiagnostics.log(
                 "DEBUG",
                 "refreshWirelessCharging raw=$raw state=${_wirelessChargingState.value}"
+            )
+        }
+    }
+
+    private suspend fun refreshTjaIca() {
+        withContext(stateApplyDispatcher) {
+            if (!MbCanEngineFacade.isInitialized()) {
+                _availability.value = MbCanEngineFacade.probeAvailability()
+                stateEngine.applyTjaIcaCandidate(MbCanBinaryState.Unknown)
+                return@withContext
+            }
+
+            val availability = MbCanEngineFacade.availability
+            _availability.value = availability
+            if (availability !is MbCanAvailability.Available) {
+                MbCanDiagnostics.log("WARN", "refreshTjaIca unavailable=$availability")
+                stateEngine.applyTjaIcaCandidate(
+                    MbCanBinaryState.Unavailable(
+                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
+                    )
+                )
+                return@withContext
+            }
+            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.TJA_ICA)
+            val decoded = if (raw == null) {
+                MbCanBinaryState.Unknown
+            } else {
+                MbCanSignalStateEngine.decodeTjaIcaRaw(raw)
+            }
+            stateEngine.applyTjaIcaCandidate(decoded)
+            MbCanDiagnostics.log(
+                "DEBUG",
+                "refreshTjaIca raw=$raw state=${_tjaIcaState.value}"
             )
         }
     }

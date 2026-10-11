@@ -214,8 +214,9 @@ fun LauncherLeftPanel(
     val headlightBeamsVisible = remember(context, headlightBeamsRevision) {
         LauncherAppConfigStore.headlightBeamsVisible(context)
     }
+    val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle()
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
-    val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny
+    val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny || (simulateEnabled && LauncherDevVehicleState.showAllIndicators)
     val accActive = adas.accActive ||
         (adas.frontObject.valid && (adas.fcwActive || adas.distanceWarning || adas.aebHint))
     val cameraSwitchModeRevision by LauncherAppConfigStore.cameraSwitchModeRevisionFlow
@@ -360,8 +361,9 @@ fun LauncherLeftPanel(
                 .padding(top = 52.dp, bottom = 60.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
+            val carHidden = isAvmActive || settingsProgress > 0.02f
             if (!carHidden) {
-                val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
                 LauncherCar3DModel(
                     rigState = rigState,
                     speedKmh = effectiveSpeed,
@@ -372,6 +374,7 @@ fun LauncherLeftPanel(
                     paintRevision = paintRevision,
                     paintId = paintId,
                     showRoad = false,
+                    isAvmActive = isAvmActive,
                     settingsView = settingsProgress > 0.02f,
                     settingsProgress = settingsProgress,
                     settingsUserYawDeg = settingsUserYawDeg,
@@ -382,7 +385,7 @@ fun LauncherLeftPanel(
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
+                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd || (pasOn && !showDriveView)),
                     projectHeadlights = !racing && headlightBeamsVisible && headlightBeams.any,
                     textureSurface = racing,
                     modifier = Modifier
@@ -413,6 +416,8 @@ fun LauncherLeftPanel(
                         pdc = adas.pdc,
                         rings = pdcRings,
                         driving = inDriveGear || steerPreview,
+                        pasOn = pasOn,
+                        topView = !showDriveView,
                         modifier = Modifier.fillMaxSize(),
                     )
                     LauncherBsdOverlay(

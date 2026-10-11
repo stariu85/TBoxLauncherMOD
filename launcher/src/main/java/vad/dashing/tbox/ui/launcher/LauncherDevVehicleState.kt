@@ -358,7 +358,7 @@ object LauncherDevVehicleState {
             leftLane = laneVis,
             rightLane = laneVis,
             lkaStatusCode = when {
-                adasLkaActive || (adasLanesActive && adasCruiseActive) -> 2
+                adasLkaActive -> 2
                 adasLanesActive || adasLdwWarning -> 1
                 else -> 0
             },

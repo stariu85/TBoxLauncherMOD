@@ -153,6 +153,8 @@ private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
 private const val KEY_HEADLIGHT_BEAMS_VISIBLE = "headlight_beams_visible"
 private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
+private const val KEY_CRUISE_INCREASE_INTERVAL = "cruise_increase_interval"
+private const val KEY_CRUISE_DECREASE_INTERVAL = "cruise_decrease_interval"
 internal const val GRID_SLOT_COUNT = 9
 private const val DOCK_SLOT_COUNT = 4
 
@@ -712,6 +714,24 @@ internal object LauncherAppConfigStore {
     fun setTimeGapLevel(context: Context, level: Int) {
         val valid = level.coerceIn(1, 3)
         prefs(context).edit().putInt(KEY_TIME_GAP_LEVEL, valid).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun cruiseIncreaseIntervalMs(context: Context): Long =
+        prefs(context).getLong(KEY_CRUISE_INCREASE_INTERVAL, 150L).coerceIn(50L, 1500L)
+
+    fun setCruiseIncreaseIntervalMs(context: Context, intervalMs: Long) {
+        val valid = intervalMs.coerceIn(50L, 1500L)
+        prefs(context).edit().putLong(KEY_CRUISE_INCREASE_INTERVAL, valid).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun cruiseDecreaseIntervalMs(context: Context): Long =
+        prefs(context).getLong(KEY_CRUISE_DECREASE_INTERVAL, 150L).coerceIn(50L, 1500L)
+
+    fun setCruiseDecreaseIntervalMs(context: Context, intervalMs: Long) {
+        val valid = intervalMs.coerceIn(50L, 1500L)
+        prefs(context).edit().putLong(KEY_CRUISE_DECREASE_INTERVAL, valid).apply()
         cruisePresetsRevision.value++
     }
 

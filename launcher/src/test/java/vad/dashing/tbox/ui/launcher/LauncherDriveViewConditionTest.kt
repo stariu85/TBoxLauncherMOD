@@ -20,6 +20,7 @@ class LauncherDriveViewConditionTest {
     @Test
     fun topViewWhenPasOn() {
         assertFalse(isDriveViewActive(speedKmh = 5f, pasOn = true, isParkGear = false, accActive = false))
+        assertFalse(isDriveViewActive(speedKmh = 0f, pasOn = true, isParkGear = false, accActive = false))
     }
 
     @Test

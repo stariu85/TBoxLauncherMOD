@@ -322,7 +322,8 @@ fun LauncherAdasStrip(
                 tint = when {
                     adas.laneDepartureLeft || adas.laneDepartureRight -> Color(0xFFF59E0B)
                     adas.lkaStatusCode == 2 -> LauncherColors.AccentBlue
-                    else -> Color(0xFF22C55E)
+                    adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden -> Color(0xFF22C55E)
+                    else -> LauncherColors.TextMuted
                 },
                 iconRes = R.drawable.ic_adas_lka,
                 iconBoxSizeDp = iconBoxSizeDp,

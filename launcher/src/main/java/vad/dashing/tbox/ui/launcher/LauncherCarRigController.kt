@@ -160,6 +160,7 @@ class LauncherCarRigController private constructor(
         cameraNode: CameraNode,
         viewportWidthPx: Int,
         viewportHeightPx: Int,
+        driveBlend: Float = 0f,
     ): LauncherPdcRingFrame? {
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
         fun wheelWorld(name: String): FloatArray? {
@@ -196,17 +197,10 @@ class LauncherCarRigController private constructor(
         val cxW = (frontX + rearX) / 2f
         val czW = (frontZ + rearZ) / 2f
         val worldPerMeter = wheelbase / 2.72f
-        // Ring silhouette: nearly circular (95% blend toward a circle) — a clean round
-        // sonar band instead of a body-tracing ellipse.
         val semiLen = wheelbase * 0.98f * 1.1f
         val semiWidBody = halfTrack * 1.55f * 1.1f
         val semiWid = semiWidBody + (semiLen - semiWidBody) * 0.95f
-        // Tighter radial spacing + thicker strokes (overlay) make the band read as a
-        // solid strip instead of three sparse hairlines.
         val ringOffsetsM = floatArrayOf(0.16f, 0.30f, 0.44f)
-        // The rear hemisphere matters most when parking, so the band reaches further
-        // behind the car (up to +45% at the straight-back direction, easing to 0 at
-        // the sides and front).
         val rearBoostMax = 0.45f
 
         val cameraPosition = cameraNode.worldPosition
@@ -227,11 +221,9 @@ class LauncherCarRigController private constructor(
         }
 
         val center = project(cxW, groundY, czW) ?: return null
-        // Keep the ellipse centered in the horizontal screen axis of the body: the
-        // centroid depth better matches the visible body than the ground plane.
         val centerBodyY = groundY + 0.30f * worldPerMeter
         val centerBody = project(cxW, centerBodyY, czW)
-        val cyShift = if (centerBody != null) centerBody.y - center.y else 0f
+        val cyShift = if (centerBody != null) (centerBody.y - center.y) * driveBlend.coerceIn(0f, 1f) else 0f
         val ringCenter = Offset(center.x, center.y + cyShift)
 
         // The asset's wheel naming is the source of truth for nose vs tail here: a

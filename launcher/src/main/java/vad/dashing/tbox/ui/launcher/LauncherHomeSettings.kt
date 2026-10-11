@@ -945,6 +945,12 @@ private fun CruisePresetsSettings() {
     val presets = remember(context, revision) {
         LauncherAppConfigStore.cruisePresetsKmh(context)
     }
+    val incInterval = remember(context, revision) {
+        LauncherAppConfigStore.cruiseIncreaseIntervalMs(context)
+    }
+    val decInterval = remember(context, revision) {
+        LauncherAppConfigStore.cruiseDecreaseIntervalMs(context)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = stringResource(R.string.launcher_cruise_presets_title),
@@ -965,6 +971,60 @@ private fun CruisePresetsSettings() {
                 },
             )
         }
+        CruiseIntervalSliderRow(
+            title = "RES+ delay (+1 km/h)",
+            valueMs = incInterval,
+            onChange = { next ->
+                LauncherAppConfigStore.setCruiseIncreaseIntervalMs(context, next)
+            },
+        )
+        CruiseIntervalSliderRow(
+            title = "SET- delay (-1 km/h)",
+            valueMs = decInterval,
+            onChange = { next ->
+                LauncherAppConfigStore.setCruiseDecreaseIntervalMs(context, next)
+            },
+        )
+    }
+}
+
+@Composable
+private fun CruiseIntervalSliderRow(
+    title: String,
+    valueMs: Long,
+    onChange: (Long) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${valueMs}ms",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Slider(
+            value = valueMs.toFloat(),
+            onValueChange = { raw ->
+                val snapped = (raw / 25f).roundToInt() * 25
+                onChange(snapped.coerceIn(50, 1500).toLong())
+            },
+            valueRange = 50f..1500f,
+            steps = ((1500 - 50) / 25) - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
     }
 }
 

@@ -850,7 +850,9 @@ fun LauncherRightPanel(
                     }
                 } else {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 10.dp, end = 10.dp, top = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         LauncherMetricCard(
@@ -1187,7 +1189,12 @@ private fun LauncherAppDockIcon(
         modifier = Modifier
             .size((60 * iconScale).dp)
             .clip(RoundedCornerShape((16 * iconScale).dp))
-            .background(LauncherColors.CardDarkElevated)
+            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .border(
+                width = 1.dp,
+                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                shape = RoundedCornerShape((16 * iconScale).dp),
+            )
             .then(
                 if (!isDragMode) {
                     Modifier.combinedClickable(
@@ -1257,7 +1264,12 @@ private fun LauncherSplitDockIcon(
         modifier = Modifier
             .size((60 * iconScale).dp)
             .clip(RoundedCornerShape((16 * iconScale).dp))
-            .background(LauncherColors.CardDarkElevated)
+            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .border(
+                width = 1.dp,
+                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                shape = RoundedCornerShape((16 * iconScale).dp),
+            )
             .then(
                 if (!isDragMode) {
                     Modifier.combinedClickable(
@@ -1270,6 +1282,7 @@ private fun LauncherSplitDockIcon(
                     Modifier
                 }
             ),
+        contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
@@ -1329,7 +1342,12 @@ private fun LauncherMetricCard(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.CardDark)
+            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .border(
+                width = 1.dp,
+                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                shape = RoundedCornerShape(12.dp),
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Text(
@@ -1536,7 +1554,12 @@ private fun LauncherVehicleStatusCard(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.CardDark)
+            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .border(
+                width = 1.dp,
+                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                shape = RoundedCornerShape(12.dp),
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {

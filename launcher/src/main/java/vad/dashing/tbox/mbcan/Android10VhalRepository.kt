@@ -390,6 +390,9 @@ object Android10VhalRepository {
     val hvacPm25State: StateFlow<MbCanBinaryState> = _hvacPm25State.asStateFlow()
     private val _hvacDefrosterFrontState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = _hvacDefrosterFrontState.asStateFlow()
+    private val _tjaIcaState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
+    val tjaIcaState: StateFlow<MbCanBinaryState> = _tjaIcaState.asStateFlow()
+
     private val _audioVolumeSpeedState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val audioVolumeSpeedState: StateFlow<MbCanBinaryState> = _audioVolumeSpeedState.asStateFlow()
     private val _audioVolumeSpeedModeState = MutableStateFlow<Int?>(null)
@@ -431,6 +434,7 @@ object Android10VhalRepository {
         hvacAutoStateFlow = _hvacAutoState,
         hvacDefrosterFrontFlow = _hvacDefrosterFrontState,
         wirelessChargingFlow = MutableStateFlow(MbCanBinaryState.Unknown),
+        tjaIcaFlow = _tjaIcaState,
         volumeSpeedFlow = _audioVolumeSpeedState,
         frontLeftSeatFlow = _frontLeftSeatModeState,
         frontRightSeatFlow = _frontRightSeatModeState,
@@ -762,6 +766,7 @@ object Android10VhalRepository {
             MbCanSignal.RearLeftSeatMode -> setOf(resolved(MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH))
             MbCanSignal.RearRightSeatMode -> setOf(resolved(MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH))
             MbCanSignal.WirelessChargingSwitch -> emptySet()
+            MbCanSignal.TjaIca -> setOf(resolved(MbCanKnownVehiclePropertyId.TJA_ICA))
             MbCanSignal.EngineRpm -> setOf(VHAL_ENGINE_RPM_PROPERTY_ID)
             MbCanSignal.EngineTemperature -> setOf(VHAL_ENGINE_TEMPERATURE_PROPERTY_ID)
             MbCanSignal.CarSpeed -> setOf(VHAL_CAR_SPEED_PROPERTY_ID)
@@ -819,7 +824,8 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION,
         MbCanKnownVehiclePropertyId.HVAC_POWER,
-        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE -> true
+        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
+        MbCanKnownVehiclePropertyId.TJA_ICA -> true
         else -> false
     }
 
@@ -833,7 +839,8 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_POWER,
-        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE ->
+        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
+        MbCanKnownVehiclePropertyId.TJA_ICA ->
             decodeVhalBinaryTwoIsOn(raw)
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION ->
             MbCanSignalStateEngine.decodeHvacFrontDefrostVhalRaw(raw)
@@ -850,7 +857,8 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH,
         MbCanKnownVehiclePropertyId.HVAC_POWER,
-        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE ->
+        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
+        MbCanKnownVehiclePropertyId.TJA_ICA ->
             if (targetOn) 2 else 1
         // Recirculation: 1=inside(recirc on), 2=outside(recirc off).
         MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION ->
@@ -869,6 +877,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER -> _hvacAcPowerState.value
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE -> _hvacAutoState.value
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION -> _hvacDefrosterFrontState.value
+        MbCanKnownVehiclePropertyId.TJA_ICA -> _tjaIcaState.value
         else -> MbCanBinaryState.Unknown
     }
 
@@ -919,6 +928,10 @@ object Android10VhalRepository {
                     stateEngine.applyHvacDefrosterFrontCandidate(
                         MbCanSignalStateEngine.decodeHvacFrontDefrostVhalRaw(it)
                     )
+                }
+            resolved(MbCanKnownVehiclePropertyId.TJA_ICA) ->
+                raw?.let {
+                    stateEngine.applyTjaIcaCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
             resolved(MbCanKnownAudioPropertyId.VOLUME) -> raw?.let {
                 _audioVolumeState.value = it.coerceAtLeast(0)
@@ -1056,6 +1069,7 @@ object Android10VhalRepository {
                     _carSettingsDriveMode6dctWet.value = null
                 }
                 MbCanSignal.WirelessChargingSwitch -> Unit
+                MbCanSignal.TjaIca -> stateEngine.applyTjaIcaCandidate(MbCanBinaryState.Unavailable(deniedReason))
             }
             return
         }
@@ -1094,6 +1108,7 @@ object Android10VhalRepository {
                     _carSettingsDriveMode6dctWet.value = null
                 }
                 MbCanSignal.WirelessChargingSwitch -> Unit
+                MbCanSignal.TjaIca -> stateEngine.applyTjaIcaCandidate(MbCanBinaryState.Unavailable(reason))
             }
             return
         }
@@ -1178,6 +1193,15 @@ object Android10VhalRepository {
                 val raw = bridge?.getIntProperty(propertyId)
                 stateEngine.applyHvacDefrosterFrontCandidate(
                     raw?.let(MbCanSignalStateEngine::decodeHvacFrontDefrostVhalRaw) ?: MbCanBinaryState.Unknown
+                )
+            }
+            MbCanSignal.TjaIca -> {
+                val propertyId = FirmwareVehicleJsonMapper
+                    .resolveReadPropertyId(MbCanKnownVehiclePropertyId.TJA_ICA)
+                    ?: MbCanKnownVehiclePropertyId.TJA_ICA
+                val raw = bridge?.getIntProperty(propertyId)
+                stateEngine.applyTjaIcaCandidate(
+                    raw?.let(::decodeVhalBinaryTwoIsOn) ?: MbCanBinaryState.Unknown
                 )
             }
             MbCanSignal.AudioVolume -> {

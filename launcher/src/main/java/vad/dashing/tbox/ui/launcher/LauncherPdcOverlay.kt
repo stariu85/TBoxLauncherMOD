@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -17,7 +18,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
 
 /**
  * Projected ground-plane PDC rings: body center plus ring polylines (inner→outer).
@@ -49,6 +54,8 @@ fun LauncherPdcOverlay(
     pdc: LauncherPdcZones,
     rings: LauncherPdcRingFrame?,
     driving: Boolean,
+    pasOn: Boolean = false,
+    topView: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     if (DEBUG_SHOW_FULL_RINGS) {
@@ -72,15 +79,34 @@ fun LauncherPdcOverlay(
         return
     }
 
-    if (!pdc.hasAny || rings == null) return
+    val showStandby = pasOn && topView && !pdc.hasAny
+    if (!pdc.hasAny && !showStandby) return
+
     val pulse by rememberInfiniteTransition(label = "pdcPulse").animateFloat(
         initialValue = 0.45f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(430), RepeatMode.Reverse),
         label = "pdcPulseValue",
     )
+
+    val standbyJitter by rememberInfiniteTransition(label = "pdcStandbyJitter").animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "standbyJitterValue",
+    )
+
     Canvas(modifier = modifier.fillMaxSize()) {
-        drawPdcBands(pdc, rings, driving, pulse)
+        if (pdc.hasAny) {
+            if (rings != null) {
+                drawPdcBands(pdc, rings, driving, pulse)
+            }
+        } else if (showStandby) {
+            drawPdcStandbyArcs(rings, standbyJitter)
+        }
     }
 }
 
@@ -284,5 +310,118 @@ private fun DrawScope.drawBsdDiagonals(
             extraRadialBoost = if (driving) 1.10f else 1.06f,
             forceAllRings = true,
         )
+    }
+}
+
+private fun normFrom(angle: Float, start: Float): Float =
+    ((angle - start) % 360f + 360f) % 360f
+
+/**
+ * Renders 2 thin slightly trembling arcs at 60dp distance in front and behind
+ * the car model when parking sensors are ON in top-view mode with no obstacles detected.
+ */
+private fun DrawScope.drawPdcStandbyArcs(
+    frame: LauncherPdcRingFrame?,
+    standbyJitter: Float,
+) {
+    val px60 = 60.dp.toPx()
+    val gap = 3.dp.toPx()
+    val lineOffsets = listOf(px60 - gap, px60 + gap)
+    val strokeWidth = 1.8.dp.toPx()
+    val baseColor = Color(0xFF38BDF8) // Sleek cyan/sky blue
+    val maxJitter = 1.2.dp.toPx()
+
+    if (frame != null) {
+        val ring0 = frame.rings.firstOrNull() ?: return
+        val center = frame.center
+
+        val frontPts = ring0.filter { angleWithinDeg(it.first, -35f, 35f) }
+            .sortedBy { normFrom(it.first, -35f) }
+        val rearPts = ring0.filter { angleWithinDeg(it.first, 145f, 215f) }
+            .sortedBy { normFrom(it.first, 145f) }
+
+        listOf(frontPts, rearPts).forEach { pts ->
+            if (pts.size < 2) return@forEach
+            lineOffsets.forEachIndexed { lineIdx, extraDist ->
+                val path = Path()
+                pts.forEachIndexed { ptIdx, (_, ringPt) ->
+                    val dx = ringPt.x - center.x
+                    val dy = ringPt.y - center.y
+                    val dist0 = hypot(dx, dy)
+                    if (dist0 < 1f) return@forEachIndexed
+                    val nx = dx / dist0
+                    val ny = dy / dist0
+
+                    val jitter = (
+                        sin(standbyJitter * 14f + ptIdx * 0.8f + lineIdx * 2.5f) * 0.6f +
+                        cos(standbyJitter * 23f - ptIdx * 1.2f + lineIdx * 1.7f) * 0.4f
+                    ) * maxJitter
+
+                    val r = dist0 + extraDist + jitter
+                    val x = center.x + nx * r
+                    val y = center.y + ny * r
+
+                    if (ptIdx == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                val alpha = if (lineIdx == 0) 0.65f else 0.40f
+                drawPath(
+                    path = path,
+                    color = baseColor.copy(alpha = alpha),
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            }
+        }
+    } else {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val bodyW = size.width * 0.44f * 0.55f
+        val bodyH = size.height * 0.78f * 0.55f
+        val frontY = cy - bodyH / 2f
+        val rearY = cy + bodyH / 2f
+
+        lineOffsets.forEachIndexed { lineIdx, extraDist ->
+            val steps = 20
+
+            // Front arc
+            val pathFront = Path()
+            for (i in 0..steps) {
+                val t = i.toFloat() / steps
+                val angleRad = Math.toRadians((-38.0 + t * 76.0)).toFloat()
+                val jitter = (
+                    sin(standbyJitter * 14f + i * 0.8f + lineIdx * 2.5f) * 0.6f +
+                    cos(standbyJitter * 23f - i * 1.2f + lineIdx * 1.7f) * 0.4f
+                ) * maxJitter
+                val r = extraDist + jitter
+                val x = cx + sin(angleRad) * (bodyW * 0.8f)
+                val y = frontY - cos(angleRad) * r
+                if (i == 0) pathFront.moveTo(x, y) else pathFront.lineTo(x, y)
+            }
+            val alpha = if (lineIdx == 0) 0.65f else 0.40f
+            drawPath(
+                path = pathFront,
+                color = baseColor.copy(alpha = alpha),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+
+            // Rear arc
+            val pathRear = Path()
+            for (i in 0..steps) {
+                val t = i.toFloat() / steps
+                val angleRad = Math.toRadians((-38.0 + t * 76.0)).toFloat()
+                val jitter = (
+                    sin(standbyJitter * 14f + i * 0.8f + lineIdx * 2.5f) * 0.6f +
+                    cos(standbyJitter * 23f - i * 1.2f + lineIdx * 1.7f) * 0.4f
+                ) * maxJitter
+                val r = extraDist + jitter
+                val x = cx + sin(angleRad) * (bodyW * 0.8f)
+                val y = rearY + cos(angleRad) * r
+                if (i == 0) pathRear.moveTo(x, y) else pathRear.lineTo(x, y)
+            }
+            drawPath(
+                path = pathRear,
+                color = baseColor.copy(alpha = alpha),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        }
     }
 }

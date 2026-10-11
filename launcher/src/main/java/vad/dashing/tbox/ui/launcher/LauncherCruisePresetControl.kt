@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -27,9 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -40,6 +43,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
+import vad.dashing.tbox.mbcan.MbCanBinaryState
+import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.sendToggleTjaIca
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val ButtonHeight = 50.dp
@@ -67,6 +73,8 @@ fun LauncherCruisePresetControl(
     val ngpEnabled = remember(context, ngpRevision) {
         LauncherAppConfigStore.ngpEnabled(context)
     }
+    val tjaIcaState by UniversalCanRepository.tjaIcaState.collectAsStateWithLifecycle()
+    val adjustingTargetSpeed by LauncherCruisePresetController.adjustingTargetSpeed.collectAsStateWithLifecycle()
     val timeGapLevel = remember(context, presetsRevision, adas.timeGapLevel) {
         adas.timeGapLevel?.takeIf { it in 1..3 } ?: LauncherAppConfigStore.timeGapLevel(context)
     }
@@ -141,21 +149,23 @@ fun LauncherCruisePresetControl(
             chipState = chipState,
             setSpeed = displaySpeed,
             onClick = {
-                if (chipState != CruiseChipState.Off) {
-                    pendingTargetSpeed = null
-                    LauncherCruisePresetController.toggleCruise(context)
-                } else {
-                    val target = if (currentVehicleSpeedKmh >= 30) currentVehicleSpeedKmh else lastSpeed
-                    pendingTargetSpeed = target
-                    LauncherCruisePresetController.toggleCruise(context, currentVehicleSpeedKmh)
-                }
+                LauncherCruisePresetController.launchStatusSingleTap(context)
                 if (subModeExpanded) {
                     popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
                 }
             },
+            onDoubleClick = {
+                LauncherCruisePresetController.launchFullOff(context)
+            },
             onLongClick = {
                 subModeExpanded = true
                 popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
+            },
+            onSwipeUp = {
+                LauncherCruisePresetController.launchStatusSwipeUp(context)
+            },
+            onSwipeDown = {
+                LauncherCruisePresetController.launchStatusSwipeDown(context)
             },
             modifier = Modifier
                 .weight(1f)
@@ -179,10 +189,15 @@ fun LauncherCruisePresetControl(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CruiseNgpPopupButton(
-                        enabled = ngpEnabled,
+                        state = tjaIcaState,
+                        fallbackEnabled = ngpEnabled,
                         onClick = {
-                            val nextNgp = !ngpEnabled
-                            LauncherCruisePresetController.setNgpEnabled(context, nextNgp)
+                            if (LauncherDevVehicleState.simulateEnabled) {
+                                val nextSim = !LauncherDevVehicleState.adasLanesActive
+                                LauncherDevVehicleState.adasLanesActive = nextSim
+                                LauncherDevVehicleState.adasLkaActive = nextSim
+                            }
+                            sendToggleTjaIca(context)
                             popupDismissTimeMs = SystemClock.uptimeMillis() + SUBMODE_DISMISS_TIMEOUT_MS
                         },
                         modifier = Modifier
@@ -209,14 +224,19 @@ fun LauncherCruisePresetControl(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     presets.forEach { kmh ->
-                        val isSelected = chipState != CruiseChipState.Off && currentTargetSpeed == kmh
+                        val isAdjusting = adjustingTargetSpeed == kmh
+                        val isSelected = (chipState != CruiseChipState.Off && currentTargetSpeed == kmh) || isAdjusting
+                        val activeChipState = if (isAdjusting) CruiseChipState.Active else chipState
                         CruisePresetChip(
                             label = kmh.toString(),
-                            chipState = chipState,
+                            chipState = activeChipState,
                             isSelected = isSelected,
                             onClick = {
                                 pendingTargetSpeed = kmh
-                                LauncherCruisePresetController.applyPreset(context, kmh)
+                                LauncherCruisePresetController.launchEngageToTarget(context, kmh)
+                            },
+                            onLongClick = {
+                                LauncherCruisePresetController.launchFullOff(context)
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -241,7 +261,10 @@ private fun CruiseToggleChip(
     chipState: CruiseChipState,
     setSpeed: Int?,
     onClick: () -> Unit,
+    onDoubleClick: () -> Unit,
     onLongClick: () -> Unit,
+    onSwipeUp: () -> Unit,
+    onSwipeDown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val (tint, bg, border) = when (chipState) {
@@ -273,8 +296,27 @@ private fun CruiseToggleChip(
                     Modifier
                 }
             )
+            .pointerInput(Unit) {
+                var totalDragY = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { totalDragY = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragY += dragAmount
+                    },
+                    onDragEnd = {
+                        val threshold = 25.dp.toPx()
+                        if (totalDragY < -threshold) {
+                            onSwipeUp()
+                        } else if (totalDragY > threshold) {
+                            onSwipeDown()
+                        }
+                    }
+                )
+            }
             .combinedClickable(
                 onClick = onClick,
+                onDoubleClick = onDoubleClick,
                 onLongClick = onLongClick,
             ),
         contentAlignment = Alignment.Center,
@@ -304,23 +346,39 @@ private fun CruiseToggleChip(
 
 @Composable
 private fun CruiseNgpPopupButton(
-    enabled: Boolean,
+    state: MbCanBinaryState,
+    fallbackEnabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val activeTint = LauncherColors.AccentCyan
+    val isOn = when {
+        LauncherDevVehicleState.simulateEnabled -> LauncherDevVehicleState.adasLanesActive
+        state is MbCanBinaryState.On -> true
+        state is MbCanBinaryState.Off -> false
+        else -> fallbackEnabled
+    }
+    val alpha = when (state) {
+        is MbCanBinaryState.Unknown, is MbCanBinaryState.Unavailable -> {
+            if (LauncherDevVehicleState.simulateEnabled) 1.0f else 0.45f
+        }
+        else -> 1.0f
+    }
+    val activeColor = Color(0xFF10B981)
+    val activeBg = activeColor.copy(alpha = 0.25f)
+    val activeBorder = activeColor.copy(alpha = 0.85f)
+    val inactiveBg = LauncherColors.LeftPanelCard
     val inactiveTint = LauncherColors.LeftTextPrimary
-    val tint = if (enabled) activeTint else inactiveTint
+
+    val tint = if (isOn) activeColor else inactiveTint
 
     Box(
         modifier = modifier
+            .alpha(alpha)
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (enabled) activeTint.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
-            )
+            .background(if (isOn) activeBg else inactiveBg)
             .then(
-                if (enabled) {
-                    Modifier.border(1.5.dp, activeTint.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                if (isOn) {
+                    Modifier.border(1.5.dp, activeBorder, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }
@@ -363,12 +421,14 @@ private fun CruiseDistancePopupButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CruisePresetChip(
     label: String,
     chipState: CruiseChipState,
     isSelected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val (tint, bg, border) = when {
@@ -400,7 +460,10 @@ private fun CruisePresetChip(
                     Modifier
                 }
             )
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(

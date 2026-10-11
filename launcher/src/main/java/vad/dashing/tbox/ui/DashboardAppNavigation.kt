@@ -166,6 +166,34 @@ internal fun sendToggleParkingRadar(context: Context) {
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH)
 }
 
+private val tjaIcaToggleLock = Any()
+private var tjaIcaToggleBlockedUntilMs = 0L
+private const val TJA_ICA_TOGGLE_LOCKOUT_MS = 300L
+
+internal fun sendToggleTjaIca(context: Context) {
+    val now = SystemClock.uptimeMillis()
+    synchronized(tjaIcaToggleLock) {
+        if (now < tjaIcaToggleBlockedUntilMs) return
+        tjaIcaToggleBlockedUntilMs = now + TJA_ICA_TOGGLE_LOCKOUT_MS
+    }
+    try {
+        context.startService(
+            Intent(context, BackgroundService::class.java).apply {
+                action = BackgroundService.ACTION_MBCAN_COMMAND
+                putExtra(
+                    BackgroundService.EXTRA_MBCAN_COMMAND_TYPE,
+                    BackgroundService.MBCAN_COMMAND_TOGGLE_PROPERTY
+                )
+                putExtra(
+                    BackgroundService.EXTRA_MBCAN_PROPERTY_ID,
+                    MbCanKnownVehiclePropertyId.TJA_ICA
+                )
+            }
+        )
+    } catch (_: Exception) {
+    }
+}
+
 internal fun sendToggleRearWindowMirrorsDefrost(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacDefrosterToggleLock) {

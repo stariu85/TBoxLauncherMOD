@@ -68,6 +68,7 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherWifiApRepository.init(appCtx)
         LauncherThemeState.init(appCtx)
         LauncherCarModelCache.preload(appCtx)
+        vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
         // Home-dock autostart shortcut (long-tap icon). Once per process start; delayed so
         // freeform machinery and the 400ms stack cleanup above settle first.
         if (!autostartFired) {

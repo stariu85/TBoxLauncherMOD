@@ -2,7 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -12,10 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -57,7 +53,6 @@ fun LauncherWallpaperDialog(
         mutableStateOf(LauncherAppConfigStore.wallpaperScaleMode(context))
     }
     var targetThemeForPicker by remember { mutableStateOf<Boolean?>(null) } // true = dark, false = light
-    var downloadsPickerTheme by remember { mutableStateOf<Boolean?>(null) }
 
     val systemImagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -76,24 +71,6 @@ fun LauncherWallpaperDialog(
         targetThemeForPicker = null
     }
 
-    if (downloadsPickerTheme != null) {
-        val targetDark = downloadsPickerTheme!!
-        LauncherDownloadsFolderPicker(
-            onDismissRequest = { downloadsPickerTheme = null },
-            onSelectFile = { file ->
-                val path = file.absolutePath
-                if (targetDark) {
-                    darkUri = path
-                    LauncherAppConfigStore.setWallpaperDarkUri(context, path)
-                } else {
-                    lightUri = path
-                    LauncherAppConfigStore.setWallpaperLightUri(context, path)
-                }
-                downloadsPickerTheme = null
-            },
-        )
-    }
-
     LauncherDarkAlertDialog(
         onDismissRequest = onDismissRequest,
         title = {
@@ -110,12 +87,10 @@ fun LauncherWallpaperDialog(
                 WallpaperThemeSection(
                     title = stringResource(R.string.launcher_wallpaper_dark_title),
                     currentUri = darkUri,
+                    selectButtonLabel = stringResource(R.string.launcher_wallpaper_select_dark),
                     onPickSystem = {
                         targetThemeForPicker = true
                         systemImagePicker.launch("image/*")
-                    },
-                    onPickDownloads = {
-                        downloadsPickerTheme = true
                     },
                     onClear = {
                         darkUri = ""
@@ -127,12 +102,10 @@ fun LauncherWallpaperDialog(
                 WallpaperThemeSection(
                     title = stringResource(R.string.launcher_wallpaper_light_title),
                     currentUri = lightUri,
+                    selectButtonLabel = stringResource(R.string.launcher_wallpaper_select_light),
                     onPickSystem = {
                         targetThemeForPicker = false
                         systemImagePicker.launch("image/*")
-                    },
-                    onPickDownloads = {
-                        downloadsPickerTheme = false
                     },
                     onClear = {
                         lightUri = ""
@@ -213,8 +186,8 @@ fun LauncherWallpaperDialog(
 private fun WallpaperThemeSection(
     title: String,
     currentUri: String,
+    selectButtonLabel: String,
     onPickSystem: () -> Unit,
-    onPickDownloads: () -> Unit,
     onClear: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -259,114 +232,22 @@ private fun WallpaperThemeSection(
                 fontSize = 12.sp,
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        TextButton(
+            onClick = onPickSystem,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(LauncherColors.CardDarkElevated)
+                .border(1.dp, LauncherColors.SettingsBorder, RoundedCornerShape(8.dp)),
         ) {
-            TextButton(
-                onClick = onPickDownloads,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(LauncherColors.CardDarkElevated)
-                    .border(1.dp, LauncherColors.SettingsBorder, RoundedCornerShape(8.dp)),
-            ) {
-                Text(
-                    text = stringResource(R.string.launcher_wallpaper_downloads_folder),
-                    color = LauncherColors.TextPrimary,
-                    fontSize = 12.sp,
-                )
-            }
-            TextButton(
-                onClick = onPickSystem,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(LauncherColors.CardDarkElevated)
-                    .border(1.dp, LauncherColors.SettingsBorder, RoundedCornerShape(8.dp)),
-            ) {
-                Text(
-                    text = stringResource(R.string.launcher_wallpaper_system_picker),
-                    color = LauncherColors.TextSecondary,
-                    fontSize = 12.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun LauncherDownloadsFolderPicker(
-    onDismissRequest: () -> Unit,
-    onSelectFile: (File) -> Unit,
-) {
-    val downloadsDir = remember {
-        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (dir.exists() && dir.isDirectory) dir else File("/storage/emulated/0/Download")
-    }
-
-    val imageFiles = remember(downloadsDir) {
-        val extensions = setOf("jpg", "jpeg", "png", "webp")
-        if (downloadsDir.exists() && downloadsDir.isDirectory) {
-            downloadsDir.listFiles { file ->
-                file.isFile && file.extension.lowercase() in extensions
-            }?.toList().orEmpty().sortedByDescending { it.lastModified() }
-        } else {
-            emptyList()
-        }
-    }
-
-    LauncherDarkAlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = {
             Text(
-                text = stringResource(R.string.launcher_wallpaper_downloads_folder),
-                color = LauncherColors.TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+                text = selectButtonLabel,
+                color = LauncherColors.AccentCyan,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
             )
-        },
-        text = {
-            if (imageFiles.isEmpty()) {
-                Text(
-                    text = "В папке Загрузки не найдено изображений (.jpg, .png, .webp)",
-                    color = LauncherColors.TextMuted,
-                    fontSize = 13.sp,
-                )
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 260.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(imageFiles) { file ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(LauncherColors.CardDark)
-                                .clickable { onSelectFile(file) }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = file.name,
-                                color = LauncherColors.TextPrimary,
-                                fontSize = 13.sp,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text(stringResource(R.string.action_cancel))
-            }
-        },
-    )
+        }
+    }
 }
 
 private fun uriToDisplayFileName(uriStr: String): String {

@@ -88,9 +88,23 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         val bcmCls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleBcmStatus")
         val bcm = MbCanEngineFacade.getMbCanData(21, bcmCls) ?: return@runCatching null
         val lightSts = bcmCls.getMethod("getLightStatus").invoke(bcm) ?: return@runCatching null
-        val lightCls = Class.forName("com.mengbo.mbCan.entity.MBCanLightStatus")
-        val low = (lightCls.getMethod("getLowBeamSts").invoke(lightSts) as? Number)?.toInt() ?: 0
-        val high = (lightCls.getMethod("getHighBeamSts").invoke(lightSts) as? Number)?.toInt() ?: 0
+
+        fun readProp(obj: Any, name: String): Int? {
+            val getterName = "get" + name.replaceFirstChar { it.uppercase() }
+            runCatching {
+                val method = obj.javaClass.getMethod(getterName)
+                return (method.invoke(obj) as? Number)?.toInt()
+            }
+            runCatching {
+                val field = obj.javaClass.getDeclaredField(name)
+                field.isAccessible = true
+                return (field.get(obj) as? Number)?.toInt()
+            }
+            return null
+        }
+
+        val low = readProp(lightSts, "nLowBeamSts") ?: readProp(lightSts, "lowBeamSts") ?: 0
+        val high = readProp(lightSts, "nHighBeamSts") ?: readProp(lightSts, "highBeamSts") ?: 0
         (low != 0) to (high != 0)
     }.getOrNull()
 

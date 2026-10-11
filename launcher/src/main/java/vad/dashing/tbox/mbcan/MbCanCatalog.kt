@@ -248,6 +248,7 @@ object MbCanKnownVehiclePropertyId {
     const val MFS_SET_MINUS = 214
     const val MFS_TIME_GAP = 217
     const val TJA_ICA = 23
+    const val TJA_ICA_SWITCH = 23
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_SWTICH] — 1 off, 2 on. */
     const val FCW_SWITCH = 96
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_HDC_SWITCH] — 1 off, 2 on. */
@@ -515,6 +516,11 @@ object MbCanCommandRegistry {
             refreshSignal = MbCanSignal.CarSettingsVehicleParams
         ),
         MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MFS_CANCEL,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1)),
+            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+        ),
+        MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.MFS_RES_PLUS,
             policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1)),
             refreshSignal = MbCanSignal.CarSettingsVehicleParams
@@ -531,8 +537,12 @@ object MbCanCommandRegistry {
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.TJA_ICA,
-            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2)),
-            refreshSignal = MbCanSignal.CarSettingsVehicleParams
+            policy = MbCanCommandPolicy.ToggleBinary(
+                offValue = 1,
+                onValue = 2,
+                unknownFallbackValue = 2
+            ),
+            refreshSignal = MbCanSignal.TjaIca
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.SOURCE_STATION_MODE,

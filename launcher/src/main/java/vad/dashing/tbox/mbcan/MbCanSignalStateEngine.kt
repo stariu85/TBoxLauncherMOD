@@ -55,6 +55,7 @@ internal class MbCanSignalStateEngine(
     private val hvacAutoStateFlow: MutableStateFlow<MbCanBinaryState>,
     private val hvacDefrosterFrontFlow: MutableStateFlow<MbCanBinaryState>,
     private val wirelessChargingFlow: MutableStateFlow<MbCanBinaryState>,
+    private val tjaIcaFlow: MutableStateFlow<MbCanBinaryState>,
     private val volumeSpeedFlow: MutableStateFlow<MbCanBinaryState>,
     private val frontLeftSeatFlow: MutableStateFlow<MbCanSeatModeState>,
     private val frontRightSeatFlow: MutableStateFlow<MbCanSeatModeState>,
@@ -82,6 +83,8 @@ internal class MbCanSignalStateEngine(
     private var hvacDefrosterFrontUnavailableStreak = 0
     private var wirelessChargingUnknownStreak = 0
     private var wirelessChargingUnavailableStreak = 0
+    private var tjaIcaUnknownStreak = 0
+    private var tjaIcaUnavailableStreak = 0
     private var volumeSpeedUnknownStreak = 0
     private var volumeSpeedUnavailableStreak = 0
     private var frontLeftUnknownStreak = 0
@@ -379,6 +382,34 @@ internal class MbCanSignalStateEngine(
         }
     }
 
+    suspend fun applyTjaIcaCandidate(decoded: MbCanBinaryState) {
+        val published = tjaIcaFlow.value
+        if (decoded.isProblemState() && !published.isProblemState()) {
+            MbCanJobManager.requestBurst(MbCanSignal.TjaIca)
+            when (decoded) {
+                is MbCanBinaryState.Unknown -> {
+                    tjaIcaUnknownStreak += 1
+                    tjaIcaUnavailableStreak = 0
+                    if (tjaIcaUnknownStreak >= requiredConsecutiveProblems) {
+                        tjaIcaFlow.value = MbCanBinaryState.Unknown
+                    }
+                }
+                is MbCanBinaryState.Unavailable -> {
+                    tjaIcaUnavailableStreak += 1
+                    tjaIcaUnknownStreak = 0
+                    if (tjaIcaUnavailableStreak >= requiredConsecutiveProblems) {
+                        tjaIcaFlow.value = decoded
+                    }
+                }
+                else -> {}
+            }
+        } else {
+            tjaIcaUnknownStreak = 0
+            tjaIcaUnavailableStreak = 0
+            tjaIcaFlow.value = decoded
+        }
+    }
+
     suspend fun applyVolumeSpeedCandidate(decoded: MbCanBinaryState) {
         val published = volumeSpeedFlow.value
         if (decoded.isProblemState() && !published.isProblemState()) {
@@ -544,6 +575,9 @@ internal class MbCanSignalStateEngine(
 
         /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_CHG_WIRELESS_SWITCH] — 1 off, 2 on. */
         fun decodeWirelessChargingRaw(raw: Int): MbCanBinaryState = decodeSteeringWheelHeatRaw(raw)
+
+        /** [MbCanKnownVehiclePropertyId.TJA_ICA] — 1 off, 2 on. */
+        fun decodeTjaIcaRaw(raw: Int): MbCanBinaryState = decodeSteeringWheelHeatRaw(raw)
 
         /** Front seat heat + ventilation raw values (1 off, 2–4 heat, 5–7 vent). */
         fun decodeSeatModeRaw(raw: Int): MbCanSeatModeState = when (raw) {

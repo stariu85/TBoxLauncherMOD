@@ -113,6 +113,7 @@ fun LauncherCar3DModel(
     projectPdcRings: Boolean = false,
     projectHeadlights: Boolean = false,
     textureSurface: Boolean = false,
+    isAvmActive: Boolean = false,
 ) {
     Box(modifier = modifier) {
         if (showRoad) {
@@ -148,6 +149,7 @@ fun LauncherCar3DModel(
             projectPdcRings = projectPdcRings,
             projectHeadlights = projectHeadlights,
             textureSurface = textureSurface,
+            isAvmActive = isAvmActive,
             lowPowerPreview = settingsView || settingsProgress > 0.5f,
         )
     }
@@ -178,6 +180,7 @@ private fun LauncherCarFilamentModel(
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
+    isAvmActive: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -225,6 +228,7 @@ private fun LauncherCarFilamentModel(
                 projectPdcRings = projectPdcRings,
                 projectHeadlights = projectHeadlights,
                 textureSurface = textureSurface,
+                isAvmActive = isAvmActive,
                 lowPowerPreview = lowPowerPreview,
             )
         }
@@ -255,6 +259,7 @@ private fun LauncherCarFilamentContent(
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
+    isAvmActive: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -292,6 +297,7 @@ private fun LauncherCarFilamentContent(
     val rigAvailabilityCallbackRef = rememberUpdatedState(onBodyRigAvailabilityChanged)
     val projectPdcRef = rememberUpdatedState(projectPdcRings)
     val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
+    val isAvmRef = rememberUpdatedState(isAvmActive)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
@@ -312,6 +318,8 @@ private fun LauncherCarFilamentContent(
     var lastDynamicNs by remember(modelInstance) { mutableLongStateOf(System.nanoTime()) }
     var lastSteeringDeg by remember(modelInstance) { mutableFloatStateOf(steeringDeg) }
     var lastRigState by remember(modelInstance) { mutableStateOf(rigState) }
+    var lastYawDeg by remember(modelInstance) { mutableFloatStateOf(0f) }
+    var lastScaleVal by remember(modelInstance) { mutableFloatStateOf(1f) }
     val modelNodeRef = remember(modelInstance) {
         AtomicReference<ModelNode?>(null)
     }
@@ -430,16 +438,17 @@ private fun LauncherCarFilamentContent(
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     runCatching {
+                        if (isAvmRef.value) {
+                            val node = modelNodeRef.get()
+                            if (node != null && node.isVisible) {
+                                node.isVisible = false
+                            }
+                            return@runCatching
+                        }
                         val currentRigState = rigStateRef.value
                         val currentSteering = steeringDeg
                         val orbit = settingsOrbitRef.value
                         val transition = settingsProgress.coerceIn(0f, 1f)
-
-                        val dt = if (lastFrameNs == 0L) {
-                            0.033f
-                        } else {
-                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
-                        }
 
                         val targetDriveBlend = if (transition > 0.02f) {
                             0f
@@ -449,20 +458,23 @@ private fun LauncherCarFilamentContent(
                             0f
                         }
 
-                        if (currentDriveBlend < targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend + dt / 0.280f).coerceAtMost(targetDriveBlend)
-                        } else if (currentDriveBlend > targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend - dt / 0.280f).coerceAtLeast(targetDriveBlend)
-                        }
-
-                        val blendAnimating = abs(currentDriveBlend - targetDriveBlend) > 0.001f
+                        val currentYaw = orbit?.yawDeg ?: 0f
+                        val currentScale = orbit?.scale ?: 1f
+                        val yawChanged = abs(currentYaw - lastYawDeg) > 0.02f
+                        val scaleChanged = abs(currentScale - lastScaleVal) > 0.001f
 
                         val isMoving = speedKmh > 0.5f || steerPreview
                         val steeringChanged = abs(currentSteering - lastSteeringDeg) > 0.1f
                         val rigChanged = currentRigState != lastRigState
                         val settingsTransitioning = transition > 0.01f && transition < 0.99f
-                        val isOrbiting = orbit != null && (orbit.interacting || abs(orbit.yawVelocityDegPerSec) > 1f)
+                        val isOrbiting = orbit != null && (
+                            orbit.interacting ||
+                            abs(orbit.yawVelocityDegPerSec) > 0.2f ||
+                            yawChanged ||
+                            scaleChanged
+                        )
                         val isInitializing = preparedFrames < 10
+                        val blendAnimating = abs(currentDriveBlend - targetDriveBlend) > 0.001f
 
                         if (isMoving || steeringChanged || rigChanged ||
                             settingsTransitioning || isOrbiting || isInitializing || blendAnimating
@@ -470,8 +482,8 @@ private fun LauncherCarFilamentContent(
                             lastDynamicNs = frameNs
                         }
 
-                        lastSteeringDeg = currentSteering
-                        lastRigState = currentRigState
+                        lastYawDeg = currentYaw
+                        lastScaleVal = currentScale
 
                         val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
                         val requiredIntervalNs = if (isDynamic) 0L else STATIC_FRAME_INTERVAL_NS
@@ -479,6 +491,21 @@ private fun LauncherCarFilamentContent(
                         if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
                             return@runCatching
                         }
+
+                        val dt = if (lastFrameNs == 0L) {
+                            0.033f
+                        } else {
+                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
+                        }
+
+                        if (currentDriveBlend < targetDriveBlend) {
+                            currentDriveBlend = (currentDriveBlend + dt / 0.280f).coerceAtMost(targetDriveBlend)
+                        } else if (currentDriveBlend > targetDriveBlend) {
+                            currentDriveBlend = (currentDriveBlend - dt / 0.280f).coerceAtLeast(targetDriveBlend)
+                        }
+
+                        lastSteeringDeg = currentSteering
+                        lastRigState = currentRigState
                         val node = modelNodeRef.get() ?: return@runCatching
                         lastFrameNs = frameNs
                         if (!lowPowerPreview) {
@@ -584,6 +611,7 @@ private fun LauncherCarFilamentContent(
                                         cameraNode = cameraNode,
                                         viewportWidthPx = widthPx,
                                         viewportHeightPx = heightPx,
+                                        driveBlend = driveBlend,
                                     )
                                 }.getOrNull()
                             } else {

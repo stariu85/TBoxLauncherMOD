@@ -824,7 +824,7 @@ private fun DrawScope.drawAdasLaneAssist(
         adas.leftLane to -1f,
         adas.rightLane to 1f,
     ).forEach { (lane, side) ->
-        if (lane == LauncherAdasLaneVisualization.Hidden && laneProgress >= 0.99f) return@forEach
+        if (lane == LauncherAdasLaneVisualization.Hidden) return@forEach
         val isWarning = lane == LauncherAdasLaneVisualization.Warning
 
         val lanePath = Path()
@@ -858,7 +858,7 @@ private fun DrawScope.drawAdasLaneAssist(
                 style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         } else if (adas.lkaStatusCode == 2) {
-            // NGP / LKA active: Solid Blue with subtle, soft glow animating bottom-to-top
+            // NGP / LKA active: Solid Blue with subtle, soft glow
             drawPath(
                 path = lanePath,
                 color = LkaBlueOuter.copy(alpha = 0.18f * alphaFactor),
@@ -873,6 +873,18 @@ private fun DrawScope.drawAdasLaneAssist(
                 path = lanePath,
                 color = LkaBlueCore.copy(alpha = 0.85f * alphaFactor),
                 style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        } else {
+            // LDW passive monitoring (lane detected/tracked): Solid Green
+            drawPath(
+                path = lanePath,
+                color = LdwBrightGreen.copy(alpha = 0.20f * alphaFactor),
+                style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+            drawPath(
+                path = lanePath,
+                color = LdwBrightGreen.copy(alpha = 0.80f * alphaFactor),
+                style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
     }
