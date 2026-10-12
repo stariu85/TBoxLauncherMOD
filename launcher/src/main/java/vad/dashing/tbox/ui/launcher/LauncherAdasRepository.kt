@@ -1,7 +1,5 @@
 package vad.dashing.tbox.ui.launcher
 
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Proxy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,7 +13,10 @@ import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.MbAdasTsrFacade
 import vad.dashing.tbox.mbcan.MbCanAvailability
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
+import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.TsrStaleWatchdog
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Proxy
 
 /**
  * Live ADAS state for the launcher (FRM target object + LKA lanes + camera TSR).
@@ -525,6 +526,11 @@ object LauncherAdasRepository {
     }
 
     private fun publish() {
+        val lasMode = if (MbCanEngineFacade.isInitialized()) {
+            MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ?: 0
+        } else {
+            0
+        }
         _state.value = buildLauncherAdasState(
             accModeRaw = frmAccMode,
             vSetDisRaw = frmVSetDis,
@@ -540,6 +546,7 @@ object LauncherAdasRepository {
             leftLaneRaw = lkaLeft,
             rightLaneRaw = lkaRight,
             lkaStatusRaw = lkaStatus,
+            lasModeRaw = lasMode,
             adasTakeOverRaw = lkaAdasTakeOver,
             slaSpdLimitRaw = lkaSlaSpdLimit,
             slaSpdLimitWarningRaw = lkaSlaSpdLimitWarning,

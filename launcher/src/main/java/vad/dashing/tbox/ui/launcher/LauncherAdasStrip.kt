@@ -211,10 +211,15 @@ fun LauncherAdasStrip(
             )
         }
         if (showTja) {
+            val tjaTint = when {
+                adas.tja == LauncherAdasAssistIcon.Warning -> Color(0xFFF59E0B)
+                adas.tja == LauncherAdasAssistIcon.Active -> LauncherColors.AccentBlue
+                else -> LauncherColors.AccentBlue
+            }
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_tja),
-                tint = assistTint(adas.tja),
-                iconRes = R.drawable.ic_adas_tja,
+                tint = tjaTint,
+                iconRes = R.drawable.ic_adas_steering_wheel,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,
                 activationKey = "tja",

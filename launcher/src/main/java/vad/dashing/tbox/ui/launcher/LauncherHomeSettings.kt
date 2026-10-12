@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -25,8 +23,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -128,9 +128,6 @@ internal fun LauncherHomeSettingsContent() {
     TopBarHeightSlider()
     TopBarLeftIndicatorsToggle()
     BottomBarHeightSlider()
-    GridColumnsSlider()
-    GridRowsSlider()
-    HomeIconScaleSlider()
     HiddenAppsSettings()
 }
 
@@ -849,6 +846,44 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val assistPanelRevision by LauncherAppConfigStore.assistPanelRevisionFlow
+            .collectAsStateWithLifecycle()
+        val assistPanelVisible = remember(context, assistPanelRevision) {
+            LauncherAppConfigStore.assistPanelVisible(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_assist_panel_visible_title),
+            active = assistPanelVisible,
+            onClick = {
+                LauncherAppConfigStore.setAssistPanelVisible(context, !assistPanelVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_assist_panel_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(LauncherColors.LeftPanelCard)
+                .clickable {
+                    LauncherAppConfigStore.resetAdasPanelsLayout(context)
+                }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_reset_adas_panels_layout_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+
         LauncherSettingsToggleRow(
             label = stringResource(R.string.launcher_drive_mode_glow_visible_title),
             active = driveModeGlowVisible,
@@ -890,46 +925,6 @@ fun CruiseControlSettingsContent() {
         )
         Text(
             text = stringResource(R.string.launcher_cruise_panel_visible_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-
-        val cruisePositionRevision by LauncherAppConfigStore.cruisePanelPositionRevisionFlow
-            .collectAsStateWithLifecycle()
-        val cruisePosition = remember(context, cruisePositionRevision) {
-            LauncherAppConfigStore.cruisePanelPosition(context)
-        }
-        val isCruiseTop = cruisePosition == "top"
-
-        val swapPanelsRevision by LauncherAppConfigStore.swapTopBottomPanelsRevisionFlow
-            .collectAsStateWithLifecycle()
-        val swapPanels = remember(context, swapPanelsRevision) {
-            LauncherAppConfigStore.swapTopBottomPanels(context)
-        }
-
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_cruise_panel_position_title),
-            active = isCruiseTop,
-            onClick = {
-                val nextPos = if (isCruiseTop) "bottom" else "top"
-                LauncherAppConfigStore.setCruisePanelPosition(context, nextPos)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_cruise_panel_position_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_swap_top_bottom_panels_title),
-            active = swapPanels,
-            onClick = {
-                LauncherAppConfigStore.setSwapTopBottomPanels(context, !swapPanels)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_swap_top_bottom_panels_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -1059,143 +1054,6 @@ private fun CruisePresetSliderRow(
             },
             valueRange = CRUISE_PRESET_MIN_KMH.toFloat()..CRUISE_PRESET_MAX_KMH.toFloat(),
             steps = ((CRUISE_PRESET_MAX_KMH - CRUISE_PRESET_MIN_KMH) / CRUISE_PRESET_STEP_KMH) - 1,
-            colors = SliderDefaults.colors(
-                thumbColor = LauncherColors.AccentCyan,
-                activeTrackColor = LauncherColors.AccentCyan,
-                inactiveTrackColor = LauncherColors.TextMuted,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun GridColumnsSlider() {
-    val context = LocalContext.current
-    val colsRevision by LauncherAppConfigStore.gridColumnsRevisionFlow.collectAsStateWithLifecycle()
-    var cols by remember(context, colsRevision) {
-        mutableFloatStateOf(LauncherAppConfigStore.gridColumns(context).toFloat())
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.settings_grid_columns_title),
-                color = LauncherColors.TextPrimary,
-                fontSize = 16.sp,
-            )
-            Text(
-                text = "${cols.roundToInt()}",
-                color = LauncherColors.TextSecondary,
-                fontSize = 16.sp,
-            )
-        }
-        Text(
-            text = stringResource(R.string.settings_grid_columns_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-        Slider(
-            value = cols,
-            onValueChange = { next ->
-                cols = next
-                LauncherAppConfigStore.setGridColumns(context, next.roundToInt())
-            },
-            valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
-            steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
-            colors = SliderDefaults.colors(
-                thumbColor = LauncherColors.AccentCyan,
-                activeTrackColor = LauncherColors.AccentCyan,
-                inactiveTrackColor = LauncherColors.TextMuted,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun GridRowsSlider() {
-    val context = LocalContext.current
-    val rowsRevision by LauncherAppConfigStore.gridRowsRevisionFlow.collectAsStateWithLifecycle()
-    var rows by remember(context, rowsRevision) {
-        mutableFloatStateOf(LauncherAppConfigStore.gridRows(context).toFloat())
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.settings_grid_rows_title),
-                color = LauncherColors.TextPrimary,
-                fontSize = 16.sp,
-            )
-            Text(
-                text = "${rows.roundToInt()}",
-                color = LauncherColors.TextSecondary,
-                fontSize = 16.sp,
-            )
-        }
-        Text(
-            text = stringResource(R.string.settings_grid_rows_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-        Slider(
-            value = rows,
-            onValueChange = { next ->
-                rows = next
-                LauncherAppConfigStore.setGridRows(context, next.roundToInt())
-            },
-            valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
-            steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
-            colors = SliderDefaults.colors(
-                thumbColor = LauncherColors.AccentCyan,
-                activeTrackColor = LauncherColors.AccentCyan,
-                inactiveTrackColor = LauncherColors.TextMuted,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun HomeIconScaleSlider() {
-    val context = LocalContext.current
-    val scaleRevision by LauncherAppConfigStore.homeIconScaleRevisionFlow.collectAsStateWithLifecycle()
-    var scale by remember(context, scaleRevision) {
-        mutableFloatStateOf(LauncherAppConfigStore.homeIconScale(context))
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.settings_home_icon_scale_title),
-                color = LauncherColors.TextPrimary,
-                fontSize = 16.sp,
-            )
-            Text(
-                text = "${(scale * 100f).roundToInt()}%",
-                color = LauncherColors.TextSecondary,
-                fontSize = 16.sp,
-            )
-        }
-        Text(
-            text = stringResource(R.string.settings_home_icon_scale_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-        Slider(
-            value = scale,
-            onValueChange = { next ->
-                scale = next
-                LauncherAppConfigStore.setHomeIconScale(context, next)
-            },
-            valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,

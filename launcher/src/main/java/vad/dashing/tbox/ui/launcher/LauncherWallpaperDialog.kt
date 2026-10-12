@@ -1,6 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,9 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.io.File
 import vad.dashing.tbox.R
 import vad.dashing.tbox.toOwnedImageBitmap
+import java.io.File
 
 @Composable
 fun LauncherWallpaperDialog(
@@ -57,15 +58,16 @@ fun LauncherWallpaperDialog(
     val systemImagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
-        val selected = uri?.toString().orEmpty()
         val targetDark = targetThemeForPicker
-        if (selected.isNotBlank() && targetDark != null) {
+        if (uri != null && targetDark != null) {
+            val localPath = saveWallpaperImageToInternalStorage(context, uri, isDark = targetDark)
+            val savedPath = localPath ?: uri.toString()
             if (targetDark) {
-                darkUri = selected
-                LauncherAppConfigStore.setWallpaperDarkUri(context, selected)
+                darkUri = savedPath
+                LauncherAppConfigStore.setWallpaperDarkUri(context, savedPath)
             } else {
-                lightUri = selected
-                LauncherAppConfigStore.setWallpaperLightUri(context, selected)
+                lightUri = savedPath
+                LauncherAppConfigStore.setWallpaperLightUri(context, savedPath)
             }
         }
         targetThemeForPicker = null
@@ -93,6 +95,9 @@ fun LauncherWallpaperDialog(
                         systemImagePicker.launch("image/*")
                     },
                     onClear = {
+                        if (darkUri.isNotBlank() && !darkUri.startsWith("content://")) {
+                            runCatching { File(darkUri).delete() }
+                        }
                         darkUri = ""
                         LauncherAppConfigStore.setWallpaperDarkUri(context, "")
                     },
@@ -108,6 +113,9 @@ fun LauncherWallpaperDialog(
                         systemImagePicker.launch("image/*")
                     },
                     onClear = {
+                        if (lightUri.isNotBlank() && !lightUri.startsWith("content://")) {
+                            runCatching { File(lightUri).delete() }
+                        }
                         lightUri = ""
                         LauncherAppConfigStore.setWallpaperLightUri(context, "")
                     },
@@ -122,8 +130,8 @@ fun LauncherWallpaperDialog(
                         fontWeight = FontWeight.SemiBold,
                     )
                     val options = listOf(
-                        WallpaperScaleMode.FILL_HEIGHT to stringResource(R.string.launcher_wallpaper_scale_height),
                         WallpaperScaleMode.FILL_WIDTH to stringResource(R.string.launcher_wallpaper_scale_width),
+                        WallpaperScaleMode.FILL_HEIGHT to stringResource(R.string.launcher_wallpaper_scale_height),
                         WallpaperScaleMode.FILL_BOUNDS to stringResource(R.string.launcher_wallpaper_scale_fill),
                     )
                     options.forEach { (mode, label) ->
@@ -227,8 +235,8 @@ private fun WallpaperThemeSection(
             }
         } else {
             Text(
-                text = stringResource(R.string.launcher_wallpaper_none),
-                color = LauncherColors.TextMuted,
+                text = "Обои по умолчанию",
+                color = LauncherColors.TextSecondary,
                 fontSize = 12.sp,
             )
         }
@@ -261,21 +269,30 @@ private fun uriToDisplayFileName(uriStr: String): String {
     }.getOrDefault(uriStr)
 }
 
-internal fun loadWallpaperImageBitmap(context: Context, uriOrPath: String): ImageBitmap? {
-    if (uriOrPath.isBlank()) return null
+internal fun saveWallpaperImageToInternalStorage(context: Context, uri: Uri, isDark: Boolean): String? {
     return runCatching {
-        if (uriOrPath.startsWith("content://")) {
-            val uri = Uri.parse(uriOrPath)
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                android.graphics.BitmapFactory.decodeStream(stream)?.toOwnedImageBitmap()
+        val wallpaperDir = File(context.filesDir, "wallpapers").apply { mkdirs() }
+        val fileName = if (isDark) "wallpaper_dark.jpg" else "wallpaper_light.jpg"
+        val targetFile = File(wallpaperDir, fileName)
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            targetFile.outputStream().use { outputStream ->
+                inputStream.copyTo(outputStream)
             }
-        } else {
-            val file = File(uriOrPath)
-            if (!file.isFile || file.length() <= 0L) return null
-            val options = android.graphics.BitmapFactory.Options().apply {
+        }
+        if (targetFile.exists() && targetFile.length() > 0L) {
+            targetFile.absolutePath
+        } else null
+    }.getOrNull()
+}
+
+internal fun loadWallpaperImageBitmap(context: Context, uriOrPath: String, isDark: Boolean): ImageBitmap? {
+    if (uriOrPath.isBlank()) {
+        val defaultRes = if (isDark) R.drawable.default_wallpaper_dark else R.drawable.default_wallpaper_light
+        return runCatching {
+            val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
-            android.graphics.BitmapFactory.decodeFile(file.absolutePath, options)
+            BitmapFactory.decodeResource(context.resources, defaultRes, options)
             val (w, h) = options.outWidth to options.outHeight
             if (w > 0 && h > 0) {
                 val maxDim = 1920
@@ -283,11 +300,38 @@ internal fun loadWallpaperImageBitmap(context: Context, uriOrPath: String): Imag
                 while (w / sample > maxDim || h / sample > maxDim) {
                     sample *= 2
                 }
-                val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+                val decodeOptions = BitmapFactory.Options().apply {
                     inSampleSize = sample
                 }
-                android.graphics.BitmapFactory.decodeFile(file.absolutePath, decodeOptions)?.toOwnedImageBitmap()
+                BitmapFactory.decodeResource(context.resources, defaultRes, decodeOptions)?.toOwnedImageBitmap()
             } else null
+        }.getOrNull()
+    }
+
+    return runCatching {
+        val file = if (uriOrPath.startsWith("content://")) {
+            val uri = Uri.parse(uriOrPath)
+            saveWallpaperImageToInternalStorage(context, uri, isDark)?.let { File(it) }
+        } else {
+            File(uriOrPath)
         }
+        if (file == null || !file.isFile || file.length() <= 0L) return null
+
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeFile(file.absolutePath, options)
+        val (w, h) = options.outWidth to options.outHeight
+        if (w > 0 && h > 0) {
+            val maxDim = 1920
+            var sample = 1
+            while (w / sample > maxDim || h / sample > maxDim) {
+                sample *= 2
+            }
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sample
+            }
+            BitmapFactory.decodeFile(file.absolutePath, decodeOptions)?.toOwnedImageBitmap()
+        } else null
     }.getOrNull()
 }

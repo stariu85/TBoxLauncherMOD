@@ -11,8 +11,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,36 +24,35 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
-import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
-import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.pow
 
 // Calibrated against the GLB's authored forward axis so the nose points to screen top.
 private const val MODEL_YAW_DEG = 135f
@@ -72,8 +69,7 @@ private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val HOME_MODEL_SCALE = 0.50f
 private const val DRIVE_MODEL_SCALE = 0.36f
-private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS when static
-private const val DYNAMIC_GRACE_PERIOD_NS = 1_200_000_000L // 1.2s grace after activity
+private const val TARGET_FRAME_INTERVAL_NS = 33_333_333L // Constant 30 FPS
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
@@ -315,11 +311,10 @@ private fun LauncherCarFilamentContent(
         animationSpec = tween(durationMillis = 50),
         label = "launcherCarModelAlpha",
     )
-    var lastDynamicNs by remember(modelInstance) { mutableLongStateOf(System.nanoTime()) }
+
     var lastSteeringDeg by remember(modelInstance) { mutableFloatStateOf(steeringDeg) }
     var lastRigState by remember(modelInstance) { mutableStateOf(rigState) }
-    var lastYawDeg by remember(modelInstance) { mutableFloatStateOf(0f) }
-    var lastScaleVal by remember(modelInstance) { mutableFloatStateOf(1f) }
+
     val modelNodeRef = remember(modelInstance) {
         AtomicReference<ModelNode?>(null)
     }
@@ -419,6 +414,15 @@ private fun LauncherCarFilamentContent(
         LauncherCarPaint.apply(materials, paintId)
     }
 
+    val alwaysResumedLifecycle = remember {
+        val owner = object : LifecycleOwner {
+            override val lifecycle: Lifecycle get() = error("Dummy owner")
+        }
+        LifecycleRegistry(owner).apply {
+            currentState = Lifecycle.State.RESUMED
+        }
+    }
+
     Box(modifier = modifier) {
         if (modelInstance != null) {
             SceneView(
@@ -426,6 +430,7 @@ private fun LauncherCarFilamentContent(
                     .fillMaxSize()
                     .graphicsLayer { alpha = modelAlpha }
                     .pointerInteropFilter { false },
+                lifecycle = alwaysResumedLifecycle,
                 // TextureSurface composites inline so Compose overlays (tire/door badges)
                 // draw above the model; the default SurfaceView stays for the home panel
                 // where overlays sit beside the car silhouette.
@@ -445,6 +450,11 @@ private fun LauncherCarFilamentContent(
                             }
                             return@runCatching
                         }
+
+                        if (lastFrameNs != 0L && frameNs - lastFrameNs < TARGET_FRAME_INTERVAL_NS) {
+                            return@runCatching
+                        }
+
                         val currentRigState = rigStateRef.value
                         val currentSteering = steeringDeg
                         val orbit = settingsOrbitRef.value
@@ -456,40 +466,6 @@ private fun LauncherCarFilamentContent(
                             1f
                         } else {
                             0f
-                        }
-
-                        val currentYaw = orbit?.yawDeg ?: 0f
-                        val currentScale = orbit?.scale ?: 1f
-                        val yawChanged = abs(currentYaw - lastYawDeg) > 0.02f
-                        val scaleChanged = abs(currentScale - lastScaleVal) > 0.001f
-
-                        val isMoving = speedKmh > 0.5f || steerPreview
-                        val steeringChanged = abs(currentSteering - lastSteeringDeg) > 0.1f
-                        val rigChanged = currentRigState != lastRigState
-                        val settingsTransitioning = transition > 0.01f && transition < 0.99f
-                        val isOrbiting = orbit != null && (
-                            orbit.interacting ||
-                            abs(orbit.yawVelocityDegPerSec) > 0.2f ||
-                            yawChanged ||
-                            scaleChanged
-                        )
-                        val isInitializing = preparedFrames < 10
-                        val blendAnimating = abs(currentDriveBlend - targetDriveBlend) > 0.001f
-
-                        if (isMoving || steeringChanged || rigChanged ||
-                            settingsTransitioning || isOrbiting || isInitializing || blendAnimating
-                        ) {
-                            lastDynamicNs = frameNs
-                        }
-
-                        lastYawDeg = currentYaw
-                        lastScaleVal = currentScale
-
-                        val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
-                        val requiredIntervalNs = if (isDynamic) 0L else STATIC_FRAME_INTERVAL_NS
-
-                        if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
-                            return@runCatching
                         }
 
                         val dt = if (lastFrameNs == 0L) {

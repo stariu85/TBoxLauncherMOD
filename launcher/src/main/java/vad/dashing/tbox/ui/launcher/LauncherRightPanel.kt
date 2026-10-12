@@ -1,6 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
+import android.graphics.Rect
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -53,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -60,6 +62,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -151,6 +154,8 @@ fun LauncherRightPanel(
     val gridColumns = remember(context, gridColumnsRevision) { LauncherAppConfigStore.gridColumns(context) }
     val gridRowsRevision by LauncherAppConfigStore.gridRowsRevisionFlow.collectAsStateWithLifecycle()
     val gridRows = remember(context, gridRowsRevision) { LauncherAppConfigStore.gridRows(context) }
+    val gridRowSpacingRevision by LauncherAppConfigStore.gridRowSpacingRevisionFlow.collectAsStateWithLifecycle()
+    val gridRowSpacingDp = remember(context, gridRowSpacingRevision) { LauncherAppConfigStore.gridRowSpacingDp(context) }
     val homeIconScaleRevision by LauncherAppConfigStore.homeIconScaleRevisionFlow.collectAsStateWithLifecycle()
     val homeIconScale = remember(context, homeIconScaleRevision) { LauncherAppConfigStore.homeIconScale(context) }
 
@@ -167,8 +172,8 @@ fun LauncherRightPanel(
     val wallpaperScaleMode = remember(context, wallpaperRevision) {
         LauncherAppConfigStore.wallpaperScaleMode(context)
     }
-    val wallpaperBitmap = remember(context, activeWallpaperUri) {
-        loadWallpaperImageBitmap(context, activeWallpaperUri)
+    val wallpaperBitmap = remember(context, activeWallpaperUri, isDarkTheme) {
+        loadWallpaperImageBitmap(context, activeWallpaperUri, isDarkTheme)
     }
 
     val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible || showHiddenDialogVisible ||
@@ -600,373 +605,410 @@ fun LauncherRightPanel(
         onDismissRequest = { wallpaperDialogVisible = false },
     )
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(LauncherColors.CanvasDark)
-            .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 10.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    val rect = coordinates.boundsInWindow()
-                    rightPanelLeftPx = rect.left
-                    rightPanelTopPx = rect.top
-                    LauncherEmbeddedBoundsState.embeddedZoneBounds = android.graphics.Rect(
-                        rect.left.toInt(),
-                        rect.top.toInt(),
-                        rect.right.toInt(),
-                        rect.bottom.toInt(),
-                    )
-                },
-        ) {
-            if (wallpaperBitmap != null) {
-                val contentScale = when (wallpaperScaleMode) {
-                    WallpaperScaleMode.FILL_HEIGHT -> ContentScale.FillHeight
-                    WallpaperScaleMode.FILL_WIDTH -> ContentScale.FillWidth
-                    WallpaperScaleMode.FILL_BOUNDS -> ContentScale.FillBounds
-                }
-                Image(
-                    bitmap = wallpaperBitmap,
-                    contentDescription = null,
-                    contentScale = contentScale,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(16.dp)),
+            .onGloballyPositioned { coordinates ->
+                val rect = coordinates.boundsInWindow()
+                rightPanelLeftPx = rect.left
+                rightPanelTopPx = rect.top
+                LauncherEmbeddedBoundsState.embeddedZoneBounds = Rect(
+                    rect.left.toInt(),
+                    rect.top.toInt(),
+                    rect.right.toInt(),
+                    rect.bottom.toInt(),
                 )
+            },
+    ) {
+        if (wallpaperBitmap != null) {
+            val contentScale = when (wallpaperScaleMode) {
+                WallpaperScaleMode.FILL_HEIGHT -> ContentScale.FillHeight
+                WallpaperScaleMode.FILL_WIDTH -> ContentScale.FillWidth
+                WallpaperScaleMode.FILL_BOUNDS -> ContentScale.FillBounds
             }
-            activeDraggingEntry?.let { entry ->
-                val density = LocalDensity.current
-                val localLeftPx = activeDraggingX - rightPanelLeftPx
-                val localTopPx = activeDraggingY - rightPanelTopPx
-                val leftDp = with(density) { localLeftPx.toDp() }
-                val topDp = with(density) { localTopPx.toDp() }
-                Box(
-                    modifier = Modifier
-                        .zIndex(1000f)
-                        .offset(x = leftDp, y = topDp)
-                        .graphicsLayer {
-                            scaleX = 1.18f
-                            scaleY = 1.18f
-                            shadowElevation = 20f
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    when (entry) {
-                        is HomeDockEntry.App -> LauncherAppDockIcon(
-                            app = entry.entry,
-                            iconScale = homeIconScale,
-                            isDragMode = true,
-                            onClick = {},
-                            onLongClick = {},
-                        )
-                        is HomeDockEntry.Split -> LauncherSplitDockIcon(
-                            preset = entry.preset,
-                            leftApp = appsByPackage[entry.preset.leftPackage],
-                            rightApp = appsByPackage[entry.preset.rightPackage],
-                            iconScale = homeIconScale,
-                            isDragMode = true,
-                            onClick = {},
-                            onLongClick = {},
-                        )
-                        else -> {}
-                    }
+            Image(
+                bitmap = wallpaperBitmap,
+                contentDescription = null,
+                contentScale = contentScale,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        activeDraggingEntry?.let { entry ->
+            val density = LocalDensity.current
+            val localLeftPx = activeDraggingX - rightPanelLeftPx
+            val localTopPx = activeDraggingY - rightPanelTopPx
+            val leftDp = with(density) { localLeftPx.toDp() }
+            val topDp = with(density) { localTopPx.toDp() }
+            Box(
+                modifier = Modifier
+                    .zIndex(1000f)
+                    .offset(x = leftDp, y = topDp)
+                    .graphicsLayer {
+                        scaleX = 1.18f
+                        scaleY = 1.18f
+                        shadowElevation = 20f
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                when (entry) {
+                    is HomeDockEntry.App -> LauncherAppDockIcon(
+                        app = entry.entry,
+                        iconScale = homeIconScale,
+                        isDragMode = true,
+                        onClick = {},
+                        onLongClick = {},
+                    )
+                    is HomeDockEntry.Split -> LauncherSplitDockIcon(
+                        preset = entry.preset,
+                        leftApp = appsByPackage[entry.preset.leftPackage],
+                        rightApp = appsByPackage[entry.preset.rightPackage],
+                        iconScale = homeIconScale,
+                        isDragMode = true,
+                        onClick = {},
+                        onLongClick = {},
+                    )
+                    else -> {}
                 }
             }
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (isDragMode) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LauncherColors.CardDark)
-                            .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.40f), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Column X Slider
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.launcher_grid_columns_label),
-                                    style = MaterialTheme.typography.tboxCaption,
-                                    color = LauncherColors.TextSecondary,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = gridColumns.toString(),
-                                    color = LauncherColors.AccentCyan,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            Slider(
-                                value = gridColumns.toFloat(),
-                                onValueChange = { next ->
-                                    LauncherAppConfigStore.setGridColumns(context, next.roundToInt())
-                                    onConfigChanged()
-                                },
-                                valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
-                                steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
-                                modifier = Modifier.height(18.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = LauncherColors.AccentCyan,
-                                    activeTrackColor = LauncherColors.AccentCyan,
-                                    inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                                ),
-                            )
-                        }
+        }
 
-                        // Row Y Slider
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.launcher_grid_rows_label),
-                                    style = MaterialTheme.typography.tboxCaption,
-                                    color = LauncherColors.TextSecondary,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = gridRows.toString(),
-                                    color = LauncherColors.AccentCyan,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            Slider(
-                                value = gridRows.toFloat(),
-                                onValueChange = { next ->
-                                    LauncherAppConfigStore.setGridRows(context, next.roundToInt())
-                                    onConfigChanged()
-                                },
-                                valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
-                                steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
-                                modifier = Modifier.height(18.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = LauncherColors.AccentCyan,
-                                    activeTrackColor = LauncherColors.AccentCyan,
-                                    inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                                ),
-                            )
-                        }
-
-                        // Icon Scale Slider
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.launcher_grid_scale_label),
-                                    style = MaterialTheme.typography.tboxCaption,
-                                    color = LauncherColors.TextSecondary,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = "${(homeIconScale * 100).roundToInt()}%",
-                                    color = LauncherColors.AccentCyan,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                            Slider(
-                                value = homeIconScale,
-                                onValueChange = { next ->
-                                    LauncherAppConfigStore.setHomeIconScale(context, next)
-                                    onConfigChanged()
-                                },
-                                valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
-                                steps = 23,
-                                modifier = Modifier.height(18.dp),
-                                colors = SliderDefaults.colors(
-                                    thumbColor = LauncherColors.AccentCyan,
-                                    activeTrackColor = LauncherColors.AccentCyan,
-                                    inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                                ),
-                            )
-                        }
-
-                        // Wallpaper and Done Buttons on the right
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(
-                                onClick = { wallpaperDialogVisible = true },
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
-                                    .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.launcher_wallpaper_button),
-                                    color = LauncherColors.AccentCyan,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-
-                            TextButton(
-                                onClick = { isDragMode = false },
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
-                                    .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.launcher_app_drawer_done),
-                                    color = LauncherColors.AccentCyan,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 10.dp, end = 10.dp, top = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        LauncherMetricCard(
-                            label = stringResource(R.string.data_title_odometer),
-                            value = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
-                            modifier = Modifier.weight(1f),
-                        )
-                        LauncherMetricCard(
-                            label = stringResource(R.string.launcher_metric_range),
-                            value = distanceToFuelEmpty?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
-                            modifier = Modifier.weight(1f),
-                        )
-                        LauncherMetricCard(
-                            label = stringResource(R.string.launcher_metric_cabin),
-                            value = cabinTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
-                            modifier = Modifier.weight(1f),
-                        )
-                        LauncherVehicleStatusCard(
-                            onClick = { vehicleStatusDialogVisible = true },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val hasShortcuts = remember(dockEntries) {
-                    dockEntries.any { it is HomeDockEntry.App || it is HomeDockEntry.Split }
-                }
-
-                Box(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+        ) {
+            if (isDragMode) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .combinedClickable(
-                            onClick = {},
-                            onLongClick = { isDragMode = true },
-                        ),
-                    contentAlignment = Alignment.Center,
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(LauncherColors.CardDark)
+                        .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.40f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(gridColumns),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .onGloballyPositioned { coordinates ->
-                                val rect = coordinates.boundsInWindow()
-                                LauncherEmbeddedBoundsState.dockGridTopPx = rect.top.toInt()
-                            },
-                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    // Column X Slider
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        itemsIndexed(dockEntries, key = { _, entry -> entry.key }) { _, entry ->
-                            val slotIdx = when (entry) {
-                                is HomeDockEntry.App -> entry.index
-                                is HomeDockEntry.Split -> entry.index
-                                is HomeDockEntry.Empty -> entry.index
-                            }
-                            LauncherDraggableHomeDockEntry(
-                                entry = entry,
-                                slotIndex = slotIdx,
-                                autostartKey = autostartKey,
-                                appsByPackage = appsByPackage,
-                                homeItems = homeItems,
-                                visibleApps = visibleApps,
-                                isDragMode = isDragMode,
-                                gridColumns = gridColumns,
-                                gridRows = gridRows,
-                                iconScale = homeIconScale,
-                                context = context,
-                                onEnableDragMode = { isDragMode = true },
-                                onOpenAddMenu = { targetSlot ->
-                                    LauncherOverlayElevator.bringLauncherToFront(context)
-                                    pickerSlotIndex = targetSlot
-                                    addMenuVisible = true
-                                },
-                                onOpenContextMenu = { targetSlot -> contextMenuIndex = targetSlot },
-                                onMoveItem = { fromSlot, toSlot ->
-                                    LauncherHomeStore.moveItem(context, fromSlot, toSlot)
-                                    onConfigChanged()
-                                },
-                                onRemoveItem = { targetSlot ->
-                                    LauncherHomeStore.removeAtSlot(context, targetSlot)
-                                    onConfigChanged()
-                                },
-                                onStartDrag = { dragEntry, startX, startY ->
-                                    activeDraggingEntry = dragEntry
-                                    activeDraggingX = startX
-                                    activeDraggingY = startY
-                                },
-                                onDragUpdate = { dx, dy ->
-                                    activeDraggingX += dx
-                                    activeDraggingY += dy
-                                },
-                                onEndDrag = {
-                                    activeDraggingEntry = null
-                                },
-                                activeDraggingKey = activeDraggingEntry?.key,
-                                onConfigChanged = onConfigChanged,
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_grid_columns_label),
+                                style = MaterialTheme.typography.tboxCaption,
+                                color = LauncherColors.TextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = gridColumns.toString(),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Slider(
+                            value = gridColumns.toFloat(),
+                            onValueChange = { next ->
+                                LauncherAppConfigStore.setGridColumns(context, next.roundToInt())
+                                onConfigChanged()
+                            },
+                            valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
+                            steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
+                            modifier = Modifier.height(18.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = LauncherColors.AccentCyan,
+                                activeTrackColor = LauncherColors.AccentCyan,
+                                inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                            ),
+                        )
+                    }
+
+                    // Row Y Slider
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_grid_rows_label),
+                                style = MaterialTheme.typography.tboxCaption,
+                                color = LauncherColors.TextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = gridRows.toString(),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Slider(
+                            value = gridRows.toFloat(),
+                            onValueChange = { next ->
+                                LauncherAppConfigStore.setGridRows(context, next.roundToInt())
+                                onConfigChanged()
+                            },
+                            valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
+                            steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
+                            modifier = Modifier.height(18.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = LauncherColors.AccentCyan,
+                                activeTrackColor = LauncherColors.AccentCyan,
+                                inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                            ),
+                        )
+                    }
+
+                    // Row Spacing Slider
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_grid_row_spacing_label),
+                                style = MaterialTheme.typography.tboxCaption,
+                                color = LauncherColors.TextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "${gridRowSpacingDp}dp",
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Slider(
+                            value = gridRowSpacingDp.toFloat(),
+                            onValueChange = { next ->
+                                LauncherAppConfigStore.setGridRowSpacingDp(context, next.roundToInt())
+                                onConfigChanged()
+                            },
+                            valueRange = GRID_ROW_SPACING_MIN.toFloat()..GRID_ROW_SPACING_MAX.toFloat(),
+                            steps = GRID_ROW_SPACING_MAX - GRID_ROW_SPACING_MIN - 1,
+                            modifier = Modifier.height(18.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = LauncherColors.AccentCyan,
+                                activeTrackColor = LauncherColors.AccentCyan,
+                                inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                            ),
+                        )
+                    }
+
+                    // Icon Scale Slider
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_grid_scale_label),
+                                style = MaterialTheme.typography.tboxCaption,
+                                color = LauncherColors.TextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "${(homeIconScale * 100).roundToInt()}%",
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Slider(
+                            value = homeIconScale,
+                            onValueChange = { next ->
+                                LauncherAppConfigStore.setHomeIconScale(context, next)
+                                onConfigChanged()
+                            },
+                            valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
+                            steps = 23,
+                            modifier = Modifier.height(18.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = LauncherColors.AccentCyan,
+                                activeTrackColor = LauncherColors.AccentCyan,
+                                inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                            ),
+                        )
+                    }
+
+                    // Wallpaper and Done Buttons on the right
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = { wallpaperDialogVisible = true },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_wallpaper_button),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+
+                        TextButton(
+                            onClick = { isDragMode = false },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_app_drawer_done),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    LauncherMetricCard(
+                        label = stringResource(R.string.data_title_odometer),
+                        value = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                        modifier = Modifier.weight(1f),
+                    )
+                    LauncherMetricCard(
+                        label = stringResource(R.string.launcher_metric_range),
+                        value = distanceToFuelEmpty?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                        modifier = Modifier.weight(1f),
+                    )
+                    LauncherMetricCard(
+                        label = stringResource(R.string.launcher_metric_cabin),
+                        value = cabinTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
+                        modifier = Modifier.weight(1f),
+                    )
+                    LauncherVehicleStatusCard(
+                        onClick = { vehicleStatusDialogVisible = true },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
 
-                    if (!hasShortcuts) {
-                        Text(
-                            text = stringResource(R.string.launcher_grid_empty_hint),
-                            color = Color.White.copy(alpha = 0.6f),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .padding(horizontal = 32.dp, vertical = 16.dp),
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val hasShortcuts = remember(dockEntries) {
+                dockEntries.any { it is HomeDockEntry.App || it is HomeDockEntry.Split }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { isDragMode = true },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(gridColumns),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onGloballyPositioned { coordinates ->
+                            val rect = coordinates.boundsInWindow()
+                            LauncherEmbeddedBoundsState.dockGridTopPx = rect.top.toInt()
+                        },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(gridRowSpacingDp.dp),
+                ) {
+                    itemsIndexed(dockEntries, key = { _, entry -> entry.key }) { _, entry ->
+                        val slotIdx = when (entry) {
+                            is HomeDockEntry.App -> entry.index
+                            is HomeDockEntry.Split -> entry.index
+                            is HomeDockEntry.Empty -> entry.index
+                        }
+                        LauncherDraggableHomeDockEntry(
+                            entry = entry,
+                            slotIndex = slotIdx,
+                            autostartKey = autostartKey,
+                            appsByPackage = appsByPackage,
+                            homeItems = homeItems,
+                            visibleApps = visibleApps,
+                            isDragMode = isDragMode,
+                            gridColumns = gridColumns,
+                            gridRows = gridRows,
+                            iconScale = homeIconScale,
+                            context = context,
+                            onEnableDragMode = { isDragMode = true },
+                            onOpenAddMenu = { targetSlot ->
+                                LauncherOverlayElevator.bringLauncherToFront(context)
+                                pickerSlotIndex = targetSlot
+                                addMenuVisible = true
+                            },
+                            onOpenContextMenu = { targetSlot -> contextMenuIndex = targetSlot },
+                            onMoveItem = { fromSlot, toSlot ->
+                                LauncherHomeStore.moveItem(context, fromSlot, toSlot)
+                                onConfigChanged()
+                            },
+                            onRemoveItem = { targetSlot ->
+                                LauncherHomeStore.removeAtSlot(context, targetSlot)
+                                onConfigChanged()
+                            },
+                            onStartDrag = { dragEntry, startX, startY ->
+                                activeDraggingEntry = dragEntry
+                                activeDraggingX = startX
+                                activeDraggingY = startY
+                            },
+                            onDragUpdate = { dx, dy ->
+                                activeDraggingX += dx
+                                activeDraggingY += dy
+                            },
+                            onEndDrag = {
+                                activeDraggingEntry = null
+                            },
+                            activeDraggingKey = activeDraggingEntry?.key,
+                            onConfigChanged = onConfigChanged,
                         )
                     }
+                }
+
+                if (!hasShortcuts) {
+                    Text(
+                        text = stringResource(R.string.launcher_grid_empty_hint),
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .padding(horizontal = 32.dp, vertical = 16.dp),
+                    )
                 }
             }
         }
@@ -979,6 +1021,41 @@ fun LauncherRightPanel(
                     LauncherEmbeddedBoundsState.rightFooterBottomPx = rect.bottom.toInt()
                 },
         )
+
+        // Round Theme Toggle Button in the bottom-left corner
+        val isDark = LauncherThemeState.darkTheme
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .zIndex(500f)
+                .padding(start = 12.dp, bottom = 12.dp)
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(
+                    if (isDark) LauncherColors.CardDarkElevated.copy(alpha = 0.90f)
+                    else Color.White.copy(alpha = 0.90f)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) LauncherColors.AccentCyan.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.20f),
+                    shape = CircleShape,
+                )
+                .clickable {
+                    LauncherThemeState.setDarkTheme(context, !isDark)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(
+                    if (isDark) R.drawable.ic_theme_sun else R.drawable.ic_theme_moon
+                ),
+                contentDescription = if (isDark) "Переключить на светлую тему" else "Переключить на тёмную тему",
+                modifier = Modifier.size(22.dp),
+                colorFilter = ColorFilter.tint(
+                    if (isDark) Color(0xFFF59E0B) else Color(0xFF475569)
+                ),
+            )
+        }
     }
 }
 
@@ -1185,14 +1262,26 @@ private fun LauncherAppDockIcon(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+
     Box(
         modifier = Modifier
             .size((60 * iconScale).dp)
             .clip(RoundedCornerShape((16 * iconScale).dp))
-            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .background(cardBg)
             .border(
                 width = 1.dp,
-                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                color = cardBorder,
                 shape = RoundedCornerShape((16 * iconScale).dp),
             )
             .then(
@@ -1260,14 +1349,26 @@ private fun LauncherSplitDockIcon(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+
     Box(
         modifier = Modifier
             .size((60 * iconScale).dp)
             .clip(RoundedCornerShape((16 * iconScale).dp))
-            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .background(cardBg)
             .border(
                 width = 1.dp,
-                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                color = cardBorder,
                 shape = RoundedCornerShape((16 * iconScale).dp),
             )
             .then(
@@ -1339,28 +1440,44 @@ private fun LauncherMetricCard(
     value: String,
     modifier: Modifier = Modifier,
 ) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+    val labelColor = LauncherColors.LeftTextSecondary
+    val valueColor = LauncherColors.LeftTextPrimary
+
     Column(
         modifier = modifier
+            .height(60.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .background(cardBg)
             .border(
                 width = 1.dp,
-                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                color = cardBorder,
                 shape = RoundedCornerShape(12.dp),
             )
             .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.tboxCaption,
-            color = LauncherColors.TextSecondary,
+            color = labelColor,
             fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = value,
-            color = LauncherColors.TextPrimary,
+            color = valueColor,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -1550,31 +1667,44 @@ private fun LauncherVehicleStatusCard(
     modifier: Modifier = Modifier,
 ) {
     val status = rememberVehicleHealthStatus()
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+    val labelColor = LauncherColors.LeftTextSecondary
 
     Column(
         modifier = modifier
+            .height(60.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.CardDarkElevated.copy(alpha = 0.40f))
+            .background(cardBg)
             .border(
                 width = 1.dp,
-                color = LauncherColors.TextMuted.copy(alpha = 0.25f),
+                color = cardBorder,
                 shape = RoundedCornerShape(12.dp),
             )
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = stringResource(R.string.launcher_vehicle_status_label),
             style = MaterialTheme.typography.tboxCaption,
-            color = LauncherColors.TextSecondary,
+            color = labelColor,
             fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 2.dp),
         ) {
             when (status) {
                 LauncherVehicleHealthStatus.Ok -> {
@@ -1591,7 +1721,7 @@ private fun LauncherVehicleStatusCard(
                     Icon(
                         imageVector = Icons.Filled.Warning,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(15.dp),
                         tint = Color(0xFFF59E0B),
                     )
                     Text(

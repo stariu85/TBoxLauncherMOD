@@ -38,8 +38,10 @@ private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
 private const val KEY_BOTTOM_SLOTS_UNIFIED = "bottom_slots_unified"
+private const val KEY_ASSIST_PRESETS_ACTIVE_TAB = "assist_presets_active_tab"
 private const val KEY_GRID_COLUMNS = "home_grid_columns"
 private const val KEY_GRID_ROWS = "home_grid_rows"
+private const val KEY_GRID_ROW_SPACING = "home_grid_row_spacing"
 private const val KEY_HOME_ICON_SCALE = "home_icon_scale"
 private const val KEY_WALLPAPER_DARK_URI = "wallpaper_dark_uri"
 private const val KEY_WALLPAPER_LIGHT_URI = "wallpaper_light_uri"
@@ -85,15 +87,15 @@ enum class LauncherAppLaunchMode(val code: String) {
 }
 
 enum class WallpaperScaleMode(val code: Int) {
-    FILL_BOUNDS(0),
     FILL_WIDTH(1),
-    FILL_HEIGHT(2);
+    FILL_HEIGHT(2),
+    FILL_BOUNDS(0);
 
     companion object {
         fun fromCode(code: Int): WallpaperScaleMode = when (code) {
-            1 -> FILL_WIDTH
+            0 -> FILL_BOUNDS
             2 -> FILL_HEIGHT
-            else -> FILL_BOUNDS
+            else -> FILL_WIDTH
         }
     }
 }
@@ -136,10 +138,13 @@ internal const val GRID_COLUMNS_MAX = 20
 internal const val GRID_ROWS_DEFAULT = 7
 internal const val GRID_ROWS_MIN = 1
 internal const val GRID_ROWS_MAX = 10
+internal const val GRID_ROW_SPACING_DEFAULT = 4
+internal const val GRID_ROW_SPACING_MIN = 0
+internal const val GRID_ROW_SPACING_MAX = 32
 internal const val HOME_ICON_SCALE_DEFAULT = 1.35f
 internal const val HOME_ICON_SCALE_MIN = 0.60f
 internal const val HOME_ICON_SCALE_MAX = 1.80f
-internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
+internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 90, 80, 60)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
 internal const val CRUISE_PRESET_STEP_KMH = 1
@@ -149,6 +154,9 @@ private const val KEY_CRUISE_PANEL_VISIBLE = "cruise_panel_visible"
 private const val KEY_CRUISE_PANEL_POSITION = "cruise_panel_position"
 private const val KEY_SWAP_TOP_BOTTOM_PANELS = "swap_top_bottom_panels"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
+private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
+private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
+private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
 private const val KEY_HEADLIGHT_BEAMS_VISIBLE = "headlight_beams_visible"
 private const val KEY_NGP_ENABLED = "ngp_enabled"
@@ -187,7 +195,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun wallpaperScaleMode(context: Context): WallpaperScaleMode =
-        WallpaperScaleMode.fromCode(prefs(context).getInt(KEY_WALLPAPER_SCALE_MODE, 0))
+        WallpaperScaleMode.fromCode(prefs(context).getInt(KEY_WALLPAPER_SCALE_MODE, 1))
 
     fun setWallpaperScaleMode(context: Context, mode: WallpaperScaleMode) {
         prefs(context).edit().putInt(KEY_WALLPAPER_SCALE_MODE, mode.code).apply()
@@ -246,6 +254,12 @@ internal object LauncherAppConfigStore {
     internal val swapTopBottomPanelsRevisionFlow: StateFlow<Int> = swapTopBottomPanelsRevision
     private val driveModeBarRevision = MutableStateFlow(0)
     internal val driveModeBarRevisionFlow: StateFlow<Int> = driveModeBarRevision
+    private val assistPanelRevision = MutableStateFlow(0)
+    internal val assistPanelRevisionFlow: StateFlow<Int> = assistPanelRevision
+    private val assistPresetsTabRevision = MutableStateFlow(0)
+    internal val assistPresetsTabRevisionFlow: StateFlow<Int> = assistPresetsTabRevision
+    private val adasPanelsRevision = MutableStateFlow(0)
+    internal val adasPanelsRevisionFlow: StateFlow<Int> = adasPanelsRevision
     private val driveModeGlowRevision = MutableStateFlow(0)
     internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
     private val headlightBeamsRevision = MutableStateFlow(0)
@@ -256,6 +270,8 @@ internal object LauncherAppConfigStore {
     internal val gridColumnsRevisionFlow: StateFlow<Int> = gridColumnsRevision
     private val gridRowsRevision = MutableStateFlow(0)
     internal val gridRowsRevisionFlow: StateFlow<Int> = gridRowsRevision
+    private val gridRowSpacingRevision = MutableStateFlow(0)
+    internal val gridRowSpacingRevisionFlow: StateFlow<Int> = gridRowSpacingRevision
     private val homeIconScaleRevision = MutableStateFlow(0)
     internal val homeIconScaleRevisionFlow: StateFlow<Int> = homeIconScaleRevision
 
@@ -362,6 +378,16 @@ internal object LauncherAppConfigStore {
         val next = rows.coerceIn(GRID_ROWS_MIN, GRID_ROWS_MAX)
         prefs(context).edit().putInt(KEY_GRID_ROWS, next).apply()
         gridRowsRevision.value++
+    }
+
+    fun gridRowSpacingDp(context: Context): Int =
+        prefs(context).getInt(KEY_GRID_ROW_SPACING, GRID_ROW_SPACING_DEFAULT)
+            .coerceIn(GRID_ROW_SPACING_MIN, GRID_ROW_SPACING_MAX)
+
+    fun setGridRowSpacingDp(context: Context, spacingDp: Int) {
+        val next = spacingDp.coerceIn(GRID_ROW_SPACING_MIN, GRID_ROW_SPACING_MAX)
+        prefs(context).edit().putInt(KEY_GRID_ROW_SPACING, next).apply()
+        gridRowSpacingRevision.value++
     }
 
     fun homeIconScale(context: Context): Float =
@@ -623,10 +649,10 @@ internal object LauncherAppConfigStore {
         val parsed = prefs(context).getString(KEY_CRUISE_PRESETS, null)
             ?.split(',')
             ?.mapNotNull { it.trim().toIntOrNull()?.coerceIn(CRUISE_PRESET_MIN_KMH, CRUISE_PRESET_MAX_KMH) }
-        return if (parsed != null && parsed.size == CRUISE_PRESET_DEFAULTS_KMH.size) {
-            parsed
-        } else {
-            CRUISE_PRESET_DEFAULTS_KMH
+        return when {
+            parsed != null && parsed.size == 4 -> parsed
+            parsed != null && parsed.size == 3 -> parsed + listOf(60)
+            else -> CRUISE_PRESET_DEFAULTS_KMH
         }
     }
 
@@ -653,7 +679,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun cruisePanelVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CRUISE_PANEL_VISIBLE, true)
+        prefs(context).getBoolean(KEY_CRUISE_PANEL_VISIBLE, false)
 
     fun setCruisePanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CRUISE_PANEL_VISIBLE, visible).apply()
@@ -682,6 +708,54 @@ internal object LauncherAppConfigStore {
     fun setDriveModeBarVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_DRIVE_MODE_BAR_VISIBLE, visible).apply()
         driveModeBarRevision.value++
+    }
+
+    fun assistPanelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ASSIST_PANEL_VISIBLE, true)
+
+    fun setAssistPanelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ASSIST_PANEL_VISIBLE, visible).apply()
+        assistPanelRevision.value++
+    }
+
+    fun assistPresetsActiveTab(context: Context): String =
+        prefs(context).getString(KEY_ASSIST_PRESETS_ACTIVE_TAB, "assist") ?: "assist"
+
+    fun setAssistPresetsActiveTab(context: Context, tab: String) {
+        prefs(context).edit().putString(KEY_ASSIST_PRESETS_ACTIVE_TAB, tab).apply()
+        assistPresetsTabRevision.value++
+    }
+
+    fun adasTopPanels(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_ADAS_TOP_PANELS, null)
+        if (raw != null) {
+            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        }
+        return listOf("drive_mode", "assist")
+    }
+
+    fun adasBottomPanels(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
+        if (raw != null) {
+            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        }
+        return listOf("presets")
+    }
+
+    fun setAdasPanelsLayout(context: Context, top: List<String>, bottom: List<String>) {
+        prefs(context).edit()
+            .putString(KEY_ADAS_TOP_PANELS, top.joinToString(","))
+            .putString(KEY_ADAS_BOTTOM_PANELS, bottom.joinToString(","))
+            .apply()
+        adasPanelsRevision.value++
+    }
+
+    fun resetAdasPanelsLayout(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_ADAS_TOP_PANELS)
+            .remove(KEY_ADAS_BOTTOM_PANELS)
+            .apply()
+        adasPanelsRevision.value++
     }
 
     fun driveModeGlowVisible(context: Context): Boolean =

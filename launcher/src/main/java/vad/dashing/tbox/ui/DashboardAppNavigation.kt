@@ -16,6 +16,7 @@ import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val steeringHeatToggleLock = Any()
@@ -284,19 +285,55 @@ internal fun sendToggleHvacAuto(context: Context) {
 private val hvacSyncToggleLock = Any()
 private var hvacSyncToggleBlockedUntilMs = 0L
 
+internal fun isHvacSyncOn(): Boolean {
+    val syncState = UniversalCanRepository.hvacSyncState.value
+    if (syncState is MbCanBinaryState.On) return true
+    if (syncState is MbCanBinaryState.Off) return false
+    val driverTemp = CanDataRepository.climateSetTemperature1.value
+    val passTemp = CanDataRepository.climateSetTemperature2.value
+    return driverTemp != null && passTemp != null && abs(driverTemp - passTemp) < 0.1f
+}
+
 internal fun sendToggleHvacSync(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacSyncToggleLock) {
         if (now < hvacSyncToggleBlockedUntilMs) return
         hvacSyncToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    val driverTemp = CanDataRepository.climateSetTemperature1.value
-    if (driverTemp != null) {
-        CanDataRepository.updateClimateSetTemperature2(driverTemp)
-        val driverRaw = (driverTemp * MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS).roundToInt()
-        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE, driverRaw)
+    val currentlyOn = isHvacSyncOn()
+    if (!currentlyOn) {
+        // Turning SYNC ON: copy driver temperature to passenger
+        val driverTemp = CanDataRepository.climateSetTemperature1.value
+        if (driverTemp != null) {
+            CanDataRepository.updateClimateSetTemperature2(driverTemp)
+            val driverRaw = (driverTemp * MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS).roundToInt()
+            val writtenPass = MbCanEngineFacade.canSetVehicleParam(
+                MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE,
+                driverRaw
+            )
+            if (writtenPass == null) {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE, driverRaw)
+            }
+        }
+        val syncOnRaw = 2 // 2 = On for HVAC_SYNC_SWITCH
+        val writtenSync = MbCanEngineFacade.canSetVehicleParam(
+            MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+            syncOnRaw
+        )
+        if (writtenSync == null) {
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH, syncOnRaw)
+        }
+    } else {
+        // Turning SYNC OFF
+        val syncOffRaw = 1 // 1 = Off for HVAC_SYNC_SWITCH
+        val writtenSync = MbCanEngineFacade.canSetVehicleParam(
+            MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+            syncOffRaw
+        )
+        if (writtenSync == null) {
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH, syncOffRaw)
+        }
     }
-    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH)
 }
 
 private val hvacPm25ToggleLock = Any()
@@ -362,6 +399,7 @@ internal fun sendAdjustHvacTemperature(
     }
     // 1.0°C step in raw units = 10 units
     val stepRaw = stepDir * scale
+    val syncActive = isHvacSyncOn()
     val propertyId = when (zone) {
         HvacTempZone.Driver -> MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE
         HvacTempZone.Passenger -> MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE
@@ -380,14 +418,49 @@ internal fun sendAdjustHvacTemperature(
                 MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MAX,
             )
             val celsius = (nextRaw.toFloat() / scale).roundToInt().toFloat()
-            when (zone) {
-                HvacTempZone.Driver -> CanDataRepository.updateClimateSetTemperature1(celsius)
-                HvacTempZone.Passenger -> CanDataRepository.updateClimateSetTemperature2(celsius)
-            }
-            // Write via engine directly — avoids BackgroundService start flicker on freeform.
-            val written = MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
-            if (written == null) {
-                sendSetMbCanProperty(context, propertyId, nextRaw)
+
+            if (zone == HvacTempZone.Driver && syncActive) {
+                // When SYNC is active, changing driver temperature also updates passenger temperature
+                CanDataRepository.updateClimateSetTemperature1(celsius)
+                CanDataRepository.updateClimateSetTemperature2(celsius)
+
+                val written1 = MbCanEngineFacade.canSetVehicleParam(
+                    MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE,
+                    nextRaw
+                )
+                if (written1 == null) {
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE, nextRaw)
+                }
+
+                val written2 = MbCanEngineFacade.canSetVehicleParam(
+                    MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE,
+                    nextRaw
+                )
+                if (written2 == null) {
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE, nextRaw)
+                }
+            } else {
+                if (zone == HvacTempZone.Passenger && syncActive) {
+                    // Explicit passenger temperature change breaks SYNC mode
+                    val syncOffRaw = 1 // 1 = Off for HVAC_SYNC_SWITCH
+                    val writtenSync = MbCanEngineFacade.canSetVehicleParam(
+                        MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+                        syncOffRaw
+                    )
+                    if (writtenSync == null) {
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH, syncOffRaw)
+                    }
+                }
+
+                when (zone) {
+                    HvacTempZone.Driver -> CanDataRepository.updateClimateSetTemperature1(celsius)
+                    HvacTempZone.Passenger -> CanDataRepository.updateClimateSetTemperature2(celsius)
+                }
+
+                val written = MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
+                if (written == null) {
+                    sendSetMbCanProperty(context, propertyId, nextRaw)
+                }
             }
         } catch (_: Exception) {
         }

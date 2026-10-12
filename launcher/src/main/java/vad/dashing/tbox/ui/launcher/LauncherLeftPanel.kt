@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,10 +8,16 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +53,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +70,7 @@ import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
+import kotlin.math.abs
 
 internal fun isDriveViewActive(
     speedKmh: Float,
@@ -186,24 +195,27 @@ fun LauncherLeftPanel(
     val miniPlayerVisible = remember(context, miniPlayerRevision) {
         LauncherAppConfigStore.mediaMiniPlayerVisible(context)
     }
-    val cruisePositionRevision by LauncherAppConfigStore.cruisePanelPositionRevisionFlow
-        .collectAsStateWithLifecycle()
-    val cruisePosition = remember(context, cruisePositionRevision) {
-        LauncherAppConfigStore.cruisePanelPosition(context)
-    }
-    val isCruiseTop = cruisePosition == "top"
 
-    val swapPanelsRevision by LauncherAppConfigStore.swapTopBottomPanelsRevisionFlow
-        .collectAsStateWithLifecycle()
-    val swapPanels = remember(context, swapPanelsRevision) {
-        LauncherAppConfigStore.swapTopBottomPanels(context)
-    }
 
     val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow
         .collectAsStateWithLifecycle()
     val driveModeBarVisible = remember(context, driveModeBarRevision) {
         LauncherAppConfigStore.driveModeBarVisible(context)
     }
+    val assistPanelRevision by LauncherAppConfigStore.assistPanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val assistPanelVisible = remember(context, assistPanelRevision) {
+        LauncherAppConfigStore.assistPanelVisible(context)
+    }
+    val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val adasTopPanels = remember(context, adasPanelsRevision) {
+        LauncherAppConfigStore.adasTopPanels(context)
+    }
+    val adasBottomPanels = remember(context, adasPanelsRevision) {
+        LauncherAppConfigStore.adasBottomPanels(context)
+    }
+    var leftPanelHeightPx by remember { mutableFloatStateOf(0f) }
     val driveModeGlowRevision by LauncherAppConfigStore.driveModeGlowRevisionFlow
         .collectAsStateWithLifecycle()
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
@@ -285,6 +297,7 @@ fun LauncherLeftPanel(
         modifier = modifier
             .fillMaxHeight()
             .onGloballyPositioned { coordinates ->
+                leftPanelHeightPx = coordinates.size.height.toFloat()
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.leftPanelBounds = android.graphics.Rect(
                     rect.left.toInt(),
@@ -342,13 +355,60 @@ fun LauncherLeftPanel(
             }
         }
 
-        val cruisePanelContent: @Composable () -> Unit = {
-            if (cruisePanelVisible) {
-                LauncherCruisePresetControl(
-                    canViewModel = canViewModel,
-                    adas = adas,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+        val isPanelVisible: (String) -> Boolean = { panelId ->
+            when (panelId) {
+                "drive_mode" -> driveModeBarVisible
+                "assist", "presets" -> assistPanelVisible || cruisePanelVisible
+                else -> false
+            }
+        }
+
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, cruisePanelVisible) {
+            val filtered = adasTopPanels.filter { isPanelVisible(it) }
+            val deduplicated = mutableListOf<String>()
+            var assistOrPresetsAdded = false
+            for (p in filtered) {
+                if (p == "assist" || p == "presets") {
+                    if (!assistOrPresetsAdded) {
+                        deduplicated.add("assist")
+                        assistOrPresetsAdded = true
+                    }
+                } else {
+                    deduplicated.add(p)
+                }
+            }
+            deduplicated
+        }
+        val activeBottomPanels = remember(adasBottomPanels, driveModeBarVisible, assistPanelVisible, cruisePanelVisible) {
+            val filtered = adasBottomPanels.filter { isPanelVisible(it) }
+            val deduplicated = mutableListOf<String>()
+            var assistOrPresetsAdded = false
+            for (p in filtered) {
+                if (p == "assist" || p == "presets") {
+                    if (!assistOrPresetsAdded) {
+                        deduplicated.add("assist")
+                        assistOrPresetsAdded = true
+                    }
+                } else {
+                    deduplicated.add(p)
+                }
+            }
+            deduplicated
+        }
+
+        val renderPanel: @Composable (String) -> Unit = { panelId ->
+            when (panelId) {
+                "drive_mode" -> driveModeBarContent()
+                "assist", "presets" -> {
+                    if (assistPanelVisible || cruisePanelVisible) {
+                        LauncherAssistAndPresetsPanel(
+                            canViewModel = canViewModel,
+                            adas = adas,
+                            initialTab = if (cruisePanelVisible) AssistPresetsTab.Presets else AssistPresetsTab.Assist,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             }
         }
 
@@ -547,19 +607,18 @@ fun LauncherLeftPanel(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (isCruiseTop) {
-                        if (!swapPanels) {
-                            driveModeBarContent()
-                            cruisePanelContent()
-                        } else {
-                            cruisePanelContent()
-                            driveModeBarContent()
-                        }
-                    } else {
-                        if (!swapPanels) {
-                            driveModeBarContent()
-                        } else {
-                            cruisePanelContent()
+                    activeTopPanels.forEach { panelId ->
+                        DraggableAdasPanel(
+                            panelId = panelId,
+                            containerHeightPx = leftPanelHeightPx,
+                            topPanels = adasTopPanels,
+                            bottomPanels = adasBottomPanels,
+                            onLayoutChanged = { top, bottom ->
+                                LauncherAppConfigStore.setAdasPanelsLayout(context, top, bottom)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            renderPanel(panelId)
                         }
                     }
                 }
@@ -567,10 +626,7 @@ fun LauncherLeftPanel(
         }
 
         // --- BOTTOM OVERLAY PANELS LAYER ---
-        val bottomHasPanel = !racing && (
-            miniPlayerVisible ||
-            (!isCruiseTop && (cruisePanelVisible || driveModeBarVisible))
-        )
+        val bottomHasPanel = !racing && (miniPlayerVisible || activeBottomPanels.isNotEmpty())
 
         if (bottomHasPanel) {
             Box(
@@ -587,11 +643,18 @@ fun LauncherLeftPanel(
                     if (miniPlayerVisible) {
                         LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
                     }
-                    if (!isCruiseTop) {
-                        if (!swapPanels) {
-                            cruisePanelContent()
-                        } else {
-                            driveModeBarContent()
+                    activeBottomPanels.forEach { panelId ->
+                        DraggableAdasPanel(
+                            panelId = panelId,
+                            containerHeightPx = leftPanelHeightPx,
+                            topPanels = adasTopPanels,
+                            bottomPanels = adasBottomPanels,
+                            onLayoutChanged = { top, bottom ->
+                                LauncherAppConfigStore.setAdasPanelsLayout(context, top, bottom)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            renderPanel(panelId)
                         }
                     }
                 }
@@ -662,6 +725,91 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Black,
             )
+        }
+    }
+}
+
+private enum class AssistPresetsTab {
+    Assist,
+    Presets,
+}
+
+@Composable
+private fun LauncherAssistAndPresetsPanel(
+    canViewModel: CanDataViewModel,
+    adas: LauncherAdasState,
+    initialTab: AssistPresetsTab = AssistPresetsTab.Assist,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val tabRevision by LauncherAppConfigStore.assistPresetsTabRevisionFlow.collectAsStateWithLifecycle()
+    val savedTabName = remember(context, tabRevision) {
+        LauncherAppConfigStore.assistPresetsActiveTab(context)
+    }
+    val defaultTab = remember(savedTabName, initialTab) {
+        when (savedTabName) {
+            "presets" -> AssistPresetsTab.Presets
+            "assist" -> AssistPresetsTab.Assist
+            else -> initialTab
+        }
+    }
+    var activeTab by remember(defaultTab) { mutableStateOf(defaultTab) }
+    var totalDragAmount by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDragAmount = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        if (abs(dragAmount) > 2f) {
+                            change.consume()
+                        }
+                        totalDragAmount += dragAmount
+                    },
+                    onDragEnd = {
+                        if (totalDragAmount < -30f) {
+                            activeTab = AssistPresetsTab.Presets
+                            LauncherAppConfigStore.setAssistPresetsActiveTab(context, "presets")
+                        } else if (totalDragAmount > 30f) {
+                            activeTab = AssistPresetsTab.Assist
+                            LauncherAppConfigStore.setAssistPresetsActiveTab(context, "assist")
+                        }
+                        totalDragAmount = 0f
+                    },
+                    onDragCancel = {
+                        totalDragAmount = 0f
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = activeTab,
+            transitionSpec = {
+                if (targetState == AssistPresetsTab.Presets) {
+                    slideInHorizontally { width -> width } + fadeIn() togetherWith
+                            slideOutHorizontally { width -> -width } + fadeOut()
+                } else {
+                    slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                            slideOutHorizontally { width -> width } + fadeOut()
+                }
+            },
+            label = "assist_presets_swipe_transition",
+        ) { tab ->
+            when (tab) {
+                AssistPresetsTab.Assist -> LauncherAssistControlBar(
+                    canViewModel = canViewModel,
+                    adas = adas,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AssistPresetsTab.Presets -> LauncherCruisePresetControl(
+                    canViewModel = canViewModel,
+                    adas = adas,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

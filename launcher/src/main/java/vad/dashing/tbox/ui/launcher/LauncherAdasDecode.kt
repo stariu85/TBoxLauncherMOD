@@ -278,6 +278,7 @@ internal fun buildLauncherAdasState(
     leftLaneRaw: Byte,
     rightLaneRaw: Byte,
     lkaStatusRaw: Byte,
+    lasModeRaw: Int = 0,
     adasTakeOverRaw: Byte,
     slaSpdLimitRaw: Byte,
     slaSpdLimitWarningRaw: Byte,
@@ -324,12 +325,14 @@ internal fun buildLauncherAdasState(
     val tjaRealSteering = tja == LauncherAdasAssistIcon.Active
     val srrSystem = decodeSrrSystemState(srrSystemRaw)
 
-    // lkaStatus: 2 = LKA active steering, 1 = LDW passive monitoring.
-    // TJA/NGP: Active = real steering guidance (BLUE), Dark = standby (GREEN/LDW).
-    val isLkaEngaged = lkaStatus == 2 || tjaRealSteering
+    // lkaStatus: 2 = getFCM_2_LDW_LKA_Status == 2, 1 = LDW passive monitoring.
+    // User Rule:
+    // When lkaStatus == 2 and eVehicle_Property_las_mode_selection == 1 -> GREEN lanes (effectiveLkaStatusCode = 1)
+    // When lkaStatus == 2 and eVehicle_Property_las_mode_selection == 2 -> BLUE lanes (effectiveLkaStatusCode = 2)
     val effectiveLkaStatusCode = when {
-        isLkaEngaged -> 2 // LKA / NGP Active Steering -> BLUE
-        lkaStatus != 0 || tja == LauncherAdasAssistIcon.Dark || leftLane != LauncherAdasLaneVisualization.Hidden || rightLane != LauncherAdasLaneVisualization.Hidden -> 1 // LDW / Standby -> GREEN
+        tjaRealSteering -> 2 // TJA / NGP Active Steering -> BLUE
+        lkaStatus == 2 -> if (lasModeRaw == 2) 2 else 1 // LKA mode (2) -> BLUE, LDW mode (1 or other) -> GREEN
+        lkaStatus == 1 || tja == LauncherAdasAssistIcon.Dark || leftLane != LauncherAdasLaneVisualization.Hidden || rightLane != LauncherAdasLaneVisualization.Hidden -> 1 // LDW / Standby -> GREEN
         else -> 0
     }
 

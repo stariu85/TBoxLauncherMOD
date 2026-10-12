@@ -121,13 +121,18 @@ internal object LauncherOverlayBar {
                     }
                 }
 
-                TboxAppTheme(theme = 2) {
+                val isDark = LauncherThemeState.darkTheme
+                val buttonBg = if (isDark) Color(0xE6141820) else Color(0xFFE5E7EB)
+                val buttonBorder = if (isDark) Color(0x6038BDF8) else Color.Black.copy(alpha = 0.20f)
+                val iconTint = if (isDark) LauncherColors.AccentCyan else Color(0xFF4B5563)
+
+                TboxAppTheme(theme = if (isDark) 2 else 1) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
-                            .background(Color(0xE6141820))
-                            .border(1.dp, Color(0x6038BDF8), CircleShape)
+                            .background(buttonBg)
+                            .border(1.dp, buttonBorder, CircleShape)
                             .clickable {
                                 goLauncherHome(activity)
                             },
@@ -136,7 +141,7 @@ internal object LauncherOverlayBar {
                         Icon(
                             imageVector = Icons.Filled.Home,
                             contentDescription = stringResource(R.string.launcher_home_cd),
-                            tint = LauncherColors.AccentCyan,
+                            tint = iconTint,
                             modifier = Modifier.size(iconSizeDp),
                         )
                     }

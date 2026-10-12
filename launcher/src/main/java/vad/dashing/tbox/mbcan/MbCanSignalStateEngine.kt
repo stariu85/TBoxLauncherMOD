@@ -53,6 +53,7 @@ internal class MbCanSignalStateEngine(
     private val hvacAirRecirculationFlow: MutableStateFlow<MbCanBinaryState>,
     private val hvacAcPowerFlow: MutableStateFlow<MbCanBinaryState>,
     private val hvacAutoStateFlow: MutableStateFlow<MbCanBinaryState>,
+    private val hvacSyncFlow: MutableStateFlow<MbCanBinaryState>,
     private val hvacDefrosterFrontFlow: MutableStateFlow<MbCanBinaryState>,
     private val wirelessChargingFlow: MutableStateFlow<MbCanBinaryState>,
     private val tjaIcaFlow: MutableStateFlow<MbCanBinaryState>,
@@ -79,6 +80,8 @@ internal class MbCanSignalStateEngine(
     private var hvacAcPowerUnavailableStreak = 0
     private var hvacAutoStateUnknownStreak = 0
     private var hvacAutoStateUnavailableStreak = 0
+    private var hvacSyncUnknownStreak = 0
+    private var hvacSyncUnavailableStreak = 0
     private var hvacDefrosterFrontUnknownStreak = 0
     private var hvacDefrosterFrontUnavailableStreak = 0
     private var wirelessChargingUnknownStreak = 0
@@ -326,6 +329,34 @@ internal class MbCanSignalStateEngine(
         }
     }
 
+    suspend fun applyHvacSyncCandidate(decoded: MbCanBinaryState) {
+        val published = hvacSyncFlow.value
+        if (decoded.isProblemState() && !published.isProblemState()) {
+            MbCanJobManager.requestBurst(MbCanSignal.HvacSync)
+        }
+        when (decoded) {
+            is MbCanBinaryState.Unknown -> {
+                hvacSyncUnknownStreak += 1
+                hvacSyncUnavailableStreak = 0
+                if (hvacSyncUnknownStreak >= requiredConsecutiveProblems) {
+                    hvacSyncFlow.value = MbCanBinaryState.Unknown
+                }
+            }
+            is MbCanBinaryState.Unavailable -> {
+                hvacSyncUnavailableStreak += 1
+                hvacSyncUnknownStreak = 0
+                if (hvacSyncUnavailableStreak >= requiredConsecutiveProblems) {
+                    hvacSyncFlow.value = decoded
+                }
+            }
+            else -> {
+                hvacSyncUnknownStreak = 0
+                hvacSyncUnavailableStreak = 0
+                hvacSyncFlow.value = decoded
+            }
+        }
+    }
+
     suspend fun applyHvacDefrosterFrontCandidate(decoded: MbCanBinaryState) {
         val published = hvacDefrosterFrontFlow.value
         if (decoded.isProblemState() && !published.isProblemState()) {
@@ -527,6 +558,9 @@ internal class MbCanSignalStateEngine(
 
         /** Same raw values as steering heat: 1 off, 2 on (mbCAN / write side). */
         fun decodeHvacAutoStateRaw(raw: Int): MbCanBinaryState = decodeSteeringWheelHeatRaw(raw)
+
+        /** [com.mengbo.mbCan.defines.MBVehicleProperty.eSYNCSWTICH_REQ] — dual/sync mode; 1 off, 2 on. */
+        fun decodeHvacSyncRaw(raw: Int): MbCanBinaryState = decodeSteeringWheelHeatRaw(raw)
 
         /** mbCAN [HVAC_FAN_DIRECTION]: 4/5 = front defrost blow on. */
         fun decodeHvacFrontDefrostMbCanRaw(raw: Int): MbCanBinaryState = when (raw) {

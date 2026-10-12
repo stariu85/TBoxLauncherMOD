@@ -44,6 +44,7 @@ enum class MbCanSignal(val subscribeDataTypes: Set<String>) {
     HvacAirRecirculation(setOf("eMBCAN_CFG_VEHICLE")),
     HvacAcPower(setOf("eMBCAN_CFG_VEHICLE")),
     HvacAutoState(setOf("eMBCAN_CFG_VEHICLE")),
+    HvacSync(setOf("eMBCAN_CFG_VEHICLE")),
     HvacDefrosterFront(setOf("eMBCAN_CFG_VEHICLE")),
     WirelessChargingSwitch(setOf("eMBCAN_CFG_VEHICLE")),
     TjaIca(setOf("eMBCAN_CFG_VEHICLE")),
@@ -255,6 +256,7 @@ object MbCanRepository {
         hvacAirRecirculationFlow = _hvacAirRecirculationState,
         hvacAcPowerFlow = _hvacAcPowerState,
         hvacAutoStateFlow = _hvacAutoState,
+        hvacSyncFlow = _hvacSyncState,
         hvacDefrosterFrontFlow = _hvacDefrosterFrontState,
         wirelessChargingFlow = _wirelessChargingState,
         tjaIcaFlow = _tjaIcaState,
@@ -347,6 +349,7 @@ object MbCanRepository {
             MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION,
             MbCanKnownVehiclePropertyId.HVAC_POWER,
             MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
+            MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
             MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION,
             MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH,
             in carSettingsCfgVehicleIds,
@@ -410,6 +413,10 @@ object MbCanRepository {
                     MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE ->
                         stateEngine.applyHvacAutoStateCandidate(
                             MbCanSignalStateEngine.decodeHvacAutoStateRaw(raw)
+                        )
+                    MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH ->
+                        stateEngine.applyHvacSyncCandidate(
+                            MbCanSignalStateEngine.decodeHvacSyncRaw(raw)
                         )
                     MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED -> {
                         UniversalCanRepository.updateHvacFanSpeedRaw(raw)
@@ -799,6 +806,7 @@ object MbCanRepository {
             MbCanSignal.HvacAirRecirculation -> refreshHvacAirRecirculation()
             MbCanSignal.HvacAcPower -> refreshHvacAcPower()
             MbCanSignal.HvacAutoState -> refreshHvacAutoState()
+            MbCanSignal.HvacSync -> refreshHvacSyncState()
             MbCanSignal.HvacDefrosterFront -> refreshHvacDefrosterFront()
             MbCanSignal.WirelessChargingSwitch -> refreshWirelessCharging()
             MbCanSignal.TjaIca -> refreshTjaIca()
@@ -1075,6 +1083,39 @@ object MbCanRepository {
             MbCanDiagnostics.log(
                 "DEBUG",
                 "refreshHvacAutoState raw=$raw state=${_hvacAutoState.value}"
+            )
+        }
+    }
+
+    private suspend fun refreshHvacSyncState() {
+        withContext(stateApplyDispatcher) {
+            if (!MbCanEngineFacade.isInitialized()) {
+                _availability.value = MbCanEngineFacade.probeAvailability()
+                stateEngine.applyHvacSyncCandidate(MbCanBinaryState.Unknown)
+                return@withContext
+            }
+
+            val availability = MbCanEngineFacade.availability
+            _availability.value = availability
+            if (availability !is MbCanAvailability.Available) {
+                MbCanDiagnostics.log("WARN", "refreshHvacSyncState unavailable=$availability")
+                stateEngine.applyHvacSyncCandidate(
+                    MbCanBinaryState.Unavailable(
+                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
+                    )
+                )
+                return@withContext
+            }
+            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH)
+            val decoded = if (raw == null) {
+                MbCanBinaryState.Unknown
+            } else {
+                MbCanSignalStateEngine.decodeHvacSyncRaw(raw)
+            }
+            stateEngine.applyHvacSyncCandidate(decoded)
+            MbCanDiagnostics.log(
+                "DEBUG",
+                "refreshHvacSyncState raw=$raw state=${_hvacSyncState.value}"
             )
         }
     }

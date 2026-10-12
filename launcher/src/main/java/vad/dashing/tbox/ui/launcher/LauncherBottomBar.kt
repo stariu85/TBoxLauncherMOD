@@ -120,7 +120,7 @@ import kotlin.math.sin
 
 private val HvacOnColor = Color(0xFF4FC3F7)
 private val SeatHeatOnColor = Color(0xFFF59E0B)
-private val HvacOffColor = LauncherColors.TextSecondary
+private val HvacOffColor: Color get() = LauncherColors.TextSecondary
 private const val LAUNCHER_BOTTOM_BAR_CAN_SOURCE = "launcher-bottom-bar"
 private const val SEAT_COMMAND_CONFIRM_TIMEOUT_MS = 2_500L
 private const val LIGHT_COMMAND_CONFIRM_TIMEOUT_MS = 1_200L
@@ -811,7 +811,7 @@ private fun LauncherBottomDockButtonContent(
     when (buttonId) {
         "hvac_sync" -> {
             val syncState by UniversalCanRepository.hvacSyncState.collectAsStateWithLifecycle()
-            val isSyncOn = syncState is MbCanBinaryState.On || (driverTemp != null && passTemp != null && abs(driverTemp!! - passTemp!!) < 0.1f)
+            val isSyncOn = syncState is MbCanBinaryState.On || (syncState !is MbCanBinaryState.Off && driverTemp != null && passTemp != null && abs(driverTemp!! - passTemp!!) < 0.1f)
             val tint = if (isSyncOn) HvacOnColor else HvacOffColor
             LauncherDockIcon(onClick = { sendToggleHvacSync(context) }) {
                 Text(

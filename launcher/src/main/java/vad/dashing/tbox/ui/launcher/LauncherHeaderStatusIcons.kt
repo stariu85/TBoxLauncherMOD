@@ -293,7 +293,7 @@ internal fun LauncherHeaderStatusIcons(
                 ),
         )
         val bluetoothTint = if (bluetoothConnected) {
-            if (LauncherThemeState.darkTheme) Color.White else Color.Black
+            if (LauncherThemeState.darkTheme) Color.White else Color(0xFF4B5563)
         } else {
             LauncherColors.TextMuted
         }
