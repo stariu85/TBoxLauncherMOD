@@ -45,6 +45,9 @@ class BackgroundService : Service() {
         scope.launch {
             UniversalCanRepository.bind(scope)
         }
+        scope.launch {
+            vad.dashing.tbox.tbm.TbmRepositoryProvider.get(applicationContext).checkHealth()
+        }
         tboxLink = TboxLinkManager(applicationContext).also { it.start() }
     }
 

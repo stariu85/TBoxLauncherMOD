@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
@@ -61,6 +62,8 @@ class SettingsManager(private val context: Context) {
             longPreferencesKey("hu_reboot_prompt_shown_version")
         private val KEY_HU_REBOOT_AWAITING_INSTALL_VERSION =
             longPreferencesKey("hu_reboot_awaiting_install_version")
+        private val KEY_TBM_API_TOKEN = stringPreferencesKey("tbm_api_token")
+        private val KEY_TBM_API_PORT = intPreferencesKey("tbm_api_port")
         private const val MAX_ICON_EDGE_PX = 512
     }
 
@@ -85,6 +88,14 @@ class SettingsManager(private val context: Context) {
 
     val updateCheckEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[KEY_UPDATE_CHECK_ENABLED] ?: true
+    }
+
+    val tbmApiTokenFlow: Flow<String?> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_TBM_API_TOKEN]
+    }
+
+    val tbmApiPortFlow: Flow<Int> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_TBM_API_PORT] ?: 8765
     }
 
     val huRebootAfterUpdateFlow: Flow<HuRebootAfterUpdateSnapshot> =
@@ -120,6 +131,21 @@ class SettingsManager(private val context: Context) {
     suspend fun saveUpdateCheckEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { it[KEY_UPDATE_CHECK_ENABLED] = enabled }
     }
+
+    suspend fun saveTbmApiToken(token: String?) {
+        context.settingsDataStore.edit {
+            if (token.isNullOrEmpty()) it.remove(KEY_TBM_API_TOKEN)
+            else it[KEY_TBM_API_TOKEN] = token
+        }
+    }
+
+    suspend fun saveTbmApiPort(port: Int) {
+        context.settingsDataStore.edit { it[KEY_TBM_API_PORT] = port }
+    }
+
+    suspend fun getTbmApiToken(): String? = tbmApiTokenFlow.first()
+
+    suspend fun getTbmApiPort(): Int = tbmApiPortFlow.first()
 
     suspend fun syncHuRebootAfterUpdate(
         currentVersionCode: Long,

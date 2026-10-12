@@ -732,6 +732,16 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
+            title = stringResource(R.string.settings_tbm_api_section_title),
+            subtitle = stringResource(R.string.settings_tbm_api_desc),
+            icon = VehicleSettingsSectionIcons.TbmApi,
+            expanded = expandedSection == VehicleSettingsSection.TbmApi,
+            onToggle = { onSectionToggle(VehicleSettingsSection.TbmApi) },
+        ) {
+            TbmApiSettingsContent(settingsManager = remember(context) { vad.dashing.tbox.SettingsManager(context) })
+        }
+
+        LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_theme),
             subtitle = stringResource(R.string.launcher_vs_section_theme_sub),
             icon = VehicleSettingsSectionIcons.Theme,

@@ -16,9 +16,19 @@ sealed class LauncherHomeItem {
         override val key: String = "split:$presetId@$slotIndex"
     }
 
+    data class TbmAutomation(
+        val automationId: String,
+        val automationName: String,
+        val iconName: String,
+        override val slotIndex: Int,
+    ) : LauncherHomeItem() {
+        override val key: String = "tbm_auto:$automationId@$slotIndex"
+    }
+
     fun withSlot(newSlot: Int): LauncherHomeItem = when (this) {
         is App -> copy(slotIndex = newSlot)
         is Split -> copy(presetId = presetId, slotIndex = newSlot)
+        is TbmAutomation -> copy(slotIndex = newSlot)
     }
 }
 
@@ -54,10 +64,18 @@ internal object LauncherHomeStore {
         items.forEach { item ->
             when (item) {
                 is LauncherHomeItem.App -> array.put(
-                    JSONObject().put("type", "app").put("package", item.packageName).put("slot", item.slotIndex)
+                    JSONObject().put("type", "app").put("package", item.packageName).put("slot", item.slotIndex),
                 )
                 is LauncherHomeItem.Split -> array.put(
-                    JSONObject().put("type", "split").put("id", item.presetId).put("slot", item.slotIndex)
+                    JSONObject().put("type", "split").put("id", item.presetId).put("slot", item.slotIndex),
+                )
+                is LauncherHomeItem.TbmAutomation -> array.put(
+                    JSONObject()
+                        .put("type", "tbm_automation")
+                        .put("id", item.automationId)
+                        .put("name", item.automationName)
+                        .put("icon", item.iconName)
+                        .put("slot", item.slotIndex),
                 )
             }
         }
@@ -89,6 +107,40 @@ internal object LauncherHomeStore {
         }
         items.add(LauncherHomeItem.Split(presetId, slot))
         saveItems(context, items)
+    }
+
+    fun addTbmAutomation(
+        context: Context,
+        automationId: String,
+        automationName: String,
+        iconName: String,
+        targetSlot: Int = -1,
+    ) {
+        val items = loadItems(context).toMutableList()
+        val occupiedSlots = items.map { it.slotIndex }.toSet()
+        val slot = if (targetSlot >= 0 && targetSlot !in occupiedSlots) {
+            targetSlot
+        } else {
+            (0..1000).first { it !in occupiedSlots }
+        }
+        items.add(LauncherHomeItem.TbmAutomation(automationId, automationName, iconName, slot))
+        saveItems(context, items)
+    }
+
+    fun updateTbmAutomationIcon(
+        context: Context,
+        slotIndex: Int,
+        newIconName: String,
+    ) {
+        val items = loadItems(context).toMutableList()
+        val idx = items.indexOfFirst { it.slotIndex == slotIndex }
+        if (idx >= 0) {
+            val current = items[idx]
+            if (current is LauncherHomeItem.TbmAutomation) {
+                items[idx] = current.copy(iconName = newIconName)
+                saveItems(context, items)
+            }
+        }
     }
 
     fun removeAtSlot(context: Context, slotIndex: Int) {
@@ -138,6 +190,14 @@ internal object LauncherHomeStore {
                     when (obj.optString("type")) {
                         "app" -> obj.optString("package").takeIf { it.isNotBlank() }?.let { add(LauncherHomeItem.App(it, slot)) }
                         "split" -> obj.optString("id").takeIf { it.isNotBlank() }?.let { add(LauncherHomeItem.Split(it, slot)) }
+                        "tbm_automation" -> {
+                            val autoId = obj.optString("id")
+                            val autoName = obj.optString("name")
+                            val autoIcon = obj.optString("icon", "bolt")
+                            if (autoId.isNotBlank()) {
+                                add(LauncherHomeItem.TbmAutomation(autoId, autoName, autoIcon, slot))
+                            }
+                        }
                     }
                 }
             }

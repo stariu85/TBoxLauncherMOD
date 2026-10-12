@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,6 +22,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,9 +35,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -43,6 +49,8 @@ import vad.dashing.tbox.BuildConfig
 import vad.dashing.tbox.DonationLinks
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsManager
+import vad.dashing.tbox.tbm.TbmConnectionState
+import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.rememberWrappedOnClick
 import vad.dashing.tbox.ui.requestHeadUnitReboot
 import vad.dashing.tbox.ui.theme.tboxBody
@@ -169,6 +177,15 @@ fun LauncherSettingsScreen(
                 }
             },
         )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(LauncherColors.SettingsBorder),
+        )
+
+        TbmApiSettingsSection(settingsManager = settingsManager)
 
         Box(
             modifier = Modifier
@@ -485,4 +502,26 @@ private fun resolveUpdateErrorMessage(raw: String): String = when (raw) {
     "APK package name mismatch" -> stringResource(R.string.update_error_verify_package)
     "APK signing certificate mismatch" -> stringResource(R.string.update_error_verify_signature)
     else -> stringResource(R.string.update_error_generic, raw)
+}
+
+@Composable
+private fun TbmApiSettingsSection(
+    settingsManager: SettingsManager,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = stringResource(R.string.settings_tbm_api_section_title),
+            style = MaterialTheme.typography.tboxHeadline,
+            color = LauncherColors.TextPrimary,
+        )
+        Text(
+            text = stringResource(R.string.settings_tbm_api_desc),
+            style = MaterialTheme.typography.tboxBody,
+            color = LauncherColors.TextMuted,
+        )
+        TbmApiSettingsContent(settingsManager = settingsManager)
+    }
 }

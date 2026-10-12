@@ -129,6 +129,7 @@ internal fun LauncherHomeSettingsContent() {
     TopBarLeftIndicatorsToggle()
     BottomBarHeightSlider()
     HiddenAppsSettings()
+    TbmApiSettingsContent(settingsManager = remember(context) { vad.dashing.tbox.SettingsManager(context) })
 }
 
 @Composable

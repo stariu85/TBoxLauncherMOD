@@ -77,6 +77,11 @@ import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import vad.dashing.tbox.tbm.TbmAutomationItem
+import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.rememberLaunchableAppEntries
 import vad.dashing.tbox.ui.theme.tboxCaption
@@ -86,6 +91,7 @@ import kotlin.math.roundToInt
 private sealed class HomeDockEntry(val key: String) {
     data class App(val entry: LaunchableAppEntry, val index: Int) : HomeDockEntry("app_${entry.packageName}_$index")
     data class Split(val preset: LauncherSplitPreset, val index: Int) : HomeDockEntry("split_${preset.id}_$index")
+    data class TbmAuto(val automationId: String, val name: String, val iconName: String, val index: Int) : HomeDockEntry("tbm_auto_${automationId}_$index")
     data class Empty(val index: Int) : HomeDockEntry("empty_$index")
 }
 
@@ -133,6 +139,10 @@ fun LauncherRightPanel(
     val pickerApps = remember(visibleApps, priority) { LauncherOemAppSort.sortEntries(visibleApps, priority) }
     val appsByPackage = remember(visibleApps) { visibleApps.associateBy { it.packageName } }
 
+    val scope = rememberCoroutineScope()
+    val tbmRepository = remember(context) { TbmRepositoryProvider.get(context) }
+    val tbmAutomations by tbmRepository.automations.collectAsStateWithLifecycle()
+
     var addMenuVisible by remember { mutableStateOf(false) }
     var appPickerVisible by remember { mutableStateOf(false) }
     var splitCreateVisible by remember { mutableStateOf(false) }
@@ -143,6 +153,13 @@ fun LauncherRightPanel(
     var isDragMode by remember { mutableStateOf(false) }
     var showHiddenDialogVisible by remember { mutableStateOf(false) }
     var vehicleStatusDialogVisible by remember { mutableStateOf(false) }
+
+    var tbmAutomationPickerVisible by remember { mutableStateOf(false) }
+    var tbmAutomationLoading by remember { mutableStateOf(false) }
+    var tbmAutomationError by remember { mutableStateOf<String?>(null) }
+    var selectedTbmAutomation by remember { mutableStateOf<TbmAutomationItem?>(null) }
+    var tbmIconPickerVisible by remember { mutableStateOf(false) }
+    var changeIconSlotIndex by remember { mutableIntStateOf(-1) }
 
     var activeDraggingEntry by remember { mutableStateOf<HomeDockEntry?>(null) }
     var activeDraggingX by remember { mutableFloatStateOf(0f) }
@@ -177,7 +194,8 @@ fun LauncherRightPanel(
     }
 
     val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible || showHiddenDialogVisible ||
-        vehicleStatusDialogVisible || wallpaperDialogVisible || contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
+        vehicleStatusDialogVisible || wallpaperDialogVisible || tbmAutomationPickerVisible || tbmIconPickerVisible ||
+        contextMenuIndex >= 0 || replaceIndex >= 0 || settingsIndex >= 0
     LaunchedEffect(anyLocalDialog) {
         LauncherOverlayElevator.setHoldSource("right_panel_dialog", anyLocalDialog)
     }
@@ -202,6 +220,14 @@ fun LauncherRightPanel(
                     val preset = splitPresets.firstOrNull { it.id == item.presetId }
                     if (preset != null) HomeDockEntry.Split(preset, slotIdx)
                     else HomeDockEntry.Empty(slotIdx)
+                }
+                item is LauncherHomeItem.TbmAutomation -> {
+                    HomeDockEntry.TbmAuto(
+                        automationId = item.automationId,
+                        name = item.automationName,
+                        iconName = item.iconName,
+                        index = slotIdx,
+                    )
                 }
                 else -> HomeDockEntry.Empty(slotIdx)
             }
@@ -251,6 +277,53 @@ fun LauncherRightPanel(
         },
     )
 
+    LauncherTbmAutomationPickerDialog(
+        visible = tbmAutomationPickerVisible,
+        isLoading = tbmAutomationLoading,
+        automations = tbmAutomations,
+        errorMessage = tbmAutomationError,
+        onDismiss = {
+            tbmAutomationPickerVisible = false
+        },
+        onPick = { automation ->
+            selectedTbmAutomation = automation
+            tbmAutomationPickerVisible = false
+            tbmIconPickerVisible = true
+        },
+    )
+
+    LauncherTbmAutomationIconPickerDialog(
+        visible = tbmIconPickerVisible || changeIconSlotIndex >= 0,
+        currentIconName = if (changeIconSlotIndex >= 0) {
+            (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.iconName ?: "play"
+        } else "play",
+        onDismiss = {
+            tbmIconPickerVisible = false
+            changeIconSlotIndex = -1
+            selectedTbmAutomation = null
+        },
+        onIconPicked = { iconName ->
+            if (changeIconSlotIndex >= 0) {
+                LauncherHomeStore.updateTbmAutomationIcon(context, changeIconSlotIndex, iconName)
+            } else {
+                selectedTbmAutomation?.let { auto ->
+                    LauncherHomeStore.addTbmAutomation(
+                        context = context,
+                        automationId = auto.id,
+                        automationName = auto.name,
+                        iconName = iconName,
+                        targetSlot = pickerSlotIndex,
+                    )
+                }
+            }
+            onConfigChanged()
+            tbmIconPickerVisible = false
+            changeIconSlotIndex = -1
+            selectedTbmAutomation = null
+            pickerSlotIndex = -1
+        },
+    )
+
     if (addMenuVisible) {
         LauncherDarkAlertDialog(
             onDismissRequest = { addMenuVisible = false },
@@ -278,6 +351,29 @@ fun LauncherRightPanel(
                                 addMenuVisible = false
                                 splitEditPreset = null
                                 splitCreateVisible = true
+                            }
+                            .padding(12.dp),
+                        color = LauncherColors.TextPrimary,
+                    )
+                    val notConnectedMsg = stringResource(R.string.launcher_tbm_automations_not_connected)
+                    Text(
+                        text = stringResource(R.string.launcher_home_add_tbm_automation),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                addMenuVisible = false
+                                tbmAutomationPickerVisible = true
+                                tbmAutomationLoading = true
+                                tbmAutomationError = null
+                                scope.launch {
+                                    val res = tbmRepository.refreshAutomations()
+                                    tbmAutomationLoading = false
+                                    if (res.isFailure) {
+                                        val errText = res.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: notConnectedMsg
+                                        tbmAutomationError = errText
+                                    }
+                                }
                             }
                             .padding(12.dp),
                         color = LauncherColors.TextPrimary,
@@ -321,6 +417,20 @@ fun LauncherRightPanel(
                                     contextMenuIndex = -1
                                     splitEditPreset = splitPresets.firstOrNull { it.id == item.presetId }
                                     splitCreateVisible = true
+                                }
+                                .padding(12.dp),
+                            color = LauncherColors.TextPrimary,
+                        )
+                    }
+                    if (item is LauncherHomeItem.TbmAutomation) {
+                        Text(
+                            text = stringResource(R.string.launcher_icon_menu_change_icon),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    changeIconSlotIndex = contextMenuIndex
+                                    contextMenuIndex = -1
+                                    tbmIconPickerVisible = true
                                 }
                                 .padding(12.dp),
                             color = LauncherColors.TextPrimary,
@@ -952,6 +1062,7 @@ fun LauncherRightPanel(
                         val slotIdx = when (entry) {
                             is HomeDockEntry.App -> entry.index
                             is HomeDockEntry.Split -> entry.index
+                            is HomeDockEntry.TbmAuto -> entry.index
                             is HomeDockEntry.Empty -> entry.index
                         }
                         LauncherDraggableHomeDockEntry(
@@ -1092,7 +1203,7 @@ private fun LauncherDraggableHomeDockEntry(
     var itemTopPx by remember { mutableFloatStateOf(0f) }
     var itemLeftX by remember { mutableFloatStateOf(0f) }
 
-    val isInteractive = entry is HomeDockEntry.App || entry is HomeDockEntry.Split
+    val isInteractive = entry is HomeDockEntry.App || entry is HomeDockEntry.Split || entry is HomeDockEntry.TbmAuto
     val isBeingDragged = activeDraggingKey == entry.key
 
     Box(
@@ -1144,6 +1255,7 @@ private fun LauncherDraggableHomeDockEntry(
                                 val buttonId = when (entry) {
                                     is HomeDockEntry.App -> "pkg:${entry.entry.packageName}"
                                     is HomeDockEntry.Split -> "split:${entry.preset.id}"
+                                    is HomeDockEntry.TbmAuto -> "tbm:${entry.automationId}"
                                     else -> null
                                 }
                                 if (isDroppedInBottomBar && buttonId != null) {
@@ -1223,6 +1335,30 @@ private fun LauncherDraggableHomeDockEntry(
                 },
                 onLongClick = { onOpenContextMenu(slotIndex) },
             )
+            is HomeDockEntry.TbmAuto -> LauncherTbmAutoDockIcon(
+                automationId = entry.automationId,
+                name = entry.name,
+                iconName = entry.iconName,
+                autostart = homeItems.firstOrNull { it.slotIndex == slotIndex }?.key == autostartKey,
+                iconScale = iconScale,
+                isDragMode = isDragMode,
+                onClick = {
+                    if (!isDragMode) {
+                        val tbmRepo = TbmRepositoryProvider.get(context)
+                        val execMsg = context.getString(R.string.launcher_tbm_automation_executed, entry.name)
+                        val failMsg = context.getString(R.string.launcher_tbm_automation_failed, entry.name, "Error")
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            val res = tbmRepo.runAutomation(entry.automationId)
+                            if (res.getOrDefault(false)) {
+                                Toast.makeText(context, execMsg, Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, failMsg, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
+                onLongClick = { onOpenContextMenu(slotIndex) },
+            )
             is HomeDockEntry.Empty -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1248,6 +1384,81 @@ private fun LauncherDraggableHomeDockEntry(
                     )
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LauncherTbmAutoDockIcon(
+    @Suppress("UNUSED_PARAMETER") automationId: String,
+    name: String,
+    iconName: String,
+    autostart: Boolean = false,
+    iconScale: Float = 1f,
+    isDragMode: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+
+    Box(
+        modifier = Modifier
+            .size((60 * iconScale).dp)
+            .clip(RoundedCornerShape((16 * iconScale).dp))
+            .background(cardBg)
+            .border(
+                width = 1.dp,
+                color = cardBorder,
+                shape = RoundedCornerShape((16 * iconScale).dp),
+            )
+            .then(
+                if (!isDragMode) {
+                    Modifier.combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(2.dp),
+        ) {
+            Icon(
+                imageVector = resolveTbmIconVector(iconName),
+                contentDescription = name,
+                tint = LauncherColors.AccentCyan,
+                modifier = Modifier.size((28 * iconScale).dp),
+            )
+            Text(
+                text = name,
+                color = LauncherColors.TextPrimary,
+                fontSize = (9 * iconScale).sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        if (autostart) {
+            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding((3 * iconScale).dp))
         }
     }
 }
