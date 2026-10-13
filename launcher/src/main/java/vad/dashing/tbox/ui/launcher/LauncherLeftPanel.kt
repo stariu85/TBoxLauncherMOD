@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -399,7 +400,6 @@ fun LauncherLeftPanel(
                         LauncherAssistAndPresetsPanel(
                             canViewModel = canViewModel,
                             adas = adas,
-                            initialTab = AssistPresetsTab.Assist,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -526,7 +526,7 @@ fun LauncherLeftPanel(
                     )
 
                     if (adasAlertsInLeftPanel) {
-                        val alertsTopOffset = maxHeight * 0.25f
+                        val alertsTopOffset = maxHeight * 0.24f
 
                         // Left vertical section: Telltale alerts (Индикаторы предупреждений)
                         Box(
@@ -592,7 +592,7 @@ fun LauncherLeftPanel(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(start = 8.dp, top = 12.dp, end = 8.dp)
+                .padding(start = 8.dp, top = 10.dp, end = 8.dp)
                 .zIndex(200f),
         ) {
             if (racing) {
@@ -600,7 +600,7 @@ fun LauncherLeftPanel(
             } else {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     activeTopPanels.forEach { panelId ->
                         DraggableAdasPanel(
@@ -633,7 +633,7 @@ fun LauncherLeftPanel(
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     if (miniPlayerVisible) {
                         LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
@@ -725,31 +725,39 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
 }
 
 private enum class AssistPresetsTab {
-    Assist,
-    Presets,
+    Lanes,   // Page -1: LDW + LKA (Swipe Right from Main)
+    Main,    // Page 0: ACC + NGP (Default Main Central Page)
+    Presets, // Page 1: Speed Presets (Swipe Left from Main)
 }
 
 @Composable
 private fun LauncherAssistAndPresetsPanel(
     canViewModel: CanDataViewModel,
     adas: LauncherAdasState,
-    initialTab: AssistPresetsTab = AssistPresetsTab.Assist,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val tabRevision by LauncherAppConfigStore.assistPresetsTabRevisionFlow.collectAsStateWithLifecycle()
-    val savedTabName = remember(context, tabRevision) {
-        LauncherAppConfigStore.assistPresetsActiveTab(context)
-    }
-    val defaultTab = remember(savedTabName, initialTab) {
-        when (savedTabName) {
-            "presets" -> AssistPresetsTab.Presets
-            "assist" -> AssistPresetsTab.Assist
-            else -> initialTab
-        }
-    }
-    var activeTab by remember(defaultTab) { mutableStateOf(defaultTab) }
+    var activeTab by remember { mutableStateOf(AssistPresetsTab.Main) }
     var totalDragAmount by remember { mutableFloatStateOf(0f) }
+
+    // Auto-flip logic on cruise activation / deactivation
+    val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
+    val isCruiseEngaged = adas.accActive || adas.accStandby || (tboxCruise ?: 0u) > 0u
+
+    var prevEngaged by remember { mutableStateOf(isCruiseEngaged) }
+
+    LaunchedEffect(isCruiseEngaged) {
+        if (isCruiseEngaged && !prevEngaged) {
+            // Cruise activated from ANY source -> wait 1s then flip to Presets page
+            delay(1000L)
+            if (isCruiseEngaged) {
+                activeTab = AssistPresetsTab.Presets
+            }
+        } else if (!isCruiseEngaged && prevEngaged) {
+            // Cruise deactivated -> immediately return to Central Main page (ACC + NGP)
+            activeTab = AssistPresetsTab.Main
+        }
+        prevEngaged = isCruiseEngaged
+    }
 
     Box(
         modifier = modifier
@@ -765,11 +773,19 @@ private fun LauncherAssistAndPresetsPanel(
                     },
                     onDragEnd = {
                         if (totalDragAmount < -30f) {
-                            activeTab = AssistPresetsTab.Presets
-                            LauncherAppConfigStore.setAssistPresetsActiveTab(context, "presets")
+                            // Swipe Left -> move right in pages
+                            activeTab = when (activeTab) {
+                                AssistPresetsTab.Lanes -> AssistPresetsTab.Main
+                                AssistPresetsTab.Main -> AssistPresetsTab.Presets
+                                AssistPresetsTab.Presets -> AssistPresetsTab.Presets
+                            }
                         } else if (totalDragAmount > 30f) {
-                            activeTab = AssistPresetsTab.Assist
-                            LauncherAppConfigStore.setAssistPresetsActiveTab(context, "assist")
+                            // Swipe Right -> move left in pages
+                            activeTab = when (activeTab) {
+                                AssistPresetsTab.Presets -> AssistPresetsTab.Main
+                                AssistPresetsTab.Main -> AssistPresetsTab.Lanes
+                                AssistPresetsTab.Lanes -> AssistPresetsTab.Lanes
+                            }
                         }
                         totalDragAmount = 0f
                     },
@@ -783,7 +799,8 @@ private fun LauncherAssistAndPresetsPanel(
         AnimatedContent(
             targetState = activeTab,
             transitionSpec = {
-                if (targetState == AssistPresetsTab.Presets) {
+                val isMovingRight = targetState.ordinal > initialState.ordinal
+                if (isMovingRight) {
                     slideInHorizontally { width -> width } + fadeIn() togetherWith
                             slideOutHorizontally { width -> -width } + fadeOut()
                 } else {
@@ -794,7 +811,11 @@ private fun LauncherAssistAndPresetsPanel(
             label = "assist_presets_swipe_transition",
         ) { tab ->
             when (tab) {
-                AssistPresetsTab.Assist -> LauncherAssistControlBar(
+                AssistPresetsTab.Lanes -> LauncherLanesControlBar(
+                    adas = adas,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AssistPresetsTab.Main -> LauncherAssistControlBar(
                     canViewModel = canViewModel,
                     adas = adas,
                     modifier = Modifier.fillMaxWidth(),

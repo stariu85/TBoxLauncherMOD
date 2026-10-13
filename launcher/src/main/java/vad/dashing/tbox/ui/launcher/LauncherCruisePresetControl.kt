@@ -34,7 +34,7 @@ import kotlinx.coroutines.delay
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.ui.theme.tboxCaption
 
-private val ButtonHeight = 50.dp
+private val ButtonHeight = 60.dp
 
 @Composable
 fun LauncherCruisePresetControl(
@@ -171,16 +171,17 @@ private fun CruisePresetChip(
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val activeGreen = Color(0xFF10B981)
     val (tint, bg, border) = when {
         isSelected && chipState == CruiseChipState.Active -> Triple(
-            LauncherColors.AccentCyan,
-            LauncherColors.AccentCyan.copy(alpha = 0.25f),
-            LauncherColors.AccentCyan.copy(alpha = 0.85f),
+            activeGreen,
+            LauncherColors.LeftPanelCard,
+            activeGreen,
         )
         isSelected && chipState == CruiseChipState.Standby -> Triple(
-            Color(0xFFD1D5DB),
+            activeGreen,
             Color(0xFF4B5563).copy(alpha = 0.45f),
-            Color(0xFF9CA3AF).copy(alpha = 0.75f),
+            activeGreen,
         )
         else -> Triple(
             LauncherColors.LeftTextPrimary,

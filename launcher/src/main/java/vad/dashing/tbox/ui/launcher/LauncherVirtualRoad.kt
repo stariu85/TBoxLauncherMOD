@@ -621,12 +621,17 @@ private fun DrawScope.drawRoadSurface(
         }
         close()
     }
+    val dark = LauncherThemeState.darkTheme
+    val startColor = if (dark) Color(0xFF1B2634).copy(alpha = 0f) else Color(0xFFE2E8F0).copy(alpha = 0f)
+    val midColor = if (dark) Color(0xFF1B2634).copy(alpha = 0.55f) else Color(0xFFCBD5E1).copy(alpha = 0.35f)
+    val endColor = if (dark) Color(0xFF232F3E).copy(alpha = 0.92f) else Color(0xFFD1D5DB).copy(alpha = 0.65f)
+
     drawPath(
         path = surface,
         brush = Brush.verticalGradient(
-            0f to Color(0xFF1B2634).copy(alpha = 0f),
-            0.35f to Color(0xFF1B2634).copy(alpha = 0.55f),
-            1f to Color(0xFF232F3E).copy(alpha = 0.92f),
+            0f to startColor,
+            0.35f to midColor,
+            1f to endColor,
             startY = horizonY,
             endY = size.height,
         ),

@@ -35,7 +35,7 @@ import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
 import vad.dashing.tbox.ui.theme.tboxCaption
 
-private val ButtonHeight = 50.dp
+private val ButtonHeight = 60.dp
 
 @Composable
 fun LauncherDriveModeBar(
