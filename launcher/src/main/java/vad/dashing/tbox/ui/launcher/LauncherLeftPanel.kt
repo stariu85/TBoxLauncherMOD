@@ -185,11 +185,6 @@ fun LauncherLeftPanel(
     }
     val activeGear = parsedGear ?: latchedGear
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
-    val cruisePanelRevision by LauncherAppConfigStore.cruisePanelRevisionFlow
-        .collectAsStateWithLifecycle()
-    val cruisePanelVisible = remember(context, cruisePanelRevision) {
-        LauncherAppConfigStore.cruisePanelVisible(context)
-    }
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
     val miniPlayerVisible = remember(context, miniPlayerRevision) {
@@ -358,12 +353,12 @@ fun LauncherLeftPanel(
         val isPanelVisible: (String) -> Boolean = { panelId ->
             when (panelId) {
                 "drive_mode" -> driveModeBarVisible
-                "assist", "presets" -> assistPanelVisible || cruisePanelVisible
+                "assist", "presets" -> assistPanelVisible
                 else -> false
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, cruisePanelVisible) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -379,7 +374,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, driveModeBarVisible, assistPanelVisible, cruisePanelVisible) {
+        val activeBottomPanels = remember(adasBottomPanels, driveModeBarVisible, assistPanelVisible) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -400,11 +395,11 @@ fun LauncherLeftPanel(
             when (panelId) {
                 "drive_mode" -> driveModeBarContent()
                 "assist", "presets" -> {
-                    if (assistPanelVisible || cruisePanelVisible) {
+                    if (assistPanelVisible) {
                         LauncherAssistAndPresetsPanel(
                             canViewModel = canViewModel,
                             adas = adas,
-                            initialTab = if (cruisePanelVisible) AssistPresetsTab.Presets else AssistPresetsTab.Assist,
+                            initialTab = AssistPresetsTab.Assist,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }

@@ -61,14 +61,13 @@ private const val SETTINGS_YAW_DEG = 45f
 private val TOP_CAMERA_POS = Float3(0f, 4.8f, 0.08f)
 private val TOP_CAMERA_TARGET = Float3(0f, 0f, 0f)
 /** Raised by +15° in elevation pitch to align the car perspective with the road canvas. */
-private val DRIVE_CAMERA_POS = Float3(0f, 2.55f, 3.4f)
+private val DRIVE_CAMERA_POS = Float3(0f, 2.20f, 2.85f)
 private val DRIVE_CAMERA_TARGET = Float3(0f, 0.20f, -2.2f)
 /** Settings camera keeps the whole car in frame and clear of the near clipping plane. */
 private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
-private const val HOME_MODEL_SCALE = 0.50f
-private const val DRIVE_MODEL_SCALE = 0.36f
+private const val BASE_MODEL_SCALE = 0.42f
 private const val TARGET_FRAME_INTERVAL_NS = 33_333_333L // Constant 30 FPS
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
@@ -304,7 +303,7 @@ private fun LauncherCarFilamentContent(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
-    var renderedScale by remember(modelInstance) { mutableFloatStateOf(HOME_MODEL_SCALE) }
+    var renderedScale by remember(modelInstance) { mutableFloatStateOf(BASE_MODEL_SCALE) }
     var modelReady by remember(modelInstance) { mutableStateOf(modelInstance != null) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
@@ -368,10 +367,16 @@ private fun LauncherCarFilamentContent(
     }
 
     SideEffect {
+        val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+        val initialTopPos = Float3(
+            TOP_CAMERA_POS.x,
+            TOP_CAMERA_POS.y / safeCustomScale,
+            TOP_CAMERA_POS.z / safeCustomScale,
+        )
         val initialDrivePos = Float3(
-            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, currentDriveBlend),
-            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, currentDriveBlend),
-            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, currentDriveBlend),
+            lerp(initialTopPos.x, DRIVE_CAMERA_POS.x, currentDriveBlend),
+            lerp(initialTopPos.y, DRIVE_CAMERA_POS.y, currentDriveBlend),
+            lerp(initialTopPos.z, DRIVE_CAMERA_POS.z, currentDriveBlend),
         )
         val initialDriveTarget = Float3(
             lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, currentDriveBlend),
@@ -489,12 +494,20 @@ private fun LauncherCarFilamentContent(
                         }
 
                         val driveBlend = currentDriveBlend
+                        val driveScale = lerp(1f, 1.21f, driveBlend)
+                        val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+
+                        val topCamPos = Float3(
+                            TOP_CAMERA_POS.x,
+                            TOP_CAMERA_POS.y / safeCustomScale,
+                            TOP_CAMERA_POS.z / safeCustomScale,
+                        )
 
                         // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
                         val drivePos = Float3(
-                            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, driveBlend),
-                            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, driveBlend),
-                            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, driveBlend),
+                            lerp(topCamPos.x, DRIVE_CAMERA_POS.x, driveBlend),
+                            lerp(topCamPos.y, DRIVE_CAMERA_POS.y, driveBlend),
+                            lerp(topCamPos.z, DRIVE_CAMERA_POS.z, driveBlend),
                         )
                         val driveTargetPos = Float3(
                             lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, driveBlend),
@@ -522,19 +535,20 @@ private fun LauncherCarFilamentContent(
                             transition,
                         )
                         node.rotation = Rotation(y = modelYaw)
+                        val driveModelZ = lerp(HOME_MODEL_Z, -0.21f, driveBlend)
                         node.position = Position(
                             x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, transition),
                             y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
-                            z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, transition),
+                            z = lerp(driveModelZ, SETTINGS_MODEL_Z, transition),
                         )
 
                         val viewport = cameraNode.viewport
                         val widthPx = viewport?.width ?: 0
                         val heightPx = viewport?.height ?: 0
 
-                        val driveModelScale = lerp(HOME_MODEL_SCALE, DRIVE_MODEL_SCALE, driveBlend)
-                        val homeScale = driveModelScale * customModelScale
-                        val baseScale = lerp(homeScale, SETTINGS_MODEL_SCALE, transition)
+                        val homeScale = BASE_MODEL_SCALE * driveScale
+                        val settingsScale = SETTINGS_MODEL_SCALE * safeCustomScale
+                        val baseScale = lerp(homeScale, settingsScale, transition)
                         val pinchScale = lerp(
                             1f,
                             userScale.coerceIn(
@@ -543,8 +557,7 @@ private fun LauncherCarFilamentContent(
                             ),
                             transition,
                         )
-                        val settingsCustomScale = lerp(1f, customModelScale, transition)
-                        val targetScale = baseScale * pinchScale * settingsCustomScale
+                        val targetScale = baseScale * pinchScale
                         node.isVisible = true
                         if (!modelReady) {
                             renderedScale = targetScale
@@ -617,8 +630,8 @@ private fun LauncherCarFilamentContent(
             ) {
                 val initialTransition = settingsProgress.coerceIn(0f, 1f)
                 val initialScale = lerp(
-                    HOME_MODEL_SCALE,
-                    SETTINGS_MODEL_SCALE,
+                    BASE_MODEL_SCALE * customModelScale,
+                    SETTINGS_MODEL_SCALE * customModelScale,
                     initialTransition,
                 ) * lerp(
                     1f,

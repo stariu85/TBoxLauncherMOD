@@ -114,9 +114,9 @@ internal const val BOTTOM_BAR_HEIGHT_MAX = 110
 internal const val FLOATING_HOME_SIZE_DEFAULT = 55
 internal const val FLOATING_HOME_SIZE_MIN = 32
 internal const val FLOATING_HOME_SIZE_MAX = 150
-internal const val CAR_MODEL_SCALE_DEFAULT = 1.20f
-internal const val CAR_MODEL_SCALE_MIN = 0.50f
-internal const val CAR_MODEL_SCALE_MAX = 1.80f
+internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
+internal const val CAR_MODEL_SCALE_MIN = 1.00f
+internal const val CAR_MODEL_SCALE_MAX = 2.50f
 internal const val SIDEBAR_WIDTH_DEFAULT = 300
 internal const val SIDEBAR_WIDTH_MIN = 240
 internal const val SIDEBAR_WIDTH_MAX = 400
@@ -729,17 +729,19 @@ internal object LauncherAppConfigStore {
     fun adasTopPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_TOP_PANELS, null)
         if (raw != null) {
-            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            return list.map { if (it == "presets") "assist" else it }.distinct()
         }
-        return listOf("drive_mode", "assist")
+        return listOf("drive_mode")
     }
 
     fun adasBottomPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
         if (raw != null) {
-            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            return list.map { if (it == "presets") "assist" else it }.distinct()
         }
-        return listOf("presets")
+        return listOf("assist")
     }
 
     fun setAdasPanelsLayout(context: Context, top: List<String>, bottom: List<String>) {

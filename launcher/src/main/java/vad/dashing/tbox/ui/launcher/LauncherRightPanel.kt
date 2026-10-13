@@ -793,22 +793,25 @@ fun LauncherRightPanel(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(60.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LauncherColors.CardDark)
-                        .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.40f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .height(68.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(LauncherColors.CardDarkElevated.copy(alpha = 0.90f))
+                        .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // Column X Slider
                     Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(bottom = 2.dp),
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = stringResource(R.string.launcher_grid_columns_label),
@@ -833,7 +836,9 @@ fun LauncherRightPanel(
                             },
                             valueRange = GRID_COLUMNS_MIN.toFloat()..GRID_COLUMNS_MAX.toFloat(),
                             steps = GRID_COLUMNS_MAX - GRID_COLUMNS_MIN - 1,
-                            modifier = Modifier.height(18.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(22.dp),
                             colors = SliderDefaults.colors(
                                 thumbColor = LauncherColors.AccentCyan,
                                 activeTrackColor = LauncherColors.AccentCyan,
@@ -844,12 +849,15 @@ fun LauncherRightPanel(
 
                     // Row Y Slider
                     Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(bottom = 2.dp),
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = stringResource(R.string.launcher_grid_rows_label),
@@ -874,7 +882,9 @@ fun LauncherRightPanel(
                             },
                             valueRange = GRID_ROWS_MIN.toFloat()..GRID_ROWS_MAX.toFloat(),
                             steps = GRID_ROWS_MAX - GRID_ROWS_MIN - 1,
-                            modifier = Modifier.height(18.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(22.dp),
                             colors = SliderDefaults.colors(
                                 thumbColor = LauncherColors.AccentCyan,
                                 activeTrackColor = LauncherColors.AccentCyan,
@@ -885,12 +895,15 @@ fun LauncherRightPanel(
 
                     // Row Spacing Slider
                     Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(bottom = 2.dp),
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = stringResource(R.string.launcher_grid_row_spacing_label),
@@ -915,7 +928,9 @@ fun LauncherRightPanel(
                             },
                             valueRange = GRID_ROW_SPACING_MIN.toFloat()..GRID_ROW_SPACING_MAX.toFloat(),
                             steps = GRID_ROW_SPACING_MAX - GRID_ROW_SPACING_MIN - 1,
-                            modifier = Modifier.height(18.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(22.dp),
                             colors = SliderDefaults.colors(
                                 thumbColor = LauncherColors.AccentCyan,
                                 activeTrackColor = LauncherColors.AccentCyan,
@@ -926,12 +941,15 @@ fun LauncherRightPanel(
 
                     // Icon Scale Slider
                     Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(bottom = 2.dp),
+                        verticalArrangement = Arrangement.Center,
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = stringResource(R.string.launcher_grid_scale_label),
@@ -956,7 +974,9 @@ fun LauncherRightPanel(
                             },
                             valueRange = HOME_ICON_SCALE_MIN..HOME_ICON_SCALE_MAX,
                             steps = 23,
-                            modifier = Modifier.height(18.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(22.dp),
                             colors = SliderDefaults.colors(
                                 thumbColor = LauncherColors.AccentCyan,
                                 activeTrackColor = LauncherColors.AccentCyan,
