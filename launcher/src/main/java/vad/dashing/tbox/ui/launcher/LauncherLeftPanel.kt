@@ -483,6 +483,7 @@ fun LauncherLeftPanel(
                     )
                     LauncherHeadlightOverlay(
                         beams = headlightBeams,
+                        hma = adas.hma,
                         frame = headlightFrame,
                         modifier = Modifier.fillMaxSize(),
                     )

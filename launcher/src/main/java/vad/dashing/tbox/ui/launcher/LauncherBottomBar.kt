@@ -100,6 +100,7 @@ import vad.dashing.tbox.ui.sendAdjustAudioVolume
 import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
 import vad.dashing.tbox.ui.sendCycleFrontSeatVent
+import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
 import vad.dashing.tbox.ui.sendCycleHvacFanDirection
 import vad.dashing.tbox.ui.sendCycleHvacFanSpeed
 import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
@@ -182,6 +183,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("temp_driver", "Температура водителя", R.drawable.ic_widget_hvac_auto),
     LauncherDockButtonDescriptor("temp_pass", "Температура пассажира", R.drawable.ic_widget_hvac_auto),
     LauncherDockButtonDescriptor("audio_volume", "Громкость медиа", R.drawable.ic_widget_media_note),
+    LauncherDockButtonDescriptor("headlights", "Переключатель фар", R.drawable.ic_widget_headlights),
     LauncherDockButtonDescriptor("seat_heat_right", "Подогрев пассажира", R.drawable.ic_widget_seat_heat_right),
     LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_3),
     LauncherDockButtonDescriptor("recirc", "Рециркуляция", R.drawable.ic_widget_hvac_air_recirculation),
@@ -996,6 +998,13 @@ private fun LauncherBottomDockButtonContent(
                 active = rearDefrost is MbCanBinaryState.On,
                 activeColor = Color(0xFFF97316),
             )
+        }
+        "headlights" -> {
+            val snapshot = rememberLauncherVehicleControlSnapshot(enabled = true)
+            val currentRaw = snapshot.lightControlRaw ?: LIGHT_CONTROL_OFF
+            LauncherDockIcon(onClick = { sendCycleHeadlightsSwitch(context, currentRaw) }) {
+                LauncherHeadlightsModeIcon(raw = currentRaw)
+            }
         }
         else -> when {
             buttonId.startsWith("split:") -> {

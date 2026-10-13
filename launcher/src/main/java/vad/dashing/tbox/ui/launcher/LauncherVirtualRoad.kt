@@ -511,8 +511,6 @@ private fun DrawScope.drawVirtualRoad(
         y += dashSpacing * (0.55f + 0.85f * t)
     }
 
-    drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
-
     drawBsdBeam(
         threats = adas.rearThreats,
         pulse = bsdPulse,
@@ -585,6 +583,7 @@ private fun DrawScope.drawVirtualRoad(
         }
     }
 
+    drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
 }
 
 /**
@@ -932,13 +931,17 @@ private fun DrawScope.drawFrontObject(
     distanceLabelOffsetRatio: Float = 0.50f,
 ) {
     val depth = distanceToRoadDepth(distanceM)
+    val fogFade = distanceFade(depth)
+    val effectiveAlpha = objectAlpha * fogFade.coerceIn(0.15f, 1f)
+    if (effectiveAlpha < 0.01f) return
+
     val cx = centerXAt(depth)
     val cy = yAt(depth)
     val roadHalf = halfWidthAt(depth)
     val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
-    val fillColor = baseColor.copy(alpha = (if (alert) 0.58f else 0.40f) * objectAlpha)
-    val strokeColor = baseColor.copy(alpha = 0.92f * objectAlpha)
+    val fillColor = baseColor.copy(alpha = (if (alert) 0.58f else 0.40f) * effectiveAlpha)
+    val strokeColor = baseColor.copy(alpha = 0.92f * effectiveAlpha)
 
     val sprite = leadSprites.forType(type)
     if (sprite != null) {
@@ -946,7 +949,7 @@ private fun DrawScope.drawFrontObject(
         val destH = destW * sprite.height / sprite.width.toFloat()
         if (alert) {
             drawOval(
-                color = Color(0xFFEF4444).copy(alpha = 0.32f * objectAlpha),
+                color = Color(0xFFEF4444).copy(alpha = 0.32f * effectiveAlpha),
                 topLeft = Offset(cx - destW * 0.52f, cy - destH * 0.08f),
                 size = Size(destW * 1.04f, destH * 0.18f),
             )
@@ -956,7 +959,7 @@ private fun DrawScope.drawFrontObject(
             cx = cx,
             cy = cy,
             destW = destW,
-            alpha = objectAlpha,
+            alpha = effectiveAlpha,
             ground = 1f,
         )
     } else {
@@ -984,7 +987,7 @@ private fun DrawScope.drawFrontObject(
         distanceM < 10 -> Color(0xFFFFA000)
         else -> LauncherColors.AccentCyan
     }
-    val labelColor = distanceColor.copy(alpha = objectAlpha)
+    val labelColor = distanceColor.copy(alpha = effectiveAlpha)
 
     val text = "${distanceM} м"
     val baseSizeSp = distanceTextSizeSp.toFloat()

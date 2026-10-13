@@ -437,15 +437,19 @@ class LauncherCarRigController private constructor(
         }
 
         val lengthScale = 1f + 0.30f * driveBlend.coerceIn(0f, 1f)
+        val leftShort = fan(leftOx, leftOz, lengthM = 1.5f * lengthScale, halfAngleDeg = 16f)
+        val rightShort = fan(rightOx, rightOz, lengthM = 1.5f * lengthScale, halfAngleDeg = 16f)
         val leftLow = fan(leftOx, leftOz, lengthM = 3.1f * lengthScale, halfAngleDeg = 22f)
         val rightLow = fan(rightOx, rightOz, lengthM = 3.1f * lengthScale, halfAngleDeg = 22f)
-        val leftHigh = fan(leftOx, leftOz, lengthM = 6.0f * lengthScale, halfAngleDeg = 22f)
-        val rightHigh = fan(rightOx, rightOz, lengthM = 6.0f * lengthScale, halfAngleDeg = 22f)
+        val leftHigh = fan(leftOx, leftOz, lengthM = 10.0f * lengthScale, halfAngleDeg = 22f)
+        val rightHigh = fan(rightOx, rightOz, lengthM = 10.0f * lengthScale, halfAngleDeg = 22f)
         if (leftLow.size < 2 || rightLow.size < 2) {
             return null
         }
         val finalLeftHigh = if (leftHigh.size >= 2) leftHigh else leftLow
         val finalRightHigh = if (rightHigh.size >= 2) rightHigh else rightLow
+        val finalLeftShort = if (leftShort.size >= 2) leftShort else leftLow
+        val finalRightShort = if (rightShort.size >= 2) rightShort else rightLow
         return LauncherHeadlightFrame(
             leftOrigin = leftOrigin,
             rightOrigin = rightOrigin,
@@ -453,6 +457,8 @@ class LauncherCarRigController private constructor(
             rightLowFan = rightLow,
             leftHighFan = finalLeftHigh,
             rightHighFan = finalRightHigh,
+            leftShortFan = finalLeftShort,
+            rightShortFan = finalRightShort,
         )
     }
 

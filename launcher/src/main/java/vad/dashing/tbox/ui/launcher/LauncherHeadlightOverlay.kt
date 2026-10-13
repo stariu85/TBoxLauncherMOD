@@ -30,6 +30,8 @@ data class LauncherHeadlightFrame(
     val rightLowFan: List<Offset>,
     val leftHighFan: List<Offset>,
     val rightHighFan: List<Offset>,
+    val leftShortFan: List<Offset> = emptyList(),
+    val rightShortFan: List<Offset> = emptyList(),
 )
 
 @Composable
@@ -88,15 +90,28 @@ internal fun resolveHeadlightBeams(
 @Composable
 fun LauncherHeadlightOverlay(
     beams: LauncherHeadlightBeams,
+    hma: LauncherAdasAssistIcon = LauncherAdasAssistIcon.Hidden,
     frame: LauncherHeadlightFrame?,
     modifier: Modifier = Modifier,
 ) {
-    if (!beams.any || frame == null) return
-    val high = beams.highBeam
-    val color = if (high) Color(0xFFEAF4FF) else Color(0xFFFFF1C2)
-    val coreAlpha = if (high) 0.58f else 0.36f
-    val leftFan = if (high && frame.leftHighFan.size >= 2) frame.leftHighFan else frame.leftLowFan
-    val rightFan = if (high && frame.rightHighFan.size >= 2) frame.rightHighFan else frame.rightLowFan
+    if (frame == null) return
+    val isLong = beams.highBeam || hma == LauncherAdasAssistIcon.Active
+    val isShort = !isLong && hma == LauncherAdasAssistIcon.Dark
+    if (!isLong && !isShort) return
+
+    val color = if (isLong) Color(0xFFEAF4FF) else LauncherColors.AccentBlue
+    val coreAlpha = if (isLong) 0.58f else 0.45f
+    val leftFan = if (isLong) {
+        if (frame.leftHighFan.size >= 2) frame.leftHighFan else frame.leftLowFan
+    } else {
+        if (frame.leftShortFan.size >= 2) frame.leftShortFan else frame.leftLowFan
+    }
+    val rightFan = if (isLong) {
+        if (frame.rightHighFan.size >= 2) frame.rightHighFan else frame.rightLowFan
+    } else {
+        if (frame.rightShortFan.size >= 2) frame.rightShortFan else frame.rightLowFan
+    }
+
     Canvas(modifier = modifier.fillMaxSize()) {
         drawHeadlightCone(
             origin = frame.leftOrigin,
