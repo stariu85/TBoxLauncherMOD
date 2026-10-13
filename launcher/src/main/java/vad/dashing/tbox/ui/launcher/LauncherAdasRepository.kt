@@ -343,11 +343,10 @@ object LauncherAdasRepository {
                     val now = android.os.SystemClock.uptimeMillis()
                     lastRadarMs = now
                     if (now >= radarGraceUntilMs) {
-                        if (zones == radarPending || zones == pdcZones) {
+                        if (zones != pdcZones) {
                             pdcZones = zones
                             publish()
                         }
-                        radarPending = zones
                     }
                 }
             }
@@ -359,7 +358,7 @@ object LauncherAdasRepository {
                 .getMethod("registRadarSensorListener", iface)
                 .invoke(inst, proxy)
             radarListenerProxy = proxy
-            radarGraceUntilMs = android.os.SystemClock.uptimeMillis() + 2500L
+            radarGraceUntilMs = android.os.SystemClock.uptimeMillis() + 500L
             radarPending = null
         }
     }
@@ -401,9 +400,8 @@ object LauncherAdasRepository {
     private fun parseRadarSensor(raw: Any?): LauncherPdcZones? = runCatching {
         val sensor = raw ?: return null
         val work = intField(sensor, "getRadarWorkSts")
-        val detect = intField(sensor, "getRadarDetectSts")
         // 0 = module off / no sweep. Do not keep the last obstacle after PAS shuts down.
-        if (work == 0 || detect == 0) return LauncherPdcZones()
+        if (work == 0) return LauncherPdcZones()
         // OEM L/R on this car is mirrored vs the 3D body (driver-left is packet-right).
         LauncherPdcZones(
             frontSideLeftCm = intField(sensor, "getRHSF_Distance"),

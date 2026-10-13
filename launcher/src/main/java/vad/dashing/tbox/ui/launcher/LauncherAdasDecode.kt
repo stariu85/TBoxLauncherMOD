@@ -501,7 +501,7 @@ data class LauncherPdcZones(
 
             fun levelFor(distanceCm: Int): LauncherPdcLevel = when {
                 // 150 cm and 0 both mean "free space" in practice (0 = no reading).
-                distanceCm !in 1 until PDC_MAX_CM -> LauncherPdcLevel.None
+                distanceCm !in 1..PDC_MAX_CM -> LauncherPdcLevel.None
                 distanceCm <= PDC_NEAR_CM -> LauncherPdcLevel.Near
                 distanceCm <= PDC_MID_CM -> LauncherPdcLevel.Mid
                 else -> LauncherPdcLevel.Far
