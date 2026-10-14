@@ -66,7 +66,7 @@ fun LauncherBsdAlertOverlay(
         initialValue = 0.35f,
         targetValue = 0.95f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 450, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "bsdOverlayPulseValue",
@@ -75,12 +75,12 @@ fun LauncherBsdAlertOverlay(
     val alertRed = Color(0xFFFF1744)
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Left 100.dp bar (solid red at x=0 -> transparent at x=100dp)
+        // Left 150.dp bar (solid red at x=0 -> transparent at x=150dp)
         if (bsdLeftAlert) {
             Canvas(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .width(100.dp)
+                    .width(150.dp)
                     .fillMaxHeight(),
             ) {
                 drawRect(
@@ -98,12 +98,12 @@ fun LauncherBsdAlertOverlay(
             }
         }
 
-        // Right 100.dp bar (transparent at x=0 -> solid red at x=100dp)
+        // Right 150.dp bar (transparent at x=0 -> solid red at x=150dp)
         if (bsdRightAlert) {
             Canvas(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .width(100.dp)
+                    .width(150.dp)
                     .fillMaxHeight(),
             ) {
                 drawRect(

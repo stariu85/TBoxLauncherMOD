@@ -192,6 +192,7 @@ data class LauncherAdasState(
     val rearThreats: LauncherRearThreats = LauncherRearThreats(),
     /** Ultrasonic parking sensors (12 channels collapsed to 6 display zones). */
     val pdc: LauncherPdcZones = LauncherPdcZones(),
+    val pdcActive: Boolean = false,
     /** Adaptive high beam (HMA) — AIService beamLight. */
     val hma: LauncherAdasAssistIcon = LauncherAdasAssistIcon.Hidden,
     /** Traffic jam / ICA assist — AIService tjaIcaIcon. */
@@ -287,6 +288,7 @@ internal fun buildLauncherAdasState(
     tsr: LauncherAdasTsrSign = LauncherAdasTsrSign(),
     rearThreats: LauncherRearThreats = LauncherRearThreats(),
     pdc: LauncherPdcZones = LauncherPdcZones(),
+    pdcActive: Boolean = false,
     hmaRaw: Byte = 0,
     tjaRaw: Byte = 0,
     srrSystemRaw: Byte = 0,
@@ -386,6 +388,7 @@ internal fun buildLauncherAdasState(
         tsr = tsr,
         rearThreats = rearThreats,
         pdc = pdc,
+        pdcActive = pdcActive,
         hma = hma,
         tja = tja,
         srrSystem = srrSystem,

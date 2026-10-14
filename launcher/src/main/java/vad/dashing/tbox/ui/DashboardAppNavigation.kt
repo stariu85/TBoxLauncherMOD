@@ -445,7 +445,8 @@ internal fun sendAdjustHvacTemperature(
             val celsius = (nextRaw.toFloat() / scale).roundToInt().toFloat()
 
             if (zone == HvacTempZone.Driver && syncActive) {
-                // When SYNC is active, changing driver temperature also updates passenger temperature
+                // When SYNC is active, changing driver temperature updates both zones locally and sends ONLY driver temp.
+                // Sending passenger temp explicitly would cause the MCU to detect a passenger override and turn SYNC off.
                 CanDataRepository.updateClimateSetTemperature1(celsius)
                 CanDataRepository.updateClimateSetTemperature2(celsius)
 
@@ -455,14 +456,6 @@ internal fun sendAdjustHvacTemperature(
                 )
                 if (written1 == null) {
                     sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE, nextRaw)
-                }
-
-                val written2 = MbCanEngineFacade.canSetVehicleParam(
-                    MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE,
-                    nextRaw
-                )
-                if (written2 == null) {
-                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE, nextRaw)
                 }
             } else {
                 if (zone == HvacTempZone.Passenger && syncActive) {
@@ -495,7 +488,7 @@ internal fun sendAdjustHvacTemperature(
 @Volatile
 private var hvacTempRefreshSuppressedUntilMs = 0L
 
-/** Pull both zone setpoints from mbCAN into [CanDataRepository]. */
+/** Pull both zone setpoints and fan parameters from mbCAN into [CanDataRepository] and [UniversalCanRepository]. */
 internal fun refreshHvacTemperaturesFromMbCan() {
     if (SystemClock.uptimeMillis() < hvacTempRefreshSuppressedUntilMs) return
     runCatching {
@@ -507,6 +500,12 @@ internal fun refreshHvacTemperaturesFromMbCan() {
             .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE)
             ?.let { decodeHvacTemperatureRaw(it) }
             ?.let { CanDataRepository.updateClimateSetTemperature2(it) }
+        MbCanEngineFacade
+            .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED)
+            ?.let { UniversalCanRepository.updateHvacFanSpeedRaw(it) }
+        MbCanEngineFacade
+            .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
+            ?.let { UniversalCanRepository.updateHvacFanDirectionRaw(it) }
     }
 }
 

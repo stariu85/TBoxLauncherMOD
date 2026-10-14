@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -366,37 +365,6 @@ private fun LauncherCarFilamentContent(
     }
     }
 
-    SideEffect {
-        val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
-        val initialTopPos = Float3(
-            TOP_CAMERA_POS.x,
-            TOP_CAMERA_POS.y / safeCustomScale,
-            TOP_CAMERA_POS.z / safeCustomScale,
-        )
-        val initialDrivePos = Float3(
-            lerp(initialTopPos.x, DRIVE_CAMERA_POS.x, currentDriveBlend),
-            lerp(initialTopPos.y, DRIVE_CAMERA_POS.y, currentDriveBlend),
-            lerp(initialTopPos.z, DRIVE_CAMERA_POS.z, currentDriveBlend),
-        )
-        val initialDriveTarget = Float3(
-            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, currentDriveBlend),
-            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, currentDriveBlend),
-            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, currentDriveBlend),
-        )
-        cameraNode.worldPosition = Position(
-            lerp(initialDrivePos.x, SETTINGS_CAMERA_POS.x, currentTransition),
-            lerp(initialDrivePos.y, SETTINGS_CAMERA_POS.y, currentTransition),
-            lerp(initialDrivePos.z, SETTINGS_CAMERA_POS.z, currentTransition),
-        )
-        cameraNode.lookAt(
-            Position(
-                lerp(initialDriveTarget.x, SETTINGS_CAMERA_TARGET.x, currentTransition),
-                lerp(initialDriveTarget.y, SETTINGS_CAMERA_TARGET.y, currentTransition),
-                lerp(initialDriveTarget.z, SETTINGS_CAMERA_TARGET.z, currentTransition),
-            ),
-        )
-    }
-
     LaunchedEffect(rigController, animationController) {
         val requiredBodyNodes = setOf(
             LauncherCarRigController.DOOR_FL,
@@ -463,7 +431,8 @@ private fun LauncherCarFilamentContent(
                         val currentRigState = rigStateRef.value
                         val currentSteering = steeringDeg
                         val orbit = settingsOrbitRef.value
-                        val transition = settingsProgress.coerceIn(0f, 1f)
+                        val rawTransition = settingsProgress.coerceIn(0f, 1f)
+                        val transition = if (rawTransition < 0.001f) 0f else rawTransition
 
                         val targetDriveBlend = if (transition > 0.02f) {
                             0f

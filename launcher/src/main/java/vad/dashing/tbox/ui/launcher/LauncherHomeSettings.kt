@@ -139,6 +139,7 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardOpacitySlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()
+    PdcVisualModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
     AdasDistanceTextSizeSlider()
@@ -437,6 +438,57 @@ private fun CameraSwitchModeSelector() {
                         context,
                         CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
                     )
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PdcVisualModeSelector() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.pdcVisualModeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val mode = remember(context, revision) {
+        LauncherAppConfigStore.pdcVisualMode(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_pdc_visual_mode_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+        )
+        Text(
+            text = stringResource(R.string.launcher_pdc_visual_mode_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_pdc_visual_mode_arcs),
+                selected = mode == PDC_VISUAL_ARCS,
+                onClick = {
+                    LauncherAppConfigStore.setPdcVisualMode(context, PDC_VISUAL_ARCS)
+                },
+                modifier = Modifier.weight(1f),
+            )
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_pdc_visual_mode_classic),
+                selected = mode == PDC_VISUAL_CLASSIC,
+                onClick = {
+                    LauncherAppConfigStore.setPdcVisualMode(context, PDC_VISUAL_CLASSIC)
+                },
+                modifier = Modifier.weight(1f),
+            )
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_pdc_visual_mode_off),
+                selected = mode == PDC_VISUAL_OFF,
+                onClick = {
+                    LauncherAppConfigStore.setPdcVisualMode(context, PDC_VISUAL_OFF)
                 },
                 modifier = Modifier.weight(1f),
             )

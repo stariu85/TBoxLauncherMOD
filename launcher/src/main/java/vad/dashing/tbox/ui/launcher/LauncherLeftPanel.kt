@@ -82,7 +82,7 @@ internal fun isDriveViewActive(
     isDriveGear: Boolean = false,
     accActive: Boolean = false,
     racing: Boolean = false,
-    cameraSwitchMode: Int = CAMERA_SWITCH_MODE_PAS_AND_PARK,
+    cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
 ): Boolean {
     if (isParkGear) return false
     if (racing || accActive) return true
@@ -226,7 +226,7 @@ fun LauncherLeftPanel(
     }
     val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle()
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
-    val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdc.hasAny || (simulateEnabled && LauncherDevVehicleState.showAllIndicators)
+    val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdcActive || adas.pdc.hasAny || (simulateEnabled && LauncherDevVehicleState.showAllIndicators)
     val accActive = adas.accActive ||
         (adas.frontObject.valid && (adas.fcwActive || adas.distanceWarning || adas.aebHint))
     val cameraSwitchModeRevision by LauncherAppConfigStore.cameraSwitchModeRevisionFlow
@@ -281,7 +281,7 @@ fun LauncherLeftPanel(
     val isNor = activeDriveMode == "NOR" || activeDriveMode == "NORMAL" || activeDriveMode == "COMFORT"
     val isSpt = activeDriveMode == "SPT" || activeDriveMode == "SPORT"
 
-    val isMoving = effectiveSpeed > 0.5f
+    val isDrivingState = (inDriveGear || effectiveSpeed > 0.5f) && activeGear != 'P'
 
     val baseGlowColor = when {
         isEco -> Color(0xFF16A34A) // Green
@@ -290,7 +290,7 @@ fun LauncherLeftPanel(
         else -> Color.Transparent
     }
 
-    val targetGlowColor = if (isMoving && driveModeGlowVisible) baseGlowColor else baseGlowColor.copy(alpha = 0f)
+    val targetGlowColor = if (isDrivingState && driveModeGlowVisible) baseGlowColor else baseGlowColor.copy(alpha = 0f)
 
     val animatedGlowColor by animateColorAsState(
         targetValue = targetGlowColor,

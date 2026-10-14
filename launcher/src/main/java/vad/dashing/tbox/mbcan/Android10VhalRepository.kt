@@ -933,8 +933,13 @@ object Android10VhalRepository {
                 raw?.let {
                     stateEngine.applyHvacSyncCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
+            resolved(MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED) ->
+                raw?.let {
+                    UniversalCanRepository.updateHvacFanSpeedRaw(it)
+                }
             resolved(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION) ->
                 raw?.let {
+                    UniversalCanRepository.updateHvacFanDirectionRaw(it)
                     stateEngine.applyHvacDefrosterFrontCandidate(
                         MbCanSignalStateEngine.decodeHvacFrontDefrostVhalRaw(it)
                     )

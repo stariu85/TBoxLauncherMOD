@@ -421,10 +421,12 @@ object MbCanRepository {
                     MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED -> {
                         UniversalCanRepository.updateHvacFanSpeedRaw(raw)
                     }
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION ->
+                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION -> {
+                        UniversalCanRepository.updateHvacFanDirectionRaw(raw)
                         stateEngine.applyHvacDefrosterFrontCandidate(
                             MbCanSignalStateEngine.decodeHvacFrontDefrostMbCanRaw(raw)
                         )
+                    }
                     MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE -> {
                         val deg = decodeHvacTemperatureRaw(raw)
                         if (deg != null) {

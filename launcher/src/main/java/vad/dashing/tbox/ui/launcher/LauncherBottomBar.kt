@@ -293,10 +293,10 @@ private fun LauncherDockSlotPickerPopup(
                     Text(
                         text = "Добавить иконку в слот №${slotIndex + 1}",
                         color = LauncherColors.TextPrimary,
-                        fontSize = 15.sp,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
                     )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(31.dp)) {
                         Icon(Icons.Filled.Close, null, tint = LauncherColors.TextMuted)
                     }
                 }
@@ -305,35 +305,35 @@ private fun LauncherDockSlotPickerPopup(
                     Text(
                         text = "Иконки климата",
                         color = LauncherColors.TextMuted,
-                        fontSize = 12.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 6.dp),
                     ) {
                         missingButtons.forEach { btn ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(LauncherColors.CardDark)
                                     .clickable { onSelectButton(btn.id) }
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                             ) {
                                 Box(
-                                    modifier = Modifier.size(36.dp),
+                                    modifier = Modifier.size(47.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (btn.id == "hvac_sync" || btn.id == "hvac_auto") {
                                         Text(
                                             text = if (btn.id == "hvac_sync") "SYNC" else "AUTO",
                                             color = pickerIconColor,
-                                            fontSize = 11.sp,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
                                         )
                                     } else if (btn.id == "hvac_pm25") {
@@ -341,28 +341,28 @@ private fun LauncherDockSlotPickerPopup(
                                             painter = painterResource(btn.iconRes!!),
                                             contentDescription = null,
                                             colorFilter = ColorFilter.tint(pickerIconColor),
-                                            modifier = Modifier.size(26.dp),
+                                            modifier = Modifier.size(34.dp),
                                         )
                                     } else if (btn.iconRes != null) {
                                         Image(
                                             painter = painterResource(btn.iconRes),
                                             contentDescription = null,
                                             colorFilter = ColorFilter.tint(pickerIconColor),
-                                            modifier = Modifier.size(26.dp),
+                                            modifier = Modifier.size(34.dp),
                                         )
                                     } else {
                                         Icon(
                                             imageVector = if (btn.id == "home_nav") Icons.Filled.Home else Icons.AutoMirrored.Filled.ArrowBack,
                                             contentDescription = null,
                                             tint = pickerIconColor,
-                                            modifier = Modifier.size(24.dp),
+                                            modifier = Modifier.size(31.dp),
                                         )
                                     }
                                 }
                                 Text(
                                     text = btn.title,
                                     color = LauncherColors.TextPrimary,
-                                    fontSize = 10.sp,
+                                    fontSize = 13.sp,
                                     maxLines = 1,
                                 )
                             }
@@ -374,44 +374,44 @@ private fun LauncherDockSlotPickerPopup(
                     Text(
                         text = stringResource(R.string.launcher_home_add_tbm_automation),
                         color = LauncherColors.TextMuted,
-                        fontSize = 12.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 6.dp),
                     ) {
                         tbmAutomations.forEach { auto ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(LauncherColors.CardDark)
                                     .clickable { selectedTbmAutoForEdit = auto }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                             ) {
                                 Box(
-                                    modifier = Modifier.size(36.dp),
+                                    modifier = Modifier.size(47.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.PlayArrow,
                                         contentDescription = auto.name,
                                         tint = pickerIconColor,
-                                        modifier = Modifier.size(24.dp),
+                                        modifier = Modifier.size(31.dp),
                                     )
                                 }
                                 Text(
                                     text = auto.name,
                                     color = LauncherColors.TextPrimary,
-                                    fontSize = 10.sp,
+                                    fontSize = 13.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 65.dp),
+                                    modifier = Modifier.widthIn(max = 85.dp),
                                 )
                             }
                         }
@@ -422,42 +422,42 @@ private fun LauncherDockSlotPickerPopup(
                     Text(
                         text = "Приложения",
                         color = LauncherColors.TextMuted,
-                        fontSize = 12.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 6.dp),
                     ) {
                         pickerApps.forEach { app ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(LauncherColors.CardDark)
                                     .clickable { onSelectButton("pkg:${app.packageName}") }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                             ) {
                                 Box(
-                                    modifier = Modifier.size(36.dp),
+                                    modifier = Modifier.size(47.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     if (app.icon != null) {
                                         Image(
                                             bitmap = app.icon,
                                             contentDescription = app.label,
-                                            modifier = Modifier.size(28.dp),
+                                            modifier = Modifier.size(36.dp),
                                             contentScale = ContentScale.Fit,
                                         )
                                     } else {
                                         Text(
                                             text = app.label.take(1).uppercase(),
                                             color = LauncherColors.AccentCyan,
-                                            fontSize = 14.sp,
+                                            fontSize = 18.sp,
                                             fontWeight = FontWeight.Bold,
                                         )
                                     }
@@ -465,10 +465,10 @@ private fun LauncherDockSlotPickerPopup(
                                 Text(
                                     text = app.label,
                                     color = LauncherColors.TextPrimary,
-                                    fontSize = 10.sp,
+                                    fontSize = 13.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 55.dp),
+                                    modifier = Modifier.widthIn(max = 72.dp),
                                 )
                             }
                         }
@@ -479,62 +479,62 @@ private fun LauncherDockSlotPickerPopup(
                     Text(
                         text = "Сплит-экраны",
                         color = LauncherColors.TextMuted,
-                        fontSize = 12.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .horizontalScroll(rememberScrollState())
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 6.dp),
                     ) {
                         splitPresets.forEach { preset ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(LauncherColors.CardDark)
                                     .clickable { onSelectButton("split:${preset.id}") }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                             ) {
                                 Box(
-                                    modifier = Modifier.size(36.dp),
+                                    modifier = Modifier.size(47.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(22.dp)
+                                            .size(29.dp)
                                             .align(Alignment.CenterStart)
                                             .offset(x = 2.dp),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        LauncherMiniIcon(app = appsByPackage[preset.leftPackage], fallback = preset.leftPackage.substringAfterLast('.'))
+                                        LauncherMiniIcon(app = appsByPackage[preset.leftPackage], fallback = preset.leftPackage.substringAfterLast('.'), iconScale = 1.3f)
                                     }
                                     Box(
                                         modifier = Modifier
-                                            .size(22.dp)
+                                            .size(29.dp)
                                             .align(Alignment.CenterEnd)
                                             .offset(x = (-2).dp),
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        LauncherMiniIcon(app = appsByPackage[preset.rightPackage], fallback = preset.rightPackage.substringAfterLast('.'))
+                                        LauncherMiniIcon(app = appsByPackage[preset.rightPackage], fallback = preset.rightPackage.substringAfterLast('.'), iconScale = 1.3f)
                                     }
                                     Text(
                                         text = "‖",
                                         modifier = Modifier.align(Alignment.Center),
                                         color = LauncherColors.AccentCyan.copy(alpha = 0.7f),
-                                        fontSize = 10.sp,
+                                        fontSize = 13.sp,
                                     )
                                 }
                                 Text(
                                     text = preset.name,
                                     color = LauncherColors.TextPrimary,
-                                    fontSize = 10.sp,
+                                    fontSize = 13.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 55.dp),
+                                    modifier = Modifier.widthIn(max = 72.dp),
                                 )
                             }
                         }

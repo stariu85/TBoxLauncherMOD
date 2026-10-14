@@ -23,6 +23,11 @@
     <string name="launcher_camera_switch_mode_desc">Condition for switching between drive view and top view</string>
     <string name="launcher_camera_switch_mode_pas">Smart (PAS &amp; Park)</string>
     <string name="launcher_camera_switch_mode_drive">D gear &amp; Park</string>
+    <string name="launcher_pdc_visual_mode_title">Parking sensors visualization</string>
+    <string name="launcher_pdc_visual_mode_desc">Display style for parking sensors around the 3D car model</string>
+    <string name="launcher_pdc_visual_mode_arcs">Bending arcs</string>
+    <string name="launcher_pdc_visual_mode_classic">Classic view</string>
+    <string name="launcher_pdc_visual_mode_off">Disabled</string>
     <string name="launcher_adas_panel_title">Left ADAS &amp; 3D Model Panel</string>
     <string name="launcher_adas_panel_desc">Show the left panel with 3D car model. When disabled, the right apps panel expands to full screen</string>
     <string name="launcher_adas_alerts_placement_title">ADAS &amp; alerts placement</string>

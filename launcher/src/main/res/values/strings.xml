@@ -211,6 +211,11 @@
     <string name="launcher_camera_switch_mode_desc">Условие перехода между видом сзади и видом сверху</string>
     <string name="launcher_camera_switch_mode_pas">Умный (парктроники и P)</string>
     <string name="launcher_camera_switch_mode_drive">По передаче D и P</string>
+    <string name="launcher_pdc_visual_mode_title">Визуализация парктроников</string>
+    <string name="launcher_pdc_visual_mode_desc">Стиль отображения парктроников на 3D-модели автомобиля</string>
+    <string name="launcher_pdc_visual_mode_arcs">Дрожащие дуги</string>
+    <string name="launcher_pdc_visual_mode_classic">Классический вид</string>
+    <string name="launcher_pdc_visual_mode_off">Выключено</string>
     <string name="launcher_adas_panel_title">Левая панель ADAS / 3D-модели</string>
     <string name="launcher_adas_panel_desc">Отображать левую панель с 3D-моделью авто. Если отключено, приложения растягиваются на весь экран</string>
     <string name="launcher_adas_alerts_placement_title">Расположение ADAS и предупреждений</string>

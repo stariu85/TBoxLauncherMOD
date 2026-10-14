@@ -21,6 +21,11 @@ private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
+private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
+
+const val PDC_VISUAL_ARCS = 0
+const val PDC_VISUAL_CLASSIC = 1
+const val PDC_VISUAL_OFF = 2
 private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
 private const val KEY_CLIMATE_VISIBLE = "climate_controls_visible"
 private const val KEY_CLIMATE_SCALE = "climate_controls_scale"
@@ -122,7 +127,7 @@ internal const val SIDEBAR_WIDTH_MIN = 240
 internal const val SIDEBAR_WIDTH_MAX = 400
 internal const val CAMERA_SWITCH_MODE_PAS_AND_PARK = 0
 internal const val CAMERA_SWITCH_MODE_DRIVE_AND_PARK = 1
-internal const val CAMERA_SWITCH_MODE_DEFAULT = 0
+internal const val CAMERA_SWITCH_MODE_DEFAULT = CAMERA_SWITCH_MODE_DRIVE_AND_PARK
 internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
 internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
 internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
@@ -224,6 +229,8 @@ internal object LauncherAppConfigStore {
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
     private val cameraSwitchModeRevision = MutableStateFlow(0)
     internal val cameraSwitchModeRevisionFlow: StateFlow<Int> = cameraSwitchModeRevision
+    private val pdcVisualModeRevision = MutableStateFlow(0)
+    internal val pdcVisualModeRevisionFlow: StateFlow<Int> = pdcVisualModeRevision
     private val navButtonsRevision = MutableStateFlow(0)
     internal val navButtonsRevisionFlow: StateFlow<Int> = navButtonsRevision
     private val adasDistanceTextSizeRevision = MutableStateFlow(0)
@@ -636,6 +643,16 @@ internal object LauncherAppConfigStore {
         val next = mode.coerceIn(0, 1)
         prefs(context).edit().putInt(KEY_CAMERA_SWITCH_MODE, next).apply()
         cameraSwitchModeRevision.value++
+    }
+
+    fun pdcVisualMode(context: Context): Int =
+        prefs(context).getInt(KEY_PDC_VISUAL_MODE, PDC_VISUAL_ARCS)
+            .coerceIn(PDC_VISUAL_ARCS, PDC_VISUAL_OFF)
+
+    fun setPdcVisualMode(context: Context, mode: Int) {
+        val next = mode.coerceIn(PDC_VISUAL_ARCS, PDC_VISUAL_OFF)
+        prefs(context).edit().putInt(KEY_PDC_VISUAL_MODE, next).apply()
+        pdcVisualModeRevision.value++
     }
 
     fun fuelShowsRange(context: Context): Boolean =

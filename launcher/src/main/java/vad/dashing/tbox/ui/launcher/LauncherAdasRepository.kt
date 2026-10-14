@@ -12,9 +12,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.MbAdasTsrFacade
 import vad.dashing.tbox.mbcan.MbCanAvailability
+import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.TsrStaleWatchdog
+import vad.dashing.tbox.mbcan.UniversalCanRepository
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
 
@@ -40,10 +42,11 @@ object LauncherAdasRepository {
     private var radarGraceUntilMs = 0L
     private var radarPending: LauncherPdcZones? = null
     private var lastRadarMs = 0L
+    private var pdcActive = false
     @Volatile private var lastSpeedKmh = 0f
     private val adasScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var pdcWatchdogJob: Job? = null
-    private const val PDC_STALE_MS = 1_400L
+    private const val PDC_STALE_MS = 1_200L
     private const val PDC_DRIVE_CLEAR_KMH = 18f
 
     private val _state = MutableStateFlow(LauncherAdasState())
@@ -121,6 +124,9 @@ object LauncherAdasRepository {
         MbAdasTsrFacade.stop()
         tsrWatchdog.cancel()
         active = false
+        pdcZones = LauncherPdcZones()
+        radarPending = null
+        lastRadarMs = 0L
         _state.value = LauncherAdasState()
         clearSnapshots()
     }
@@ -343,10 +349,11 @@ object LauncherAdasRepository {
                     val now = android.os.SystemClock.uptimeMillis()
                     lastRadarMs = now
                     if (now >= radarGraceUntilMs) {
+                        pdcActive = true
                         if (zones != pdcZones) {
                             pdcZones = zones
-                            publish()
                         }
+                        publish()
                     }
                 }
             }
@@ -383,15 +390,30 @@ object LauncherAdasRepository {
     private fun startPdcWatchdog() {
         if (pdcWatchdogJob?.isActive == true) return
         pdcWatchdogJob = adasScope.launch {
+            launch {
+                UniversalCanRepository.parkingRadarState.collect { radarState ->
+                    if (radarState !is MbCanBinaryState.On && !LauncherDevVehicleState.simulateEnabled) {
+                        pdcActive = false
+                        if (pdcZones.hasAny) {
+                            pdcZones = LauncherPdcZones()
+                            radarPending = null
+                        }
+                        publish()
+                    }
+                }
+            }
             while (isActive) {
-                delay(400)
+                delay(300)
                 val now = android.os.SystemClock.uptimeMillis()
                 val stale = lastRadarMs > 0L && now - lastRadarMs > PDC_STALE_MS
                 val drivingAway = lastSpeedKmh > PDC_DRIVE_CLEAR_KMH
-                if (pdcZones.hasAny && (stale || drivingAway)) {
-                    pdcZones = LauncherPdcZones()
-                    radarPending = null
-                    publish()
+                if (stale || drivingAway) {
+                    if (pdcActive || pdcZones.hasAny) {
+                        pdcActive = false
+                        pdcZones = LauncherPdcZones()
+                        radarPending = null
+                        publish()
+                    }
                 }
             }
         }
@@ -552,6 +574,7 @@ object LauncherAdasRepository {
             tsr = tsrSign,
             rearThreats = rearThreats,
             pdc = pdcZones,
+            pdcActive = pdcActive && (android.os.SystemClock.uptimeMillis() - lastRadarMs < PDC_STALE_MS),
             hmaRaw = lkaHma,
             tjaRaw = lkaTja,
             srrSystemRaw = srrSystemState,
