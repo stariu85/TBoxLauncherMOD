@@ -282,6 +282,31 @@ internal fun sendToggleHvacAuto(context: Context) {
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE)
 }
 
+internal fun sendDoubleTapHvacFanSpeed(context: Context) {
+    val currentAcState = UniversalCanRepository.hvacAcPowerState.value
+    val currentFanSpeed = UniversalCanRepository.hvacFanSpeedRawState.value
+    val isCurrentlyOn = currentAcState is MbCanBinaryState.On || currentFanSpeed > 0
+
+    if (isCurrentlyOn) {
+        // Double tap when climate is ON -> turn climate power OFF
+        sendToggleHvacPower(context)
+    } else {
+        // Double tap when climate is OFF -> turn climate power ON in AUTO mode
+        sendToggleHvacPower(context)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE, 2)
+                UniversalCanRepository.execute(
+                    MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE, 2)
+                )
+            } catch (e: Exception) {
+                Log.e("DashboardAppNav", "sendDoubleTapHvacFanSpeed auto enable failed", e)
+            }
+        }
+    }
+}
+
 private val hvacSyncToggleLock = Any()
 private var hvacSyncToggleBlockedUntilMs = 0L
 

@@ -2,6 +2,7 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.graphics.Rect
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -49,6 +50,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,15 +73,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
-import android.widget.Toast
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import vad.dashing.tbox.tbm.TbmAutomationItem
 import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.LaunchableAppEntry
@@ -292,9 +292,14 @@ fun LauncherRightPanel(
         },
     )
 
-    LauncherTbmAutomationIconPickerDialog(
+    LauncherTbmAutomationEditDialog(
         visible = tbmIconPickerVisible || changeIconSlotIndex >= 0,
-        currentIconName = if (changeIconSlotIndex >= 0) {
+        initialAutomationName = if (changeIconSlotIndex >= 0) {
+            (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.automationName ?: ""
+        } else {
+            selectedTbmAutomation?.name ?: ""
+        },
+        initialIconName = if (changeIconSlotIndex >= 0) {
             (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.iconName ?: "play"
         } else "play",
         onDismiss = {
@@ -302,15 +307,15 @@ fun LauncherRightPanel(
             changeIconSlotIndex = -1
             selectedTbmAutomation = null
         },
-        onIconPicked = { iconName ->
+        onSave = { iconName, customTitle ->
             if (changeIconSlotIndex >= 0) {
-                LauncherHomeStore.updateTbmAutomationIcon(context, changeIconSlotIndex, iconName)
+                LauncherHomeStore.updateTbmAutomation(context, changeIconSlotIndex, iconName, customTitle)
             } else {
                 selectedTbmAutomation?.let { auto ->
                     LauncherHomeStore.addTbmAutomation(
                         context = context,
                         automationId = auto.id,
-                        automationName = auto.name,
+                        automationName = customTitle,
                         iconName = iconName,
                         targetSlot = pickerSlotIndex,
                     )
@@ -1154,38 +1159,40 @@ fun LauncherRightPanel(
         )
 
         // Round Theme Toggle Button in the bottom-left corner
-        val isDark = LauncherThemeState.darkTheme
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .zIndex(500f)
-                .padding(start = 12.dp, bottom = 12.dp)
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(
-                    if (isDark) LauncherColors.CardDarkElevated.copy(alpha = 0.90f)
-                    else Color.White.copy(alpha = 0.90f)
+        if (LauncherThemeState.themeButtonVisible) {
+            val isDark = LauncherThemeState.darkTheme
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .zIndex(500f)
+                    .padding(start = 12.dp, bottom = 12.dp)
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isDark) LauncherColors.CardDarkElevated.copy(alpha = 0.90f)
+                        else Color.White.copy(alpha = 0.90f)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = if (isDark) LauncherColors.AccentCyan.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.20f),
+                        shape = CircleShape,
+                    )
+                    .clickable {
+                        LauncherThemeState.setDarkTheme(context, !isDark)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(
+                        if (isDark) R.drawable.ic_theme_sun else R.drawable.ic_theme_moon
+                    ),
+                    contentDescription = if (isDark) "Переключить на светлую тему" else "Переключить на тёмную тему",
+                    modifier = Modifier.size(22.dp),
+                    colorFilter = ColorFilter.tint(
+                        if (isDark) Color(0xFFF59E0B) else Color(0xFF475569)
+                    ),
                 )
-                .border(
-                    width = 1.dp,
-                    color = if (isDark) LauncherColors.AccentCyan.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.20f),
-                    shape = CircleShape,
-                )
-                .clickable {
-                    LauncherThemeState.setDarkTheme(context, !isDark)
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(
-                    if (isDark) R.drawable.ic_theme_sun else R.drawable.ic_theme_moon
-                ),
-                contentDescription = if (isDark) "Переключить на светлую тему" else "Переключить на тёмную тему",
-                modifier = Modifier.size(22.dp),
-                colorFilter = ColorFilter.tint(
-                    if (isDark) Color(0xFFF59E0B) else Color(0xFF475569)
-                ),
-            )
+            }
         }
     }
 }
@@ -1431,6 +1438,7 @@ private fun LauncherTbmAutoDockIcon(
     } else {
         Color.Black.copy(alpha = 0.15f)
     }
+    val iconColor = if (isDark) LauncherColors.AccentCyan else Color(0xFF374151)
 
     Box(
         modifier = Modifier
@@ -1463,18 +1471,20 @@ private fun LauncherTbmAutoDockIcon(
         ) {
             Icon(
                 imageVector = resolveTbmIconVector(iconName),
-                contentDescription = name,
-                tint = LauncherColors.AccentCyan,
-                modifier = Modifier.size((28 * iconScale).dp),
+                contentDescription = name.ifBlank { "Автоматизация" },
+                tint = iconColor,
+                modifier = Modifier.size(((if (name.isNotBlank()) 28f else 34f) * iconScale).dp),
             )
-            Text(
-                text = name,
-                color = LauncherColors.TextPrimary,
-                fontSize = (9 * iconScale).sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (name.isNotBlank()) {
+                Text(
+                    text = name,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = (9 * iconScale).sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         if (autostart) {

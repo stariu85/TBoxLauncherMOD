@@ -6,8 +6,6 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import androidx.core.content.ContextCompat
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -44,12 +42,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
@@ -61,6 +59,7 @@ import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -103,7 +102,7 @@ fun LauncherVirtualRoad(
     }
     val driveBlend by animateFloatAsState(
         targetValue = driveTarget,
-        animationSpec = tween(280),
+        animationSpec = tween(1000),
         label = "roadDriveBlend",
     )
 
@@ -501,12 +500,33 @@ private fun DrawScope.drawVirtualRoad(
                 else -> inactiveDashColor
             }
 
-            drawLine(
-                color = baseDashColor.copy(alpha = alpha),
-                start = Offset(x1, y),
-                end = Offset(x2, y + dashLen),
-                strokeWidth = (1.6f + 1.6f * t) * (if (isEgoLane && laneProgress > 0f) 1.25f else 1.0f),
-            )
+            val isGreenLane = isEgoLane && laneState != LauncherAdasLaneVisualization.Hidden && !lkaActive
+
+            if (isGreenLane) {
+                // Soft green outer glow matching exact 3D perspective road dash
+                drawLine(
+                    color = LdwBrightGreen.copy(alpha = 0.30f * alpha),
+                    start = Offset(x1, y),
+                    end = Offset(x2, y + dashLen),
+                    strokeWidth = (5.0f + 5.0f * t) * (if (laneProgress > 0f) 1.25f else 1.0f),
+                    cap = StrokeCap.Round,
+                )
+                // Bright green core dash matching exact 3D perspective road dash
+                drawLine(
+                    color = LdwBrightGreen.copy(alpha = 0.95f * alpha),
+                    start = Offset(x1, y),
+                    end = Offset(x2, y + dashLen),
+                    strokeWidth = (2.2f + 2.2f * t) * (if (laneProgress > 0f) 1.25f else 1.0f),
+                    cap = StrokeCap.Round,
+                )
+            } else {
+                drawLine(
+                    color = baseDashColor.copy(alpha = alpha),
+                    start = Offset(x1, y),
+                    end = Offset(x2, y + dashLen),
+                    strokeWidth = (1.6f + 1.6f * t) * (if (isEgoLane && laneProgress > 0f) 1.25f else 1.0f),
+                )
+            }
         }
         y += dashSpacing * (0.55f + 0.85f * t)
     }
@@ -862,7 +882,7 @@ private fun DrawScope.drawAdasLaneAssist(
                 style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         } else if (adas.lkaStatusCode == 2) {
-            // NGP / LKA active: Solid Blue with subtle, soft glow
+            // TJA / ICA active (blue steering wheel icon): Solid Blue with subtle, soft glow
             drawPath(
                 path = lanePath,
                 color = LkaBlueOuter.copy(alpha = 0.18f * alphaFactor),
@@ -878,19 +898,10 @@ private fun DrawScope.drawAdasLaneAssist(
                 color = LkaBlueCore.copy(alpha = 0.85f * alphaFactor),
                 style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
-        } else {
-            // LDW passive monitoring (lane detected/tracked): Solid Green
-            drawPath(
-                path = lanePath,
-                color = LdwBrightGreen.copy(alpha = 0.20f * alphaFactor),
-                style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-            drawPath(
-                path = lanePath,
-                color = LdwBrightGreen.copy(alpha = 0.80f * alphaFactor),
-                style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
         }
+        // For green lane tracking (LDW / lasMode = 1), green dashes are rendered
+        // directly on the 3D perspective road surface dashes in drawRoadSurface()
+        // for 100% exact alignment and movement with road perspective.
     }
 }
 

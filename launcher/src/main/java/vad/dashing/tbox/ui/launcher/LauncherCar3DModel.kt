@@ -480,9 +480,9 @@ private fun LauncherCarFilamentContent(
                         }
 
                         if (currentDriveBlend < targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend + dt / 0.280f).coerceAtMost(targetDriveBlend)
+                            currentDriveBlend = (currentDriveBlend + dt / 1.000f).coerceAtMost(targetDriveBlend)
                         } else if (currentDriveBlend > targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend - dt / 0.280f).coerceAtLeast(targetDriveBlend)
+                            currentDriveBlend = (currentDriveBlend - dt / 1.000f).coerceAtLeast(targetDriveBlend)
                         }
 
                         lastSteeringDeg = currentSteering
@@ -629,11 +629,12 @@ private fun LauncherCarFilamentContent(
                 },
             ) {
                 val initialTransition = settingsProgress.coerceIn(0f, 1f)
-                val initialScale = lerp(
-                    BASE_MODEL_SCALE * customModelScale,
-                    SETTINGS_MODEL_SCALE * customModelScale,
-                    initialTransition,
-                ) * lerp(
+                val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+                val initialDriveScale = lerp(1f, 1.21f, currentDriveBlend)
+                val initialHomeScale = BASE_MODEL_SCALE * initialDriveScale
+                val initialSettingsScale = SETTINGS_MODEL_SCALE * safeCustomScale
+                val initialBaseScale = lerp(initialHomeScale, initialSettingsScale, initialTransition)
+                val initialPinchScale = lerp(
                     1f,
                     settingsUserScale.coerceIn(
                         SETTINGS_USER_SCALE_MIN,
@@ -641,17 +642,17 @@ private fun LauncherCarFilamentContent(
                     ),
                     initialTransition,
                 )
+                val initialTargetScale = initialBaseScale * initialPinchScale
+                val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, currentDriveBlend)
+
                 ModelNode(
                     modelInstance = modelInstance,
                     autoAnimate = false,
-                    // The settings SceneView can expose its construction frame before
-                    // visibility reaches the renderer. Keep that frame effectively empty;
-                    // onFrame applies the final calibrated scale before revealing the node.
-                    scale = Scale(if (initialTransition >= 0.99f) 0.001f else initialScale),
+                    scale = Scale(if (initialTransition >= 0.99f) 0.001f else initialTargetScale),
                     position = Position(
                         x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, initialTransition),
                         y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, initialTransition),
-                        z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, initialTransition),
+                        z = lerp(initialDriveModelZ, SETTINGS_MODEL_Z, initialTransition),
                     ),
                     rotation = Rotation(
                         y = lerp(

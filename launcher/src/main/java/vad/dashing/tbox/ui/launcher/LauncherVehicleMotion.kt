@@ -1,7 +1,12 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.mbcan.UniversalCanRepository
@@ -51,10 +56,30 @@ fun rememberLauncherVehicleMotion(
         tboxSpeed != null -> tboxSpeed!!
         else -> 0f
     }
-    val speed = sanitizeLauncherVehicleSpeed(speedCandidate)
+    val rawSpeed = sanitizeLauncherVehicleSpeed(speedCandidate)
+
+    // Smooth and hold speed for up to 1800ms to filter out momentary zero/null CAN bus dropouts while driving
+    var smoothedSpeed by remember { mutableFloatStateOf(rawSpeed) }
+    var lastMovingSpeed by remember { mutableFloatStateOf(0f) }
+    var lastMovingMs by remember { mutableLongStateOf(0L) }
+
+    val nowMs = SystemClock.elapsedRealtime()
+    if (rawSpeed > 0.5f) {
+        smoothedSpeed = rawSpeed
+        lastMovingSpeed = rawSpeed
+        lastMovingMs = nowMs
+    } else {
+        val elapsed = nowMs - lastMovingMs
+        if (elapsed < 1800L && lastMovingSpeed > 0.5f) {
+            smoothedSpeed = lastMovingSpeed
+        } else {
+            smoothedSpeed = 0f
+        }
+    }
+
     val steer = sanitizeLauncherSteering(tboxSteer)
     return LauncherVehicleMotion(
-        speedKmh = speed,
+        speedKmh = smoothedSpeed,
         steerAngleDeg = steer,
         speedFromTbox = tboxConnected && tboxSpeed != null,
         steerFromTbox = tboxSteer != null,

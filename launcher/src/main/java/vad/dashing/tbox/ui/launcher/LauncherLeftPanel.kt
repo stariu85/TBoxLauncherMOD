@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -13,7 +14,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
@@ -233,7 +235,7 @@ fun LauncherLeftPanel(
         LauncherAppConfigStore.cameraSwitchMode(context)
     }
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
-    val showDriveView = isDriveViewActive(
+    val rawDriveView = isDriveViewActive(
         speedKmh = effectiveSpeed,
         pasOn = pasOn,
         isParkGear = activeGear == 'P',
@@ -242,6 +244,19 @@ fun LauncherLeftPanel(
         racing = racing,
         cameraSwitchMode = cameraSwitchMode,
     )
+
+    // Hold drive view for up to 1800ms to prevent camera view jumping when CAN speed/gear momentarily drops
+    var showDriveView by remember { mutableStateOf(rawDriveView) }
+    var lastDriveViewTrueMs by remember { mutableLongStateOf(if (rawDriveView) SystemClock.elapsedRealtime() else 0L) }
+
+    val nowViewMs = SystemClock.elapsedRealtime()
+    if (rawDriveView) {
+        showDriveView = true
+        lastDriveViewTrueMs = nowViewMs
+    } else {
+        val elapsedView = nowViewMs - lastDriveViewTrueMs
+        showDriveView = elapsedView < 1800L
+    }
 
     // Drive mode glow highlighting
     val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
@@ -375,10 +390,10 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, driveModeBarVisible, assistPanelVisible) {
-            val filtered = adasBottomPanels.filter { isPanelVisible(it) }
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible) {
+            val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }
             val deduplicated = mutableListOf<String>()
-            var assistOrPresetsAdded = false
+            var assistOrPresetsAdded = "assist" in activeTopPanels
             for (p in filtered) {
                 if (p == "assist" || p == "presets") {
                     if (!assistOrPresetsAdded) {

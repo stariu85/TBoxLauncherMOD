@@ -38,17 +38,23 @@ data class LauncherPdcRingFrame(
 )
 
 /**
- * Physical parking sensor channels present on the vehicle (2 front corner + 4 rear).
+ * Physical parking sensor channels present on the vehicle (6 front + 6 rear).
  */
 private val FRONT_CHANNELS = listOf(
     LauncherPdcChannel.FrontSideLeft,
+    LauncherPdcChannel.FrontLeft,
+    LauncherPdcChannel.FrontMidLeft,
+    LauncherPdcChannel.FrontMidRight,
+    LauncherPdcChannel.FrontRight,
     LauncherPdcChannel.FrontSideRight,
 )
 private val REAR_CHANNELS = listOf(
+    LauncherPdcChannel.RearSideLeft,
     LauncherPdcChannel.RearLeft,
     LauncherPdcChannel.RearMidLeft,
     LauncherPdcChannel.RearMidRight,
     LauncherPdcChannel.RearRight,
+    LauncherPdcChannel.RearSideRight,
 )
 private val PHYSICAL_PDC_CHANNELS = FRONT_CHANNELS + REAR_CHANNELS
 
@@ -67,7 +73,7 @@ fun LauncherPdcOverlay(
     topView: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val hasPhysicalObstacle = PHYSICAL_PDC_CHANNELS.any { pdc.distanceCm(it) in 1..LauncherPdcZones.PDC_MAX_CM }
+    val hasPhysicalObstacle = PHYSICAL_PDC_CHANNELS.any { pdc.distanceCm(it) in LauncherPdcZones.PDC_MIN_CM..LauncherPdcZones.PDC_MAX_CM }
     val showOverlay = (pasOn && topView) || hasPhysicalObstacle
     if (!showOverlay) return
 
@@ -130,8 +136,8 @@ private fun proximityAtAngle(
 
     channels.forEach { ch ->
         val distCm = pdc.distanceCm(ch)
-        if (distCm in 1..LauncherPdcZones.PDC_MAX_CM) {
-            val pCh = ((LauncherPdcZones.PDC_MAX_CM - distCm.toFloat()) / (LauncherPdcZones.PDC_MAX_CM - 1f)).coerceIn(0f, 1f)
+        if (distCm in LauncherPdcZones.PDC_MIN_CM..LauncherPdcZones.PDC_MAX_CM) {
+            val pCh = ((LauncherPdcZones.PDC_MAX_CM - distCm.toFloat()) / (LauncherPdcZones.PDC_MAX_CM - LauncherPdcZones.PDC_MIN_CM)).coerceIn(0f, 1f)
             val chAngle = channelAngles[ch] ?: return@forEach
             val diff = angularDiffDeg(theta, chAngle)
             if (diff < sensorRadiusDeg) {
@@ -341,13 +347,19 @@ private fun DrawScope.drawFallbackBendingArcs(
     val steps = 24
     val channelAnglesFront = mapOf(
         LauncherPdcChannel.FrontSideLeft to -42f,
+        LauncherPdcChannel.FrontLeft to -25f,
+        LauncherPdcChannel.FrontMidLeft to -8f,
+        LauncherPdcChannel.FrontMidRight to 8f,
+        LauncherPdcChannel.FrontRight to 25f,
         LauncherPdcChannel.FrontSideRight to 42f,
     )
     val channelAnglesRear = mapOf(
-        LauncherPdcChannel.RearLeft to 142f,
-        LauncherPdcChannel.RearMidLeft to 166f,
-        LauncherPdcChannel.RearMidRight to 194f,
-        LauncherPdcChannel.RearRight to 218f,
+        LauncherPdcChannel.RearSideLeft to 138f,
+        LauncherPdcChannel.RearLeft to 152f,
+        LauncherPdcChannel.RearMidLeft to 168f,
+        LauncherPdcChannel.RearMidRight to 192f,
+        LauncherPdcChannel.RearRight to 208f,
+        LauncherPdcChannel.RearSideRight to 222f,
     )
 
     val lineGaps = listOf(-gapPx, gapPx)

@@ -127,6 +127,23 @@ internal object LauncherHomeStore {
         saveItems(context, items)
     }
 
+    fun updateTbmAutomation(
+        context: Context,
+        slotIndex: Int,
+        newIconName: String,
+        newAutomationName: String,
+    ) {
+        val items = loadItems(context).toMutableList()
+        val idx = items.indexOfFirst { it.slotIndex == slotIndex }
+        if (idx >= 0) {
+            val current = items[idx]
+            if (current is LauncherHomeItem.TbmAutomation) {
+                items[idx] = current.copy(iconName = newIconName, automationName = newAutomationName)
+                saveItems(context, items)
+            }
+        }
+    }
+
     fun updateTbmAutomationIcon(
         context: Context,
         slotIndex: Int,

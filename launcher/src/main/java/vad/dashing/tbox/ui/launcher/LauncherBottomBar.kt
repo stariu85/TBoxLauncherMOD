@@ -2,6 +2,7 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.media.AudioManager
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -13,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +81,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -88,6 +93,9 @@ import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.MbCanSeatModeState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.tbm.TbmAutomationItem
+import vad.dashing.tbox.tbm.TbmConnectionState
+import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.HvacTempZone
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
@@ -103,6 +111,7 @@ import vad.dashing.tbox.ui.sendCycleFrontSeatVent
 import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
 import vad.dashing.tbox.ui.sendCycleHvacFanDirection
 import vad.dashing.tbox.ui.sendCycleHvacFanSpeed
+import vad.dashing.tbox.ui.sendDoubleTapHvacFanSpeed
 import vad.dashing.tbox.ui.sendToggleFrontWindscreenHeat
 import vad.dashing.tbox.ui.sendToggleHvacAc
 import vad.dashing.tbox.ui.sendToggleHvacAirRecirculation
@@ -128,8 +137,26 @@ private const val LIGHT_COMMAND_CONFIRM_TIMEOUT_MS = 1_200L
 
 private val LocalDockIconScale = compositionLocalOf { 1f }
 
+internal data class ParsedTbmAutoButton(
+    val automationId: String,
+    val iconName: String,
+    val customTitle: String?,
+)
+
+internal fun parseTbmAutoButtonId(buttonId: String): ParsedTbmAutoButton {
+    val raw = buttonId.removePrefix("tbm_auto:")
+    val parts = raw.split(":", limit = 3)
+    val autoId = parts.getOrNull(0).orEmpty()
+    val iconName = parts.getOrNull(1)?.ifBlank { null } ?: "play"
+    val customTitle = parts.getOrNull(2)
+    return ParsedTbmAutoButton(automationId = autoId, iconName = iconName, customTitle = customTitle)
+}
+
 @Composable
 private fun dockDp(base: Float) = (base * LocalDockIconScale.current).dp
+
+@Composable
+private fun dockSp(base: Float) = (base * LocalDockIconScale.current).sp
 
 internal data class LauncherPendingSeatCommand(
     val raw: Int,
@@ -173,7 +200,7 @@ private fun LauncherFanSpeedIcon(
 internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("hvac_power", "Питание климата", R.drawable.ic_widget_hvac_power),
     LauncherDockButtonDescriptor("hvac_ac", "Кондиционер AC", R.drawable.ic_widget_hvac_ac),
-    LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", R.drawable.ic_widget_hvac_auto),
+    LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", null),
     LauncherDockButtonDescriptor("hvac_sync", "Синхронизация SYNC", null),
     LauncherDockButtonDescriptor("hvac_pm25", "Очистка PM 2.5", R.drawable.ic_widget_pm25_on),
     LauncherDockButtonDescriptor("hvac_fan_speed", "Скорость вентилятора", R.drawable.ic_widget_fan),
@@ -208,6 +235,36 @@ private fun LauncherDockSlotPickerPopup(
     val maxPopupWidthDp = (screenWidthDp - 32).coerceAtLeast(320).dp
     val appsByPackage = remember(pickerApps) { pickerApps.associateBy { it.packageName } }
 
+    val context = LocalContext.current
+    val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+    val tbmConnState by tbmRepo.connectionState.collectAsStateWithLifecycle()
+    val tbmAutomations by tbmRepo.automations.collectAsStateWithLifecycle()
+    val isTbmConnected = tbmConnState is TbmConnectionState.Connected
+
+    LaunchedEffect(Unit) {
+        tbmRepo.refreshAutomations()
+    }
+
+    val isDark = LauncherThemeState.darkTheme
+    val popupBg = if (isDark) Color(0xF218202A) else Color(0xF2E5E7EB)
+    val popupBorder = if (isDark) Color(0x5038BDF8) else Color(0x3094A3B8)
+    val pickerIconColor = if (isDark) LauncherColors.AccentCyan else Color(0xFF374151)
+
+    var selectedTbmAutoForEdit by remember { mutableStateOf<TbmAutomationItem?>(null) }
+
+    LauncherTbmAutomationEditDialog(
+        visible = selectedTbmAutoForEdit != null,
+        initialAutomationName = selectedTbmAutoForEdit?.name.orEmpty(),
+        initialIconName = "play",
+        onDismiss = { selectedTbmAutoForEdit = null },
+        onSave = { iconName, customTitle ->
+            selectedTbmAutoForEdit?.let { auto ->
+                onSelectButton("tbm_auto:${auto.id}:$iconName:$customTitle")
+            }
+            selectedTbmAutoForEdit = null
+        },
+    )
+
     Popup(
         alignment = Alignment.BottomCenter,
         offset = IntOffset(0, -110),
@@ -215,8 +272,8 @@ private fun LauncherDockSlotPickerPopup(
     ) {
         Surface(
             shape = RoundedCornerShape(16.dp),
-            color = Color(0xF218202A),
-            border = BorderStroke(1.dp, Color(0x5038BDF8)),
+            color = popupBg,
+            border = BorderStroke(1.dp, popupBorder),
             shadowElevation = 12.dp,
             modifier = Modifier
                 .widthIn(min = 280.dp, max = maxPopupWidthDp)
@@ -272,10 +329,10 @@ private fun LauncherDockSlotPickerPopup(
                                     modifier = Modifier.size(36.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    if (btn.id == "hvac_sync") {
+                                    if (btn.id == "hvac_sync" || btn.id == "hvac_auto") {
                                         Text(
-                                            text = "SYNC",
-                                            color = LauncherColors.AccentCyan,
+                                            text = if (btn.id == "hvac_sync") "SYNC" else "AUTO",
+                                            color = pickerIconColor,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                         )
@@ -283,20 +340,21 @@ private fun LauncherDockSlotPickerPopup(
                                         Image(
                                             painter = painterResource(btn.iconRes!!),
                                             contentDescription = null,
-                                            colorFilter = ColorFilter.tint(Color(0xFF22C55E)),
+                                            colorFilter = ColorFilter.tint(pickerIconColor),
                                             modifier = Modifier.size(26.dp),
                                         )
                                     } else if (btn.iconRes != null) {
                                         Image(
                                             painter = painterResource(btn.iconRes),
                                             contentDescription = null,
+                                            colorFilter = ColorFilter.tint(pickerIconColor),
                                             modifier = Modifier.size(26.dp),
                                         )
                                     } else {
                                         Icon(
                                             imageVector = if (btn.id == "home_nav") Icons.Filled.Home else Icons.AutoMirrored.Filled.ArrowBack,
                                             contentDescription = null,
-                                            tint = LauncherColors.AccentCyan,
+                                            tint = pickerIconColor,
                                             modifier = Modifier.size(24.dp),
                                         )
                                     }
@@ -306,6 +364,54 @@ private fun LauncherDockSlotPickerPopup(
                                     color = LauncherColors.TextPrimary,
                                     fontSize = 10.sp,
                                     maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (isTbmConnected && tbmAutomations.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.launcher_home_add_tbm_automation),
+                        color = LauncherColors.TextMuted,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 4.dp),
+                    ) {
+                        tbmAutomations.forEach { auto ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(LauncherColors.CardDark)
+                                    .clickable { selectedTbmAutoForEdit = auto }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(36.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = auto.name,
+                                        tint = pickerIconColor,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Text(
+                                    text = auto.name,
+                                    color = LauncherColors.TextPrimary,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 65.dp),
                                 )
                             }
                         }
@@ -854,16 +960,22 @@ private fun LauncherBottomDockButtonContent(
         }
         "hvac_fan_speed" -> {
             val speedRaw by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
-            val isOn = speedRaw > 0
-            val iconTint = if (isOn) HvacOnColor else HvacOffColor
-            LauncherDockIcon(onClick = { sendCycleHvacFanSpeed(context) }) {
+            val hvacAc by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+            val isFanOn = speedRaw > 0
+            val isAcOn = hvacAc is MbCanBinaryState.On
+            val activeColor = if (isAcOn) HvacOnColor else Color(0xFFF97316)
+            val iconTint = if (isFanOn) activeColor else HvacOffColor
+            LauncherDockIcon(
+                onClick = { sendCycleHvacFanSpeed(context) },
+                onDoubleClick = { sendDoubleTapHvacFanSpeed(context) },
+            ) {
                 Box(
                     modifier = Modifier.size(dockDp(45.6f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     LauncherFanSpeedIcon(
                         speedLevel = speedRaw.coerceIn(0, 7),
-                        activeColor = HvacOnColor,
+                        activeColor = activeColor,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Image(
@@ -931,11 +1043,13 @@ private fun LauncherBottomDockButtonContent(
             tempText = formatHvacSetTemp(driverTemp),
             onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
             onUp = { sendAdjustHvacTemperature(context, driverTemp, 1.0f, HvacTempZone.Driver) },
+            onTextClick = { launchLauncherApp(context, "com.mengbo.acsettings") },
         )
         "temp_pass" -> LauncherTempStepper(
             tempText = formatHvacSetTemp(passTemp),
             onDown = { sendAdjustHvacTemperature(context, passTemp, -1.0f, HvacTempZone.Passenger) },
             onUp = { sendAdjustHvacTemperature(context, passTemp, 1.0f, HvacTempZone.Passenger) },
+            onTextClick = { launchLauncherApp(context, "com.mengbo.acsettings") },
         )
         "audio_volume" -> {
             val canVolume by UniversalCanRepository.audioVolumeState.collectAsStateWithLifecycle()
@@ -949,8 +1063,17 @@ private fun LauncherBottomDockButtonContent(
                 onUp = { sendAdjustAudioVolume(context, 1) },
             )
         }
-        "hvac_auto" -> LauncherDockIcon(onClick = { sendToggleHvacAuto(context) }) {
-            LauncherHvacIcon(R.drawable.ic_widget_hvac_auto, hvacAuto)
+        "hvac_auto" -> {
+            val isAutoOn = hvacAuto is MbCanBinaryState.On
+            val tint = if (isAutoOn) HvacOnColor else HvacOffColor
+            LauncherDockIcon(onClick = { sendToggleHvacAuto(context) }) {
+                Text(
+                    text = "AUTO",
+                    color = tint,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
         "seat_heat_left" -> LauncherDockIcon(onClick = {
             sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
@@ -1050,6 +1173,51 @@ private fun LauncherBottomDockButtonContent(
                     }
                 }
             }
+            buttonId.startsWith("tbm_auto:") -> {
+                val parsed = remember(buttonId) { parseTbmAutoButtonId(buttonId) }
+                val autoId = parsed.automationId
+                val tbmRepository = remember(context) { TbmRepositoryProvider.get(context) }
+                val tbmAutomations by tbmRepository.automations.collectAsStateWithLifecycle()
+                val autoItem = remember(autoId, tbmAutomations) { tbmAutomations.firstOrNull { it.id == autoId } }
+                val displayTitle = parsed.customTitle ?: (autoItem?.name ?: autoId)
+                val iconVector = resolveTbmIconVector(parsed.iconName)
+
+                LauncherDockIcon(onClick = {
+                    val execName = displayTitle.ifBlank { autoItem?.name ?: autoId }
+                    val execMsg = context.getString(R.string.launcher_tbm_automation_executed, execName)
+                    val failMsg = context.getString(R.string.launcher_tbm_automation_failed, execName, "Error")
+                    CoroutineScope(Dispatchers.Main).launch {
+                        val res = tbmRepository.runAutomation(autoId)
+                        if (res.getOrDefault(false)) {
+                            Toast.makeText(context, execMsg, Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, failMsg, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(2.dp),
+                    ) {
+                        Icon(
+                            imageVector = iconVector,
+                            contentDescription = displayTitle.ifBlank { autoItem?.name ?: autoId },
+                            tint = if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151),
+                            modifier = Modifier.size(dockDp(if (displayTitle.isNotBlank()) 22f else 28f)),
+                        )
+                        if (displayTitle.isNotBlank()) {
+                            Text(
+                                text = displayTitle,
+                                color = LauncherColors.TextPrimary,
+                                fontSize = 9.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
             else -> {
                 val pkg = buttonId.removePrefix("pkg:").removePrefix("app:")
                 val rawApps = rememberLaunchableAppEntries(null, 0)
@@ -1084,33 +1252,64 @@ private fun LauncherTempStepper(
     tempText: String,
     onDown: () -> Unit,
     onUp: () -> Unit,
+    onTextClick: (() -> Unit)? = null,
 ) {
+    val density = LocalDensity.current
+    val thresholdPx = remember(density) { with(density) { 18.dp.toPx() } }
+    var totalDragY by remember { mutableFloatStateOf(0f) }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(0.dp),
+        modifier = Modifier.pointerInput(Unit) {
+            detectVerticalDragGestures(
+                onDragStart = { totalDragY = 0f },
+                onDragEnd = { totalDragY = 0f },
+                onDragCancel = { totalDragY = 0f },
+                onVerticalDrag = { change, dragAmount ->
+                    change.consume()
+                    totalDragY += dragAmount
+                    if (totalDragY <= -thresholdPx) {
+                        onUp()
+                        totalDragY = 0f
+                    } else if (totalDragY >= thresholdPx) {
+                        onDown()
+                        totalDragY = 0f
+                    }
+                }
+            )
+        }
     ) {
         LauncherDockIcon(onClick = onDown) {
             Icon(
                 Icons.Filled.KeyboardArrowDown,
                 null,
                 tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(dockDp(22f)),
+                modifier = Modifier.size(dockDp(26.4f)),
             )
         }
         Text(
             text = tempText,
             style = MaterialTheme.typography.tboxCaption,
             color = LauncherColors.TextPrimary,
-            fontSize = 20.sp,
+            fontSize = dockSp(24f),
             fontWeight = FontWeight.Light,
-            modifier = Modifier.padding(horizontal = 1.dp),
+            modifier = Modifier
+                .then(
+                    if (onTextClick != null) {
+                        Modifier.clickable(onClick = onTextClick)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = 1.dp),
         )
         LauncherDockIcon(onClick = onUp) {
             Icon(
                 Icons.Filled.KeyboardArrowUp,
                 null,
                 tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(dockDp(22f)),
+                modifier = Modifier.size(dockDp(26.4f)),
             )
         }
     }
@@ -1368,6 +1567,7 @@ internal fun seatVentDrawable(raw: Int): Int = when (ventLevel(raw)) {
 @Composable
 private fun LauncherDockIcon(
     onClick: () -> Unit,
+    onDoubleClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -1378,11 +1578,12 @@ private fun LauncherDockIcon(
             .clip(RoundedCornerShape(12.dp))
             .background(if (cardBgVisible) LauncherColors.CardDark else Color.Transparent)
             .then(
-                if (onLongClick != null) {
+                if (onDoubleClick != null || onLongClick != null) {
                     Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,
+                        onDoubleClick = onDoubleClick,
                         onLongClick = onLongClick,
                     )
                 } else {

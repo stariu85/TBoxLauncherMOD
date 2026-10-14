@@ -525,9 +525,9 @@ object LauncherAdasRepository {
 
     private fun publish() {
         val lasMode = if (MbCanEngineFacade.isInitialized()) {
-            MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ?: 0
+            MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ?: -1
         } else {
-            0
+            -1
         }
         _state.value = buildLauncherAdasState(
             accModeRaw = frmAccMode,

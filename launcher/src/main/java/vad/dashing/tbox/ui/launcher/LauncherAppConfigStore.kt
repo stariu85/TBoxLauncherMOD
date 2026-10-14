@@ -732,22 +732,26 @@ internal object LauncherAppConfigStore {
             val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
             return list.map { if (it == "presets") "assist" else it }.distinct()
         }
-        return listOf("drive_mode")
+        return listOf("drive_mode", "assist")
     }
 
     fun adasBottomPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
         if (raw != null) {
             val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
-            return list.map { if (it == "presets") "assist" else it }.distinct()
+            val mapped = list.map { if (it == "presets") "assist" else it }.distinct()
+            val top = adasTopPanels(context)
+            return mapped.filter { it !in top }
         }
-        return listOf("assist")
+        return emptyList()
     }
 
     fun setAdasPanelsLayout(context: Context, top: List<String>, bottom: List<String>) {
+        val cleanTop = top.map { if (it == "presets") "assist" else it }.distinct()
+        val cleanBottom = bottom.map { if (it == "presets") "assist" else it }.distinct().filter { it !in cleanTop }
         prefs(context).edit()
-            .putString(KEY_ADAS_TOP_PANELS, top.joinToString(","))
-            .putString(KEY_ADAS_BOTTOM_PANELS, bottom.joinToString(","))
+            .putString(KEY_ADAS_TOP_PANELS, cleanTop.joinToString(","))
+            .putString(KEY_ADAS_BOTTOM_PANELS, cleanBottom.joinToString(","))
             .apply()
         adasPanelsRevision.value++
     }

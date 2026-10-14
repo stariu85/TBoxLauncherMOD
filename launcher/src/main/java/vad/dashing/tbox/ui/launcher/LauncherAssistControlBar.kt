@@ -37,7 +37,6 @@ import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
-import vad.dashing.tbox.ui.sendToggleTjaIca
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val ButtonHeight = 60.dp
@@ -46,6 +45,7 @@ internal enum class AssistChipState {
     Off,
     Standby,
     Active,
+    Unavailable,
 }
 
 /**
@@ -78,6 +78,7 @@ fun LauncherAssistControlBar(
         LauncherDevVehicleState.simulateEnabled -> {
             if (LauncherDevVehicleState.adasLanesActive) AssistChipState.Active else AssistChipState.Off
         }
+        tjaIcaState is MbCanBinaryState.Unavailable -> AssistChipState.Unavailable
         adas.tja == LauncherAdasAssistIcon.Active -> AssistChipState.Active
         tjaIcaState is MbCanBinaryState.On || adas.tja == LauncherAdasAssistIcon.Dark -> AssistChipState.Standby
         else -> AssistChipState.Off
@@ -117,11 +118,8 @@ fun LauncherAssistControlBar(
             iconRes = R.drawable.ic_adas_steering_wheel,
             state = ngpState,
             onClick = {
-                if (LauncherDevVehicleState.simulateEnabled) {
-                    LauncherDevVehicleState.toggleAdasLanes()
-                } else {
-                    sendToggleTjaIca(context)
-                }
+                if (ngpState == AssistChipState.Unavailable) return@AssistButtonChip
+                LauncherCruisePresetController.launchNgpWithSetMinus(context)
             },
             iconSize = 22.dp,
             fontSize = 19.sp,
@@ -142,13 +140,17 @@ fun LauncherLanesControlBar(
 ) {
     val scope = rememberCoroutineScope()
 
+    val isLasUnavailable = adas.lasMode == -1 && !LauncherDevVehicleState.simulateEnabled
+
     // 1. LDW State (Lane Departure Warning)
     val ldwState = when {
         LauncherDevVehicleState.simulateEnabled -> {
-            if (LauncherDevVehicleState.adasLdwWarning) AssistChipState.Active else AssistChipState.Off
+            if (LauncherDevVehicleState.adasLdwWarning || LauncherDevVehicleState.adasLanesActive) AssistChipState.Active else AssistChipState.Off
         }
-        adas.lkaStatusCode == 1 && (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) -> AssistChipState.Active
-        adas.lkaStatusCode == 1 -> AssistChipState.Standby
+        isLasUnavailable -> AssistChipState.Unavailable
+        adas.lasMode == 1 || adas.lkaStatusCode == 1 -> {
+            if (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) AssistChipState.Active else AssistChipState.Standby
+        }
         else -> AssistChipState.Off
     }
 
@@ -157,8 +159,10 @@ fun LauncherLanesControlBar(
         LauncherDevVehicleState.simulateEnabled -> {
             if (LauncherDevVehicleState.adasLkaActive) AssistChipState.Active else AssistChipState.Off
         }
-        adas.lkaStatusCode == 2 -> AssistChipState.Active
-        adas.laneAssistEngaged -> AssistChipState.Standby
+        isLasUnavailable -> AssistChipState.Unavailable
+        adas.lasMode == 2 || adas.lkaStatusCode == 2 -> {
+            if (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) AssistChipState.Active else AssistChipState.Standby
+        }
         else -> AssistChipState.Off
     }
 
@@ -175,10 +179,12 @@ fun LauncherLanesControlBar(
             iconRes = R.drawable.ic_adas_lka,
             state = ldwState,
             onClick = {
+                if (ldwState == AssistChipState.Unavailable) return@AssistButtonChip
                 if (LauncherDevVehicleState.simulateEnabled) {
                     LauncherDevVehicleState.toggleAdasLdwWarning()
                 } else {
-                    val nextMode = if (ldwState != AssistChipState.Off) 0 else 1
+                    val isLdwOn = adas.lasMode == 1 || ldwState == AssistChipState.Active || ldwState == AssistChipState.Standby
+                    val nextMode = if (isLdwOn) 0 else 1
                     scope.launch {
                         UniversalCanRepository.execute(
                             MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, nextMode)
@@ -199,10 +205,12 @@ fun LauncherLanesControlBar(
             iconRes = R.drawable.ic_adas_lka,
             state = lkaState,
             onClick = {
+                if (lkaState == AssistChipState.Unavailable) return@AssistButtonChip
                 if (LauncherDevVehicleState.simulateEnabled) {
                     LauncherDevVehicleState.toggleAdasLka()
                 } else {
-                    val nextMode = if (lkaState != AssistChipState.Off) 0 else 2
+                    val isLkaOn = adas.lasMode == 2 || lkaState == AssistChipState.Active || lkaState == AssistChipState.Standby
+                    val nextMode = if (isLkaOn) 0 else 2
                     scope.launch {
                         UniversalCanRepository.execute(
                             MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, nextMode)
@@ -230,16 +238,24 @@ private fun AssistButtonChip(
     fontSize: TextUnit = 19.sp,
 ) {
     val activeGreen = Color(0xFF10B981)
+    val unavailableRed = Color(0xFFEF4444)
+    val standbyTextColor = if (LauncherThemeState.darkTheme) Color.White else Color(0xFF374151)
+
     val (textColor, bg, border) = when (state) {
         AssistChipState.Active -> Triple(
             activeGreen,
-            LauncherColors.LeftPanelCard, // Standard card background (does NOT change color on active!)
+            LauncherColors.LeftPanelCard, // Standard card background
             activeGreen,                  // Green border!
         )
         AssistChipState.Standby -> Triple(
-            activeGreen,
-            Color(0xFF4B5563).copy(alpha = 0.45f), // Gray background for Standby
-            activeGreen,                            // Green border!
+            standbyTextColor,             // Graphite in light theme, White in dark theme!
+            LauncherColors.LeftPanelCard, // Same card background as Active!
+            activeGreen,                  // Same green border as Active!
+        )
+        AssistChipState.Unavailable -> Triple(
+            unavailableRed,
+            LauncherColors.LeftPanelCard,
+            unavailableRed,                         // Red border when system is unavailable!
         )
         AssistChipState.Off -> Triple(
             LauncherColors.LeftTextPrimary,

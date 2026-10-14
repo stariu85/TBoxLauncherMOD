@@ -180,6 +180,8 @@ data class LauncherAdasState(
     val rightLane: LauncherAdasLaneVisualization = LauncherAdasLaneVisualization.Hidden,
     /** Raw FCM LKA/LDW status (non-zero ≈ assist engaged). */
     val lkaStatusCode: Int = 0,
+    /** Vehicle Property LAS_MODE_SELECTION (0 = Off, 1 = LDW, 2 = LKA). */
+    val lasMode: Int = 0,
     val adasTakeOver: Boolean = false,
     /** SLA recognized speed limit (km/h), null if none. */
     val speedLimitKmh: Int? = null,
@@ -325,14 +327,15 @@ internal fun buildLauncherAdasState(
     val tjaRealSteering = tja == LauncherAdasAssistIcon.Active
     val srrSystem = decodeSrrSystemState(srrSystemRaw)
 
-    // lkaStatus: 2 = getFCM_2_LDW_LKA_Status == 2, 1 = LDW passive monitoring.
-    // User Rule:
-    // When lkaStatus == 2 and eVehicle_Property_las_mode_selection == 1 -> GREEN lanes (effectiveLkaStatusCode = 1)
-    // When lkaStatus == 2 and eVehicle_Property_las_mode_selection == 2 -> BLUE lanes (effectiveLkaStatusCode = 2)
+    // Blue lanes (2) ONLY when TJA / ICA active (blue steering wheel icon).
+    // LKA status (lkaStatus == 2) does NOT produce blue lanes anymore.
+    // Green lanes (1) when LDW / lane tracking (green road icon glowing).
     val effectiveLkaStatusCode = when {
-        tjaRealSteering -> 2 // TJA / NGP Active Steering -> BLUE
-        lkaStatus == 2 -> if (lasModeRaw == 2) 2 else 1 // LKA mode (2) -> BLUE, LDW mode (1 or other) -> GREEN
-        lkaStatus == 1 || tja == LauncherAdasAssistIcon.Dark || leftLane != LauncherAdasLaneVisualization.Hidden || rightLane != LauncherAdasLaneVisualization.Hidden -> 1 // LDW / Standby -> GREEN
+        tjaRealSteering -> 2 // TJA / NGP Active Steering (Blue steering wheel) -> BLUE
+        leftLane != LauncherAdasLaneVisualization.Hidden ||
+            rightLane != LauncherAdasLaneVisualization.Hidden ||
+            lkaStatus != 0 ||
+            tja == LauncherAdasAssistIcon.Dark -> 1 // LDW / Lane tracking -> GREEN (dashed)
         else -> 0
     }
 
@@ -376,6 +379,7 @@ internal fun buildLauncherAdasState(
         leftLane = leftLane,
         rightLane = rightLane,
         lkaStatusCode = effectiveLkaStatusCode,
+        lasMode = lasModeRaw,
         adasTakeOver = adasTakeOver,
         speedLimitKmh = slaLimit,
         speedLimitWarning = slaWarn,
@@ -474,9 +478,9 @@ data class LauncherPdcZones(
             rearMidRightCm, rearRightCm, rearSideRightCm,
         )
 
-    val hasAny: Boolean get() = all.any { it in 1..PDC_MAX_CM }
+    val hasAny: Boolean get() = all.any { it in PDC_MIN_CM..PDC_MAX_CM }
 
-    val nearestCm: Int get() = all.filter { it in 1..PDC_MAX_CM }.minOrNull() ?: 0
+    val nearestCm: Int get() = all.filter { it in PDC_MIN_CM..PDC_MAX_CM }.minOrNull() ?: 0
 
     fun distanceCm(channel: LauncherPdcChannel): Int = when (channel) {
         LauncherPdcChannel.FrontSideLeft -> frontSideLeftCm
@@ -494,17 +498,19 @@ data class LauncherPdcZones(
     }
 
     companion object {
+        /** Minimum valid sensor distance (below this reports error/uninitialized transient code on CAN). */
+        const val PDC_MIN_CM = 10
         /** Above this the sensor reports free space. */
         const val PDC_MAX_CM = 150
         const val PDC_NEAR_CM = 35
         const val PDC_MID_CM = 75
 
-            fun levelFor(distanceCm: Int): LauncherPdcLevel = when {
-                // 150 cm and 0 both mean "free space" in practice (0 = no reading).
-                distanceCm !in 1..PDC_MAX_CM -> LauncherPdcLevel.None
-                distanceCm <= PDC_NEAR_CM -> LauncherPdcLevel.Near
-                distanceCm <= PDC_MID_CM -> LauncherPdcLevel.Mid
-                else -> LauncherPdcLevel.Far
-            }
+        fun levelFor(distanceCm: Int): LauncherPdcLevel = when {
+            // 150 cm and 0 both mean "free space" in practice (0 = no reading, <10 = transient/invalid).
+            distanceCm !in PDC_MIN_CM..PDC_MAX_CM -> LauncherPdcLevel.None
+            distanceCm <= PDC_NEAR_CM -> LauncherPdcLevel.Near
+            distanceCm <= PDC_MID_CM -> LauncherPdcLevel.Mid
+            else -> LauncherPdcLevel.Far
+        }
     }
 }

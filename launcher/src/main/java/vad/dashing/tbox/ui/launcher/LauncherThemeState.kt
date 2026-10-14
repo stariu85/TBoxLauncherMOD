@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import vad.dashing.tbox.ui.launcher.LauncherThemeState.darkTheme
 
 /**
  * Runtime light/dark theme for the launcher left panel. Persisted in its own prefs file;
@@ -15,6 +16,7 @@ object LauncherThemeState {
     private const val KEY_DARK = "dark_theme"
     private const val KEY_AUTO_HEADLIGHTS = "auto_theme_headlights_enabled"
     private const val KEY_AUTO_SOLAR = "auto_theme_solar_enabled"
+    private const val KEY_THEME_BUTTON_VISIBLE = "theme_button_visible"
 
     var darkTheme by mutableStateOf(true)
         private set
@@ -25,13 +27,25 @@ object LauncherThemeState {
     var autoThemeSolarEnabled by mutableStateOf(false)
         private set
 
+    var themeButtonVisible by mutableStateOf(true)
+        private set
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         darkTheme = prefs.getBoolean(KEY_DARK, true)
         autoThemeHeadlightsEnabled = prefs.getBoolean(KEY_AUTO_HEADLIGHTS, false)
         autoThemeSolarEnabled = prefs.getBoolean(KEY_AUTO_SOLAR, false)
+        themeButtonVisible = prefs.getBoolean(KEY_THEME_BUTTON_VISIBLE, true)
         if (autoThemeHeadlightsEnabled && autoThemeSolarEnabled) {
             autoThemeSolarEnabled = false
+        }
+        if (autoThemeSolarEnabled) {
+            val coords = resolveBestGpsCoordinates(context)
+            if (coords != null) {
+                val (lat, lon) = coords
+                val isDaytime = SolarTwilightCalculator.isDaytime(latitude = lat, longitude = lon)
+                darkTheme = !isDaytime
+            }
         }
     }
 
@@ -40,6 +54,13 @@ object LauncherThemeState {
         darkTheme = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, enabled).apply()
+    }
+
+    fun setThemeButtonVisible(context: Context, visible: Boolean) {
+        if (themeButtonVisible == visible) return
+        themeButtonVisible = visible
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_THEME_BUTTON_VISIBLE, visible).apply()
     }
 
     fun setAutoThemeHeadlightsEnabled(context: Context, enabled: Boolean) {
@@ -61,10 +82,19 @@ object LauncherThemeState {
         if (enabled && autoThemeHeadlightsEnabled) {
             autoThemeHeadlightsEnabled = false
         }
+        if (enabled) {
+            val coords = resolveBestGpsCoordinates(context)
+            if (coords != null) {
+                val (lat, lon) = coords
+                val isDaytime = SolarTwilightCalculator.isDaytime(latitude = lat, longitude = lon)
+                darkTheme = !isDaytime
+            }
+        }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_AUTO_SOLAR, autoThemeSolarEnabled)
             .putBoolean(KEY_AUTO_HEADLIGHTS, autoThemeHeadlightsEnabled)
+            .putBoolean(KEY_DARK, darkTheme)
             .apply()
     }
 }

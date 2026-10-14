@@ -1,5 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -73,18 +76,40 @@ fun ThemeSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+        val locationPermissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+        ) { _ -> }
+
         LauncherSettingsToggleRow(
             label = stringResource(R.string.launcher_vs_auto_theme_solar),
             active = LauncherThemeState.autoThemeSolarEnabled,
             onClick = {
-                LauncherThemeState.setAutoThemeSolarEnabled(
-                    context,
-                    !LauncherThemeState.autoThemeSolarEnabled,
-                )
+                val next = !LauncherThemeState.autoThemeSolarEnabled
+                if (next && !hasLocationPermission(context)) {
+                    locationPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                        ),
+                    )
+                }
+                LauncherThemeState.setAutoThemeSolarEnabled(context, next)
             },
         )
         Text(
             text = stringResource(R.string.launcher_vs_auto_theme_solar_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_theme_button_visible_title),
+            active = LauncherThemeState.themeButtonVisible,
+            onClick = {
+                LauncherThemeState.setThemeButtonVisible(context, !LauncherThemeState.themeButtonVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_theme_button_visible_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -817,11 +842,6 @@ private fun AdasPanelToggle() {
 @Composable
 fun CruiseControlSettingsContent() {
     val context = LocalContext.current
-    val cruisePanelRevision by LauncherAppConfigStore.cruisePanelRevisionFlow
-        .collectAsStateWithLifecycle()
-    val cruisePanelVisible = remember(context, cruisePanelRevision) {
-        LauncherAppConfigStore.cruisePanelVisible(context)
-    }
     val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow
         .collectAsStateWithLifecycle()
     val driveModeBarVisible = remember(context, driveModeBarRevision) {
@@ -913,19 +933,6 @@ fun CruiseControlSettingsContent() {
         )
         Text(
             text = stringResource(R.string.launcher_headlight_beams_visible_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_cruise_panel_visible_title),
-            active = cruisePanelVisible,
-            onClick = {
-                LauncherAppConfigStore.setCruisePanelVisible(context, !cruisePanelVisible)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_cruise_panel_visible_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )

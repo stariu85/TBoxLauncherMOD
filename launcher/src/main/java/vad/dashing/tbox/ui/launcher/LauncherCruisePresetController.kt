@@ -22,6 +22,7 @@ import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.sendToggleTjaIca
 import kotlin.math.abs
 
 enum class AccCruiseState {
@@ -257,35 +258,54 @@ internal object LauncherCruisePresetController {
                     pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
                 }
                 AccCruiseState.Off -> {
-                    DiagFileLog.i(TAG, "Single tap in Off -> pulse MFS_CRUISE_CONTROL (210)")
+                    DiagFileLog.i(TAG, "Single tap in Off -> pulse MFS_CRUISE_CONTROL (210) then delay 500ms -> pulse MFS_SET_MINUS (214)")
                     pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
-
-                    val waitStart = SystemClock.uptimeMillis()
-                    var currentState = currentAccCruiseState()
-                    while (SystemClock.uptimeMillis() - waitStart < 4000L) {
-                        delay(100L)
-                        currentState = currentAccCruiseState()
-                        if (currentState == AccCruiseState.Standby || currentState == AccCruiseState.Active) break
-                    }
-
-                    if (currentState == AccCruiseState.Standby) {
-                        DiagFileLog.i(TAG, "Reached Standby -> pulse MFS_SET_MINUS (214)")
-                        pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                        val speed = vehicleSpeedKmh().coerceAtLeast(30)
-                        updateRememberedSetpoint(context, speed)
-                    }
+                    delay(500L)
+                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                    updateRememberedSetpoint(context, speed)
                 }
                 AccCruiseState.Standby -> {
-                    val remembered = currentSetSpeedKmh() ?: getRememberedSetpoint(context)
-                    if (remembered != null && remembered >= 30) {
-                        DiagFileLog.i(TAG, "Single tap in Standby with remembered=$remembered -> pulse MFS_RES_PLUS (213)")
-                        pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
-                    } else {
-                        DiagFileLog.i(TAG, "Single tap in Standby without remembered -> pulse MFS_SET_MINUS (214)")
-                        pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                        val speed = vehicleSpeedKmh().coerceAtLeast(30)
-                        updateRememberedSetpoint(context, speed)
-                    }
+                    DiagFileLog.i(TAG, "Single tap in Standby -> pulse MFS_SET_MINUS (214)")
+                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                    updateRememberedSetpoint(context, speed)
+                }
+            }
+        }
+    }
+
+    fun launchNgpWithSetMinus(context: Context) {
+        if (LauncherDevVehicleState.simulateEnabled) {
+            LauncherDevVehicleState.toggleAdasLanes()
+            LauncherDevVehicleState.adasCruiseActive = LauncherDevVehicleState.adasLanesActive
+            return
+        }
+
+        sendToggleTjaIca(context)
+
+        launchExclusive {
+            val state = currentAccCruiseState()
+            DiagFileLog.i(TAG, "launchNgpWithSetMinus state=$state")
+
+            when (state) {
+                AccCruiseState.Off -> {
+                    DiagFileLog.i(TAG, "NGP tap in Off -> pulse MFS_CRUISE_CONTROL (210) then delay 500ms -> pulse MFS_SET_MINUS (214)")
+                    pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
+                    delay(500L)
+                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                    updateRememberedSetpoint(context, speed)
+                }
+                AccCruiseState.Standby -> {
+                    DiagFileLog.i(TAG, "NGP tap in Standby -> delay 500ms -> pulse MFS_SET_MINUS (214)")
+                    delay(500L)
+                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                    updateRememberedSetpoint(context, speed)
+                }
+                else -> {
+                    // Cruise is already active
                 }
             }
         }
