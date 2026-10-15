@@ -32,6 +32,7 @@ import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 
 /**
@@ -108,35 +109,37 @@ internal object LauncherAppDrawerWindow {
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
-                val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
-                TboxAppTheme(theme = 2) {
-                    val navigationBarInset = WindowInsets.navigationBars
-                        .exclude(WindowInsets.ime)
-                        .asPaddingValues()
-                        .calculateBottomPadding()
-                    BackHandler {
-                        if (editMode) editMode = false else hide()
+                ProvideUiClickSounds {
+                    val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
+                    TboxAppTheme(theme = 2) {
+                        val navigationBarInset = WindowInsets.navigationBars
+                            .exclude(WindowInsets.ime)
+                            .asPaddingValues()
+                            .calculateBottomPadding()
+                        BackHandler {
+                            if (editMode) editMode = false else hide()
+                        }
+                        LauncherAppDrawer(
+                            visible = true,
+                            settingsViewModel = settingsViewModel,
+                            onDismiss = ::hide,
+                            editMode = editMode,
+                            onEditModeChange = { editMode = it },
+                            configRevision = configRevision,
+                            onConfigChanged = {
+                                configRevision++
+                                this@LauncherAppDrawerWindow.onConfigChanged?.invoke()
+                            },
+                            onLaunchApp = { app ->
+                                // Remove the focusable overlay before creating/focusing freeform.
+                                hide()
+                                launchLauncherApp(activity, app.packageName, app.activityName)
+                            },
+                            dragToLauncherEnabled = false,
+                            bottomInset = navigationBarInset,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
-                    LauncherAppDrawer(
-                        visible = true,
-                        settingsViewModel = settingsViewModel,
-                        onDismiss = ::hide,
-                        editMode = editMode,
-                        onEditModeChange = { editMode = it },
-                        configRevision = configRevision,
-                        onConfigChanged = {
-                            configRevision++
-                            this@LauncherAppDrawerWindow.onConfigChanged?.invoke()
-                        },
-                        onLaunchApp = { app ->
-                            // Remove the focusable overlay before creating/focusing freeform.
-                            hide()
-                            launchLauncherApp(activity, app.packageName, app.activityName)
-                        },
-                        dragToLauncherEnabled = false,
-                        bottomInset = navigationBarInset,
-                        modifier = Modifier.fillMaxSize(),
-                    )
                 }
             }
         }

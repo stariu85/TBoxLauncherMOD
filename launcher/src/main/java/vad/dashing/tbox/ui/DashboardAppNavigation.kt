@@ -195,6 +195,31 @@ internal fun sendToggleTjaIca(context: Context) {
     }
 }
 
+private val lasModeToggleLock = Any()
+private var lasModeToggleBlockedUntilMs = 0L
+private const val LAS_MODE_TOGGLE_LOCKOUT_MS = 300L
+
+internal fun sendToggleLaneMode(context: Context, targetMode: Int) {
+    val now = SystemClock.uptimeMillis()
+    synchronized(lasModeToggleLock) {
+        if (now < lasModeToggleBlockedUntilMs) return
+        lasModeToggleBlockedUntilMs = now + LAS_MODE_TOGGLE_LOCKOUT_MS
+    }
+
+    val current = UniversalCanRepository.lasModeRaw.value
+    val writeValue = if (current == targetMode) {
+        MbCanKnownVehiclePropertyId.LAS_MODE_OFF
+    } else {
+        targetMode
+    }
+
+    sendSetMbCanProperty(
+        context = context,
+        propertyId = MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION,
+        value = writeValue,
+    )
+}
+
 internal fun sendToggleRearWindowMirrorsDefrost(context: Context) {
     val now = SystemClock.uptimeMillis()
     synchronized(hvacDefrosterToggleLock) {

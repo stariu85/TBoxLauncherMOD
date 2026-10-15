@@ -5,8 +5,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
-import android.content.pm.ResolveInfo
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.graphics.Rect
 import android.os.Process
 import android.util.Log
@@ -241,23 +241,23 @@ internal fun discoverAllMediaPlayerPackages(
     val packages = linkedSetOf<String>()
 
     runCatching {
-        val browseIntent = android.content.Intent("android.media.browse.MediaBrowserService")
-        pm.queryIntentServices(browseIntent, android.content.pm.PackageManager.GET_META_DATA)
+        val browseIntent = Intent("android.media.browse.MediaBrowserService")
+        pm.queryIntentServices(browseIntent, PackageManager.GET_META_DATA)
             .forEach { packages.add(it.serviceInfo.packageName) }
     }
 
     runCatching {
-        val musicIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-            addCategory(android.content.Intent.CATEGORY_APP_MUSIC)
+        val musicIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_APP_MUSIC)
         }
-        pm.queryIntentActivities(musicIntent, android.content.pm.PackageManager.MATCH_ALL)
+        pm.queryIntentActivities(musicIntent, PackageManager.MATCH_ALL)
             .forEach { packages.add(it.activityInfo.packageName) }
     }
 
     packages.addAll(discoverInstalledMediaPackages(context, null))
 
     runCatching {
-        pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+        pm.getInstalledApplications(PackageManager.GET_META_DATA)
             .forEach { info ->
                 val pkg = info.packageName
                 if (pkg.contains("music", true) ||
@@ -394,6 +394,11 @@ private fun startResolved(
     Log.w(
         TAG,
         "startResolved pkg=$packageName component=$component embedded=$preferEmbedded fullscreen=$forceFullscreen",
+    )
+
+    LauncherHistoryTracker.recordLaunch(
+        context,
+        LaunchedTarget.SingleApp(packageName, component?.className),
     )
 
     // Default: freeform in the right-panel zone. Optional per-app fullscreen.

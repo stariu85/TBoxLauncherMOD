@@ -25,6 +25,7 @@ import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 import vad.dashing.tbox.update.InstallPermissionHelper
 import vad.dashing.tbox.update.UpdateViewModel
@@ -119,25 +120,27 @@ internal object LauncherAboutOverlayWindow {
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
-                // Standalone launcher is dark-first.
-                TboxAppTheme(theme = 2) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(20.dp)),
-                        color = LauncherColors.LeftPanelBg,
-                    ) {
-                        LauncherSettingsScreen(
-                            updateViewModel = updateViewModel,
-                            settingsManager = settingsManager,
-                            onOpenInstallPermissionSettings = {
-                                launchSystemSettingsInFreeform(
-                                    activity,
-                                    InstallPermissionHelper.createUnknownSourcesSettingsIntent(activity),
-                                )
-                            },
-                            onClose = ::hide,
-                        )
+                ProvideUiClickSounds {
+                    // Standalone launcher is dark-first.
+                    TboxAppTheme(theme = 2) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(20.dp)),
+                            color = LauncherColors.LeftPanelBg,
+                        ) {
+                            LauncherSettingsScreen(
+                                updateViewModel = updateViewModel,
+                                settingsManager = settingsManager,
+                                onOpenInstallPermissionSettings = {
+                                    launchSystemSettingsInFreeform(
+                                        activity,
+                                        InstallPermissionHelper.createUnknownSourcesSettingsIntent(activity),
+                                    )
+                                },
+                                onClose = ::hide,
+                            )
+                        }
                     }
                 }
             }

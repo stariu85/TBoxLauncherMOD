@@ -36,6 +36,7 @@ import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 
 /**
@@ -126,24 +127,26 @@ internal object LauncherOverlayBar {
                 val buttonBorder = if (isDark) Color(0x6038BDF8) else Color.Black.copy(alpha = 0.20f)
                 val iconTint = if (isDark) LauncherColors.AccentCyan else Color(0xFF4B5563)
 
-                TboxAppTheme(theme = if (isDark) 2 else 1) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(buttonBg)
-                            .border(1.dp, buttonBorder, CircleShape)
-                            .clickable {
-                                goLauncherHome(activity)
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Home,
-                            contentDescription = stringResource(R.string.launcher_home_cd),
-                            tint = iconTint,
-                            modifier = Modifier.size(iconSizeDp),
-                        )
+                ProvideUiClickSounds {
+                    TboxAppTheme(theme = if (isDark) 2 else 1) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .background(buttonBg)
+                                .border(1.dp, buttonBorder, CircleShape)
+                                .clickable {
+                                    goLauncherHome(activity)
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Home,
+                                contentDescription = stringResource(R.string.launcher_home_cd),
+                                tint = iconTint,
+                                modifier = Modifier.size(iconSizeDp),
+                            )
+                        }
                     }
                 }
             }

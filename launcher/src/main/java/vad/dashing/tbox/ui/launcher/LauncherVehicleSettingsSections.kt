@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import vad.dashing.tbox.ui.rememberWrappedOnClick
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 enum class VehicleSettingsSection {
@@ -177,14 +178,15 @@ fun LauncherSettingsToggleRow(
     onClick: (() -> Unit)? = null,
     enabled: Boolean = onClick != null,
 ) {
+    val wrappedOnClick = onClick?.let { rememberWrappedOnClick(it) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(10.dp))
             .then(
-                if (enabled && onClick != null) {
-                    Modifier.clickable(onClick = onClick)
+                if (enabled && wrappedOnClick != null) {
+                    Modifier.clickable(onClick = wrappedOnClick)
                 } else {
                     Modifier
                 },

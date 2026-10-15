@@ -104,6 +104,7 @@ import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.refreshHvacTemperaturesFromMbCan
 import vad.dashing.tbox.ui.rememberLaunchableAppEntries
+import vad.dashing.tbox.ui.rememberPlaySystemClickSound
 import vad.dashing.tbox.ui.sendAdjustAudioVolume
 import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
@@ -220,6 +221,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("rear_defrost", "Обогрев заднего стекла", R.drawable.ic_widget_rear_window_mirrors_defrost),
     LauncherDockButtonDescriptor("home_nav", "Кнопка Домой"),
     LauncherDockButtonDescriptor("back_nav", "Кнопка Назад"),
+    LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.undo_24),
 )
 
 @Composable
@@ -1039,6 +1041,18 @@ private fun LauncherBottomDockButtonContent(
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.launcher_back_cd), tint = LauncherColors.TextSecondary)
         }
+        "undo_nav", "undo_24", "last_app" -> LauncherDockIcon(
+            onClick = {
+                performUndoLaunch(context)
+            },
+        ) {
+            Image(
+                painter = painterResource(R.drawable.undo_24),
+                contentDescription = "Предыдущее приложение",
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(28f)),
+            )
+        }
         "temp_driver" -> LauncherTempStepper(
             tempText = formatHvacSetTemp(driverTemp),
             onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
@@ -1477,15 +1491,15 @@ private fun LauncherBinaryTintIcon(
 @Composable
 private fun LauncherHeadlightsModeIcon(raw: Int) {
     val active = raw != LIGHT_CONTROL_OFF
-    val mode = when (raw) {
-        LIGHT_CONTROL_POSITION -> "Г"
-        LIGHT_CONTROL_LOW_BEAM -> "Б"
-        LIGHT_CONTROL_AUTO -> "A"
-        else -> "0"
+    val (iconRes, mode) = when (raw) {
+        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to "A"
+        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to "Б"
+        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_low_beam to "Г"
+        else -> R.drawable.ic_headlights_low_beam to "0"
     }
     Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
         Image(
-            painter = painterResource(R.drawable.ic_widget_headlights),
+            painter = painterResource(iconRes),
             contentDescription = stringResource(R.string.launcher_vs_headlights),
             modifier = Modifier.size(dockDp(27f)),
             colorFilter = ColorFilter.tint(if (active) HvacOnColor else HvacOffColor),
@@ -1572,22 +1586,46 @@ private fun LauncherDockIcon(
     content: @Composable () -> Unit,
 ) {
     val cardBgVisible = LocalClimateCardBgVisible.current
+    val playSound = rememberPlaySystemClickSound()
+    val wrappedOnClick = remember(onClick, playSound) {
+        {
+            playSound()
+            onClick()
+        }
+    }
+    val wrappedDoubleClick = remember(onDoubleClick, playSound) {
+        onDoubleClick?.let {
+            {
+                playSound()
+                it()
+            }
+        }
+    }
+    val wrappedLongClick = remember(onLongClick, playSound) {
+        onLongClick?.let {
+            {
+                playSound()
+                it()
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .size(dockDp(44f))
             .clip(RoundedCornerShape(12.dp))
             .background(if (cardBgVisible) LauncherColors.CardDark else Color.Transparent)
             .then(
-                if (onDoubleClick != null || onLongClick != null) {
+                if (wrappedDoubleClick != null || wrappedLongClick != null) {
                     Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = onClick,
-                        onDoubleClick = onDoubleClick,
-                        onLongClick = onLongClick,
+                        onClick = wrappedOnClick,
+                        onDoubleClick = wrappedDoubleClick,
+                        onLongClick = wrappedLongClick,
                     )
                 } else {
-                    Modifier.clickable(onClick = onClick)
+                    Modifier.clickable(onClick = wrappedOnClick)
                 },
             ),
         contentAlignment = Alignment.Center,

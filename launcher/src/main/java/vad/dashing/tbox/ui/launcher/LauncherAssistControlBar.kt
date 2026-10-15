@@ -15,7 +15,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,13 +29,11 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
-import vad.dashing.tbox.mbcan.MbCanCommand
-import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.sendToggleLaneMode
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val ButtonHeight = 60.dp
@@ -138,29 +135,31 @@ fun LauncherLanesControlBar(
     adas: LauncherAdasState,
     modifier: Modifier = Modifier,
 ) {
-    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val lasModeRaw by UniversalCanRepository.lasModeRaw.collectAsStateWithLifecycle()
 
-    val isLasUnavailable = adas.lasMode == -1 && !LauncherDevVehicleState.simulateEnabled
+    val currentMode = lasModeRaw ?: adas.lasMode
+    val isLasUnavailable = currentMode == -1 && !LauncherDevVehicleState.simulateEnabled
 
-    // 1. LDW State (Lane Departure Warning)
+    // 1. LDW State (Lane Departure Warning: mode 1)
     val ldwState = when {
         LauncherDevVehicleState.simulateEnabled -> {
             if (LauncherDevVehicleState.adasLdwWarning || LauncherDevVehicleState.adasLanesActive) AssistChipState.Active else AssistChipState.Off
         }
         isLasUnavailable -> AssistChipState.Unavailable
-        adas.lasMode == 1 || adas.lkaStatusCode == 1 -> {
+        currentMode == 1 -> {
             if (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) AssistChipState.Active else AssistChipState.Standby
         }
         else -> AssistChipState.Off
     }
 
-    // 2. LKA State (Lane Keep Assist)
+    // 2. LKA State (Lane Keep Assist: mode 2)
     val lkaState = when {
         LauncherDevVehicleState.simulateEnabled -> {
             if (LauncherDevVehicleState.adasLkaActive) AssistChipState.Active else AssistChipState.Off
         }
         isLasUnavailable -> AssistChipState.Unavailable
-        adas.lasMode == 2 || adas.lkaStatusCode == 2 -> {
+        currentMode == 2 -> {
             if (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) AssistChipState.Active else AssistChipState.Standby
         }
         else -> AssistChipState.Off
@@ -183,13 +182,7 @@ fun LauncherLanesControlBar(
                 if (LauncherDevVehicleState.simulateEnabled) {
                     LauncherDevVehicleState.toggleAdasLdwWarning()
                 } else {
-                    val isLdwOn = adas.lasMode == 1 || ldwState == AssistChipState.Active || ldwState == AssistChipState.Standby
-                    val nextMode = if (isLdwOn) 0 else 1
-                    scope.launch {
-                        UniversalCanRepository.execute(
-                            MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, nextMode)
-                        )
-                    }
+                    sendToggleLaneMode(context, 1)
                 }
             },
             iconSize = 22.dp,
@@ -209,13 +202,7 @@ fun LauncherLanesControlBar(
                 if (LauncherDevVehicleState.simulateEnabled) {
                     LauncherDevVehicleState.toggleAdasLka()
                 } else {
-                    val isLkaOn = adas.lasMode == 2 || lkaState == AssistChipState.Active || lkaState == AssistChipState.Standby
-                    val nextMode = if (isLkaOn) 0 else 2
-                    scope.launch {
-                        UniversalCanRepository.execute(
-                            MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, nextMode)
-                        )
-                    }
+                    sendToggleLaneMode(context, 2)
                 }
             },
             iconSize = 22.dp,

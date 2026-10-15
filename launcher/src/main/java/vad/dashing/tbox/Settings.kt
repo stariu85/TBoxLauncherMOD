@@ -13,8 +13,6 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import java.io.File
-import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.update.UpdateChannel
+import java.io.FileOutputStream
 
 private const val DATASTORE_NAME = "ras.dashing.tbox.launcher.settings"
 
@@ -64,11 +63,16 @@ class SettingsManager(private val context: Context) {
             longPreferencesKey("hu_reboot_awaiting_install_version")
         private val KEY_TBM_API_TOKEN = stringPreferencesKey("tbm_api_token")
         private val KEY_TBM_API_PORT = intPreferencesKey("tbm_api_port")
+        private val KEY_UI_CLICK_SOUNDS = booleanPreferencesKey("ui_click_sounds_enabled")
         private const val MAX_ICON_EDGE_PX = 512
     }
 
     private val _iconRevision = MutableStateFlow(0)
     val launcherAppIconRevisionFlow: Flow<Int> = _iconRevision.asStateFlow()
+
+    val uiClickSoundsEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_UI_CLICK_SOUNDS] ?: true
+    }
 
     val headUnitCanModeFlow: Flow<HeadUnitCanMode> = context.settingsDataStore.data.map { prefs ->
         HeadUnitCanMode.fromStorageValue(prefs[KEY_HEAD_UNIT_CAN])
@@ -141,6 +145,10 @@ class SettingsManager(private val context: Context) {
 
     suspend fun saveTbmApiPort(port: Int) {
         context.settingsDataStore.edit { it[KEY_TBM_API_PORT] = port }
+    }
+
+    suspend fun saveUiClickSoundsEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_UI_CLICK_SOUNDS] = enabled }
     }
 
     suspend fun getTbmApiToken(): String? = tbmApiTokenFlow.first()

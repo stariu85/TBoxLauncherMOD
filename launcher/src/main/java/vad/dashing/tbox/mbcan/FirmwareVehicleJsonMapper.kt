@@ -1,9 +1,9 @@
 package vad.dashing.tbox.mbcan
 
 import android.util.Log
-import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Runtime loader for Android 10 vehicle JSON tables from firmware.
@@ -70,6 +70,8 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET to 289412692, // T_0401_IHU_9_DriveMode_6DCT_Wet
         // MBVehicleProperty.eVEHICLE_PROPERTY_TJA_ICA
         MbCanKnownVehiclePropertyId.TJA_ICA to 289415939, // T_0B01_IHU_8_TJA_ICA_ON_OFF
+        // MBVehicleProperty.eVEHICLE_PROPERTY_LAS_MODE_SELECTION
+        MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION to 289415946, // T_0B01_IHU_8_LDWLKA_LaneAssit_TypeReq
         // Audio
         MbCanKnownAudioPropertyId.VOLUME to 557849090, // AUDIO_CURRENT_MAIN_VOLUME
         MbCanKnownAudioPropertyId.VOLUME_SPEED to 557849227, // AUDIO_VOL_VSC_MOD_REQ
@@ -105,6 +107,8 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET to 289412692, // T_0401_IHU_9_DriveMode_6DCT_Wet
         // MBVehicleProperty.eVEHICLE_PROPERTY_TJA_ICA
         MbCanKnownVehiclePropertyId.TJA_ICA to 289415939, // T_0B01_IHU_8_TJA_ICA_ON_OFF
+        // MBVehicleProperty.eVEHICLE_PROPERTY_LAS_MODE_SELECTION
+        MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION to 289415706, // R_0B00_FCM_2_LDWLKA_LaneAssitfeedback
         // Audio
         MbCanKnownAudioPropertyId.VOLUME to 557849090, // AUDIO_CURRENT_MAIN_VOLUME
         MbCanKnownAudioPropertyId.VOLUME_SPEED to 557849227, // AUDIO_VOL_VSC_MOD_REQ

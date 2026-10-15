@@ -58,6 +58,7 @@ import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.theme.tboxCaption
 import kotlin.math.roundToInt
 
@@ -127,8 +128,19 @@ fun LauncherAdasStrip(
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val showAll = LauncherDevVehicleState.showAllIndicators
+
+    val snapshot = rememberLauncherVehicleControlSnapshot(enabled = !LauncherDevVehicleState.simulateEnabled)
+    val isAutoMode = snapshot.lightControlRaw == LIGHT_CONTROL_AUTO || snapshot.headlightsSwitch == 1
+    val isHmaOn = adas.hma != LauncherAdasAssistIcon.Hidden || snapshot.hmaOn == true
     val headlightBeams = rememberHeadlightBeams()
-    val showHeadlights = headlightBeams.lowBeam || headlightBeams.highBeam || showAll
+    val isHighBeamBurning = headlightBeams.highBeam
+    val isLowBeamBurning = headlightBeams.lowBeam
+
+    val showLowBeam = isLowBeamBurning
+    val showAutoMode = isAutoMode
+    val showHmaMode = isHmaOn
+    val showManualHighBeam = !isHmaOn && isHighBeamBurning
+    val showHeadlights = showLowBeam || showAutoMode || showHmaMode || showManualHighBeam || showAll
 
     val pasOn = (parkingRadar is MbCanBinaryState.On) || showAll
     val cruiseActive = (cruiseSpeed ?: 0u) > 0u || showAll
@@ -137,19 +149,20 @@ fun LauncherAdasStrip(
         adas.accTakeOver || adas.adasTakeOver || adas.accOverride || adas.speedLimitWarning || showAll
     val showLanes = adas.laneAssistEngaged || showAll
     val showSla = adas.speedLimitKmh != null || showAll
-    val showHma = adas.hma != LauncherAdasAssistIcon.Hidden || showAll
     val showTja = adas.tja != LauncherAdasAssistIcon.Hidden || showAll
     val showSrr = adas.srrSystem != LauncherSrrSystemState.Hidden || showAll
     if (!pasOn && !cruiseActive && !showAcc && !showAlerts &&
-        !showLanes && !showSla && !showHma && !showTja && !showSrr && !showHeadlights
+        !showLanes && !showSla && !showHmaMode && !showTja && !showSrr && !showHeadlights
     ) {
         return
     }
 
     val activeKeys = buildSet {
         if (pasOn) add("pas")
-        if (showHeadlights) add("headlights")
-        if (showHma) add("hma")
+        if (showAutoMode || showAll) add("headlights_auto")
+        if (showLowBeam || showAll) add("headlights_low")
+        if (showHmaMode || showAll) add("high_beam_auto")
+        if (showManualHighBeam || showAll) add("high_beam_manual")
         if (showTja) add("tja")
         if (adas.srrSystem == LauncherSrrSystemState.Fault || showAll) add("srr_fault")
         if (showAcc || cruiseActive) add("acc")
@@ -188,26 +201,48 @@ fun LauncherAdasStrip(
                 activationTimeMs = activationTimes["pas"] ?: 0L,
             )
         }
-        if (showHeadlights) {
+        if (showAutoMode || showAll) {
             LauncherAdasIcon(
-                contentDescription = stringResource(R.string.launcher_vs_headlights),
-                tint = if (headlightBeams.highBeam) LauncherColors.AccentCyan else LauncherColors.AccentBlue,
-                iconRes = R.drawable.ic_widget_headlights,
+                contentDescription = stringResource(R.string.launcher_vs_headlights_auto),
+                tint = if (isLowBeamBurning) LauncherColors.AccentBlue else LauncherColors.AccentCyan,
+                iconRes = R.drawable.ic_headlights_auto,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,
-                activationKey = "headlights",
-                activationTimeMs = activationTimes["headlights"] ?: 0L,
+                activationKey = "headlights_auto",
+                activationTimeMs = activationTimes["headlights_auto"] ?: 0L,
             )
         }
-        if (showHma) {
+        if (showLowBeam || showAll) {
             LauncherAdasIcon(
-                contentDescription = stringResource(R.string.launcher_adas_hma),
-                tint = assistTint(adas.hma),
-                iconRes = R.drawable.ic_adas_hma,
+                contentDescription = stringResource(R.string.launcher_vs_headlights_low),
+                tint = LauncherColors.AccentBlue,
+                iconRes = R.drawable.ic_headlights_low_beam,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,
-                activationKey = "hma",
-                activationTimeMs = activationTimes["hma"] ?: 0L,
+                activationKey = "headlights_low",
+                activationTimeMs = activationTimes["headlights_low"] ?: 0L,
+            )
+        }
+        if (showHmaMode || showAll) {
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_hma),
+                tint = if (isHighBeamBurning) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                iconRes = R.drawable.ic_high_beam_auto,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "high_beam_auto",
+                activationTimeMs = activationTimes["high_beam_auto"] ?: 0L,
+            )
+        }
+        if (showManualHighBeam || showAll) {
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_vs_headlights),
+                tint = LauncherColors.AccentCyan,
+                iconRes = R.drawable.ic_high_beam,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "high_beam_manual",
+                activationTimeMs = activationTimes["high_beam_manual"] ?: 0L,
             )
         }
         if (showTja) {

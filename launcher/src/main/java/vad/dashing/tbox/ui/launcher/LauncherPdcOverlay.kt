@@ -72,7 +72,7 @@ fun LauncherPdcOverlay(
     rings: LauncherPdcRingFrame?,
     driving: Boolean,
     pasOn: Boolean = false,
-    topView: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") topView: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -85,7 +85,7 @@ fun LauncherPdcOverlay(
     if (visualMode == PDC_VISUAL_OFF) return
 
     val hasPhysicalObstacle = PHYSICAL_PDC_CHANNELS.any { (pdc.distanceCm(it)) in (LauncherPdcZones.PDC_MIN_CM)..(LauncherPdcZones.PDC_MAX_CM) }
-    val showOverlay = if (topView) (pasOn || hasPhysicalObstacle) else hasPhysicalObstacle
+    val showOverlay = pasOn || hasPhysicalObstacle
 
     val overlayAlpha by animateFloatAsState(
         targetValue = if (showOverlay) 1f else 0f,

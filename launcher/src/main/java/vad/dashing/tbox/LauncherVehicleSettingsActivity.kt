@@ -15,6 +15,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.launcher.LauncherVehicleBodyRepository
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsScreen
 import vad.dashing.tbox.ui.theme.TboxAppTheme
@@ -38,17 +39,19 @@ class LauncherVehicleSettingsActivity : ComponentActivity() {
         }
 
         setContent {
-            val tboxViewModel: TboxViewModel = viewModel()
-            val canViewModel: CanDataViewModel = viewModel()
-            val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
-            BackHandler { finish() }
-            TboxAppTheme(theme = theme) {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    LauncherVehicleSettingsScreen(
-                        canViewModel = canViewModel,
-                        tboxViewModel = tboxViewModel,
-                        onClose = { finish() },
-                    )
+            ProvideUiClickSounds {
+                val tboxViewModel: TboxViewModel = viewModel()
+                val canViewModel: CanDataViewModel = viewModel()
+                val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
+                BackHandler { finish() }
+                TboxAppTheme(theme = theme) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        LauncherVehicleSettingsScreen(
+                            canViewModel = canViewModel,
+                            tboxViewModel = tboxViewModel,
+                            onClose = { finish() },
+                        )
+                    }
                 }
             }
         }

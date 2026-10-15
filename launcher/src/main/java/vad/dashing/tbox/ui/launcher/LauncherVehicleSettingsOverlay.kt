@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,8 +50,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
+import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -738,7 +741,7 @@ internal fun LauncherVehicleSettingsContent(
             expanded = expandedSection == VehicleSettingsSection.TbmApi,
             onToggle = { onSectionToggle(VehicleSettingsSection.TbmApi) },
         ) {
-            TbmApiSettingsContent(settingsManager = remember(context) { vad.dashing.tbox.SettingsManager(context) })
+            TbmApiSettingsContent(settingsManager = remember(context) { SettingsManager(context) })
         }
 
         LauncherVehicleSectionCard(
@@ -758,6 +761,24 @@ internal fun LauncherVehicleSettingsContent(
             expanded = expandedSection == VehicleSettingsSection.System,
             onToggle = { onSectionToggle(VehicleSettingsSection.System) },
         ) {
+            val settingsManager = remember(context) { SettingsManager(context) }
+            val uiClickSoundsEnabled by settingsManager.uiClickSoundsEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+            val scope = rememberCoroutineScope()
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_ui_click_sounds),
+                active = uiClickSoundsEnabled,
+                onClick = {
+                    scope.launch {
+                        settingsManager.saveUiClickSoundsEnabled(!uiClickSoundsEnabled)
+                    }
+                },
+            )
+            Text(
+                text = stringResource(R.string.launcher_vs_ui_click_sounds_desc),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+            )
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_wifi) +
                     (systemSettings.wifiSsid?.let { " · $it" } ?: ""),

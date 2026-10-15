@@ -88,7 +88,7 @@ internal fun isDriveViewActive(
     if (racing || accActive) return true
     return when (cameraSwitchMode) {
         CAMERA_SWITCH_MODE_DRIVE_AND_PARK -> isDriveGear
-        else -> if (pasOn) false else speedKmh > 0.5f
+        else -> if (pasOn) false else speedKmh >= 20.0f
     }
 }
 
@@ -455,7 +455,7 @@ fun LauncherLeftPanel(
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd || (pasOn && !showDriveView)),
+                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd || pasOn),
                     projectHeadlights = !racing && headlightBeamsVisible && headlightBeams.any,
                     textureSurface = racing,
                     modifier = Modifier

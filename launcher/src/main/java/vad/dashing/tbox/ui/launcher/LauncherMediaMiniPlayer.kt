@@ -1,14 +1,18 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
@@ -45,10 +50,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.palette.graphics.Palette
+import vad.dashing.tbox.MediaControlNotificationListenerService
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SharedMediaControlService
 import vad.dashing.tbox.ui.LaunchableAppEntry
@@ -73,17 +81,17 @@ fun LauncherMediaMiniPlayer(
         LauncherAppConfigStore.mediaCardAlpha(context)
     }
 
-    // The grant may change while HOME stays resumed (settings open as freeform), so
-    // lifecycle-resume checks are not enough — observe the Secure setting directly.
+    val isDark = LauncherThemeState.darkTheme
+
     val listenerComponent = remember {
-        android.content.ComponentName(
+        ComponentName(
             context,
-            vad.dashing.tbox.MediaControlNotificationListenerService::class.java,
+            MediaControlNotificationListenerService::class.java,
         )
     }
     DisposableEffect(context) {
         val uri = Settings.Secure.getUriFor("enabled_notification_listeners")
-        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 permissionTick++
             }
@@ -157,20 +165,34 @@ fun LauncherMediaMiniPlayer(
             SharedMediaControlService.albumArtFor(activePkg)?.asImageBitmap()
         }.getOrNull()
     }
-    // Tint the card towards the album art's dark accent so the widget follows the music.
-    val mediaCardTarget = remember(albumArtBitmap) {
-        val bitmap = albumArtBitmap ?: return@remember LauncherColors.LeftPanelCard
+
+    // Tint the card towards the album art's accent so the widget follows the music.
+    val mediaCardTarget = remember(albumArtBitmap, isDark) {
+        val baseCardColor = if (isDark) {
+            LauncherColors.LeftPanelCard
+        } else {
+            Color(0xFAFFFFFF)
+        }
+        val bitmap = albumArtBitmap ?: return@remember baseCardColor
         runCatching {
-            val swatch = androidx.palette.graphics.Palette.from(bitmap.asAndroidBitmap()).generate().let {
-                it.darkVibrantSwatch ?: it.darkMutedSwatch ?: it.dominantSwatch
+            val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
+            if (isDark) {
+                val swatch = palette.darkVibrantSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
+                swatch?.let { lerp(baseCardColor, Color(it.rgb), 0.42f) }
+            } else {
+                val swatch = palette.lightVibrantSwatch ?: palette.lightMutedSwatch ?: palette.dominantSwatch ?: palette.vibrantSwatch
+                swatch?.let { lerp(baseCardColor, Color(it.rgb), 0.18f) }
             }
-            swatch?.let { lerp(LauncherColors.LeftPanelCard, Color(it.rgb), 0.42f) }
-        }.getOrNull() ?: LauncherColors.LeftPanelCard
+        }.getOrNull() ?: baseCardColor
     }
     val mediaCardColor by animateColorAsState(
         targetValue = mediaCardTarget.copy(alpha = mediaCardAlpha),
         label = "mediaCardTint",
     )
+
+    val primaryTextColor = if (isDark) LauncherColors.LeftTextPrimary else Color(0xFF111827)
+    val secondaryTextColor = if (isDark) LauncherColors.LeftTextSecondary else Color(0xFF4B5563)
+    val warningTextColor = if (isDark) LauncherColors.AccentCyan else Color(0xFF0284C7)
 
     val pickerTitle = stringResource(R.string.launcher_media_bind_player)
     LaunchedEffect(pickerVisible) {
@@ -195,17 +217,17 @@ fun LauncherMediaMiniPlayer(
     }
 
     if (pickerVisible && pickerFallback) {
-    LauncherAppPickerDialog(
+        LauncherAppPickerDialog(
             visible = true,
             title = pickerTitle,
-        apps = mediaPickerApps,
-        onDismiss = { pickerVisible = false },
-        onPick = { entry ->
-            LauncherAppConfigStore.setDefaultMediaPackage(context, entry.packageName)
-            defaultRevision++
-            pickerVisible = false
-        },
-    )
+            apps = mediaPickerApps,
+            onDismiss = { pickerVisible = false },
+            onPick = { entry ->
+                LauncherAppConfigStore.setDefaultMediaPackage(context, entry.packageName)
+                defaultRevision++
+                pickerVisible = false
+            },
+        )
     }
 
     val expanded = title.isNotBlank() || isPlaying || albumArtBitmap != null
@@ -248,7 +270,7 @@ fun LauncherMediaMiniPlayer(
                         Text(
                             text = stringResource(R.string.widget_music_access_required),
                             style = MaterialTheme.typography.tboxCaption,
-                            color = LauncherColors.AccentCyan,
+                            color = warningTextColor,
                             fontSize = 11.sp,
                             maxLines = 2,
                             modifier = Modifier.clickable { openNotificationListenerSettings(context) },
@@ -257,7 +279,7 @@ fun LauncherMediaMiniPlayer(
                         Text(
                             text = title,
                             style = MaterialTheme.typography.tboxCaption,
-                            color = LauncherColors.LeftTextPrimary,
+                            color = primaryTextColor,
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Clip,
@@ -267,7 +289,7 @@ fun LauncherMediaMiniPlayer(
                             Text(
                                 text = artist,
                                 style = MaterialTheme.typography.tboxCaption,
-                                color = LauncherColors.LeftTextSecondary,
+                                color = secondaryTextColor,
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Clip,
@@ -345,18 +367,22 @@ fun LauncherMediaMiniPlayer(
 
 @Composable
 private fun LauncherMediaAlbumArt(
-    bitmap: androidx.compose.ui.graphics.ImageBitmap?,
-    size: androidx.compose.ui.unit.Dp,
-    corner: androidx.compose.ui.unit.Dp,
+    bitmap: ImageBitmap?,
+    size: Dp,
+    corner: Dp,
     showArt: Boolean,
     onClick: () -> Unit,
     clickEnabled: Boolean,
 ) {
+    val isDark = LauncherThemeState.darkTheme
+    val placeholderBg = if (isDark) LauncherColors.LeftPanelBg else Color(0xFFF3F4F6)
+    val noteColor = if (isDark) LauncherColors.LeftTextSecondary else Color(0xFF6B7280)
+
     Box(
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(corner))
-            .background(LauncherColors.LeftPanelBg)
+            .background(placeholderBg)
             .clickable(enabled = clickEnabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -373,7 +399,7 @@ private fun LauncherMediaAlbumArt(
             Text(
                 "♪",
                 fontSize = if (size < 40.dp) 14.sp else 20.sp,
-                color = LauncherColors.LeftTextSecondary,
+                color = noteColor,
             )
         }
     }
@@ -381,6 +407,9 @@ private fun LauncherMediaAlbumArt(
 
 @Composable
 private fun LauncherMediaMenuButton(onClick: () -> Unit) {
+    val isDark = LauncherThemeState.darkTheme
+    val iconColor = if (isDark) LauncherColors.LeftTextSecondary else Color(0xFF4B5563)
+
     IconButton(
         onClick = onClick,
         modifier = Modifier.size(36.dp),
@@ -388,7 +417,7 @@ private fun LauncherMediaMenuButton(onClick: () -> Unit) {
         Icon(
             Icons.Filled.MoreVert,
             contentDescription = stringResource(R.string.launcher_media_bind_player),
-            tint = LauncherColors.LeftTextSecondary,
+            tint = iconColor,
             modifier = Modifier.size(20.dp),
         )
     }
@@ -407,6 +436,10 @@ private fun LauncherMediaTransportRow(
     onLike: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val isDark = LauncherThemeState.darkTheme
+    val primaryTextColor = if (isDark) LauncherColors.LeftTextPrimary else Color(0xFF111827)
+    val likedColor = if (isDark) Color(0xFFE57373) else Color(0xFFE53935)
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -440,7 +473,7 @@ private fun LauncherMediaTransportRow(
                         else R.drawable.ic_launcher_heart_outline,
                     ),
                     contentDescription = null,
-                    tint = if (isLiked) Color(0xFFE57373) else LauncherColors.LeftTextPrimary,
+                    tint = if (isLiked) likedColor else primaryTextColor,
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -453,9 +486,13 @@ private fun LauncherMediaIconButton(
     iconRes: Int,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    iconSize: androidx.compose.ui.unit.Dp = 24.dp,
-    buttonSize: androidx.compose.ui.unit.Dp = 40.dp,
+    iconSize: Dp = 24.dp,
+    buttonSize: Dp = 40.dp,
 ) {
+    val isDark = LauncherThemeState.darkTheme
+    val activeColor = if (isDark) LauncherColors.LeftTextPrimary else Color(0xFF111827)
+    val disabledColor = if (isDark) LauncherColors.TextMuted else Color(0xFF9CA3AF)
+
     IconButton(
         onClick = onClick,
         enabled = enabled,
@@ -464,7 +501,7 @@ private fun LauncherMediaIconButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = if (enabled) LauncherColors.LeftTextPrimary else LauncherColors.TextMuted,
+            tint = if (enabled) activeColor else disabledColor,
             modifier = Modifier.size(iconSize),
         )
     }

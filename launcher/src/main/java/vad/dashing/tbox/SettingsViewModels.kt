@@ -15,6 +15,15 @@ class SettingsViewModel(private val settingsManager: SettingsManager) : ViewMode
     val launcherAppIconRevision: StateFlow<Int> = settingsManager.launcherAppIconRevisionFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    val uiClickSoundsEnabled: StateFlow<Boolean> = settingsManager.uiClickSoundsEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun saveUiClickSoundsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.saveUiClickSoundsEnabled(enabled)
+        }
+    }
+
     /** Standalone build has no theme packs — always empty. */
     val activeThemeUri: StateFlow<String> =
         kotlinx.coroutines.flow.MutableStateFlow("").stateIn(

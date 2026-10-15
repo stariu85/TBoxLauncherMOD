@@ -29,6 +29,7 @@ data class LauncherVehicleControlSnapshot(
     val lightControlRaw: Int? = null,
     val bcmLowBeam: Boolean? = null,
     val bcmHighBeam: Boolean? = null,
+    val hmaOn: Boolean? = null,
     val rearFogLight: Boolean? = null,
     val homelightDelay: Int? = null,
     val lasSensitivity: Int? = null,
@@ -84,6 +85,23 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         2 -> false
         else -> null
     }
+    val vhalLowBeam = runCatching {
+        val vhalVal = get(289412250) // R_0404_CEM_2_LowBeamSts
+        if (vhalVal != null) vhalVal == 1 else null
+    }.getOrNull()
+
+    val vhalHighBeam = runCatching {
+        val vhalVal = get(289412252) // R_0404_CEM_2_HighBeamSts
+        if (vhalVal != null) vhalVal == 1 else null
+    }.getOrNull()
+
+    val vhalHmaOn = runCatching {
+        val vhalVal = get(289415702) // R_0B00_FCM_2_HMAOnOffsts
+        if (vhalVal != null) vhalVal == 1 else null
+    }.getOrNull()
+
+    // Android 9 mbCAN: MBCanVehicleBcmStatus -> getLightStatus() -> getLowBeamSts() / getHighBeamSts()
+    // 2 = ON, 1 / 0 = OFF
     val bcmLights = runCatching {
         val bcmCls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleBcmStatus")
         val bcm = MbCanEngineFacade.getMbCanData(21, bcmCls) ?: return@runCatching null
@@ -105,8 +123,12 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
 
         val low = readProp(lightSts, "nLowBeamSts") ?: readProp(lightSts, "lowBeamSts") ?: 0
         val high = readProp(lightSts, "nHighBeamSts") ?: readProp(lightSts, "highBeamSts") ?: 0
-        (low != 0) to (high != 0)
+        // mbCAN: 2 means ON (1 or 0 = OFF)
+        (low == 2) to (high == 2)
     }.getOrNull()
+
+    val actualLowBeam = vhalLowBeam ?: bcmLights?.first
+    val actualHighBeam = vhalHighBeam ?: bcmLights?.second
 
     val core = LauncherVehicleControlSnapshot(
         doorAutoLock = onOff12(get(MbCanKnownVehiclePropertyId.DOOR_AUTO_LOCK)),
@@ -120,8 +142,9 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         avh = onOff12(get(MbCanKnownVehiclePropertyId.AVH_SWITCH)),
         headlightsSwitch = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_SWITCH)?.takeIf { it in 0..3 },
         lightControlRaw = get(MbCanKnownVehiclePropertyId.LIGHT_CONTROL)?.takeIf { it in 1..4 },
-        bcmLowBeam = bcmLights?.first,
-        bcmHighBeam = bcmLights?.second,
+        bcmLowBeam = actualLowBeam,
+        bcmHighBeam = actualHighBeam,
+        hmaOn = vhalHmaOn,
         rearFogLight = onOff12(get(MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)),
         homelightDelay = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_HOMELIGHT_DELAY)?.takeIf { it in 0..3 },
         lasSensitivity = get(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL)?.takeIf { it in 1..3 },

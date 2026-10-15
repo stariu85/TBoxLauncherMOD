@@ -96,6 +96,16 @@ object UniversalCanRepository {
         }
         .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
 
+    val lasModeRaw: StateFlow<Int?> = mode
+        .flatMapLatest { activeMode ->
+            if (activeMode == HeadUnitCanMode.Android9MbCan) {
+                MbCanRepository.lasModeRaw
+            } else {
+                Android10VhalRepository.lasModeRaw
+            }
+        }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     val hvacDefrosterState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
             if (activeMode == HeadUnitCanMode.Android9MbCan) {

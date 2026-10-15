@@ -33,6 +33,7 @@ import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.SettingsViewModelFactory
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 
 /**
@@ -107,33 +108,35 @@ internal object LauncherVehicleSettingsOverlayWindow {
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
-                // Standalone launcher is dark-first.
-                TboxAppTheme(theme = 2) {
-                    // Mirror the in-HOME settings layout: full-screen settings plus the
-                    // home/climate dock pinned at the bottom in the same size.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(LauncherColors.LeftPanelBg),
-                    ) {
-                        LauncherVehicleSettingsScreen(
-                            canViewModel = canViewModel,
-                            tboxViewModel = tboxViewModel,
-                            onClose = ::hide,
-                            revealProgress = 1f,
-                        )
-                        LauncherDevScaleProvider {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
-                            ) {
-                                LauncherBottomBar(
-                                    canViewModel = canViewModel,
-                                    onCloseVehicleSettings = ::hide,
-                                    onOpenVehicleSettings = {},
-                                )
+                ProvideUiClickSounds {
+                    // Standalone launcher is dark-first.
+                    TboxAppTheme(theme = 2) {
+                        // Mirror the in-HOME settings layout: full-screen settings plus the
+                        // home/climate dock pinned at the bottom in the same size.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(LauncherColors.LeftPanelBg),
+                        ) {
+                            LauncherVehicleSettingsScreen(
+                                canViewModel = canViewModel,
+                                tboxViewModel = tboxViewModel,
+                                onClose = ::hide,
+                                revealProgress = 1f,
+                            )
+                            LauncherDevScaleProvider {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
+                                ) {
+                                    LauncherBottomBar(
+                                        canViewModel = canViewModel,
+                                        onCloseVehicleSettings = ::hide,
+                                        onOpenVehicleSettings = {},
+                                    )
+                                }
                             }
                         }
                     }

@@ -53,6 +53,7 @@ import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.SettingsViewModelFactory
 import vad.dashing.tbox.TboxViewModel
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 
 @Composable
@@ -96,13 +97,6 @@ fun TeslaLauncherScreen(
         while (true) {
             LauncherAdasRepository.ensureActive()
             delay(2_000L)
-        }
-    }
-
-    val headlightBeams = rememberHeadlightBeams()
-    LaunchedEffect(headlightBeams.any, LauncherThemeState.autoThemeHeadlightsEnabled) {
-        if (LauncherThemeState.autoThemeHeadlightsEnabled) {
-            LauncherThemeState.setDarkTheme(context, headlightBeams.any)
         }
     }
 
@@ -166,7 +160,8 @@ fun TeslaLauncherScreen(
     }
 
     // Standalone launcher is dark-first; TBox theme channel is idle without the proxy.
-    TboxAppTheme(theme = 2) {
+    ProvideUiClickSounds {
+        TboxAppTheme(theme = 2) {
         BackHandler(LauncherEggRace.active) {
             LauncherEggRace.stop()
         }
@@ -390,4 +385,5 @@ fun TeslaLauncherScreen(
             currentVersionCode = currentVersionCode,
         )
     }
+}
 }

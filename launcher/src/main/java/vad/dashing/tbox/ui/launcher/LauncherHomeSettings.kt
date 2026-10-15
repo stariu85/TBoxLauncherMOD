@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,20 +34,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
+import vad.dashing.tbox.SettingsManager
 import kotlin.math.roundToInt
 
 @Composable
 fun ThemeSettingsContent() {
     val context = LocalContext.current
-    val headlightBeams = rememberHeadlightBeams()
     val solarDaytime = rememberSolarDaytimeState()
-
-    LaunchedEffect(headlightBeams.any, LauncherThemeState.autoThemeHeadlightsEnabled) {
-        if (LauncherThemeState.autoThemeHeadlightsEnabled) {
-            LauncherThemeState.setDarkTheme(context, headlightBeams.any)
-        }
-    }
 
     LaunchedEffect(solarDaytime, LauncherThemeState.autoThemeSolarEnabled) {
         if (LauncherThemeState.autoThemeSolarEnabled && solarDaytime != null) {
@@ -59,20 +55,20 @@ fun ThemeSettingsContent() {
             label = stringResource(R.string.launcher_vs_dark_theme),
             active = LauncherThemeState.darkTheme,
             onClick = { LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme) },
-            enabled = !LauncherThemeState.autoThemeHeadlightsEnabled && !LauncherThemeState.autoThemeSolarEnabled,
+            enabled = !LauncherThemeState.autoThemeSolarEnabled,
         )
         LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_vs_auto_theme_headlights),
-            active = LauncherThemeState.autoThemeHeadlightsEnabled,
+            label = stringResource(R.string.launcher_vs_auto_theme_system),
+            active = LauncherThemeState.autoThemeSystemEnabled,
             onClick = {
-                LauncherThemeState.setAutoThemeHeadlightsEnabled(
+                LauncherThemeState.setAutoThemeSystemEnabled(
                     context,
-                    !LauncherThemeState.autoThemeHeadlightsEnabled,
+                    !LauncherThemeState.autoThemeSystemEnabled,
                 )
             },
         )
         Text(
-            text = stringResource(R.string.launcher_vs_auto_theme_headlights_desc),
+            text = stringResource(R.string.launcher_vs_auto_theme_system_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -113,7 +109,31 @@ fun ThemeSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+        UiClickSoundsSettingToggle()
     }
+}
+
+@Composable
+private fun UiClickSoundsSettingToggle() {
+    val context = LocalContext.current
+    val settingsManager = remember(context) { SettingsManager(context) }
+    val uiClickSoundsEnabled by settingsManager.uiClickSoundsEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+    val scope = rememberCoroutineScope()
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_ui_click_sounds),
+        active = uiClickSoundsEnabled,
+        onClick = {
+            scope.launch {
+                settingsManager.saveUiClickSoundsEnabled(!uiClickSoundsEnabled)
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_ui_click_sounds_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
 }
 
 @Composable
@@ -155,7 +175,7 @@ internal fun LauncherHomeSettingsContent() {
     TopBarLeftIndicatorsToggle()
     BottomBarHeightSlider()
     HiddenAppsSettings()
-    TbmApiSettingsContent(settingsManager = remember(context) { vad.dashing.tbox.SettingsManager(context) })
+    TbmApiSettingsContent(settingsManager = remember(context) { SettingsManager(context) })
 }
 
 @Composable

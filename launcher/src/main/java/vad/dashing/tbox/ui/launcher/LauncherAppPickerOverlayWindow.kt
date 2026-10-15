@@ -46,6 +46,7 @@ import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 import vad.dashing.tbox.ui.theme.tboxCaption
 
@@ -139,78 +140,80 @@ internal object LauncherAppPickerOverlayWindow {
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
-                TboxAppTheme(theme = 2) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(20.dp)),
-                        color = LauncherColors.SurfaceDark,
-                    ) {
-                        Column(
+                ProvideUiClickSounds {
+                    TboxAppTheme(theme = 2) {
+                        Surface(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                .clip(RoundedCornerShape(20.dp)),
+                            color = LauncherColors.SurfaceDark,
                         ) {
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.tboxCaption,
-                                color = LauncherColors.TextPrimary,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
                             Column(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(LauncherColors.CardDark)
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                            ) {
-                                apps.forEach { app ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                onPick(app)
-                                                dismiss()
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                            .heightIn(min = 40.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    ) {
-                                        if (app.icon != null) {
-                                            Image(
-                                                bitmap = app.icon,
-                                                contentDescription = app.label,
-                                                modifier = Modifier.size(32.dp),
-                                                contentScale = ContentScale.Fit,
-                                            )
-                                        }
-                                        Text(
-                                            text = app.label,
-                                            color = LauncherColors.TextPrimary,
-                                            fontSize = 14.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            }
-                            TextButton(
-                                onClick = dismiss,
-                                modifier = Modifier.align(Alignment.End),
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text(
-                                    text = stringResource(R.string.action_cancel),
-                                    color = LauncherColors.AccentCyan,
+                                    text = title,
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = LauncherColors.TextPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(LauncherColors.CardDark)
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    apps.forEach { app ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    onPick(app)
+                                                    dismiss()
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                                .heightIn(min = 40.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            if (app.icon != null) {
+                                                Image(
+                                                    bitmap = app.icon,
+                                                    contentDescription = app.label,
+                                                    modifier = Modifier.size(32.dp),
+                                                    contentScale = ContentScale.Fit,
+                                                )
+                                            }
+                                            Text(
+                                                text = app.label,
+                                                color = LauncherColors.TextPrimary,
+                                                fontSize = 14.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
+                                TextButton(
+                                    onClick = dismiss,
+                                    modifier = Modifier.align(Alignment.End),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.action_cancel),
+                                        color = LauncherColors.AccentCyan,
+                                    )
+                                }
                             }
                         }
                     }

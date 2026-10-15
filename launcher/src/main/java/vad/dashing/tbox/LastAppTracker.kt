@@ -2,6 +2,8 @@ package vad.dashing.tbox
 
 import android.app.Activity
 import android.app.Application
+import vad.dashing.tbox.ui.launcher.LaunchedTarget
+import vad.dashing.tbox.ui.launcher.LauncherHistoryTracker
 
 /**
  * Records the last third-party app launched from TBox launcher surfaces.
@@ -31,6 +33,10 @@ object LastAppTracker {
                     ).toString()
                 }.getOrElse { pkg }
                 LauncherStateStore.saveLastLaunchedApp(activity, pkg, label)
+                LauncherHistoryTracker.recordLaunch(
+                    activity,
+                    LaunchedTarget.SingleApp(pkg)
+                )
             }
         })
     }
@@ -43,5 +49,9 @@ object LastAppTracker {
             pm.getApplicationLabel(info).toString()
         }.getOrElse { packageName }
         LauncherStateStore.saveLastLaunchedApp(context, packageName, label)
+        LauncherHistoryTracker.recordLaunch(
+            context,
+            LaunchedTarget.SingleApp(packageName)
+        )
     }
 }

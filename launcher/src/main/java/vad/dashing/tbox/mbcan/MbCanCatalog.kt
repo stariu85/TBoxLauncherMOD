@@ -231,8 +231,11 @@ object MbCanKnownVehiclePropertyId {
     const val MIRROR_REVERSE_TURN = 5
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_HEADLIGHTS_HOMELIGHT_DELAY] — 0/1/2/3. */
     const val HEADLIGHTS_HOMELIGHT_DELAY = 7
-    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_LAS_MODE_SELECTION] — 1=LDW, 2=LKA, 3=ELK. */
-    const val LAS_MODE_SELECTION = 15
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_LAS_MODE_SELECTION] — 1=LDW, 2=LKA, 3=OFF. */
+    const val LAS_MODE_SELECTION = 17
+    const val LAS_MODE_LDW = 1
+    const val LAS_MODE_LKA = 2
+    const val LAS_MODE_OFF = 3
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_LAS_SENSITIVITY_LEVEL] — 1–3. */
     const val LAS_SENSITIVITY_LEVEL = 16
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_ID_HEADLIGHTS_SWITCH] — 0–3. */

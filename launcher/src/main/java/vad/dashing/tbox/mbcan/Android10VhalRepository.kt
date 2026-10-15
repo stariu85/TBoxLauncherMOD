@@ -422,6 +422,15 @@ object Android10VhalRepository {
     val carSettingsDriveMode: StateFlow<Int?> = _carSettingsDriveMode.asStateFlow()
     private val _carSettingsDriveMode6dctWet = MutableStateFlow<Int?>(null)
     val carSettingsDriveMode6dctWet: StateFlow<Int?> = _carSettingsDriveMode6dctWet.asStateFlow()
+    private val _lasModeRaw = MutableStateFlow<Int?>(null)
+    val lasModeRaw: StateFlow<Int?> = _lasModeRaw.asStateFlow()
+
+    fun updateLasModeRaw(raw: Int?) {
+        val valid = raw?.takeIf { it in 1..3 }
+        if (valid != null) {
+            _lasModeRaw.value = valid
+        }
+    }
 
     private val stateEngine = MbCanSignalStateEngine(
         steeringFlow = _steeringWheelHeatState,
@@ -948,6 +957,8 @@ object Android10VhalRepository {
                 raw?.let {
                     stateEngine.applyTjaIcaCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
+            resolved(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ->
+                raw?.let { updateLasModeRaw(it) }
             resolved(MbCanKnownAudioPropertyId.VOLUME) -> raw?.let {
                 _audioVolumeState.value = it.coerceAtLeast(0)
                 if (it > 0) _audioVolumeLastNonZeroInSession.value = it

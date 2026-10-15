@@ -10,11 +10,11 @@ import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
-import androidx.lifecycle.Lifecycle
-import java.util.concurrent.atomic.AtomicBoolean
 import vad.dashing.tbox.LauncherForegroundHandoff
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
+import vad.dashing.tbox.MainActivity
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LauncherNav"
 private const val HOME_DEBOUNCE_MS = 200L
@@ -103,6 +103,10 @@ internal fun goLauncherBack(
             LauncherVehicleSettingsActivity.isOpen() -> {
             onCloseVehicleSettings()
             closeVehicleSettingsOverlay()
+            return
+        }
+        MainActivity.isOpen() -> {
+            MainActivity.finishIfOpen()
             return
         }
         LauncherAboutOverlayWindow.isShowing() -> {

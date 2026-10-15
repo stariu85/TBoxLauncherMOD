@@ -1,7 +1,9 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
-import android.graphics.Rect
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import vad.dashing.tbox.R
@@ -20,7 +22,16 @@ internal fun launchSplitPreset(
         Toast.makeText(context, context.getString(R.string.launcher_split_preset_missing), Toast.LENGTH_SHORT).show()
         return
     }
-    launchSplitApps(context, left, right, preset.leftRatio)
+    LauncherHistoryTracker.recordLaunch(
+        context,
+        LaunchedTarget.SplitPreset(
+            presetId = preset.id,
+            leftPackage = preset.leftPackage,
+            rightPackage = preset.rightPackage,
+            leftRatio = preset.leftRatio,
+        ),
+    )
+    launchSplitApps(context, left, right, preset.leftRatio, recordHistory = false)
 }
 
 internal fun launchSplitApps(
@@ -28,6 +39,7 @@ internal fun launchSplitApps(
     left: LaunchableAppEntry,
     right: LaunchableAppEntry,
     leftRatio: Float = 0.5f,
+    recordHistory: Boolean = true,
 ) {
     if (!isFreeformEnabled(context)) {
         Toast.makeText(context, context.getString(R.string.launcher_split_freeform_required), Toast.LENGTH_LONG).show()
@@ -46,15 +58,15 @@ internal fun launchSplitApps(
 
     val leftIntent = resolveLaunchIntent(context, left.packageName)
         ?: left.activityName?.let { activity ->
-            android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
                 setClassName(left.packageName, activity)
             }
         }
     val rightIntent = resolveLaunchIntent(context, right.packageName)
         ?: right.activityName?.let { activity ->
-            android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
                 setClassName(right.packageName, activity)
             }
         }
@@ -63,13 +75,25 @@ internal fun launchSplitApps(
         return
     }
 
+    if (recordHistory) {
+        LauncherHistoryTracker.recordLaunch(
+            context,
+            LaunchedTarget.SplitPreset(
+                presetId = null,
+                leftPackage = left.packageName,
+                rightPackage = right.packageName,
+                leftRatio = ratio,
+            ),
+        )
+    }
+
     Log.w(TAG, "split bounds base=$base left=$leftBounds right=$rightBounds ratio=$ratio")
     val leftOk = tryLaunchIntentInBounds(context, left.packageName, leftIntent, leftBounds)
     if (!leftOk) {
         Toast.makeText(context, context.getString(R.string.launcher_split_left_failed), Toast.LENGTH_SHORT).show()
         return
     }
-    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+    Handler(Looper.getMainLooper()).postDelayed({
         val rightOk = tryLaunchIntentInBounds(context, right.packageName, rightIntent, rightBounds)
         if (!rightOk) {
             Toast.makeText(context, context.getString(R.string.launcher_split_right_failed), Toast.LENGTH_SHORT).show()

@@ -23,8 +23,14 @@ class LauncherDriveViewConditionTest {
     }
 
     @Test
+    fun smartModeThresholdTest() {
+        assertFalse(isDriveViewActive(speedKmh = 10f, pasOn = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK))
+        assertTrue(isDriveViewActive(speedKmh = 20f, pasOn = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK))
+    }
+
+    @Test
     fun driveViewWhenMovingAtSpeed() {
-        assertTrue(isDriveViewActive(speedKmh = 20f, pasOn = true, isParkGear = false, isDriveGear = true, accActive = false))
+        assertTrue(isDriveViewActive(speedKmh = 20f, pasOn = false, isParkGear = false, isDriveGear = true, accActive = false))
     }
 
     @Test

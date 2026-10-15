@@ -227,6 +227,15 @@ object MbCanRepository {
     val audioVolumeState: StateFlow<Int?> = _audioVolumeState.asStateFlow()
     private val _audioVolumeLastNonZeroInSession = MutableStateFlow<Int?>(null)
     val audioVolumeLastNonZeroInSession: StateFlow<Int?> = _audioVolumeLastNonZeroInSession.asStateFlow()
+    private val _lasModeRaw = MutableStateFlow<Int?>(null)
+    val lasModeRaw: StateFlow<Int?> = _lasModeRaw.asStateFlow()
+
+    fun updateLasModeRaw(raw: Int?) {
+        val valid = raw?.takeIf { it in 1..3 }
+        if (valid != null) {
+            _lasModeRaw.value = valid
+        }
+    }
     private val _engineRpmState = MutableStateFlow<Float?>(null)
     val engineRpmState: StateFlow<Float?> = _engineRpmState.asStateFlow()
     private val _engineTemperatureState = MutableStateFlow<Float?>(null)
@@ -736,6 +745,7 @@ object MbCanRepository {
             when (propertyId) {
                 MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = targetValue
                 MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = targetValue
+                MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION -> updateLasModeRaw(targetValue)
             }
             spec.refreshSignal?.let { MbCanJobManager.requestBurst(it) }
             delay(POST_COMMAND_VERIFY_DELAY_MS)

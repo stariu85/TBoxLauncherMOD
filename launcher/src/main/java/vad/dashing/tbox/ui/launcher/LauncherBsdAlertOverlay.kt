@@ -37,6 +37,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
 
 /**
  * Full-screen overlay component for BSD Alert (high-priority blind spot warning).
@@ -185,9 +186,11 @@ internal object LauncherBsdAlertOverlayWindow {
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
-                val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
-                val currentAdas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
-                LauncherBsdAlertOverlay(adas = currentAdas)
+                ProvideUiClickSounds {
+                    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+                    val currentAdas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+                    LauncherBsdAlertOverlay(adas = currentAdas)
+                }
             }
         }
 

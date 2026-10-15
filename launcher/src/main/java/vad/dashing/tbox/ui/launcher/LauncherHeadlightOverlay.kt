@@ -96,7 +96,7 @@ fun LauncherHeadlightOverlay(
 ) {
     if (frame == null) return
     val isLong = beams.highBeam || hma == LauncherAdasAssistIcon.Active
-    val isShort = !isLong && hma == LauncherAdasAssistIcon.Dark
+    val isShort = !isLong && (beams.lowBeam || hma == LauncherAdasAssistIcon.Dark)
     if (!isLong && !isShort) return
 
     val color = if (isLong) Color(0xFFEAF4FF) else LauncherColors.AccentBlue
