@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +42,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import android.app.Application
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -50,10 +50,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.SettingsManager
+import vad.dashing.tbox.update.UpdateUiState
+import vad.dashing.tbox.update.UpdateViewModel
+import vad.dashing.tbox.update.UpdateViewModelFactory
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
-import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -93,6 +97,50 @@ import vad.dashing.tbox.ui.sendToggleWiperMaintenance
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
 import kotlin.math.roundToInt
+
+@Composable
+internal fun LauncherAboutUpdatesHeaderButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val updateViewModel: UpdateViewModel = viewModel(
+        factory = UpdateViewModelFactory(
+            context.applicationContext as Application,
+            SettingsManager(context.applicationContext),
+        ),
+    )
+    val updateUiState by updateViewModel.uiState.collectAsStateWithLifecycle()
+    val hasUpdate = when (updateUiState) {
+        is UpdateUiState.Available,
+        is UpdateUiState.Downloading,
+        is UpdateUiState.Verifying,
+        is UpdateUiState.ReadyToInstall -> true
+        else -> false
+    }
+
+    val greenBg = Color(0xFF22C55E)
+    val normalBg = LauncherColors.CardDarkElevated
+    val bg = if (hasUpdate) greenBg else normalBg
+    val textColor = if (hasUpdate) Color.White else LauncherColors.TextPrimary
+    val text = if (hasUpdate) stringResource(R.string.launcher_update_available_short) else stringResource(R.string.launcher_about_app_short)
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
 
 @Composable
 fun LauncherVehicleSettingsOverlay(
@@ -190,17 +238,9 @@ fun LauncherVehicleSettingsOverlay(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Normal,
                             )
-                            IconButton(
+                            LauncherAboutUpdatesHeaderButton(
                                 onClick = { launchTBoxSettings(context) },
-                                modifier = Modifier.size(28.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Info,
-                                    contentDescription = stringResource(R.string.action_configure),
-                                    tint = LauncherColors.AccentCyan,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                            )
                         }
                         Text(
                             text = stringResource(R.string.launcher_vs_overlay_hint),

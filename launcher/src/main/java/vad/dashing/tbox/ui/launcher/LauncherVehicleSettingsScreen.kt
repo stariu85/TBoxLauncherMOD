@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -293,17 +292,9 @@ fun LauncherVehicleSettingsScreen(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Normal,
                         )
-                        IconButton(
+                        LauncherAboutUpdatesHeaderButton(
                             onClick = { launchTBoxSettings(context) },
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Info,
-                                contentDescription = stringResource(R.string.action_configure),
-                                tint = LauncherColors.AccentCyan,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                        )
                     }
                     Text(
                         text = stringResource(R.string.launcher_vs_overlay_hint),

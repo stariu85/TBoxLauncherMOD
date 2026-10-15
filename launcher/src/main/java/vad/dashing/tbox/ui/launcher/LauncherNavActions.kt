@@ -247,40 +247,51 @@ internal data class ForeignAppTask(
     val topActivityClass: String?,
 )
 
+private val ignoredLauncherPackages = setOf(
+    "vad.dashing.tbox",
+    "com.wt.launcher3",
+    "com.android.launcher3",
+    "com.android.launcherWT",
+    "ca.dstudio.atvlauncher",
+    "com.android.systemui",
+)
+
 internal fun findForeignAppTask(context: Context): ForeignAppTask? {
     val launcher = context.packageName
     val stacks = LauncherAmStackShell.listStacks()
-    val freeforms = stacks.filter { row ->
-        row.windowingMode.equals("freeform", ignoreCase = true) &&
-            row.packageName != null &&
+
+    val foreignRows = stacks.filter { row ->
+        row.taskId != null &&
+            !row.packageName.isNullOrBlank() &&
             row.packageName != launcher &&
-            row.taskId != null
-    }
-    // Prefer visible freeform; else highest stack id (last brought forward).
-    // ActivityTaskManager.getFocusedStackInfo is unavailable on API 28 / blocked for
-    // targetSdk 36 lintVital — do not use reflective ATM here.
-    val freeform = freeforms.firstOrNull { it.visible }
-        ?: freeforms.maxByOrNull { it.stackId }
-    if (freeform?.taskId != null && freeform.packageName != null) {
-        return ForeignAppTask(freeform.taskId, freeform.packageName, freeform.topActivityClass)
+            row.packageName !in ignoredLauncherPackages
     }
 
-    for (pkg in FreeformLaunchRegistry.snapshot()) {
-        val row = stacks.firstOrNull { it.packageName == pkg && it.taskId != null }
-        if (row?.taskId != null) return ForeignAppTask(row.taskId, pkg, row.topActivityClass)
+    if (foreignRows.isNotEmpty()) {
+        val visibleTask = foreignRows.filter { it.visible }.maxByOrNull { it.stackId }
+        if (visibleTask != null) {
+            return ForeignAppTask(visibleTask.taskId!!, visibleTask.packageName!!, visibleTask.topActivityClass)
+        }
+
+        val topTask = foreignRows.maxByOrNull { it.stackId }
+        if (topTask != null) {
+            return ForeignAppTask(topTask.taskId!!, topTask.packageName!!, topTask.topActivityClass)
+        }
     }
 
-    val visibleOther = stacks.firstOrNull { row ->
-        row.visible &&
-            row.packageName != null &&
-            row.packageName != launcher &&
-            row.packageName != "com.wt.launcher3" &&
-            row.packageName != "com.android.launcherWT" &&
-            row.packageName != "ca.dstudio.atvlauncher" &&
-            row.taskId != null
+    val trackedPackages = FreeformLaunchRegistry.snapshot()
+    val lastActive = LauncherHistoryTracker.lastActivePackage()
+    val fallbackPkg = if (lastActive != null && lastActive in trackedPackages) {
+        lastActive
+    } else {
+        trackedPackages.firstOrNull()
     }
-    if (visibleOther?.taskId != null && visibleOther.packageName != null) {
-        return ForeignAppTask(visibleOther.taskId, visibleOther.packageName, visibleOther.topActivityClass)
+
+    if (fallbackPkg != null) {
+        val row = stacks.firstOrNull { it.packageName == fallbackPkg && it.taskId != null }
+        val taskId = row?.taskId ?: -1
+        return ForeignAppTask(taskId, fallbackPkg, row?.topActivityClass)
     }
+
     return null
 }

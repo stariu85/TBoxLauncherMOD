@@ -207,6 +207,8 @@
     <string name="launcher_car_model_scale_desc">Размер 3D-модели автомобиля на экране</string>
     <string name="launcher_sidebar_width_title">Ширина левой панели</string>
     <string name="launcher_sidebar_width_desc">Изменяет ширину панели с машиной и зону Freeform</string>
+    <string name="launcher_about_app_short">О программе</string>
+    <string name="launcher_update_available_short">Обновление!</string>
     <string name="launcher_camera_switch_mode_title">Режим переключения камеры 3D-модели</string>
     <string name="launcher_camera_switch_mode_desc">Условие перехода между видом сзади и видом сверху</string>
     <string name="launcher_camera_switch_mode_pas">Умный (парктроники и P)</string>

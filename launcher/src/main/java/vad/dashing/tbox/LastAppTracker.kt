@@ -14,6 +14,9 @@ object LastAppTracker {
         "vad.dashing.tbox",
         "com.wt.launcher3",
         "com.android.launcher3",
+        "com.android.launcherWT",
+        "ca.dstudio.atvlauncher",
+        "com.android.systemui",
     )
 
     fun register(application: Application) {

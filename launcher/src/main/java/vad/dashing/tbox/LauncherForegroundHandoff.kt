@@ -12,6 +12,9 @@ import android.view.View
 object LauncherHomeActivityHolder {
     @Volatile
     var instance: LauncherHomeActivity? = null
+
+    @Volatile
+    var isResumed: Boolean = false
 }
 
 object LauncherWindowState {

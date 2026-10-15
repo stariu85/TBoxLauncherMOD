@@ -77,18 +77,19 @@ import kotlin.math.abs
 
 internal fun isDriveViewActive(
     speedKmh: Float,
-    pasOn: Boolean = false,
+    pasObstacle: Boolean = false,
     isParkGear: Boolean = false,
     isDriveGear: Boolean = false,
     accActive: Boolean = false,
     racing: Boolean = false,
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
+    currentSmartDriveView: Boolean = false,
 ): Boolean {
     if (isParkGear) return false
     if (racing || accActive) return true
     return when (cameraSwitchMode) {
         CAMERA_SWITCH_MODE_DRIVE_AND_PARK -> isDriveGear
-        else -> if (pasOn) false else speedKmh >= 20.0f
+        else -> if (pasObstacle) false else currentSmartDriveView
     }
 }
 
@@ -227,6 +228,7 @@ fun LauncherLeftPanel(
     val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle()
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdcActive || adas.pdc.hasAny || (simulateEnabled && LauncherDevVehicleState.showAllIndicators)
+    val pasObstacle = adas.pdc.hasAny
     val accActive = adas.accActive ||
         (adas.frontObject.valid && (adas.fcwActive || adas.distanceWarning || adas.aebHint))
     val cameraSwitchModeRevision by LauncherAppConfigStore.cameraSwitchModeRevisionFlow
@@ -234,15 +236,51 @@ fun LauncherLeftPanel(
     val cameraSwitchMode = remember(context, cameraSwitchModeRevision) {
         LauncherAppConfigStore.cameraSwitchMode(context)
     }
+    var smartDriveViewActive by remember { mutableStateOf(false) }
+    var speedBelow5SinceMs by remember { mutableLongStateOf(0L) }
+
+    val nowMs = SystemClock.elapsedRealtime()
+
+    LaunchedEffect(effectiveSpeed, pasOn, pasObstacle, activeGear, accActive, racing, cameraSwitchMode) {
+        if (activeGear == 'P' || pasObstacle) {
+            smartDriveViewActive = false
+            speedBelow5SinceMs = 0L
+        } else if (racing || accActive || effectiveSpeed >= 15f) {
+            smartDriveViewActive = true
+            speedBelow5SinceMs = 0L
+        } else if (effectiveSpeed < 5f && pasOn && smartDriveViewActive) {
+            if (speedBelow5SinceMs == 0L) {
+                speedBelow5SinceMs = nowMs
+            }
+        } else if (effectiveSpeed >= 5f || !pasOn) {
+            speedBelow5SinceMs = 0L
+        }
+    }
+
+    LaunchedEffect(smartDriveViewActive, speedBelow5SinceMs, pasOn) {
+        if (smartDriveViewActive && speedBelow5SinceMs > 0L) {
+            val elapsed = SystemClock.elapsedRealtime() - speedBelow5SinceMs
+            val remaining = 3_000L - elapsed
+            if (remaining > 0) {
+                delay(remaining)
+            }
+            if (effectiveSpeed < 5f && pasOn && activeGear != 'P') {
+                smartDriveViewActive = false
+                speedBelow5SinceMs = 0L
+            }
+        }
+    }
+
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
     val rawDriveView = isDriveViewActive(
         speedKmh = effectiveSpeed,
-        pasOn = pasOn,
+        pasObstacle = pasObstacle,
         isParkGear = activeGear == 'P',
         isDriveGear = inDriveGear,
         accActive = accActive,
         racing = racing,
         cameraSwitchMode = cameraSwitchMode,
+        currentSmartDriveView = smartDriveViewActive,
     )
 
     // Hold drive view for up to 1800ms to prevent camera view jumping when CAN speed/gear momentarily drops
@@ -461,7 +499,7 @@ fun LauncherLeftPanel(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            translationX = with(density) { carLaneShift.toPx() }
+                            translationX = if (racing) with(density) { carLaneShift.toPx() } else 0f
                         },
                 )
                 if (settingsProgress < 0.15f && !racing) {

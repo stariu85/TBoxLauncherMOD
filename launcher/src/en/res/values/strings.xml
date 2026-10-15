@@ -19,6 +19,8 @@
     <string name="launcher_car_model_scale_desc">Size of the 3D car model on screen</string>
     <string name="launcher_sidebar_width_title">Left panel width</string>
     <string name="launcher_sidebar_width_desc">Changes the width of the car panel and Freeform zone</string>
+    <string name="launcher_about_app_short">About</string>
+    <string name="launcher_update_available_short">Update!</string>
     <string name="launcher_camera_switch_mode_title">3D camera view mode</string>
     <string name="launcher_camera_switch_mode_desc">Condition for switching between drive view and top view</string>
     <string name="launcher_camera_switch_mode_pas">Smart (PAS &amp; Park)</string>

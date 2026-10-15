@@ -570,6 +570,31 @@ internal object LauncherAppConfigStore {
         bottomSlotsRevision.value++
     }
 
+    fun saveBottomSlotsPreset(context: Context, presetKey: String) {
+        val currentSlots = bottomSlotsUnified(context)
+        val raw = currentSlots.take(GRID_SLOTS_TOTAL_COUNT).joinToString(",") { it ?: "null" }
+        prefs(context).edit().putString("bottom_slots_preset_$presetKey", raw).apply()
+        bottomSlotsRevision.value++
+    }
+
+    fun hasBottomSlotsPreset(context: Context, presetKey: String): Boolean {
+        val raw = prefs(context).getString("bottom_slots_preset_$presetKey", null)
+        return !raw.isNullOrBlank()
+    }
+
+    fun applyBottomSlotsPreset(context: Context, presetKey: String): Boolean {
+        val raw = prefs(context).getString("bottom_slots_preset_$presetKey", null)
+        if (raw.isNullOrBlank()) return false
+        var list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
+        if (list.size < GRID_SLOTS_TOTAL_COUNT) {
+            while (list.size < GRID_SLOTS_TOTAL_COUNT) list.add(null)
+        } else if (list.size > GRID_SLOTS_TOTAL_COUNT) {
+            list = list.take(GRID_SLOTS_TOTAL_COUNT).toMutableList()
+        }
+        setBottomSlotsUnified(context, list)
+        return true
+    }
+
     fun setButtonInUnifiedSlot(context: Context, slotIndex: Int, buttonId: String?) {
         val slots = bottomSlotsUnified(context).toMutableList()
         val minSlot = if (floatingHomeVisible(context)) 1 else 0

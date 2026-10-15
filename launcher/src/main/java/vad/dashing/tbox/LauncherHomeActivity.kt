@@ -104,9 +104,15 @@ class LauncherHomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        LauncherHomeActivityHolder.isResumed = true
         LauncherForegroundHandoff.restoreLauncherWindow()
         window.decorView.visibility = android.view.View.VISIBLE
         LauncherOverlayBar.ensureShowing(this)
+    }
+
+    override fun onPause() {
+        LauncherHomeActivityHolder.isResumed = false
+        super.onPause()
     }
 
     override fun onNewIntent(intent: Intent) {

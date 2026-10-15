@@ -37,6 +37,8 @@ object LauncherHistoryTracker {
         "com.wt.launcher3",
         "com.android.launcher3",
         "com.android.launcherWT",
+        "ca.dstudio.atvlauncher",
+        "com.android.systemui",
     )
 
     @Volatile
@@ -45,14 +47,36 @@ object LauncherHistoryTracker {
     @Volatile
     private var lastSplitLaunchMs: Long = 0L
 
+    @Volatile
+    private var lastActivePackageName: String? = null
+
+    fun lastActivePackage(): String? = lastActivePackageName
+
+    private fun isSameTarget(a: LaunchedTarget, b: LaunchedTarget): Boolean {
+        if (a == b) return true
+        return when {
+            a is LaunchedTarget.SingleApp && b is LaunchedTarget.SingleApp -> {
+                a.packageName == b.packageName ||
+                    (a.packageName in LAUNCHER_CLIMATE_PACKAGES && b.packageName in LAUNCHER_CLIMATE_PACKAGES)
+            }
+            a is LaunchedTarget.SplitPreset && b is LaunchedTarget.SplitPreset -> {
+                (a.presetId != null && a.presetId == b.presetId) ||
+                    (a.leftPackage == b.leftPackage && a.rightPackage == b.rightPackage)
+            }
+            else -> false
+        }
+    }
+
     @Synchronized
     fun recordLaunch(context: Context, target: LaunchedTarget) {
         when (target) {
             is LaunchedTarget.SingleApp -> {
                 if (target.packageName.isBlank() || target.packageName in ignoredPackages) return
+                lastActivePackageName = target.packageName
             }
             is LaunchedTarget.SplitPreset -> {
                 if (target.leftPackage.isBlank() || target.rightPackage.isBlank()) return
+                lastActivePackageName = target.leftPackage
             }
         }
 
@@ -86,19 +110,36 @@ object LauncherHistoryTracker {
             lastSplitLaunchMs = SystemClock.uptimeMillis()
         }
 
-        if (last == target) {
+        if (last != null && isSameTarget(last, target)) {
+            if (target is LaunchedTarget.SingleApp && last is LaunchedTarget.SingleApp) {
+                if (!target.activityName.isNullOrBlank() && last.activityName.isNullOrBlank()) {
+                    list[list.lastIndex] = target
+                    saveHistory(context, list)
+                }
+            }
             return
         }
 
-        list.removeAll { it == target }
-        list.add(target)
+        val effectiveTarget = if (target is LaunchedTarget.SingleApp && target.activityName.isNullOrBlank()) {
+            val existingActivity = (list.firstOrNull { isSameTarget(it, target) } as? LaunchedTarget.SingleApp)?.activityName
+            if (!existingActivity.isNullOrBlank()) {
+                target.copy(activityName = existingActivity)
+            } else {
+                target
+            }
+        } else {
+            target
+        }
+
+        list.removeAll { isSameTarget(it, target) }
+        list.add(effectiveTarget)
 
         while (list.size > MAX_HISTORY_SIZE) {
             list.removeAt(0)
         }
 
         saveHistory(context, list)
-        Log.d(TAG, "Recorded launch target: $target (history size=${list.size})")
+        Log.d(TAG, "Recorded launch target: $effectiveTarget (history size=${list.size})")
     }
 
     @Synchronized
@@ -175,6 +216,21 @@ object LauncherHistoryTracker {
     }
 }
 
+private fun isTargetActive(target: LaunchedTarget, activePkg: String?): Boolean {
+    if (activePkg.isNullOrBlank()) return false
+    val activeIsClimate = activePkg in LAUNCHER_CLIMATE_PACKAGES
+    return when (target) {
+        is LaunchedTarget.SingleApp -> {
+            target.packageName == activePkg ||
+                (activeIsClimate && target.packageName in LAUNCHER_CLIMATE_PACKAGES)
+        }
+        is LaunchedTarget.SplitPreset -> {
+            target.leftPackage == activePkg || target.rightPackage == activePkg ||
+                (activeIsClimate && (target.leftPackage in LAUNCHER_CLIMATE_PACKAGES || target.rightPackage in LAUNCHER_CLIMATE_PACKAGES))
+        }
+    }
+}
+
 /**
  * Executes the Return / Undo launch button behavior:
  * - If on Home screen or Launcher Settings: closes settings, launches the last launched app or split preset.
@@ -203,16 +259,14 @@ internal fun performUndoLaunch(context: Context) {
     }
 
     val foreignTask = findForeignAppTask(context)
-    val isHomeOrSettings = settingsWereOpen || foreignTask == null
+    val activePkg = foreignTask?.packageName ?: LauncherHistoryTracker.lastActivePackage()
+    val isHomeActive = settingsWereOpen || (foreignTask == null && vad.dashing.tbox.LauncherHomeActivityHolder.isResumed)
 
-    val targetToLaunch = if (isHomeOrSettings) {
+    val targetToLaunch = if (isHomeActive) {
         history.last()
     } else {
-        if (history.size >= 2) {
-            history[history.size - 2]
-        } else {
-            history.last()
-        }
+        history.lastOrNull { !isTargetActive(it, activePkg) }
+            ?: if (history.size >= 2) history[history.size - 2] else history.last()
     }
 
     launchTarget(context, targetToLaunch)
@@ -221,7 +275,11 @@ internal fun performUndoLaunch(context: Context) {
 internal fun launchTarget(context: Context, target: LaunchedTarget) {
     when (target) {
         is LaunchedTarget.SingleApp -> {
-            launchLauncherApp(context, target.packageName, target.activityName)
+            if (target.packageName in LAUNCHER_CLIMATE_PACKAGES) {
+                launchClimateApp(context)
+            } else {
+                launchLauncherApp(context, target.packageName, target.activityName)
+            }
         }
         is LaunchedTarget.SplitPreset -> {
             val savedPreset = target.presetId?.let { pid ->

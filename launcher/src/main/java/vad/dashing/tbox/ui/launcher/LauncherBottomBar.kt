@@ -2,6 +2,7 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -17,6 +18,9 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -225,7 +229,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
 )
 
 @Composable
-private fun LauncherDockSlotPickerPopup(
+internal fun LauncherDockSlotPickerContent(
     slotIndex: Int,
     missingButtons: List<LauncherDockButtonDescriptor>,
     pickerApps: List<LaunchableAppEntry> = emptyList(),
@@ -238,6 +242,7 @@ private fun LauncherDockSlotPickerPopup(
     val appsByPackage = remember(pickerApps) { pickerApps.associateBy { it.packageName } }
 
     val context = LocalContext.current
+    val pickerCoroutineScope = rememberCoroutineScope()
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
     val tbmConnState by tbmRepo.connectionState.collectAsStateWithLifecycle()
     val tbmAutomations by tbmRepo.automations.collectAsStateWithLifecycle()
@@ -267,26 +272,21 @@ private fun LauncherDockSlotPickerPopup(
         },
     )
 
-    Popup(
-        alignment = Alignment.BottomCenter,
-        offset = IntOffset(0, -110),
-        onDismissRequest = onDismiss,
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = popupBg,
+        border = BorderStroke(1.dp, popupBorder),
+        shadowElevation = 12.dp,
+        modifier = Modifier
+            .widthIn(min = 280.dp, max = maxPopupWidthDp)
+            .padding(8.dp),
     ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = popupBg,
-            border = BorderStroke(1.dp, popupBorder),
-            shadowElevation = 12.dp,
+        Column(
             modifier = Modifier
-                .widthIn(min = 280.dp, max = maxPopupWidthDp)
-                .padding(8.dp),
+                .padding(12.dp)
+                .wrapContentWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(12.dp)
-                    .wrapContentWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -300,6 +300,107 @@ private fun LauncherDockSlotPickerPopup(
                     )
                     IconButton(onClick = onDismiss, modifier = Modifier.size(31.dp)) {
                         Icon(Icons.Filled.Close, null, tint = LauncherColors.TextMuted)
+                    }
+                }
+
+                var flashingPresetKey by remember { mutableStateOf<String?>(null) }
+                val presetsRevision by LauncherAppConfigStore.bottomSlotsRevisionFlow.collectAsStateWithLifecycle()
+
+                val presetItems = remember {
+                    listOf(
+                        "summer" to "Лето",
+                        "winter" to "Зима",
+                        "general" to "Общее",
+                    )
+                }
+
+                Text(
+                    text = "Пресеты кнопок",
+                    color = LauncherColors.TextMuted,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    presetItems.forEach { (presetKey, presetName) ->
+                        val hasPreset = remember(context, presetsRevision) {
+                            LauncherAppConfigStore.hasBottomSlotsPreset(context, presetKey)
+                        }
+                        val isFlashing = flashingPresetKey == presetKey
+
+                        val btnBg = when {
+                            isFlashing -> Color(0xFF22C55E)
+                            hasPreset -> LauncherColors.CardDark
+                            else -> LauncherColors.CardDark.copy(alpha = 0.5f)
+                        }
+                        val btnBorder = when {
+                            isFlashing -> Color(0xFF22C55E)
+                            hasPreset -> LauncherColors.AccentCyan
+                            else -> Color.White.copy(alpha = 0.12f)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(btnBg)
+                                .border(1.dp, btnBorder, RoundedCornerShape(12.dp))
+                                .pointerInput(presetKey) {
+                                    awaitEachGesture {
+                                        awaitFirstDown()
+                                        val startMs = SystemClock.uptimeMillis()
+                                        var isSaved = false
+
+                                        val timerJob = pickerCoroutineScope.launch {
+                                            delay(3000L)
+                                            isSaved = true
+                                            LauncherAppConfigStore.saveBottomSlotsPreset(context, presetKey)
+                                            Toast.makeText(context, "Пресет «$presetName» сохранен", Toast.LENGTH_SHORT).show()
+                                            flashingPresetKey = presetKey
+                                            delay(600L)
+                                            flashingPresetKey = null
+                                        }
+
+                                        val up = waitForUpOrCancellation()
+                                        timerJob.cancel()
+
+                                        if (!isSaved && up != null) {
+                                            val elapsed = SystemClock.uptimeMillis() - startMs
+                                            if (elapsed < 3000L) {
+                                                val applied = LauncherAppConfigStore.applyBottomSlotsPreset(context, presetKey)
+                                                if (applied) {
+                                                    Toast.makeText(context, "Применен пресет «$presetName»", Toast.LENGTH_SHORT).show()
+                                                    onDismiss()
+                                                } else {
+                                                    Toast.makeText(context, "Пресет «$presetName» не сохранен (зажмите на 3 сек)", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = presetName,
+                                    color = if (isFlashing) Color.White else if (hasPreset) LauncherColors.TextPrimary else LauncherColors.TextMuted,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = if (isFlashing) "Сохранено!" else if (hasPreset) "Сохранен" else "Пусто (3с)",
+                                    color = if (isFlashing) Color.White else if (hasPreset) LauncherColors.AccentCyan else LauncherColors.TextMuted.copy(alpha = 0.7f),
+                                    fontSize = 10.sp,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -544,6 +645,30 @@ private fun LauncherDockSlotPickerPopup(
                 }
             }
         }
+    }
+
+@Composable
+private fun LauncherDockSlotPickerPopup(
+    slotIndex: Int,
+    missingButtons: List<LauncherDockButtonDescriptor>,
+    pickerApps: List<LaunchableAppEntry> = emptyList(),
+    splitPresets: List<LauncherSplitPreset> = emptyList(),
+    onSelectButton: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Popup(
+        alignment = Alignment.BottomCenter,
+        offset = IntOffset(0, -110),
+        onDismissRequest = onDismiss,
+    ) {
+        LauncherDockSlotPickerContent(
+            slotIndex = slotIndex,
+            missingButtons = missingButtons,
+            pickerApps = pickerApps,
+            splitPresets = splitPresets,
+            onSelectButton = onSelectButton,
+            onDismiss = onDismiss,
+        )
     }
 }
 
@@ -1057,13 +1182,13 @@ private fun LauncherBottomDockButtonContent(
             tempText = formatHvacSetTemp(driverTemp),
             onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
             onUp = { sendAdjustHvacTemperature(context, driverTemp, 1.0f, HvacTempZone.Driver) },
-            onTextClick = { launchLauncherApp(context, "com.mengbo.acsettings") },
+            onTextClick = { launchClimateApp(context) },
         )
         "temp_pass" -> LauncherTempStepper(
             tempText = formatHvacSetTemp(passTemp),
             onDown = { sendAdjustHvacTemperature(context, passTemp, -1.0f, HvacTempZone.Passenger) },
             onUp = { sendAdjustHvacTemperature(context, passTemp, 1.0f, HvacTempZone.Passenger) },
-            onTextClick = { launchLauncherApp(context, "com.mengbo.acsettings") },
+            onTextClick = { launchClimateApp(context) },
         )
         "audio_volume" -> {
             val canVolume by UniversalCanRepository.audioVolumeState.collectAsStateWithLifecycle()
