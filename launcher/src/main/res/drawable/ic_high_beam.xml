@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Standard High Beam: Headlight D-dome on right, 3 horizontal straight rays pointing left -->
+    <!-- D-Dome bulb -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 14.5,6 H 18 C 20.2,6 22,7.8 22,10 V 14 C 22,16.2 20.2,18 18,18 H 14.5 V 6 Z M 16.5,8 V 16 H 18 C 19.1,16 20,15.1 20,14 V 10 C 20,8.9 19.1,8 18,8 Z" />
+    <!-- 3 Horizontal Straight Rays (pointing left) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 12.5,7 H 2 V 8.5 H 12.5 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 12.5,11.25 H 2 V 12.75 H 12.5 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 12.5,15.5 H 2 V 17 H 12.5 Z" />
+</vector>
