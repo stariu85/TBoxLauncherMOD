@@ -1188,7 +1188,7 @@ private fun LauncherBottomDockButtonContent(
                 painter = painterResource(R.drawable.close_apps_24),
                 contentDescription = "Закрыть приложения",
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
-                modifier = Modifier.size(dockDp(28f)),
+                modifier = Modifier.size(dockDp(32.2f)),
             )
         }
         "temp_driver" -> LauncherTempStepper(
