@@ -5,6 +5,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +16,8 @@ import vad.dashing.tbox.DiagFileLog
  *
  * Values considered OFF: "0", "false", "off", "hide", "hidden", "avm_state_hide", null, empty.
  * Any other non-empty value means 360 Camera is ACTIVE.
- * When ACTIVE, 3D car model rendering is completely stopped to free 100% GPU for the camera.
+ * When ACTIVE, 3D car model rendering is completely stopped to free 100% GPU for the camera,
+ * and active applications are minimized. When camera turns OFF, previous app is restored.
  */
 object LauncherAvmRepository {
     private const val TAG = "LauncherAvm"
@@ -35,6 +37,9 @@ object LauncherAvmRepository {
 
     private var observerRegistered = false
 
+    @Volatile
+    private var wasAppActiveBeforeAvm = false
+
     fun parseAvmActive(raw: String?): Boolean {
         if (raw.isNullOrBlank()) return false
         val clean = raw.trim().lowercase()
@@ -42,15 +47,33 @@ object LauncherAvmRepository {
     }
 
     fun startObserving(context: Context) {
-        val resolver = context.contentResolver
+        val appCtx = context.applicationContext
+        val resolver = appCtx.contentResolver
+
         fun update() {
             val raw = runCatching {
                 Settings.Global.getString(resolver, AVM_STATE_SETTING)
             }.getOrNull()
             val active = parseAvmActive(raw)
-            if (_isAvmActive.value != active) {
+            val previous = _isAvmActive.value
+            if (previous != active) {
                 _isAvmActive.value = active
                 DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active")
+
+                if (active) {
+                    val foreign = findForeignAppTask(appCtx)
+                    wasAppActiveBeforeAvm = (foreign != null)
+                    Log.w(TAG, "AVM turned ON: foreignAppActive=$wasAppActiveBeforeAvm -> minimizing apps")
+                    minimizeForeignFreeformTasks(appCtx)
+                } else {
+                    if (wasAppActiveBeforeAvm) {
+                        wasAppActiveBeforeAvm = false
+                        Log.w(TAG, "AVM turned OFF: restoring previous app to foreground")
+                        performUndoLaunch(appCtx)
+                    } else {
+                        Log.w(TAG, "AVM turned OFF: no app was active before AVM, staying on Home")
+                    }
+                }
             }
         }
 

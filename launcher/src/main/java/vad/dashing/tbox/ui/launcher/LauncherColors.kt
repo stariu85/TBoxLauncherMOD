@@ -7,7 +7,10 @@ import androidx.compose.ui.graphics.Color
 
 /** Tesla reference palette. Left-panel colors follow [LauncherThemeState.darkTheme]. */
 object LauncherColors {
-    val AccentCyan = Color(0xFF0BE4FF)
+    private val DarkAccentCyan = Color(0xFF0BE4FF)
+    private val LightAccentBlue = Color(0xFF2563EB)
+
+    val AccentCyan: Color get() = if (LauncherThemeState.darkTheme) DarkAccentCyan else LightAccentBlue
     val AccentBlue = Color(0xFF3B82F6)
 
     // Left panel — light theme (default) / dark theme (optional, Tesla night style)
@@ -46,7 +49,7 @@ object LauncherColors {
     val CardDark: Color get() = if (LauncherThemeState.darkTheme) Color(0xFF232733) else LightCardDark
     val CardDarkElevated: Color get() = if (LauncherThemeState.darkTheme) Color(0xFF2A2F3D) else LightCardDarkElevated
 
-    private val LightTextPrimaryColor = Color(0xFF4B5563)
+    private val LightTextPrimaryColor = Color(0xFF1F2937)
     private val LightTextSecondaryColor = Color(0xFF4B5563)
     private val DarkTextPrimaryColor = Color(0xFFF3F4F6)
     private val DarkTextSecondaryColor = Color(0xFF9CA3AF)
@@ -73,10 +76,10 @@ object LauncherColors {
 
 @Composable
 fun launcherSwitchColors(): SwitchColors = SwitchDefaults.colors(
-    checkedThumbColor = LauncherColors.CanvasDark,
+    checkedThumbColor = if (LauncherThemeState.darkTheme) LauncherColors.CanvasDark else Color.White,
     checkedTrackColor = LauncherColors.AccentCyan,
     checkedBorderColor = LauncherColors.AccentCyan,
-    checkedIconColor = LauncherColors.CanvasDark,
+    checkedIconColor = if (LauncherThemeState.darkTheme) LauncherColors.CanvasDark else Color.White,
     uncheckedThumbColor = LauncherColors.TextMuted,
     uncheckedTrackColor = LauncherColors.SurfaceDark,
     uncheckedBorderColor = LauncherColors.TextMuted,

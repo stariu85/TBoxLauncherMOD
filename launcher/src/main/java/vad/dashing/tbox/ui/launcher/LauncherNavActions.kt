@@ -50,7 +50,7 @@ internal fun goLauncherHome(
     runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }
     runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
 
-    dismissForeignFreeformTasks(context) {
+    minimizeForeignFreeformTasks(context) {
         val home = LauncherHomeActivityHolder.instance
         if (home != null && !home.isFinishing && !home.isDestroyed) {
             runCatching { home.window.decorView.visibility = View.VISIBLE }
@@ -61,7 +61,7 @@ internal fun goLauncherHome(
             }
         }
 
-        if (fromHomeIntent) return@dismissForeignFreeformTasks
+        if (fromHomeIntent) return@minimizeForeignFreeformTasks
 
         runCatching {
             context.startActivity(

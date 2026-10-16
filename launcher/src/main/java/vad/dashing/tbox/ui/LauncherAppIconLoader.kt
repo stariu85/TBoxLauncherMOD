@@ -71,7 +71,7 @@ internal object LauncherAppIconLoader {
         context: Context,
         info: LauncherActivityInfo,
         sizePx: Int,
-    ): ImageBitmap? {
+    ): ImageBitmap {
         val pm = context.packageManager
         val densities = densityCandidates(context)
         val pkg = info.componentName.packageName
@@ -81,8 +81,10 @@ internal object LauncherAppIconLoader {
             rasterizeReal(pm, runCatching { info.getBadgedIcon(dpi) }.getOrNull(), sizePx)?.let { return it }
             rasterizeReal(pm, runCatching { info.getIcon(dpi) }.getOrNull(), sizePx)?.let { return it }
         }
-        rasterizeReal(pm, runCatching { info.activityInfo.loadIcon(pm) }.getOrNull(), sizePx)?.let { return it }
-        rasterizeReal(pm, runCatching { info.activityInfo.loadUnbadgedIcon(pm) }.getOrNull(), sizePx)?.let { return it }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            rasterizeReal(pm, runCatching { info.activityInfo.loadIcon(pm) }.getOrNull(), sizePx)?.let { return it }
+            rasterizeReal(pm, runCatching { info.activityInfo.loadUnbadgedIcon(pm) }.getOrNull(), sizePx)?.let { return it }
+        }
         fromApplicationInfo(pm, info.applicationInfo, sizePx, densities)?.let { return it }
         fromPackageResources(pm, pkg, sizePx, densities)?.let { return it }
         fromApkPngFallback(pm, pkg, sizePx)?.let { return it }
@@ -95,7 +97,7 @@ internal object LauncherAppIconLoader {
         context: Context,
         ri: ResolveInfo,
         sizePx: Int,
-    ): ImageBitmap? {
+    ): ImageBitmap {
         val pm = context.packageManager
         val densities = densityCandidates(context)
         val pkg = ri.activityInfo.packageName
@@ -116,7 +118,7 @@ internal object LauncherAppIconLoader {
         context: Context,
         packageName: String,
         sizePx: Int,
-    ): ImageBitmap? {
+    ): ImageBitmap {
         val pm = context.packageManager
         val densities = densityCandidates(context)
         val ai = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
@@ -139,7 +141,7 @@ internal object LauncherAppIconLoader {
     }
 
     private fun isDefaultIcon(drawable: Drawable, pm: PackageManager): Boolean {
-        val def = pm.defaultActivityIcon ?: return false
+        val def = pm.defaultActivityIcon
         if (drawable === def) return true
         val a = drawable.constantState
         val b = def.constantState
@@ -280,12 +282,10 @@ internal object LauncherAppIconLoader {
         rasterizeReal(pm, runCatching { pm.getApplicationIcon(ai) }.getOrNull(), sizePx)?.let { return it }
         val resIds = buildList {
             if (ai.icon != 0) add(ai.icon)
-            if (Build.VERSION.SDK_INT >= 25) {
-                val roundId = runCatching {
-                    ApplicationInfo::class.java.getField("roundIconResource").getInt(ai)
-                }.getOrDefault(0)
-                if (roundId != 0) add(roundId)
-            }
+            val roundId = runCatching {
+                ApplicationInfo::class.java.getField("roundIconResource").getInt(ai)
+            }.getOrDefault(0)
+            if (roundId != 0) add(roundId)
         }
         val res = runCatching { pm.getResourcesForApplication(ai) }.getOrNull() ?: return null
         for (id in resIds) {
@@ -295,7 +295,7 @@ internal object LauncherAppIconLoader {
                     if (dpi > 0) res.getDrawableForDensity(id, dpi) else res.getDrawable(id)
                 }.getOrNull()
                 // Skip adaptive XML — PNG fallback handles those packages.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable is AdaptiveIconDrawable) {
+                if (drawable is AdaptiveIconDrawable) {
                     continue
                 }
                 rasterize(drawable, sizePx)?.let { return it }
@@ -327,7 +327,7 @@ internal object LauncherAppIconLoader {
                     @Suppress("DEPRECATION")
                     if (dpi > 0) res.getDrawableForDensity(id, dpi) else res.getDrawable(id)
                 }.getOrNull()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable is AdaptiveIconDrawable) {
+                if (drawable is AdaptiveIconDrawable) {
                     continue
                 }
                 rasterize(drawable, sizePx)?.let { return it }
@@ -359,7 +359,7 @@ internal object LauncherAppIconLoader {
                 Bitmap.createScaledBitmap(soft, sizePx, sizePx, true)
             }
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable is AdaptiveIconDrawable) {
+        if (drawable is AdaptiveIconDrawable) {
             adaptiveToBitmap(drawable, sizePx)?.let { return it }
         }
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)

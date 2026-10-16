@@ -5,7 +5,6 @@ import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -51,7 +50,6 @@ internal object FreeformLaunchRegistry {
 }
 
 internal fun isFreeformEnabled(context: Context): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
     return runCatching {
         Settings.Global.getInt(context.contentResolver, "enable_freeform_support", 0) == 1
     }.getOrDefault(false)
@@ -89,7 +87,6 @@ internal fun tryLaunchInFreeformBounds(
     packageName: String,
     bounds: Rect,
 ): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
     val intent = resolveLaunchIntent(context, packageName) ?: return false
     return tryLaunchIntentInBounds(context, packageName, intent, bounds)
 }
@@ -102,7 +99,6 @@ internal fun tryLaunchSettingsIntentInFreeform(
     context: Context,
     intent: Intent,
 ): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
     if (!isFreeformEnabled(context)) return false
     val resolved = intent.resolveActivity(context.packageManager) ?: return false
     val bounds = LauncherEmbeddedBoundsState.embeddedBounds() ?: return false
@@ -129,16 +125,14 @@ internal fun tryLaunchIntentInBounds(
         }
     }
     val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        runCatching {
-            val method = ActivityOptions::class.java.getMethod(
-                "setLaunchWindowingMode",
-                Int::class.javaPrimitiveType,
-            )
-            method.invoke(options, WINDOWING_MODE_FREEFORM)
-        }.onFailure {
-            Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
-        }
+    runCatching {
+        val method = ActivityOptions::class.java.getMethod(
+            "setLaunchWindowingMode",
+            Int::class.javaPrimitiveType,
+        )
+        method.invoke(options, WINDOWING_MODE_FREEFORM)
+    }.onFailure {
+        Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
     }
     val activity = context.findLauncherActivity()
     val appCtx = context.applicationContext
@@ -287,16 +281,14 @@ internal fun launchOwnActivityInFreeformBounds(
             Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
     }
     val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        runCatching {
-            val method = ActivityOptions::class.java.getMethod(
-                "setLaunchWindowingMode",
-                Int::class.javaPrimitiveType,
-            )
-            method.invoke(options, WINDOWING_MODE_FREEFORM)
-        }.onFailure {
-            Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
-        }
+    runCatching {
+        val method = ActivityOptions::class.java.getMethod(
+            "setLaunchWindowingMode",
+            Int::class.javaPrimitiveType,
+        )
+        method.invoke(options, WINDOWING_MODE_FREEFORM)
+    }.onFailure {
+        Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
     }
     val activity = context.findLauncherActivity()
     val appCtx = context.applicationContext
@@ -438,7 +430,65 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
 }
 
 /**
- * Hide/dismiss freeform, full-width, or split windows left above the desktop when Home is pressed.
+ * Hide/minimize freeform, full-width, or split windows when Home is pressed.
+ * Moves foreign app tasks to the background (moveTaskToBack / moveTaskBackwards)
+ * WITHOUT force-stopping them, so apps continue running in the background.
+ */
+internal fun minimizeForeignFreeformTasks(
+    context: Context,
+    onComplete: () -> Unit = {},
+) {
+    val appCtx = context.applicationContext
+    val launcherPackage = appCtx.packageName
+    val tracked = FreeformLaunchRegistry.snapshot()
+
+    CoroutineScope(Dispatchers.IO).launch {
+        runCatching {
+            val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val taskIdsToMinimize = mutableSetOf<Int>()
+
+            for (taskId in listForeignFreeformTaskIds(launcherPackage, visibleOnly = false)) {
+                taskIdsToMinimize += taskId
+            }
+
+            for (pkg in tracked) {
+                findTaskIdForPackage(am, pkg)?.let { taskId ->
+                    taskIdsToMinimize += taskId
+                }
+            }
+
+            for (taskId in taskIdsToMinimize) {
+                runCatching {
+                    @Suppress("DEPRECATION")
+                    val taskInfo = am.getRunningTasks(32)?.firstOrNull { it.id == taskId }
+                    val pkg = taskInfo?.topActivity?.packageName ?: taskInfo?.baseActivity?.packageName
+                    if (pkg == launcherPackage) return@runCatching
+
+                    val success = moveTaskBackwards(taskId)
+
+                    if (!success) {
+                        runCatching {
+                            val pb = ProcessBuilder("am", "task", "move-to-back", taskId.toString())
+                            val proc = pb.start()
+                            proc.waitFor()
+                        }
+                    }
+                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId pkg=$pkg completed")
+                }.onFailure {
+                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${it.message}")
+                }
+            }
+        }.onFailure {
+            Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", it)
+        }
+        withContext(Dispatchers.Main) {
+            onComplete()
+        }
+    }
+}
+
+/**
+ * Hide/dismiss freeform, full-width, or split windows left above the desktop.
  * Force-stops external app packages so windows disappear instantly without freezing or dropping down.
  */
 internal fun dismissForeignFreeformTasks(
@@ -631,5 +681,5 @@ private fun Context.findLauncherActivity(): android.app.Activity? {
         if (ctx is android.app.Activity) return ctx
         ctx = ctx.baseContext
     }
-    return this as? android.app.Activity
+    return null
 }

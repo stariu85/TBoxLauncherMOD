@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
@@ -8,7 +9,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import android.net.wifi.WifiManager
-import android.os.Build
 import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -27,12 +27,7 @@ class LauncherSystemSettingsController(private val appContext: Context) {
     private val audioManager =
         appContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val bluetoothAdapter: BluetoothAdapter? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            (appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
-        } else {
-            @Suppress("DEPRECATION")
-            BluetoothAdapter.getDefaultAdapter()
-        }
+        (appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
     var wifiEnabled by mutableStateOf(false)
         private set
@@ -80,6 +75,7 @@ class LauncherSystemSettingsController(private val appContext: Context) {
         registered = false
     }
 
+    @SuppressLint("MissingPermission")
     fun refresh() {
         wifiEnabled = runCatching { wifiManager?.isWifiEnabled == true }.getOrDefault(false)
         wifiSsid = runCatching {
@@ -119,6 +115,7 @@ class LauncherSystemSettingsController(private val appContext: Context) {
         refresh()
     }
 
+    @SuppressLint("MissingPermission")
     fun applyBluetoothEnabled(enabled: Boolean) {
         runCatching {
             if (enabled) {
@@ -157,4 +154,5 @@ class LauncherSystemSettingsController(private val appContext: Context) {
     }
 }
 
+@Suppress("unused")
 val LocalLauncherSystemSettings = staticCompositionLocalOf<LauncherSystemSettingsController?> { null }

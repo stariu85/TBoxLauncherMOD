@@ -226,6 +226,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("home_nav", "Кнопка Домой"),
     LauncherDockButtonDescriptor("back_nav", "Кнопка Назад"),
     LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.undo_24),
+    LauncherDockButtonDescriptor("close_apps", "Закрыть приложения", R.drawable.close_apps_24),
 )
 
 @Composable
@@ -1174,6 +1175,18 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(R.drawable.undo_24),
                 contentDescription = "Предыдущее приложение",
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(28f)),
+            )
+        }
+        "close_apps", "close_apps_nav", "close_apps_24" -> LauncherDockIcon(
+            onClick = {
+                dismissForeignFreeformTasks(context)
+            },
+        ) {
+            Image(
+                painter = painterResource(R.drawable.close_apps_24),
+                contentDescription = "Закрыть приложения",
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(28f)),
             )
