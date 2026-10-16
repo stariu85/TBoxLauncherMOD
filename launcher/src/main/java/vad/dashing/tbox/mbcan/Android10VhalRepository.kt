@@ -388,6 +388,10 @@ object Android10VhalRepository {
     val hvacSyncState: StateFlow<MbCanBinaryState> = _hvacSyncState.asStateFlow()
     private val _hvacPm25State = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacPm25State: StateFlow<MbCanBinaryState> = _hvacPm25State.asStateFlow()
+
+    fun updateHvacPm25StateFromCan(state: MbCanBinaryState) {
+        _hvacPm25State.value = state
+    }
     private val _hvacDefrosterFrontState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = _hvacDefrosterFrontState.asStateFlow()
     private val _tjaIcaState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
@@ -941,6 +945,11 @@ object Android10VhalRepository {
             resolved(MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH) ->
                 raw?.let {
                     stateEngine.applyHvacSyncCandidate(decodeVhalBinaryTwoIsOn(it))
+                }
+            resolved(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) ->
+                raw?.let {
+                    val decoded = if (it == 2) MbCanBinaryState.On else if (it == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
+                    _hvacPm25State.value = decoded
                 }
             resolved(MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED) ->
                 raw?.let {

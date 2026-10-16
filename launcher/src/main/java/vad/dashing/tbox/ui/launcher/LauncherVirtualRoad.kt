@@ -806,7 +806,7 @@ private fun DrawScope.drawAccDistanceSteps(
     }
     depths.forEachIndexed { idx, t ->
         val stepNumber = idx + 1
-        val isActive = stepNumber <= activeLevel
+        val isActive = stepNumber <= (4 - activeLevel)
         val y = yAt(t) - 20.dp.toPx()
         val cx = centerXAt(t)
         val halfW = laneOffsetAt(t) * 0.72f
@@ -1008,11 +1008,10 @@ private fun DrawScope.drawFrontObject(
         textAlign = Paint.Align.CENTER
         textSize = (baseSizeSp * 1.0f).coerceIn(12f, 50f)
         typeface = Typeface.DEFAULT_BOLD
+        setShadowLayer(6f, 0f, 2f, android.graphics.Color.argb((0xA0 * effectiveAlpha).toInt(), 0, 0, 0))
     }
 
-    val textWidth = paint.measureText(text)
     val textHeight = abs(paint.ascent()) + paint.descent()
-    val paddingX = 10f
     val paddingY = 4f
     val halfPillHeight = textHeight / 2f + paddingY
 
@@ -1023,25 +1022,6 @@ private fun DrawScope.drawFrontObject(
 
     val labelCx = cx
     val labelCy = minOf(targetLabelCy, maxAllowedCy)
-
-    val pillRect = RectF(
-        labelCx - textWidth / 2f - paddingX,
-        labelCy - textHeight / 2f - paddingY,
-        labelCx + textWidth / 2f + paddingX,
-        labelCy + textHeight / 2f + paddingY,
-    )
-
-    // Soft dark background pill for contrast against asphalt (no stroke border)
-    drawContext.canvas.nativeCanvas.drawRoundRect(
-        pillRect,
-        10f,
-        10f,
-        Paint().apply {
-            isAntiAlias = true
-            color = android.graphics.Color.argb((0xB0 * objectAlpha).toInt(), 0x0F, 0x17, 0x2A)
-            style = Paint.Style.FILL
-        },
-    )
 
     drawContext.canvas.nativeCanvas.drawText(
         text,

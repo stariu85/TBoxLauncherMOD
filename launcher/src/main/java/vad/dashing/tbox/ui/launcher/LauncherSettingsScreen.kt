@@ -518,12 +518,21 @@ private fun UpdateReleaseDetails(info: UpdateReleaseInfo) {
 }
 
 @Composable
-private fun resolveUpdateErrorMessage(raw: String): String = when (raw) {
-    "network_unavailable" -> stringResource(R.string.update_error_network)
-    "Update source URL is not configured" -> stringResource(R.string.update_error_not_configured)
-    "APK checksum mismatch" -> stringResource(R.string.update_error_verify_checksum)
-    "APK package name mismatch" -> stringResource(R.string.update_error_verify_package)
-    "APK signing certificate mismatch" -> stringResource(R.string.update_error_verify_signature)
+private fun resolveUpdateErrorMessage(raw: String): String = when {
+    raw == "network_unavailable" ||
+        raw == "Update source URL is not configured" ||
+        raw.contains("Unable to resolve host", ignoreCase = true) ||
+        raw.contains("Failed to connect", ignoreCase = true) ||
+        raw.contains("timeout", ignoreCase = true) ||
+        raw.contains("ConnectException", ignoreCase = true) ||
+        raw.contains("UnknownHostException", ignoreCase = true) ||
+        raw.contains("SocketTimeoutException", ignoreCase = true) ||
+        raw.contains("IOException", ignoreCase = true) ||
+        raw.contains("HTTP", ignoreCase = true) -> stringResource(R.string.update_error_network)
+
+    raw == "APK checksum mismatch" -> stringResource(R.string.update_error_verify_checksum)
+    raw == "APK package name mismatch" -> stringResource(R.string.update_error_verify_package)
+    raw == "APK signing certificate mismatch" -> stringResource(R.string.update_error_verify_signature)
     else -> stringResource(R.string.update_error_generic, raw)
 }
 

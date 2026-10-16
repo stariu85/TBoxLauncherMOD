@@ -962,8 +962,8 @@
     <string name="update_grant_install_permission">Разрешить установку из других источников</string>
     <string name="update_install_permission_hint">Для установки APK разрешите установку приложений из неизвестных источников для TBox Monitor в настройках Android.</string>
     <string name="update_retry_check">Повторить проверку</string>
-    <string name="update_error_network">Нет подключения к интернету</string>
-    <string name="update_error_not_configured">Источник обновлений не настроен в сборке приложения</string>
+    <string name="update_error_network">Сервер обновления недоступен</string>
+    <string name="update_error_not_configured">Сервер обновления недоступен</string>
     <string name="update_error_verify_checksum">Файл обновления не прошёл проверку контрольной суммы</string>
     <string name="update_error_verify_package">Файл обновления не соответствует приложению</string>
     <string name="update_error_verify_signature">Подпись файла обновления не совпадает с текущим приложением</string>

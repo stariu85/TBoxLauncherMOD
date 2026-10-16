@@ -681,8 +681,8 @@
     <string name="update_grant_install_permission">Allow installs from unknown sources</string>
     <string name="update_install_permission_hint">To install the APK, allow installs from unknown sources for TBox Monitor in Android settings.</string>
     <string name="update_retry_check">Retry check</string>
-    <string name="update_error_network">No internet connection</string>
-    <string name="update_error_not_configured">Update source is not configured in this app build</string>
+    <string name="update_error_network">Update server is unavailable</string>
+    <string name="update_error_not_configured">Update server is unavailable</string>
     <string name="update_error_verify_checksum">Update file failed checksum verification</string>
     <string name="update_error_verify_package">Update file does not match this app</string>
     <string name="update_error_verify_signature">Update file signature does not match the installed app</string>

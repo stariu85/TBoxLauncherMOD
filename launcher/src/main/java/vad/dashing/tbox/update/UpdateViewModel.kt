@@ -1,12 +1,15 @@
 package vad.dashing.tbox.update
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.SettingsManager
 
@@ -32,8 +35,43 @@ class UpdateViewModel(
     fun checkForUpdateOnStartupIfEnabled() {
         viewModelScope.launch {
             if (!settingsManager.updateCheckEnabledFlow.first()) return@launch
-            if (UpdateSessionGate.tryBeginSessionCheck()) {
-                repository.checkForUpdate(force = false)
+            if (!UpdateSessionGate.tryBeginSessionCheck()) return@launch
+
+            val startTimeMs = SystemClock.uptimeMillis()
+            val totalDurationMs = 5 * 60 * 1000L // 5 minutes = 300,000 ms
+            val checkIntervalMs = 30 * 1000L      // 30 seconds = 30,000 ms
+
+            while (isActive) {
+                if (!settingsManager.updateCheckEnabledFlow.first()) break
+
+                val currentState = repository.uiState.value
+                if (currentState is UpdateUiState.Available ||
+                    currentState is UpdateUiState.Downloading ||
+                    currentState is UpdateUiState.Verifying ||
+                    currentState is UpdateUiState.ReadyToInstall
+                ) {
+                    break
+                }
+
+                repository.checkForUpdate(force = true)
+
+                val newState = repository.uiState.value
+                if (newState is UpdateUiState.Available ||
+                    newState is UpdateUiState.Downloading ||
+                    newState is UpdateUiState.Verifying ||
+                    newState is UpdateUiState.ReadyToInstall
+                ) {
+                    break
+                }
+
+                val elapsedMs = SystemClock.uptimeMillis() - startTimeMs
+                if (elapsedMs >= totalDurationMs) break
+
+                val remainingMs = totalDurationMs - elapsedMs
+                val waitMs = minOf(checkIntervalMs, remainingMs)
+                if (waitMs <= 0) break
+
+                delay(waitMs)
             }
         }
     }

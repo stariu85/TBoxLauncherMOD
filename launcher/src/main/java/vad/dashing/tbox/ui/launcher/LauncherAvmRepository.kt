@@ -38,7 +38,7 @@ object LauncherAvmRepository {
     private var observerRegistered = false
 
     @Volatile
-    private var wasAppActiveBeforeAvm = false
+    private var targetBeforeAvm: LaunchedTarget? = null
 
     fun parseAvmActive(raw: String?): Boolean {
         if (raw.isNullOrBlank()) return false
@@ -62,14 +62,22 @@ object LauncherAvmRepository {
 
                 if (active) {
                     val foreign = findForeignAppTask(appCtx)
-                    wasAppActiveBeforeAvm = (foreign != null)
-                    Log.w(TAG, "AVM turned ON: foreignAppActive=$wasAppActiveBeforeAvm -> minimizing apps")
+                    if (foreign != null) {
+                        val history = LauncherHistoryTracker.getHistory(appCtx)
+                        targetBeforeAvm = history.lastOrNull()
+                    } else {
+                        targetBeforeAvm = null
+                    }
+                    Log.w(TAG, "AVM turned ON: targetBeforeAvm=$targetBeforeAvm -> minimizing apps")
                     minimizeForeignFreeformTasks(appCtx)
                 } else {
-                    if (wasAppActiveBeforeAvm) {
-                        wasAppActiveBeforeAvm = false
-                        Log.w(TAG, "AVM turned OFF: restoring previous app to foreground")
-                        performUndoLaunch(appCtx)
+                    val restoreTarget = targetBeforeAvm
+                    targetBeforeAvm = null
+                    if (restoreTarget != null) {
+                        Log.w(TAG, "AVM turned OFF: restoring targetBeforeAvm=$restoreTarget with 1s delay")
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            launchTarget(appCtx, restoreTarget)
+                        }, 1000L)
                     } else {
                         Log.w(TAG, "AVM turned OFF: no app was active before AVM, staying on Home")
                     }

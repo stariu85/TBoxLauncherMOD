@@ -11,10 +11,12 @@ import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.LastAppTracker
 import vad.dashing.tbox.MainActivityIntentHelper
+import vad.dashing.tbox.mbcan.Android10VhalRepository
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
+import vad.dashing.tbox.mbcan.MbCanRepository
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -120,6 +122,11 @@ internal fun sendToggleMbCanProperty(context: Context, propertyId: Int) {
             val written = MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
             if (written == null) {
                 sendSetMbCanProperty(context, propertyId, nextRaw)
+            }
+            if (propertyId == MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) {
+                val state = if (nextRaw == 2) MbCanBinaryState.On else MbCanBinaryState.Off
+                MbCanRepository.updateHvacPm25StateFromCan(state)
+                Android10VhalRepository.updateHvacPm25StateFromCan(state)
             }
             UniversalCanRepository.execute(
                 MbCanCommand.ToggleProperty(propertyId)
@@ -531,6 +538,13 @@ internal fun refreshHvacTemperaturesFromMbCan() {
         MbCanEngineFacade
             .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
             ?.let { UniversalCanRepository.updateHvacFanDirectionRaw(it) }
+        MbCanEngineFacade
+            .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+            ?.let { raw ->
+                val state = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
+                MbCanRepository.updateHvacPm25StateFromCan(state)
+                Android10VhalRepository.updateHvacPm25StateFromCan(state)
+            }
     }
 }
 

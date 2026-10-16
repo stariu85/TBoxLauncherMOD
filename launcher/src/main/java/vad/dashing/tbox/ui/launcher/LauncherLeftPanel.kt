@@ -239,9 +239,8 @@ fun LauncherLeftPanel(
     var smartDriveViewActive by remember { mutableStateOf(false) }
     var speedBelow5SinceMs by remember { mutableLongStateOf(0L) }
 
-    val nowMs = SystemClock.elapsedRealtime()
-
     LaunchedEffect(effectiveSpeed, pasOn, pasObstacle, activeGear, accActive, racing, cameraSwitchMode) {
+        val currentMs = SystemClock.elapsedRealtime()
         if (activeGear == 'P' || pasObstacle) {
             smartDriveViewActive = false
             speedBelow5SinceMs = 0L
@@ -250,21 +249,22 @@ fun LauncherLeftPanel(
             speedBelow5SinceMs = 0L
         } else if (effectiveSpeed < 5f && pasOn && smartDriveViewActive) {
             if (speedBelow5SinceMs == 0L) {
-                speedBelow5SinceMs = nowMs
+                speedBelow5SinceMs = currentMs
             }
         } else if (effectiveSpeed >= 5f || !pasOn) {
             speedBelow5SinceMs = 0L
         }
     }
 
-    LaunchedEffect(smartDriveViewActive, speedBelow5SinceMs, pasOn) {
+    LaunchedEffect(smartDriveViewActive, speedBelow5SinceMs, pasOn, effectiveSpeed) {
         if (smartDriveViewActive && speedBelow5SinceMs > 0L) {
-            val elapsed = SystemClock.elapsedRealtime() - speedBelow5SinceMs
+            val currentMs = SystemClock.elapsedRealtime()
+            val elapsed = currentMs - speedBelow5SinceMs
             val remaining = 3_000L - elapsed
             if (remaining > 0) {
                 delay(remaining)
             }
-            if (effectiveSpeed < 5f && pasOn && activeGear != 'P') {
+            if (effectiveSpeed < 5f && pasOn && activeGear != 'P' && !pasObstacle) {
                 smartDriveViewActive = false
                 speedBelow5SinceMs = 0L
             }

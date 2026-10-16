@@ -205,6 +205,10 @@ object MbCanRepository {
     val hvacSyncState: StateFlow<MbCanBinaryState> = _hvacSyncState.asStateFlow()
     private val _hvacPm25State = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacPm25State: StateFlow<MbCanBinaryState> = _hvacPm25State.asStateFlow()
+
+    fun updateHvacPm25StateFromCan(state: MbCanBinaryState) {
+        _hvacPm25State.value = state
+    }
     private val _hvacDefrosterFrontState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = _hvacDefrosterFrontState.asStateFlow()
     private val _wirelessChargingState = MutableStateFlow<MbCanBinaryState>(MbCanBinaryState.Unknown)
@@ -427,6 +431,10 @@ object MbCanRepository {
                         stateEngine.applyHvacSyncCandidate(
                             MbCanSignalStateEngine.decodeHvacSyncRaw(raw)
                         )
+                    MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> {
+                        val decoded = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
+                        _hvacPm25State.value = decoded
+                    }
                     MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED -> {
                         UniversalCanRepository.updateHvacFanSpeedRaw(raw)
                     }

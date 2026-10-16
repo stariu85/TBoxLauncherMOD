@@ -117,6 +117,14 @@ internal fun goLauncherBack(
             LauncherAppPickerOverlayWindow.hide()
             return
         }
+        LauncherDockSlotPickerOverlayWindow.isShowing() -> {
+            LauncherDockSlotPickerOverlayWindow.hide()
+            return
+        }
+        LauncherAppDrawerWindow.isShowing() -> {
+            LauncherAppDrawerWindow.hide()
+            return
+        }
     }
 
     val foreign = findForeignAppTask(context)

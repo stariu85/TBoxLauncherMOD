@@ -86,7 +86,8 @@ internal object LauncherAmStackShell {
         for (s in stacks) {
             val pkg = s.packageName ?: continue
             if (pkg == launcherPackage) continue
-            val isFreeform = s.windowingMode.equals("freeform", ignoreCase = true)
+            val isFreeform = s.windowingMode.equals("freeform", ignoreCase = true) ||
+                s.windowingMode.equals("extend", ignoreCase = true)
             val tracked = pkg in packages
             if (!isFreeform && !tracked) continue
             if (removeStack(s.stackId)) {

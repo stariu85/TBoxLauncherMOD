@@ -9,12 +9,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.dp
 
 /**
- * Body-local marks: DOW = door leaf, RCTA = incoming bar, RCW = rear wash.
+ * Body-local marks: DOW = gradient stripes on ADAS edges, RCTA = incoming bar, RCW = rear wash.
  * BSD is a PDC-style sonar band on the rear-side diagonals ([LauncherBsdOverlay]).
  */
 @Composable
@@ -38,14 +37,14 @@ private fun DrawScope.drawRearThreats(threats: LauncherRearThreats) {
 
     fun fillColor(level: LauncherRearThreatLevel): Color? = when (level) {
         LauncherRearThreatLevel.Alert -> Color(0xFFEF4444)
-        LauncherRearThreatLevel.Caution -> Color(0xFFF59E0B)
+        LauncherRearThreatLevel.Caution -> Color(0xFFF97316)
         LauncherRearThreatLevel.Off -> null
     }
 
     listOf(-1f, 1f).forEach { side ->
         val dow = if (side < 0f) threats.dowLeft else threats.dowRight
         val rcta = if (side < 0f) threats.rctaLeft else threats.rctaRight
-        fillColor(dow)?.let { drawDowDoor(cx, cy, bodyHalfW, bodyHalfH, side, it, dow) }
+        fillColor(dow)?.let { drawDowStripe(w, h, side, it, dow) }
         if (rcta == LauncherRearThreatLevel.Alert) {
             fillColor(rcta)?.let { drawRctaBar(cx, cy, bodyHalfW, bodyHalfH, side, it) }
         }
@@ -70,34 +69,36 @@ private fun DrawScope.drawRearThreats(threats: LauncherRearThreats) {
     }
 }
 
-private fun DrawScope.drawDowDoor(
-    cx: Float,
-    cy: Float,
-    bodyHalfW: Float,
-    bodyHalfH: Float,
+private fun DrawScope.drawDowStripe(
+    w: Float,
+    h: Float,
     side: Float,
     color: Color,
     level: LauncherRearThreatLevel,
 ) {
-    val hingeX = cx + side * bodyHalfW * 0.78f
-    val leafW = bodyHalfW * 0.55f
-    val leafH = bodyHalfH * 0.72f
-    val top = cy - leafH * 0.15f
-    val outerX = hingeX + side * leafW
-    val path = Path().apply {
-        moveTo(hingeX, top)
-        lineTo(outerX, top + leafH * 0.08f)
-        lineTo(outerX, top + leafH * 0.92f)
-        lineTo(hingeX, top + leafH)
-        close()
-    }
-    val alpha = if (level == LauncherRearThreatLevel.Alert) 0.50f else 0.34f
-    drawPath(path, color = color.copy(alpha = alpha))
-    drawPath(path, color = color.copy(alpha = 0.88f), style = Stroke(width = 2.4f))
-    drawCircle(
-        color = color.copy(alpha = 0.9f),
-        radius = 3.2f,
-        center = Offset(outerX - side * leafW * 0.22f, top + leafH * 0.52f),
+    val stripeWidthPx = 70.dp.toPx()
+    val maxAlpha = if (level == LauncherRearThreatLevel.Alert) 0.85f else 0.70f
+
+    val startPt = if (side < 0f) Offset(0f, h) else Offset(w, h)
+    val endPt = if (side < 0f) Offset(stripeWidthPx, 0f) else Offset(w - stripeWidthPx, 0f)
+
+    val brush = Brush.linearGradient(
+        colorStops = arrayOf(
+            0.00f to color.copy(alpha = maxAlpha),
+            0.35f to color.copy(alpha = maxAlpha * 0.55f),
+            0.75f to color.copy(alpha = maxAlpha * 0.15f),
+            1.00f to Color.Transparent,
+        ),
+        start = startPt,
+        end = endPt,
+    )
+
+    val topLeft = if (side < 0f) Offset(0f, 0f) else Offset(w - stripeWidthPx, 0f)
+
+    drawRect(
+        brush = brush,
+        topLeft = topLeft,
+        size = Size(stripeWidthPx, h),
     )
 }
 
