@@ -49,6 +49,7 @@ internal fun goLauncherHome(
     runCatching { closeVehicleSettingsOverlay() }
     runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }
     runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
+    runCatching { LauncherOverlayElevator.bringLauncherToFront(context) }
 
     minimizeForeignFreeformTasks(context) {
         val home = LauncherHomeActivityHolder.instance

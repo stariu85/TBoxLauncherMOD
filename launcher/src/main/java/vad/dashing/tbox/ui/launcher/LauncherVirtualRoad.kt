@@ -102,7 +102,7 @@ fun LauncherVirtualRoad(
     }
     val driveBlend by animateFloatAsState(
         targetValue = driveTarget,
-        animationSpec = tween(1000),
+        animationSpec = tween(750),
         label = "roadDriveBlend",
     )
 
@@ -992,12 +992,7 @@ private fun DrawScope.drawFrontObject(
         }
     }
 
-    val distanceColor = when {
-        alert -> Color(0xFFEF4444)
-        distanceM < 5 -> Color(0xFFEF4444)
-        distanceM < 10 -> Color(0xFFFFA000)
-        else -> LauncherColors.AccentCyan
-    }
+    val distanceColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
     val labelColor = distanceColor.copy(alpha = effectiveAlpha)
 
     val text = "${distanceM} м"

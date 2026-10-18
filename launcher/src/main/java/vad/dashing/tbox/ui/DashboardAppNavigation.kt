@@ -683,21 +683,20 @@ internal fun sendToggleMirrorAutofold(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_AUTOFOLD)
 
 internal fun sendAdjustAudioVolume(context: Context, delta: Int) {
-    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
-    val current = UniversalCanRepository.audioVolumeState.value
-        ?: audioManager?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-        ?: 10
-    val max = audioManager?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 30
+    val audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+        ?: return
+    val max = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+    val current = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
     val target = (current + delta).coerceIn(0, max)
 
-    audioManager?.adjustStreamVolume(
+    audioManager.setStreamVolume(
         android.media.AudioManager.STREAM_MUSIC,
-        if (delta > 0) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
-        0,
+        target,
+        android.media.AudioManager.FLAG_SHOW_UI,
     )
 
     CoroutineScope(Dispatchers.IO).launch {
-        UniversalCanRepository.setAudioVolume(target)
+        runCatching { UniversalCanRepository.setAudioVolume(target) }
     }
 }
 

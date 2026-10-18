@@ -1,6 +1,9 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.SystemClock
 import android.widget.Toast
@@ -51,10 +54,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1204,13 +1209,10 @@ private fun LauncherBottomDockButtonContent(
             onTextClick = { launchClimateApp(context) },
         )
         "audio_volume" -> {
-            val canVolume by UniversalCanRepository.audioVolumeState.collectAsStateWithLifecycle()
-            val audioManager = remember(context) { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
-            val volumeLevel = canVolume ?: remember(audioManager) { audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) }
-            val volumeText = volumeLevel?.toString() ?: "—"
+            val systemVolume = rememberSystemMediaVolume(context)
 
             LauncherVolumeStepper(
-                volumeText = volumeText,
+                volumeText = systemVolume.toString(),
                 onDown = { sendAdjustAudioVolume(context, -1) },
                 onUp = { sendAdjustAudioVolume(context, 1) },
             )
@@ -1465,6 +1467,34 @@ private fun LauncherTempStepper(
             )
         }
     }
+}
+
+@Composable
+private fun rememberSystemMediaVolume(context: Context): Int {
+    val audioManager = remember(context) {
+        context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
+    var currentVolume by remember(context) {
+        mutableIntStateOf(audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0)
+    }
+
+    DisposableEffect(context) {
+        val appCtx = context.applicationContext
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                val updated = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                currentVolume = updated
+            }
+        }
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        runCatching { appCtx.registerReceiver(receiver, filter) }
+
+        onDispose {
+            runCatching { appCtx.unregisterReceiver(receiver) }
+        }
+    }
+
+    return currentVolume
 }
 
 @Composable

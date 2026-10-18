@@ -160,6 +160,7 @@ private const val KEY_CRUISE_PANEL_POSITION = "cruise_panel_position"
 private const val KEY_SWAP_TOP_BOTTOM_PANELS = "swap_top_bottom_panels"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
+private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
 private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
@@ -263,6 +264,8 @@ internal object LauncherAppConfigStore {
     internal val driveModeBarRevisionFlow: StateFlow<Int> = driveModeBarRevision
     private val assistPanelRevision = MutableStateFlow(0)
     internal val assistPanelRevisionFlow: StateFlow<Int> = assistPanelRevision
+    private val bodyControlsPanelRevision = MutableStateFlow(0)
+    internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
     private val assistPresetsTabRevision = MutableStateFlow(0)
     internal val assistPresetsTabRevisionFlow: StateFlow<Int> = assistPresetsTabRevision
     private val adasPanelsRevision = MutableStateFlow(0)
@@ -760,6 +763,14 @@ internal object LauncherAppConfigStore {
         assistPanelRevision.value++
     }
 
+    fun bodyControlsPanelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_BODY_CONTROLS_PANEL_VISIBLE, true)
+
+    fun setBodyControlsPanelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_BODY_CONTROLS_PANEL_VISIBLE, visible).apply()
+        bodyControlsPanelRevision.value++
+    }
+
     fun assistPresetsActiveTab(context: Context): String =
         prefs(context).getString(KEY_ASSIST_PRESETS_ACTIVE_TAB, "assist") ?: "assist"
 
@@ -774,18 +785,22 @@ internal object LauncherAppConfigStore {
             val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
             return list.map { if (it == "presets") "assist" else it }.distinct()
         }
-        return listOf("drive_mode", "assist")
+        return listOf("drive_mode")
     }
 
     fun adasBottomPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
-        if (raw != null) {
-            val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
-            val mapped = list.map { if (it == "presets") "assist" else it }.distinct()
-            val top = adasTopPanels(context)
-            return mapped.filter { it !in top }
+        val list = if (raw != null) {
+            raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        } else {
+            listOf("assist", "body_controls")
         }
-        return emptyList()
+        val mapped = list.map { if (it == "presets") "assist" else it }.distinct().toMutableList()
+        val top = adasTopPanels(context)
+        if (bodyControlsPanelVisible(context) && "body_controls" !in top && "body_controls" !in mapped) {
+            mapped.add("body_controls")
+        }
+        return mapped.filter { it !in top }
     }
 
     fun setAdasPanelsLayout(context: Context, top: List<String>, bottom: List<String>) {

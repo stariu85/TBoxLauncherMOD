@@ -958,6 +958,25 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val bodyControlsRevision by LauncherAppConfigStore.bodyControlsPanelRevisionFlow
+            .collectAsStateWithLifecycle()
+        val bodyControlsVisible = remember(context, bodyControlsRevision) {
+            LauncherAppConfigStore.bodyControlsPanelVisible(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_body_controls_panel_visible_title),
+            active = bodyControlsVisible,
+            onClick = {
+                LauncherAppConfigStore.setBodyControlsPanelVisible(context, !bodyControlsVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_body_controls_panel_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()

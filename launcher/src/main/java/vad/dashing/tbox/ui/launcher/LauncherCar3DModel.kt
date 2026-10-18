@@ -529,15 +529,17 @@ private fun LauncherCarFilamentContent(
                             transition,
                         )
                         val targetScale = baseScale * pinchScale
-                        node.isVisible = true
                         if (!modelReady) {
                             renderedScale = targetScale
                             node.scale = Scale(renderedScale)
+                            node.isVisible = false
                             preparedFrames++
-                            if (preparedFrames >= 1) {
+                            if (preparedFrames >= 3 && widthPx > 0 && heightPx > 0) {
                                 modelReady = true
+                                node.isVisible = true
                             }
                         } else {
+                            node.isVisible = true
                             if (abs(targetScale - renderedScale) < 0.0002f) {
                                 renderedScale = targetScale
                             } else {

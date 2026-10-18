@@ -72,6 +72,38 @@ internal object LauncherAmStackShell {
         return out != null
     }
 
+    fun moveStackToBack(stackId: Int): Boolean {
+        val out = runAm("stack", "move-to-back", stackId.toString())
+        Log.w(TAG, "am stack move-to-back $stackId out=${out?.take(120)}")
+        return out != null
+    }
+
+    /**
+     * Move foreign stacks (freeform, split, embedded, fullscreen) to the back of the stack hierarchy
+     * WITHOUT killing or removing them.
+     */
+    fun moveForeignToBack(
+        launcherPackage: String,
+        packages: Set<String> = emptySet(),
+    ): Int {
+        val stacks = listStacks()
+        Log.w(TAG, "moveForeignToBack stacks=${stacks.size} tracked=$packages")
+        var moved = 0
+        for (s in stacks) {
+            val pkg = s.packageName ?: continue
+            if (pkg == launcherPackage) continue
+            val isFreeform = s.windowingMode.equals("freeform", ignoreCase = true) ||
+                s.windowingMode.equals("extend", ignoreCase = true)
+            val tracked = pkg in packages
+            if (!isFreeform && !tracked && !s.visible) continue
+            if (moveStackToBack(s.stackId)) {
+                moved++
+                Log.w(TAG, "moved stack to back id=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
+            }
+        }
+        return moved
+    }
+
     /**
      * Remove freeform stacks and any stack whose top package is in [packages].
      * Never touches the HOME launcher package.

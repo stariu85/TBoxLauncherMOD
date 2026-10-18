@@ -15,6 +15,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,7 +51,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -62,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -78,6 +83,7 @@ import kotlin.math.abs
 internal fun isDriveViewActive(
     speedKmh: Float,
     pasObstacle: Boolean = false,
+    hasBodyOpen: Boolean = false,
     isParkGear: Boolean = false,
     isDriveGear: Boolean = false,
     accActive: Boolean = false,
@@ -85,7 +91,7 @@ internal fun isDriveViewActive(
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     currentSmartDriveView: Boolean = false,
 ): Boolean {
-    if (isParkGear) return false
+    if (isParkGear || hasBodyOpen) return false
     if (racing || accActive) return true
     return when (cameraSwitchMode) {
         CAMERA_SWITCH_MODE_DRIVE_AND_PARK -> isDriveGear
@@ -206,6 +212,11 @@ fun LauncherLeftPanel(
     val assistPanelVisible = remember(context, assistPanelRevision) {
         LauncherAppConfigStore.assistPanelVisible(context)
     }
+    val bodyControlsRevision by LauncherAppConfigStore.bodyControlsPanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val bodyControlsPanelVisible = remember(context, bodyControlsRevision) {
+        LauncherAppConfigStore.bodyControlsPanelVisible(context)
+    }
     val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow
         .collectAsStateWithLifecycle()
     val adasTopPanels = remember(context, adasPanelsRevision) {
@@ -237,37 +248,15 @@ fun LauncherLeftPanel(
         LauncherAppConfigStore.cameraSwitchMode(context)
     }
     var smartDriveViewActive by remember { mutableStateOf(false) }
-    var speedBelow5SinceMs by remember { mutableLongStateOf(0L) }
+    var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(effectiveSpeed, pasOn, pasObstacle, activeGear, accActive, racing, cameraSwitchMode) {
-        val currentMs = SystemClock.elapsedRealtime()
-        if (activeGear == 'P' || pasObstacle) {
+    val hasBodyOpen = effectiveBody.anyDoorOpen()
+
+    LaunchedEffect(effectiveSpeed, pasObstacle, hasBodyOpen, activeGear, accActive, racing, cameraSwitchMode) {
+        if (activeGear == 'P' || pasObstacle || hasBodyOpen) {
             smartDriveViewActive = false
-            speedBelow5SinceMs = 0L
-        } else if (racing || accActive || effectiveSpeed >= 15f) {
+        } else if (racing || accActive || effectiveSpeed >= 20f) {
             smartDriveViewActive = true
-            speedBelow5SinceMs = 0L
-        } else if (effectiveSpeed < 5f && pasOn && smartDriveViewActive) {
-            if (speedBelow5SinceMs == 0L) {
-                speedBelow5SinceMs = currentMs
-            }
-        } else if (effectiveSpeed >= 5f || !pasOn) {
-            speedBelow5SinceMs = 0L
-        }
-    }
-
-    LaunchedEffect(smartDriveViewActive, speedBelow5SinceMs, pasOn, effectiveSpeed) {
-        if (smartDriveViewActive && speedBelow5SinceMs > 0L) {
-            val currentMs = SystemClock.elapsedRealtime()
-            val elapsed = currentMs - speedBelow5SinceMs
-            val remaining = 3_000L - elapsed
-            if (remaining > 0) {
-                delay(remaining)
-            }
-            if (effectiveSpeed < 5f && pasOn && activeGear != 'P' && !pasObstacle) {
-                smartDriveViewActive = false
-                speedBelow5SinceMs = 0L
-            }
         }
     }
 
@@ -275,6 +264,7 @@ fun LauncherLeftPanel(
     val rawDriveView = isDriveViewActive(
         speedKmh = effectiveSpeed,
         pasObstacle = pasObstacle,
+        hasBodyOpen = hasBodyOpen,
         isParkGear = activeGear == 'P',
         isDriveGear = inDriveGear,
         accActive = accActive,
@@ -408,11 +398,12 @@ fun LauncherLeftPanel(
             when (panelId) {
                 "drive_mode" -> driveModeBarVisible
                 "assist", "presets" -> assistPanelVisible
+                "body_controls" -> bodyControlsPanelVisible
                 else -> false
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -428,7 +419,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = "assist" in activeTopPanels
@@ -457,6 +448,15 @@ fun LauncherLeftPanel(
                         )
                     }
                 }
+                "body_controls" -> {
+                    LauncherVehicleBodyControlsBar(
+                        activeGear = activeGear,
+                        onShowTrunkParkWarning = {
+                            trunkParkWarningUntilMs = SystemClock.uptimeMillis() + 3000L
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
 
@@ -470,7 +470,9 @@ fun LauncherLeftPanel(
             contentAlignment = Alignment.Center,
         ) {
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
-            val carHidden = isAvmActive || settingsProgress > 0.02f
+            val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
+            val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
+            val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen
             if (!carHidden) {
                 LauncherCar3DModel(
                     rigState = rigState,
@@ -607,6 +609,11 @@ fun LauncherLeftPanel(
                     }
                 }
 
+                val nowMs = SystemClock.uptimeMillis()
+                LauncherTrunkGearWarningBanner(
+                    showWarning = nowMs < trunkParkWarningUntilMs,
+                )
+
                 LauncherCriticalCollisionWarningBanner(
                     adas = adas,
                     showAll = simulateEnabled && LauncherDevVehicleState.showAllIndicators,
@@ -731,10 +738,14 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
 
     if (!isFcw && !isAeb && !isTakeover) return
 
+    val isCritical = isTakeover || isAeb
     val warningText = when {
-        isTakeover || isAeb -> stringResource(R.string.launcher_adas_takeover)
+        isCritical -> stringResource(R.string.launcher_adas_takeover)
         else -> stringResource(R.string.launcher_adas_fcw)
     }
+
+    val bannerBgColor = if (isCritical) Color(0xFFDC2626) else Color(0xFFEAB308)
+    val contentColor = if (isCritical) Color.White else Color(0xFF18181B)
 
     val infiniteTransition = rememberInfiniteTransition(label = "collision_warning_pulse")
     val animatedAlpha by infiniteTransition.animateFloat(
@@ -747,32 +758,56 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
         label = "collision_warning_alpha",
     )
 
+    var fontScale by remember(warningText) { mutableFloatStateOf(1.0f) }
+    var readyToDraw by remember(warningText) { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .align(Alignment.Center)
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
             .zIndex(200f)
             .graphicsLayer { alpha = animatedAlpha }
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFFDC2626).copy(alpha = 0.95f))
+            .background(bannerBgColor.copy(alpha = 0.95f))
             .border(width = 2.5.dp, color = Color.White, shape = RoundedCornerShape(18.dp))
-            .padding(horizontal = 28.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val iconSizeDp = (36 * fontScale).coerceAtLeast(20f).dp
             Icon(
                 imageVector = Icons.Filled.Warning,
                 contentDescription = null,
-                modifier = Modifier.size(38.dp),
-                tint = Color.White,
+                modifier = Modifier.size(iconSizeDp),
+                tint = contentColor,
             )
             Text(
                 text = warningText,
-                color = Color.White,
-                fontSize = 32.sp,
+                color = contentColor,
+                fontSize = (28 * fontScale).sp,
+                lineHeight = (32 * fontScale).sp,
                 fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+                maxLines = if (warningText.contains('\n')) 2 else 1,
+                softWrap = false,
+                onTextLayout = { textLayoutResult ->
+                    if (textLayoutResult.hasVisualOverflow && fontScale > 0.35f) {
+                        fontScale *= 0.90f
+                    } else {
+                        readyToDraw = true
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .drawWithContent {
+                        if (readyToDraw) {
+                            drawContent()
+                        }
+                    },
             )
         }
     }
@@ -880,6 +915,42 @@ private fun LauncherAssistAndPresetsPanel(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.LauncherTrunkGearWarningBanner(
+    showWarning: Boolean,
+) {
+    if (!showWarning) return
+
+    Box(
+        modifier = Modifier
+            .align(Alignment.Center)
+            .zIndex(180f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFEAB308).copy(alpha = 0.95f))
+            .border(1.5.dp, Color(0xFFCA8A04), RoundedCornerShape(12.dp))
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_trunk),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                colorFilter = ColorFilter.tint(Color(0xFF18181B)),
+            )
+            Text(
+                text = "Переключите передачу в P",
+                color = Color(0xFF18181B),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }

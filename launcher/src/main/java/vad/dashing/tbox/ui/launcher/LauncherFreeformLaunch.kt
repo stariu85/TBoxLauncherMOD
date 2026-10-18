@@ -478,6 +478,9 @@ internal fun minimizeForeignFreeformTasks(
                     Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${it.message}")
                 }
             }
+
+            // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
+            LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
         }.onFailure {
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", it)
         }

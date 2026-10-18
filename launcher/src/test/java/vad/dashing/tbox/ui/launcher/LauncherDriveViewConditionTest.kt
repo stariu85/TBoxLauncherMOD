@@ -18,14 +18,21 @@ class LauncherDriveViewConditionTest {
     }
 
     @Test
-    fun topViewInSmartModeWhenPasObstacleDetected() {
-        assertFalse(isDriveViewActive(speedKmh = 5f, pasObstacle = true, isParkGear = false, isDriveGear = true, accActive = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK))
+    fun topViewInSmartModeWhenPasObstacleDetectedOrPark() {
+        assertFalse(isDriveViewActive(speedKmh = 25f, pasObstacle = true, isParkGear = false, isDriveGear = true, accActive = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK))
+        assertFalse(isDriveViewActive(speedKmh = 25f, pasObstacle = false, isParkGear = true, isDriveGear = false, accActive = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK))
     }
 
     @Test
-    fun smartModeThresholdTest() {
-        assertFalse(isDriveViewActive(speedKmh = 10f, pasObstacle = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK, currentSmartDriveView = false))
-        assertTrue(isDriveViewActive(speedKmh = 10f, pasObstacle = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK, currentSmartDriveView = true))
+    fun topViewWhenBodyDoorOrTrunkOpen() {
+        assertFalse(isDriveViewActive(speedKmh = 25f, pasObstacle = false, hasBodyOpen = true, isParkGear = false, isDriveGear = true, accActive = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK))
+        assertFalse(isDriveViewActive(speedKmh = 25f, pasObstacle = false, hasBodyOpen = true, isParkGear = false, isDriveGear = true, accActive = false, cameraSwitchMode = CAMERA_SWITCH_MODE_DRIVE_AND_PARK))
+    }
+
+    @Test
+    fun smartModeSpeed20KmhThresholdTest() {
+        assertFalse(isDriveViewActive(speedKmh = 15f, pasObstacle = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK, currentSmartDriveView = false))
+        assertTrue(isDriveViewActive(speedKmh = 20f, pasObstacle = false, cameraSwitchMode = CAMERA_SWITCH_MODE_PAS_AND_PARK, currentSmartDriveView = true))
     }
 
     @Test

@@ -38,6 +38,8 @@
     <string name="launcher_cruise_panel_position_desc">Move ACC speed presets panel to top under drive mode panel</string>
     <string name="launcher_swap_top_bottom_panels_title">Swap top and bottom panels</string>
     <string name="launcher_swap_top_bottom_panels_desc">Swap the positions of drive mode and ACC speed presets panels</string>
+    <string name="launcher_body_controls_panel_visible_title">Trunk &amp; Windows panel</string>
+    <string name="launcher_body_controls_panel_visible_desc">Display panel with trunk open and windows control buttons</string>
     <string name="launcher_headlight_beams_visible_title">Headlight beams visualization</string>
     <string name="launcher_headlight_beams_visible_desc">Display low and high beam cones in front of the 3D car model</string>
     <string name="launcher_nav_buttons_title">Navigation buttons</string>
@@ -101,7 +103,7 @@
     <string name="launcher_gps_no_fix">No GPS fix</string>
     <string name="launcher_paint_green">Green</string>
     <string name="launcher_adas_acc_standby">Cruise</string>
-    <string name="launcher_adas_fcw">Collision</string>
+    <string name="launcher_adas_fcw">Keep\nDistance!</string>
     <string name="launcher_adas_aeb">Braking</string>
     <string name="launcher_adas_lka">Lane keep</string>
     <string name="launcher_adas_hma">Auto high beam</string>

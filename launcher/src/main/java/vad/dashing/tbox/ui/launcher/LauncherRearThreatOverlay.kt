@@ -10,10 +10,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 
 /**
- * Body-local marks: DOW = gradient stripes on ADAS edges, RCTA = incoming bar, RCW = rear wash.
+ * Body-local marks: DOW = exclamation mark badge in ADAS area, RCTA = incoming bar, RCW = rear wash.
  * BSD is a PDC-style sonar band on the rear-side diagonals ([LauncherBsdOverlay]).
  */
 @Composable
@@ -36,15 +37,15 @@ private fun DrawScope.drawRearThreats(threats: LauncherRearThreats) {
     val bodyHalfH = h * 0.20f
 
     fun fillColor(level: LauncherRearThreatLevel): Color? = when (level) {
-        LauncherRearThreatLevel.Alert -> Color(0xFFEF4444)
-        LauncherRearThreatLevel.Caution -> Color(0xFFF97316)
+        LauncherRearThreatLevel.Alert -> Color(0xFFEF4444) // Красный — тревога
+        LauncherRearThreatLevel.Caution -> Color(0xFFFFB300) // Жёлтый — предупреждение
         LauncherRearThreatLevel.Off -> null
     }
 
     listOf(-1f, 1f).forEach { side ->
         val dow = if (side < 0f) threats.dowLeft else threats.dowRight
         val rcta = if (side < 0f) threats.rctaLeft else threats.rctaRight
-        fillColor(dow)?.let { drawDowStripe(w, h, side, it, dow) }
+        fillColor(dow)?.let { drawDowExclamationMark(w, h, side, it, dow) }
         if (rcta == LauncherRearThreatLevel.Alert) {
             fillColor(rcta)?.let { drawRctaBar(cx, cy, bodyHalfW, bodyHalfH, side, it) }
         }
@@ -69,41 +70,66 @@ private fun DrawScope.drawRearThreats(threats: LauncherRearThreats) {
     }
 }
 
-private fun DrawScope.drawDowStripe(
+private fun DrawScope.drawDowExclamationMark(
     w: Float,
     h: Float,
     side: Float,
     color: Color,
     level: LauncherRearThreatLevel,
 ) {
-    // Width increased by 50%: from 70dp to 105dp
-    val stripeWidthPx = 105.dp.toPx()
-    val stripeHeightPx = h * 0.75f
-    val maxAlpha = if (level == LauncherRearThreatLevel.Alert) 0.88f else 0.72f
+    val edgeOffsetPx = 50.dp.toPx()
+    val centerX = if (side < 0f) edgeOffsetPx else w - edgeOffsetPx
+    val centerY = h * 0.50f
+    val center = Offset(centerX, centerY)
 
-    // Origin starts at the bottom edge (top boundary of bottom panel): (0, h) for left, (w, h) for right.
-    // Fades out both UPWARDS and TOWARDS THE INSIDE (right for left side, left for right side).
-    val startPt = if (side < 0f) Offset(0f, h) else Offset(w, h)
-    val endPt = if (side < 0f) Offset(stripeWidthPx, h - stripeHeightPx) else Offset(w - stripeWidthPx, h - stripeHeightPx)
+    val badgeRadius = 22.dp.toPx()
 
-    val brush = Brush.linearGradient(
-        colorStops = arrayOf(
-            0.00f to color.copy(alpha = maxAlpha),
-            0.22f to color.copy(alpha = maxAlpha * 0.65f),
-            0.50f to color.copy(alpha = maxAlpha * 0.30f),
-            0.78f to color.copy(alpha = maxAlpha * 0.08f),
-            1.00f to Color.Transparent,
-        ),
-        start = startPt,
-        end = endPt,
+    // 1. Внешнее свечение (аура) вокруг значка
+    val glowRadius = badgeRadius * 1.35f
+    drawCircle(
+        color = color.copy(alpha = if (level == LauncherRearThreatLevel.Alert) 0.35f else 0.22f),
+        radius = glowRadius,
+        center = center,
     )
 
-    val topLeft = if (side < 0f) Offset(0f, h - stripeHeightPx) else Offset(w - stripeWidthPx, h - stripeHeightPx)
+    // 2. Основной круг предупреждения
+    drawCircle(
+        color = color,
+        radius = badgeRadius,
+        center = center,
+    )
 
-    drawRect(
-        brush = brush,
-        topLeft = topLeft,
-        size = Size(stripeWidthPx, stripeHeightPx),
+    // Тёмная обводка значка для контрастности
+    drawCircle(
+        color = Color(0x60000000),
+        radius = badgeRadius,
+        center = center,
+        style = Stroke(width = 1.8.dp.toPx()),
+    )
+
+    // 3. Восклицательный знак '!'
+    val markColor = Color(0xFF111111)
+
+    // Верхняя вертикальная черта
+    val barWidth = 4.5.dp.toPx()
+    val barHeight = 13.dp.toPx()
+    val barTopY = centerY - 10.5.dp.toPx()
+
+    drawRoundRect(
+        color = markColor,
+        topLeft = Offset(centerX - barWidth / 2f, barTopY),
+        size = Size(barWidth, barHeight),
+        cornerRadius = CornerRadius(2.2.dp.toPx(), 2.2.dp.toPx()),
+    )
+
+    // Нижняя точка
+    val dotRadius = 2.4.dp.toPx()
+    val dotCenterY = centerY + 7.5.dp.toPx()
+
+    drawCircle(
+        color = markColor,
+        radius = dotRadius,
+        center = Offset(centerX, dotCenterY),
     )
 }
 
