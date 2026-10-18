@@ -478,10 +478,6 @@ internal fun minimizeForeignFreeformTasks(
                     Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${it.message}")
                 }
             }
-
-            // Shell stack removal for OEM HU where moveTaskToBack is ignored for freeform/split stacks.
-            // Removes stack windows from the display without calling `am force-stop`.
-            LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
         }.onFailure {
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", it)
         }

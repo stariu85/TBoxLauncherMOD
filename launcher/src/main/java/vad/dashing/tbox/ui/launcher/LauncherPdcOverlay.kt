@@ -11,7 +11,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -112,6 +114,12 @@ fun LauncherPdcOverlay(
         label = "standbyJitterValue",
     )
 
+    var lastValidFrame by remember { mutableStateOf<LauncherPdcRingFrame?>(null) }
+    if (rings != null) {
+        lastValidFrame = rings
+    }
+    val effectiveFrame = rings ?: lastValidFrame
+
     Canvas(
         modifier = modifier
             .fillMaxSize()
@@ -121,16 +129,16 @@ fun LauncherPdcOverlay(
             PDC_VISUAL_ARCS -> {
                 drawBendingPdcArcs(
                     pdc = pdc,
-                    frame = rings,
+                    frame = effectiveFrame,
                     standbyJitter = standbyJitter,
                     pulse = pulse,
                 )
             }
             PDC_VISUAL_CLASSIC -> {
-                if (pdc.hasAny && rings != null) {
+                if (pdc.hasAny && effectiveFrame != null) {
                     drawPdcBands(
                         pdc = pdc,
-                        frame = rings,
+                        frame = effectiveFrame,
                         driving = driving,
                         pulse = pulse,
                     )

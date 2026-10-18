@@ -61,23 +61,27 @@ object LauncherAvmRepository {
                 DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active")
 
                 if (active) {
-                    val foreign = findForeignAppTask(appCtx)
-                    if (foreign != null) {
-                        val history = LauncherHistoryTracker.getHistory(appCtx)
-                        targetBeforeAvm = history.lastOrNull()
-                    } else {
+                    val isHomeActive = vad.dashing.tbox.LauncherHomeActivityHolder.isResumed
+                    val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
+                    val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
+
+                    val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
+                        isCameraPackage(LauncherHistoryTracker.lastActivePackage())
+
+                    if (isHomeActive || (activePkgIsCamera && lastFromHome)) {
                         targetBeforeAvm = null
+                    } else {
+                        val history = LauncherHistoryTracker.getHistory(appCtx)
+                        targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
                     }
-                    Log.w(TAG, "AVM turned ON: targetBeforeAvm=$targetBeforeAvm -> minimizing apps")
+                    Log.w(TAG, "AVM turned ON: isHomeActive=$isHomeActive lastFromHome=$lastFromHome foreign=$foreign targetBeforeAvm=$targetBeforeAvm -> minimizing apps")
                     minimizeForeignFreeformTasks(appCtx)
                 } else {
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null
                     if (restoreTarget != null) {
-                        Log.w(TAG, "AVM turned OFF: restoring targetBeforeAvm=$restoreTarget with 1s delay")
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            launchTarget(appCtx, restoreTarget)
-                        }, 1000L)
+                        Log.w(TAG, "AVM turned OFF: restoring targetBeforeAvm=$restoreTarget immediately")
+                        launchTarget(appCtx, restoreTarget)
                     } else {
                         Log.w(TAG, "AVM turned OFF: no app was active before AVM, staying on Home")
                     }

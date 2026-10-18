@@ -493,7 +493,7 @@ fun LauncherLeftPanel(
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd || pasOn),
+                    projectPdcRings = !racing,
                     projectHeadlights = !racing && headlightBeamsVisible && headlightBeams.any,
                     textureSurface = racing,
                     modifier = Modifier

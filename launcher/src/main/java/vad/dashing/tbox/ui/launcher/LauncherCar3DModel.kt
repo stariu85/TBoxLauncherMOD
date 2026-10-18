@@ -448,10 +448,12 @@ private fun LauncherCarFilamentContent(
                             ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
                         }
 
-                        if (currentDriveBlend < targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend + dt / 1.000f).coerceAtMost(targetDriveBlend)
+                        if (preparedFrames <= 1) {
+                            currentDriveBlend = targetDriveBlend
+                        } else if (currentDriveBlend < targetDriveBlend) {
+                            currentDriveBlend = (currentDriveBlend + dt / 0.750f).coerceAtMost(targetDriveBlend)
                         } else if (currentDriveBlend > targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend - dt / 1.000f).coerceAtLeast(targetDriveBlend)
+                            currentDriveBlend = (currentDriveBlend - dt / 0.750f).coerceAtLeast(targetDriveBlend)
                         }
 
                         lastSteeringDeg = currentSteering

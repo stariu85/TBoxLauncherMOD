@@ -23,7 +23,7 @@ import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
 import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
-import vad.dashing.tbox.ui.launcher.dismissForeignFreeformTasks
+import vad.dashing.tbox.ui.launcher.minimizeForeignFreeformTasks
 import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
 import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
 import vad.dashing.tbox.ui.launcher.goLauncherHome
@@ -59,7 +59,7 @@ class LauncherHomeActivity : ComponentActivity() {
         // After reinstall / process death OEM freeform stacks often survive alone on top.
         // Delay slightly so WM finishes enumerating stacks post-install.
         val appCtx = applicationContext
-        window.decorView.postDelayed({ dismissForeignFreeformTasks(appCtx) }, 400L)
+        window.decorView.postDelayed({ minimizeForeignFreeformTasks(appCtx) }, 400L)
 
         settingsManager = SettingsManager(this)
         appDataManager = AppDataManager(this)
@@ -134,7 +134,7 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherVehicleSettingsOverlayWindow.hide()
         LauncherAboutOverlayWindow.hide()
         LauncherOverlayBar.hide()
-        runCatching { dismissForeignFreeformTasks(this) }
+        runCatching { minimizeForeignFreeformTasks(this) }
         LauncherOverlayElevator.reset()
         if (LauncherHomeActivityHolder.instance === this) {
             LauncherHomeActivityHolder.instance = null

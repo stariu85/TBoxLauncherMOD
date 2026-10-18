@@ -76,29 +76,34 @@ private fun DrawScope.drawDowStripe(
     color: Color,
     level: LauncherRearThreatLevel,
 ) {
-    val stripeWidthPx = 70.dp.toPx()
-    val maxAlpha = if (level == LauncherRearThreatLevel.Alert) 0.85f else 0.70f
+    // Width increased by 50%: from 70dp to 105dp
+    val stripeWidthPx = 105.dp.toPx()
+    val stripeHeightPx = h * 0.75f
+    val maxAlpha = if (level == LauncherRearThreatLevel.Alert) 0.88f else 0.72f
 
+    // Origin starts at the bottom edge (top boundary of bottom panel): (0, h) for left, (w, h) for right.
+    // Fades out both UPWARDS and TOWARDS THE INSIDE (right for left side, left for right side).
     val startPt = if (side < 0f) Offset(0f, h) else Offset(w, h)
-    val endPt = if (side < 0f) Offset(stripeWidthPx, 0f) else Offset(w - stripeWidthPx, 0f)
+    val endPt = if (side < 0f) Offset(stripeWidthPx, h - stripeHeightPx) else Offset(w - stripeWidthPx, h - stripeHeightPx)
 
     val brush = Brush.linearGradient(
         colorStops = arrayOf(
             0.00f to color.copy(alpha = maxAlpha),
-            0.35f to color.copy(alpha = maxAlpha * 0.55f),
-            0.75f to color.copy(alpha = maxAlpha * 0.15f),
+            0.22f to color.copy(alpha = maxAlpha * 0.65f),
+            0.50f to color.copy(alpha = maxAlpha * 0.30f),
+            0.78f to color.copy(alpha = maxAlpha * 0.08f),
             1.00f to Color.Transparent,
         ),
         start = startPt,
         end = endPt,
     )
 
-    val topLeft = if (side < 0f) Offset(0f, 0f) else Offset(w - stripeWidthPx, 0f)
+    val topLeft = if (side < 0f) Offset(0f, h - stripeHeightPx) else Offset(w - stripeWidthPx, h - stripeHeightPx)
 
     drawRect(
         brush = brush,
         topLeft = topLeft,
-        size = Size(stripeWidthPx, h),
+        size = Size(stripeWidthPx, stripeHeightPx),
     )
 }
 

@@ -50,7 +50,12 @@ object LauncherHistoryTracker {
     @Volatile
     private var lastActivePackageName: String? = null
 
+    @Volatile
+    private var lastLaunchFromHome: Boolean = false
+
     fun lastActivePackage(): String? = lastActivePackageName
+
+    fun wasLastLaunchFromHome(): Boolean = lastLaunchFromHome
 
     private fun isSameTarget(a: LaunchedTarget, b: LaunchedTarget): Boolean {
         if (a == b) return true
@@ -69,6 +74,7 @@ object LauncherHistoryTracker {
 
     @Synchronized
     fun recordLaunch(context: Context, target: LaunchedTarget) {
+        lastLaunchFromHome = vad.dashing.tbox.LauncherHomeActivityHolder.isResumed
         when (target) {
             is LaunchedTarget.SingleApp -> {
                 if (target.packageName.isBlank() || target.packageName in ignoredPackages) return
@@ -213,6 +219,24 @@ object LauncherHistoryTracker {
             .edit()
             .putString(KEY_HISTORY_JSON, array.toString())
             .apply()
+    }
+}
+
+internal fun isCameraPackage(packageName: String?): Boolean {
+    if (packageName.isNullOrBlank()) return false
+    val lower = packageName.lowercase()
+    return lower.contains("avm") ||
+        lower.contains("camera") ||
+        lower.contains("car360") ||
+        lower.contains("quanjing") ||
+        lower == "com.wt.car360"
+}
+
+internal fun isCameraTarget(target: LaunchedTarget?): Boolean {
+    if (target == null) return false
+    return when (target) {
+        is LaunchedTarget.SingleApp -> isCameraPackage(target.packageName)
+        is LaunchedTarget.SplitPreset -> isCameraPackage(target.leftPackage) || isCameraPackage(target.rightPackage)
     }
 }
 
