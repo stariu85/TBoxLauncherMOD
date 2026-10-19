@@ -247,6 +247,7 @@ internal fun isCameraTarget(target: LaunchedTarget?): Boolean {
  * - If currently inside an app: launches the previous launched app or split preset.
  */
 internal fun performUndoLaunch(context: Context) {
+    LauncherRightPanelOverlayWindow.hide()
     val settingsWereOpen = LauncherVehicleSettingsUiState.open ||
         LauncherVehicleSettingsOverlayWindow.isShowing() ||
         LauncherVehicleSettingsActivity.isOpen() ||

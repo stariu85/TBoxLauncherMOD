@@ -114,10 +114,11 @@ fun TeslaLauncherScreen(
         LauncherAppConfigStore.adasPanelVisible(context)
     }
 
-    LaunchedEffect(adasPanelVisible) {
+    LaunchedEffect(sidebarWidth, adasPanelVisible, configRevision) {
         if (!adasPanelVisible) {
             LauncherEmbeddedBoundsState.leftPanelBounds = null
         }
+        LauncherRightPanelOverlayWindow.updateBounds()
     }
     val settingsOpen = LauncherVehicleSettingsUiState.open
     val isDraggingApp = LauncherDropTargetState.draggingPackage != null

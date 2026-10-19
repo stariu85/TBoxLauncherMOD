@@ -396,6 +396,7 @@ private fun startResolved(
         "startResolved pkg=$packageName component=$component embedded=$preferEmbedded fullscreen=$forceFullscreen",
     )
 
+    LauncherRightPanelOverlayWindow.hide()
     LauncherHistoryTracker.recordLaunch(
         context,
         LaunchedTarget.SingleApp(packageName, component?.className),

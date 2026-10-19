@@ -75,6 +75,14 @@ internal fun goLauncherHome(
         }
     }
 
+    // Show Right Panel Desktop Overlay above any foreign freeform windows
+    val foreign = findForeignAppTask(context)
+    if (foreign != null) {
+        LauncherRightPanelOverlayWindow.show(context)
+    } else {
+        LauncherRightPanelOverlayWindow.hide()
+    }
+
     // Minimize & dismiss foreign freeform tasks so freeform windows disappear from above desktop
     minimizeForeignFreeformTasks(context)
     dismissForeignFreeformTasks(context)
@@ -101,6 +109,10 @@ internal fun goLauncherBack(
     }
 
     when {
+        LauncherRightPanelOverlayWindow.isShowing() -> {
+            LauncherRightPanelOverlayWindow.hide()
+            return
+        }
         vehicleSettingsOpen ||
             LauncherVehicleSettingsUiState.open ||
             LauncherVehicleSettingsOverlayWindow.isShowing() ||

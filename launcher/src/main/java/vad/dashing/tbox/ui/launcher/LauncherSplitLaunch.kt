@@ -41,6 +41,7 @@ internal fun launchSplitApps(
     leftRatio: Float = 0.5f,
     recordHistory: Boolean = true,
 ) {
+    LauncherRightPanelOverlayWindow.hide()
     if (!isFreeformEnabled(context)) {
         Toast.makeText(context, context.getString(R.string.launcher_split_freeform_required), Toast.LENGTH_LONG).show()
         return
