@@ -36,7 +36,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -71,6 +70,7 @@ private const val TARGET_FRAME_INTERVAL_NS = 33_333_333L // Constant 30 FPS
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
+private const val DRIVE_MODEL_X = 0.12f
 private const val SETTINGS_MODEL_X = 0.14f
 private const val HOME_MODEL_Y = -0.1f
 private const val SETTINGS_MODEL_Y = -0.02f
@@ -177,28 +177,8 @@ private fun LauncherCarFilamentModel(
     isAvmActive: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val surfaceEpoch by LauncherCarSurfaceRecovery.epoch.collectAsStateWithLifecycle()
-
-    DisposableEffect(lifecycleOwner, lowPowerPreview) {
-        if (lowPowerPreview) {
-            return@DisposableEffect onDispose { }
-        }
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_PAUSE -> LauncherCarSurfaceRecovery.onHomePaused()
-                Lifecycle.Event.ON_RESUME -> LauncherCarSurfaceRecovery.onHomeResumed()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
     Box(modifier = modifier) {
-        key(if (lowPowerPreview) 0 else surfaceEpoch, modelRevision) {
+        key(modelRevision) {
             LauncherCarFilamentContent(
                 modifier = Modifier.fillMaxSize(),
                 onClick = onClick,
@@ -506,9 +486,10 @@ private fun LauncherCarFilamentContent(
                             transition,
                         )
                         node.rotation = Rotation(y = modelYaw)
+                        val driveModelX = lerp(HOME_MODEL_X, DRIVE_MODEL_X, driveBlend)
                         val driveModelZ = lerp(HOME_MODEL_Z, -0.21f, driveBlend)
                         node.position = Position(
-                            x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, transition),
+                            x = lerp(driveModelX, SETTINGS_MODEL_X, transition),
                             y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
                             z = lerp(driveModelZ, SETTINGS_MODEL_Z, transition),
                         )
@@ -616,6 +597,7 @@ private fun LauncherCarFilamentContent(
                     initialTransition,
                 )
                 val initialTargetScale = initialBaseScale * initialPinchScale
+                val initialDriveModelX = lerp(HOME_MODEL_X, DRIVE_MODEL_X, currentDriveBlend)
                 val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, currentDriveBlend)
 
                 ModelNode(
@@ -623,7 +605,7 @@ private fun LauncherCarFilamentContent(
                     autoAnimate = false,
                     scale = Scale(if (initialTransition >= 0.99f) 0.001f else initialTargetScale),
                     position = Position(
-                        x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, initialTransition),
+                        x = lerp(initialDriveModelX, SETTINGS_MODEL_X, initialTransition),
                         y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, initialTransition),
                         z = lerp(initialDriveModelZ, SETTINGS_MODEL_Z, initialTransition),
                     ),

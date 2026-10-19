@@ -168,11 +168,7 @@ fun LauncherMediaMiniPlayer(
 
     // Tint the card towards the album art's accent so the widget follows the music.
     val mediaCardTarget = remember(albumArtBitmap, isDark) {
-        val baseCardColor = if (isDark) {
-            LauncherColors.LeftPanelCard
-        } else {
-            Color(0xFAFFFFFF)
-        }
+        val baseCardColor = LauncherColors.LeftPanelCard
         val bitmap = albumArtBitmap ?: return@remember baseCardColor
         runCatching {
             val palette = Palette.from(bitmap.asAndroidBitmap()).generate()

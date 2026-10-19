@@ -1,6 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.util.Log
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "LauncherAmStack"
 
@@ -147,14 +148,15 @@ internal object LauncherAmStackShell {
                 }
             }
             thread.start()
-            thread.join(250L)
+            thread.join(200L)
             if (thread.isAlive) {
-                proc.destroy()
+                runCatching { proc.destroy() }
                 Log.w(TAG, "am ${args.joinToString(" ")} timed out")
                 return null
             }
-            val code = proc.waitFor()
-            if (code != 0 && text.contains("Security exception", ignoreCase = true)) {
+            runCatching { proc.waitFor(200L, TimeUnit.MILLISECONDS) }
+            runCatching { proc.destroy() }
+            if (text.contains("Security exception", ignoreCase = true) || text.contains("Error", ignoreCase = true)) {
                 Log.w(TAG, "am ${args.joinToString(" ")} denied: $text")
                 return null
             }

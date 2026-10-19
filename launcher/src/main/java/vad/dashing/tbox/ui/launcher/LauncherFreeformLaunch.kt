@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.LastAppTracker
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "LauncherFreeform"
 private const val WINDOWING_MODE_FREEFORM = 5
@@ -464,23 +465,31 @@ internal fun minimizeForeignFreeformTasks(
                     val pkg = taskInfo?.topActivity?.packageName ?: taskInfo?.baseActivity?.packageName
                     if (pkg == launcherPackage) return@runCatching
 
-                    val success = moveTaskBackwards(taskId)
+                    var success = moveTaskBackwards(taskId)
+
+                    if (!success) {
+                        success = removeTaskId(am, taskId)
+                    }
 
                     if (!success) {
                         runCatching {
                             val pb = ProcessBuilder("am", "task", "move-to-back", taskId.toString())
                             val proc = pb.start()
-                            proc.waitFor()
+                            proc.waitFor(300L, TimeUnit.MILLISECONDS)
+                            runCatching { proc.destroy() }
                         }
                     }
-                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId pkg=$pkg completed")
+                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId pkg=$pkg completed success=$success")
                 }.onFailure {
                     Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${it.message}")
                 }
             }
 
             // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
-            LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
+            val moved = LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
+            if (moved == 0 && taskIdsToMinimize.isNotEmpty()) {
+                LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
+            }
         }.onFailure {
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", it)
         }

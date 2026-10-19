@@ -51,30 +51,33 @@ internal fun goLauncherHome(
     runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
     runCatching { LauncherOverlayElevator.bringLauncherToFront(context) }
 
-    minimizeForeignFreeformTasks(context) {
-        val home = LauncherHomeActivityHolder.instance
-        if (home != null && !home.isFinishing && !home.isDestroyed) {
-            runCatching { home.window.decorView.visibility = View.VISIBLE }
-            runCatching {
-                val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
-                Log.w(TAG, "goLauncherHome: brought to front task=${home.taskId}")
-            }
+    // Bring Launcher Home activity to front immediately on Main Thread
+    val home = LauncherHomeActivityHolder.instance
+    if (home != null && !home.isFinishing && !home.isDestroyed) {
+        runCatching { home.window.decorView.visibility = View.VISIBLE }
+        runCatching {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
+            Log.w(TAG, "goLauncherHome: brought to front task=${home.taskId}")
         }
+    }
 
-        if (fromHomeIntent) return@minimizeForeignFreeformTasks
-
+    if (!fromHomeIntent) {
         runCatching {
             context.startActivity(
                 Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 },
             )
         }.onFailure {
             Log.w(TAG, "goLauncherHome: startActivity failed", it)
         }
     }
+
+    // Minimize & dismiss foreign freeform tasks so freeform windows disappear from above desktop
+    minimizeForeignFreeformTasks(context)
+    dismissForeignFreeformTasks(context)
 }
 
 /**
@@ -264,6 +267,22 @@ private val ignoredLauncherPackages = setOf(
     "ca.dstudio.atvlauncher",
     "com.android.systemui",
 )
+
+internal fun isSplitActiveOnScreen(context: Context): Boolean {
+    val launcher = context.packageName
+    val stacks = LauncherAmStackShell.listStacks()
+    val visibleForeignTasks = stacks.filter { row ->
+        row.visible &&
+            row.packageName != null &&
+            row.packageName != launcher &&
+            row.packageName != "com.wt.launcher3" &&
+            row.packageName != "com.android.launcher3" &&
+            row.packageName != "com.android.launcherWT" &&
+            row.packageName != "ca.dstudio.atvlauncher" &&
+            row.taskId != null
+    }
+    return visibleForeignTasks.size >= 2
+}
 
 internal fun findForeignAppTask(context: Context): ForeignAppTask? {
     val launcher = context.packageName

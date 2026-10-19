@@ -24,8 +24,8 @@ android {
         applicationId = "ras.dashing.tbox.launcher"
         minSdk = 28
         targetSdk = 36
-        versionCode = 71
-        versionName = "0.6.8"
+        versionCode = 72
+        versionName = "0.6.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TBOX_PROXY_VERSION", "\"${libs.versions.tboxProxy.get()}\"")

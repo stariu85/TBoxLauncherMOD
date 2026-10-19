@@ -28,8 +28,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
@@ -40,7 +40,7 @@ private val ButtonHeight = 60.dp
 /**
  * Vehicle Body Controls Panel at the bottom of the ADAS zone:
  * 1. Trunk Button (long-click opens/closes trunk if gear is 'P', else warns "Переключите передачу в P")
- * 2. Windows Button (hold to open gradually, single tap to close all, double tap to open all)
+ * 2. Windows Button (single tap to close all, double tap to open all, sent sequentially with 1s delay)
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -51,7 +51,20 @@ fun LauncherVehicleBodyControlsBar(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var isOpeningWindows by remember { mutableStateOf(false) }
+    var windowJob by remember { mutableStateOf<Job?>(null) }
+    var isOperatingWindows by remember { mutableStateOf(false) }
+
+    fun triggerWindowsCommand(targetPercent: Int) {
+        windowJob?.cancel()
+        windowJob = scope.launch {
+            isOperatingWindows = true
+            try {
+                sendSequentialWindowCommands(targetPercent)
+            } finally {
+                isOperatingWindows = false
+            }
+        }
+    }
 
     Row(
         modifier = modifier
@@ -91,10 +104,10 @@ fun LauncherVehicleBodyControlsBar(
             )
         }
 
-        // Slot 2: Windows Button (Hold to open, single tap close all, double tap open all)
+        // Slot 2: Windows Button (Single tap to close all, double tap to open all)
         val activeGreen = Color(0xFF10B981)
-        val windowsBg = if (isOpeningWindows) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
-        val windowsBorder = if (isOpeningWindows) activeGreen else Color.Transparent
+        val windowsBg = if (isOperatingWindows) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+        val windowsBorder = if (isOperatingWindows) activeGreen else Color.Transparent
 
         Box(
             modifier = Modifier
@@ -103,7 +116,7 @@ fun LauncherVehicleBodyControlsBar(
                 .clip(RoundedCornerShape(12.dp))
                 .background(windowsBg)
                 .then(
-                    if (isOpeningWindows) {
+                    if (isOperatingWindows) {
                         Modifier.border(1.5.dp, windowsBorder, RoundedCornerShape(12.dp))
                     } else {
                         Modifier
@@ -113,29 +126,11 @@ fun LauncherVehicleBodyControlsBar(
                     detectTapGestures(
                         onTap = {
                             // Single tap -> Close all windows (0%)
-                            setAllWindowsPosition(0)
+                            triggerWindowsCommand(0)
                         },
                         onDoubleTap = {
                             // Double tap -> Open all windows fully (100%)
-                            setAllWindowsPosition(100)
-                        },
-                        onPress = {
-                            // Press and hold -> Gradually open windows
-                            isOpeningWindows = true
-                            val job = scope.launch {
-                                var current = readAverageWindowPosition()
-                                while (isActive) {
-                                    current = (current + 6).coerceAtMost(100)
-                                    setAllWindowsPosition(current)
-                                    delay(110L)
-                                }
-                            }
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                job.cancel()
-                                isOpeningWindows = false
-                            }
+                            triggerWindowsCommand(100)
                         },
                     )
                 },
@@ -146,29 +141,24 @@ fun LauncherVehicleBodyControlsBar(
                 contentDescription = "Окна",
                 modifier = Modifier.size(40.dp),
                 colorFilter = ColorFilter.tint(
-                    if (isOpeningWindows) activeGreen else LauncherColors.LeftTextPrimary,
+                    if (isOperatingWindows) activeGreen else LauncherColors.LeftTextPrimary,
                 ),
             )
         }
     }
 }
 
-private fun setAllWindowsPosition(percent: Int) {
+private suspend fun sendSequentialWindowCommands(percent: Int) {
     val target = percent.coerceIn(0, 100)
-    for (i in 0..3) {
-        MbCanEngineFacade.setWindowPosition(i, target)
-    }
-}
-
-private fun readAverageWindowPosition(): Int {
-    var sum = 0
-    var count = 0
-    for (i in 0..3) {
-        val pos = MbCanEngineFacade.readWindowPosition(i)
-        if (pos != null) {
-            sum += pos
-            count++
+    val activeTargets = mutableMapOf<Int, Int>()
+    val windowIndices = intArrayOf(0, 1, 2, 3) // 0: Driver, 1: Passenger, 2: Rear Left, 3: Rear Right
+    for (i in windowIndices.indices) {
+        if (i > 0) {
+            delay(1000L)
         }
+        val windowIdx = windowIndices[i]
+        activeTargets[windowIdx] = target
+        MbCanEngineFacade.setWindowPositions(activeTargets)
     }
-    return if (count > 0) sum / count else 0
+    delay(2500L)
 }

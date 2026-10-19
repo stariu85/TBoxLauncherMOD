@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.DiagFileLog
+import vad.dashing.tbox.LauncherHomeActivityHolder
 
 /**
  * Tracks 360 Camera (AVM) state via `Settings.Global.avm_state`.
@@ -17,7 +18,8 @@ import vad.dashing.tbox.DiagFileLog
  * Values considered OFF: "0", "false", "off", "hide", "hidden", "avm_state_hide", null, empty.
  * Any other non-empty value means 360 Camera is ACTIVE.
  * When ACTIVE, 3D car model rendering is completely stopped to free 100% GPU for the camera,
- * and active applications are minimized. When camera turns OFF, previous app is restored.
+ * and active applications are minimized/hidden with Home screen brought to front.
+ * When camera turns OFF, previous app or split preset is restored.
  */
 object LauncherAvmRepository {
     private const val TAG = "LauncherAvm"
@@ -61,7 +63,7 @@ object LauncherAvmRepository {
                 DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active")
 
                 if (active) {
-                    val isHomeActive = vad.dashing.tbox.LauncherHomeActivityHolder.isResumed
+                    val isHomeActive = LauncherHomeActivityHolder.isResumed
                     val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
                     val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
 
@@ -74,8 +76,8 @@ object LauncherAvmRepository {
                         val history = LauncherHistoryTracker.getHistory(appCtx)
                         targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
                     }
-                    Log.w(TAG, "AVM turned ON: isHomeActive=$isHomeActive lastFromHome=$lastFromHome foreign=$foreign targetBeforeAvm=$targetBeforeAvm -> minimizing apps")
-                    minimizeForeignFreeformTasks(appCtx)
+                    Log.w(TAG, "AVM turned ON: isHomeActive=$isHomeActive lastFromHome=$lastFromHome foreign=$foreign targetBeforeAvm=$targetBeforeAvm -> going Home & minimizing apps")
+                    goLauncherHome(appCtx)
                 } else {
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null

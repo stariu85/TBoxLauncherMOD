@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherStateStore
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
 import vad.dashing.tbox.MainActivity
@@ -57,7 +58,7 @@ object LauncherHistoryTracker {
 
     fun wasLastLaunchFromHome(): Boolean = lastLaunchFromHome
 
-    private fun isSameTarget(a: LaunchedTarget, b: LaunchedTarget): Boolean {
+    internal fun isSameTarget(a: LaunchedTarget, b: LaunchedTarget): Boolean {
         if (a == b) return true
         return when {
             a is LaunchedTarget.SingleApp && b is LaunchedTarget.SingleApp -> {
@@ -73,8 +74,8 @@ object LauncherHistoryTracker {
     }
 
     @Synchronized
-    fun recordLaunch(context: Context, target: LaunchedTarget) {
-        lastLaunchFromHome = vad.dashing.tbox.LauncherHomeActivityHolder.isResumed
+    fun recordLaunch(context: Context, target: LaunchedTarget, isExplicit: Boolean = false) {
+        lastLaunchFromHome = LauncherHomeActivityHolder.isResumed
         when (target) {
             is LaunchedTarget.SingleApp -> {
                 if (target.packageName.isBlank() || target.packageName in ignoredPackages) return
@@ -89,7 +90,7 @@ object LauncherHistoryTracker {
         val list = getHistoryMutable(context)
         val last = list.lastOrNull()
 
-        if (target is LaunchedTarget.SingleApp) {
+        if (!isExplicit && target is LaunchedTarget.SingleApp) {
             val now = SystemClock.uptimeMillis()
             val isSplitProtected = (now - lastSplitLaunchMs) < SPLIT_PROTECTION_TIMEOUT_MS
 
@@ -97,7 +98,7 @@ object LauncherHistoryTracker {
                 if (target.packageName == last.leftPackage || target.packageName == last.rightPackage) {
                     Log.d(
                         TAG,
-                        "Ignored single app launch ${target.packageName} because top is SplitPreset(${last.leftPackage}, ${last.rightPackage})",
+                        "Ignored implicit single app launch ${target.packageName} because top is SplitPreset(${last.leftPackage}, ${last.rightPackage})",
                     )
                     return
                 }
@@ -106,7 +107,7 @@ object LauncherHistoryTracker {
             if (isSplitProtected && last is LaunchedTarget.SplitPreset) {
                 Log.d(
                     TAG,
-                    "Ignored single app launch ${target.packageName} due to recent split launch protection",
+                    "Ignored implicit single app launch ${target.packageName} due to recent split launch protection",
                 )
                 return
             }
@@ -145,7 +146,7 @@ object LauncherHistoryTracker {
         }
 
         saveHistory(context, list)
-        Log.d(TAG, "Recorded launch target: $effectiveTarget (history size=${list.size})")
+        Log.d(TAG, "Recorded launch target: $effectiveTarget (isExplicit=$isExplicit, history size=${list.size})")
     }
 
     @Synchronized
@@ -240,21 +241,6 @@ internal fun isCameraTarget(target: LaunchedTarget?): Boolean {
     }
 }
 
-private fun isTargetActive(target: LaunchedTarget, activePkg: String?): Boolean {
-    if (activePkg.isNullOrBlank()) return false
-    val activeIsClimate = activePkg in LAUNCHER_CLIMATE_PACKAGES
-    return when (target) {
-        is LaunchedTarget.SingleApp -> {
-            target.packageName == activePkg ||
-                (activeIsClimate && target.packageName in LAUNCHER_CLIMATE_PACKAGES)
-        }
-        is LaunchedTarget.SplitPreset -> {
-            target.leftPackage == activePkg || target.rightPackage == activePkg ||
-                (activeIsClimate && (target.leftPackage in LAUNCHER_CLIMATE_PACKAGES || target.rightPackage in LAUNCHER_CLIMATE_PACKAGES))
-        }
-    }
-}
-
 /**
  * Executes the Return / Undo launch button behavior:
  * - If on Home screen or Launcher Settings: closes settings, launches the last launched app or split preset.
@@ -282,17 +268,17 @@ internal fun performUndoLaunch(context: Context) {
         return
     }
 
-    val foreignTask = findForeignAppTask(context)
-    val activePkg = foreignTask?.packageName ?: LauncherHistoryTracker.lastActivePackage()
-    val isHomeActive = settingsWereOpen || (foreignTask == null && vad.dashing.tbox.LauncherHomeActivityHolder.isResumed)
+    val isHomeActive = settingsWereOpen || LauncherHomeActivityHolder.isResumed
 
     val targetToLaunch = if (isHomeActive) {
         history.last()
     } else {
-        history.lastOrNull { !isTargetActive(it, activePkg) }
+        val currentActive = history.last()
+        history.lastOrNull { !LauncherHistoryTracker.isSameTarget(it, currentActive) }
             ?: if (history.size >= 2) history[history.size - 2] else history.last()
     }
 
+    Log.d(TAG, "performUndoLaunch isHomeActive=$isHomeActive targetToLaunch=$targetToLaunch historySize=${history.size}")
     launchTarget(context, targetToLaunch)
 }
 

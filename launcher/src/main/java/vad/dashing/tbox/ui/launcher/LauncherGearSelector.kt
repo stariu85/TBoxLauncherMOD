@@ -74,7 +74,7 @@ fun LauncherGearSelector(
                     text = slot.toString(),
                     fontSize = 18.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    color = if (active) LauncherColors.LeftPanelCard else LauncherColors.GearInactive,
+                    color = if (active) LauncherColors.LeftPanelBg else LauncherColors.GearInactive,
                 )
             }
         }

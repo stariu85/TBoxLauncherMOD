@@ -1,12 +1,15 @@
 package vad.dashing.tbox.mbcan
 
 import android.util.Log
+import vad.dashing.tbox.mbcan.MbCanEngineFacade.canGetVehicleParam
+import vad.dashing.tbox.mbcan.MbCanEngineFacade.ensureInitialized
+import vad.dashing.tbox.mbcan.MbCanEngineFacade.syncVehicleCfgCmdListener
+import vad.dashing.tbox.ui.launcher.LauncherTireRepository
+import vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.atomic.AtomicReference
-import vad.dashing.tbox.ui.launcher.LauncherTireRepository
-import vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository
 
 sealed class MbCanAvailability {
     data object Unknown : MbCanAvailability()
@@ -216,9 +219,10 @@ object MbCanEngineFacade {
 
     /**
      * Uses the same native API as the OEM CarSettings window controls.
-     * Other windows retain their latest BCM positions; no command is sent without a seed.
+     * Updates target positions for any windows specified in [positions].
+     * Unspecified windows retain their latest BCM positions.
      */
-    fun setWindowPosition(windowIndex: Int, positionPercent: Int): Int? {
+    fun setWindowPositions(positions: Map<Int, Int>): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
         val inst = engineInstance ?: return null
         return runCatching {
@@ -237,14 +241,12 @@ object MbCanEngineFacade {
                 var frontLeft = (windowClass.getMethod("getFLWindow").invoke(current) as Number).toByte()
                 var rearRight = (windowClass.getMethod("getRRWindow").invoke(current) as Number).toByte()
                 var rearLeft = (windowClass.getMethod("getRLWindow").invoke(current) as Number).toByte()
-                val target = positionPercent.coerceIn(0, 100).toByte()
-                when (windowIndex) {
-                    0 -> frontLeft = target
-                    1 -> frontRight = target
-                    2 -> rearLeft = target
-                    3 -> rearRight = target
-                    else -> return null
-                }
+
+                positions[0]?.let { frontLeft = it.coerceIn(0, 100).toByte() }
+                positions[1]?.let { frontRight = it.coerceIn(0, 100).toByte() }
+                positions[2]?.let { rearLeft = it.coerceIn(0, 100).toByte() }
+                positions[3]?.let { rearRight = it.coerceIn(0, 100).toByte() }
+
                 val command = windowClass.getConstructor(
                     Byte::class.javaPrimitiveType,
                     Byte::class.javaPrimitiveType,
@@ -261,6 +263,9 @@ object MbCanEngineFacade {
             }
         }.getOrNull()
     }
+
+    fun setWindowPosition(windowIndex: Int, positionPercent: Int): Int? =
+        setWindowPositions(mapOf(windowIndex to positionPercent))
 
     fun setDriverWindowPosition(positionPercent: Int): Int? =
         setWindowPosition(windowIndex = 0, positionPercent = positionPercent)
@@ -351,8 +356,7 @@ object MbCanEngineFacade {
             when (method.name) {
                 "onCanVehicleSpeed" -> {
                     val fromArgs = runCatching {
-                        val raw = args?.getOrNull(0)
-                        when (raw) {
+                        when (val raw = args?.getOrNull(0)) {
                             is Number -> raw.toFloat()
                             else -> {
                                 val getter = raw?.javaClass?.methods?.firstOrNull { it.name == "getSpeed" && it.parameterCount == 0 }

@@ -481,9 +481,9 @@ data class LauncherPdcZones(
             rearMidRightCm, rearRightCm, rearSideRightCm,
         )
 
-    val hasAny: Boolean get() = all.any { it in PDC_MIN_CM..PDC_MAX_CM }
+    val hasAny: Boolean get() = all.any { it in PDC_MIN_CM until PDC_MAX_CM }
 
-    val nearestCm: Int get() = all.filter { it in PDC_MIN_CM..PDC_MAX_CM }.minOrNull() ?: 0
+    val nearestCm: Int get() = all.filter { it in PDC_MIN_CM until PDC_MAX_CM }.minOrNull() ?: 0
 
     fun distanceCm(channel: LauncherPdcChannel): Int = when (channel) {
         LauncherPdcChannel.FrontSideLeft -> frontSideLeftCm

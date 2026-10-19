@@ -15,14 +15,14 @@ object LauncherColors {
 
     // Left panel — light theme (default) / dark theme (optional, Tesla night style)
     private val LightPanelBg = Color(0xFFF4F5F7)
-    private val LightPanelCard = Color(0xD9FFFFFF)
+    private val LightPanelCard = Color(0x8CFFFFFF)
     private val LightTextPrimary = Color(0xFF4B5563)
     private val LightTextSecondary = Color(0xFF4B5563)
     private val LightGearActive = Color(0xFF4B5563)
     private val LightGearInactive = Color(0xFFD1D5DB)
 
     private val DarkPanelBg = Color(0xFF161D28)
-    private val DarkPanelCard = Color(0xCC232D3B)
+    private val DarkPanelCard = Color(0x80232D3B)
     private val DarkTextPrimary = Color(0xFFF3F4F6)
     private val DarkTextSecondary = Color(0xFF9AA4B2)
     private val DarkGearActive = Color(0xFFF3F4F6)
