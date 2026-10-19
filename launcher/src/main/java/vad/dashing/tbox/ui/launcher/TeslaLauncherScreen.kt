@@ -7,19 +7,16 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -205,8 +202,7 @@ fun TeslaLauncherScreen(
                 Column(
                     modifier = modifier
                         .fillMaxSize()
-                        .background(LauncherColors.CanvasDark)
-                        .windowInsetsPadding(WindowInsets.safeDrawing),
+                        .background(LauncherColors.CanvasDark),
                 ) {
                     LauncherTopHeaderBar(
                         canViewModel = canViewModel,
@@ -274,7 +270,6 @@ fun TeslaLauncherScreen(
                         onCloseVehicleSettings = closeVehicleSettings,
                         onOpenVehicleSettings = openVehicleSettings,
                         configRevision = configRevision,
-                        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
                     )
                 }
             }
@@ -301,8 +296,7 @@ fun TeslaLauncherScreen(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .zIndex(60f)
-                            .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
+                            .zIndex(60f),
                     ) {
                         LauncherBottomBar(
                             canViewModel = canViewModel,

@@ -44,6 +44,7 @@ fun rememberPlaySystemClickSound(): () -> Unit {
             if (enabled && view.isSoundEffectsEnabled) {
                 view.playSoundEffect(SoundEffectConstants.CLICK)
             }
+            vad.dashing.tbox.DclLogRecorder.logUiClick("SystemClick")
         }
     }
 }
@@ -54,6 +55,7 @@ fun rememberWrappedOnClick(onClick: () -> Unit): () -> Unit {
     return remember(onClick, play) {
         {
             play()
+            vad.dashing.tbox.DclLogRecorder.logUiClick("WrappedOnClick")
             onClick()
         }
     }
@@ -65,6 +67,7 @@ fun rememberWrappedOnCheckedChange(onCheckedChange: ((Boolean) -> Unit)?): (Bool
     return remember(onCheckedChange, play) {
         { value ->
             play()
+            vad.dashing.tbox.DclLogRecorder.logUiClick("WrappedOnCheckedChange", details = "value=$value")
             onCheckedChange?.invoke(value)
         }
     }

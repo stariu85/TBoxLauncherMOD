@@ -75,17 +75,11 @@ internal fun goLauncherHome(
         }
     }
 
-    // Show Right Panel Desktop Overlay above any foreign freeform windows
-    val foreign = findForeignAppTask(context)
-    if (foreign != null) {
-        LauncherRightPanelOverlayWindow.show(context)
-    } else {
-        LauncherRightPanelOverlayWindow.hide()
-    }
+    // Ensure overlay desktop window is hidden so LauncherHomeActivity receives all touch events
+    LauncherRightPanelOverlayWindow.hide()
 
-    // Minimize & dismiss foreign freeform tasks so freeform windows disappear from above desktop
+    // Minimize foreign freeform tasks so freeform windows disappear from above desktop
     minimizeForeignFreeformTasks(context)
-    dismissForeignFreeformTasks(context)
 }
 
 /**

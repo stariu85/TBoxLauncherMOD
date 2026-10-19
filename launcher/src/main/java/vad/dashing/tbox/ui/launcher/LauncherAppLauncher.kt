@@ -396,6 +396,36 @@ private fun startResolved(
         "startResolved pkg=$packageName component=$component embedded=$preferEmbedded fullscreen=$forceFullscreen",
     )
 
+    if (isCameraPackage(packageName)) {
+        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "360_CAMERA_LAUNCHED_PKG: $packageName")
+    }
+
+    val flagsHex = "0x" + Integer.toHexString(launchIntent.flags)
+    val targetBounds = if (forceFullscreen) {
+        LauncherEmbeddedBoundsState.fullScreenBounds()
+    } else if (preferEmbedded) {
+        LauncherEmbeddedBoundsState.embeddedBounds()
+    } else {
+        null
+    }
+    val extrasMap = launchIntent.extras?.let { bundle ->
+        runCatching {
+            bundle.keySet().associateWith { bundle.get(it)?.toString().orEmpty() }
+        }.getOrNull()
+    }
+
+    vad.dashing.tbox.DclLogRecorder.logAppLaunch(
+        packageName = packageName,
+        component = component?.flattenToString(),
+        intentAction = launchIntent.action,
+        intentCategories = launchIntent.categories,
+        intentFlags = flagsHex,
+        preferEmbedded = preferEmbedded,
+        forceFullscreen = forceFullscreen,
+        bounds = targetBounds,
+        extras = extrasMap,
+    )
+
     LauncherRightPanelOverlayWindow.hide()
     LauncherHistoryTracker.recordLaunch(
         context,

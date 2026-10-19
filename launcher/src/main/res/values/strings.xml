@@ -3,6 +3,14 @@
     <string name="launcher_standalone_app_name">Dashing Club Launcher</string>
     <string name="launcher_standalone_about_title">О лаунчере</string>
     <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME-лаунчер для Jetour Dashing.\nOTA.</string>
+    <string name="launcher_dcl_logs_title">Запись логов DCL</string>
+    <string name="launcher_dcl_logs_desc">Запись логов 3D-модели, ADAS и рендера в Downloads/DCLlogs при открытии настроек или включении 360</string>
+    <string name="launcher_dcl_permission_title">Дать разрешение на доступ к диску</string>
+    <string name="launcher_dcl_permission_desc">Для сохранения логов в папку Downloads/DCLlogs необходимо предоставить приложению доступ к файлам на диске.</string>
+    <string name="launcher_dcl_logs_button_title">Запись лога (5 мин)</string>
+    <string name="launcher_dcl_logs_started_toast">Запись логов запущена на 5 минут</string>
+    <string name="launcher_dcl_logs_stopped_toast">Запись логов остановлена и сохранена</string>
+    <string name="action_settings_open">Настройки</string>
     <string name="update_reboot_hu_title">Перезагрузить ГУ?</string>
     <string name="update_reboot_hu_body">Выполнить перезагрузку головного устройства сейчас?</string>
     <string name="update_reboot_hu_later">Позже</string>
@@ -211,6 +219,11 @@
     <string name="launcher_update_available_short">Обновление!</string>
     <string name="launcher_camera_switch_mode_title">Режим переключения камеры 3D-модели</string>
     <string name="launcher_camera_switch_mode_desc">Условие перехода между видом сзади и видом сверху</string>
+    <string name="launcher_vs_avm_action_title">Поведение приложений при включении камер 360</string>
+    <string name="launcher_vs_avm_action_desc">Что делать с активными приложениями при запуске камеры 360</string>
+    <string name="launcher_vs_avm_action_do_nothing">Не трогать приложения в фоне</string>
+    <string name="launcher_vs_avm_action_close">Закрывать приложения и открывать заново при выходе</string>
+    <string name="launcher_vs_avm_action_minimize">Сворачивать приложения и разворачивать при выходе</string>
     <string name="launcher_camera_switch_mode_pas">Умный (парктроники и P)</string>
     <string name="launcher_camera_switch_mode_drive">По передаче D и P</string>
     <string name="launcher_pdc_visual_mode_title">Визуализация парктроников</string>

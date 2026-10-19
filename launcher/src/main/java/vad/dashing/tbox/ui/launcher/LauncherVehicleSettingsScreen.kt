@@ -98,6 +98,9 @@ fun LauncherVehicleSettingsScreen(
     @Suppress("UNUSED_PARAMETER") revealProgress: Float = 1f,
 ) {
     val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_VEHICLE")
+    }
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     var paintId by remember(context) { mutableStateOf(LauncherAppConfigStore.carPaintId(context)) }
     var paintRevision by remember { mutableStateOf(0) }

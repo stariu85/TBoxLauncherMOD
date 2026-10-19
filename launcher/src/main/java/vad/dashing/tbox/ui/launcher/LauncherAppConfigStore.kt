@@ -21,7 +21,9 @@ private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
+private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
+private const val KEY_DCL_LOGS_ENABLED = "dcl_logs_enabled"
 
 const val PDC_VISUAL_ARCS = 0
 const val PDC_VISUAL_CLASSIC = 1
@@ -128,6 +130,10 @@ internal const val SIDEBAR_WIDTH_MAX = 400
 internal const val CAMERA_SWITCH_MODE_PAS_AND_PARK = 0
 internal const val CAMERA_SWITCH_MODE_DRIVE_AND_PARK = 1
 internal const val CAMERA_SWITCH_MODE_DEFAULT = CAMERA_SWITCH_MODE_DRIVE_AND_PARK
+internal const val AVM_CAMERA_ACTION_DO_NOTHING = 0
+internal const val AVM_CAMERA_ACTION_CLOSE_APPS = 1
+internal const val AVM_CAMERA_ACTION_MINIMIZE_APPS = 2
+internal const val AVM_CAMERA_ACTION_DEFAULT = AVM_CAMERA_ACTION_DO_NOTHING
 internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
 internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
 internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
@@ -230,6 +236,8 @@ internal object LauncherAppConfigStore {
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
     private val cameraSwitchModeRevision = MutableStateFlow(0)
     internal val cameraSwitchModeRevisionFlow: StateFlow<Int> = cameraSwitchModeRevision
+    private val avmCameraActionRevision = MutableStateFlow(0)
+    internal val avmCameraActionRevisionFlow: StateFlow<Int> = avmCameraActionRevision
     private val pdcVisualModeRevision = MutableStateFlow(0)
     internal val pdcVisualModeRevisionFlow: StateFlow<Int> = pdcVisualModeRevision
     private val navButtonsRevision = MutableStateFlow(0)
@@ -284,6 +292,8 @@ internal object LauncherAppConfigStore {
     internal val gridRowSpacingRevisionFlow: StateFlow<Int> = gridRowSpacingRevision
     private val homeIconScaleRevision = MutableStateFlow(0)
     internal val homeIconScaleRevisionFlow: StateFlow<Int> = homeIconScaleRevision
+    private val dclLogsEnabledRevision = MutableStateFlow(0)
+    internal val dclLogsEnabledRevisionFlow: StateFlow<Int> = dclLogsEnabledRevision
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -512,6 +522,14 @@ internal object LauncherAppConfigStore {
         adasBsdAlertOverlayRevision.value++
     }
 
+    fun dclLogsEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DCL_LOGS_ENABLED, false)
+
+    fun setDclLogsEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DCL_LOGS_ENABLED, enabled).apply()
+        dclLogsEnabledRevision.value++
+    }
+
     fun speedLimitXRatio(context: Context): Float =
         prefs(context).getFloat(KEY_SPEED_LIMIT_X_RATIO, 0.5f).coerceIn(0f, 1f)
 
@@ -671,6 +689,16 @@ internal object LauncherAppConfigStore {
         val next = mode.coerceIn(0, 1)
         prefs(context).edit().putInt(KEY_CAMERA_SWITCH_MODE, next).apply()
         cameraSwitchModeRevision.value++
+    }
+
+    fun avmCameraAction(context: Context): Int =
+        prefs(context).getInt(KEY_AVM_CAMERA_ACTION, AVM_CAMERA_ACTION_DEFAULT)
+            .coerceIn(0, 2)
+
+    fun setAvmCameraAction(context: Context, action: Int) {
+        val next = action.coerceIn(0, 2)
+        prefs(context).edit().putInt(KEY_AVM_CAMERA_ACTION, next).apply()
+        avmCameraActionRevision.value++
     }
 
     fun pdcVisualMode(context: Context): Int =

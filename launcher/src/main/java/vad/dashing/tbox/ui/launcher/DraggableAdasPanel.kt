@@ -101,6 +101,15 @@ internal fun DraggableAdasPanel(
                                     currentTop = topPanels,
                                     currentBottom = bottomPanels,
                                 )
+                                vad.dashing.tbox.DclLogRecorder.logAdasPanelDrag(
+                                    panelId = panelId,
+                                    initialTopPx = initialPanelTopPx,
+                                    panelHeightPx = panelHeightPx,
+                                    dragOffsetY = accumulativeDragY,
+                                    releasedCenterY = releasedCenterY,
+                                    topPanels = newLayout.first,
+                                    bottomPanels = newLayout.second,
+                                )
                                 isDragging = false
                                 dragOffsetY = 0f
                                 onLayoutChanged(newLayout.first, newLayout.second)
