@@ -82,10 +82,6 @@ internal fun goLauncherHome(
     } else {
         LauncherRightPanelOverlayWindow.hide()
     }
-
-    // Minimize & dismiss foreign freeform tasks so freeform windows disappear from above desktop
-    minimizeForeignFreeformTasks(context)
-    dismissForeignFreeformTasks(context)
 }
 
 /**

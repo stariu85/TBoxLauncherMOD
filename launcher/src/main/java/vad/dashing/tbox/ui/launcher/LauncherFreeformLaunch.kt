@@ -465,11 +465,7 @@ internal fun minimizeForeignFreeformTasks(
                     val pkg = taskInfo?.topActivity?.packageName ?: taskInfo?.baseActivity?.packageName
                     if (pkg == launcherPackage) return@runCatching
 
-                    var success = moveTaskBackwards(taskId)
-
-                    if (!success) {
-                        success = removeTaskId(am, taskId)
-                    }
+                    val success = moveTaskBackwards(taskId)
 
                     if (!success) {
                         runCatching {
@@ -486,10 +482,7 @@ internal fun minimizeForeignFreeformTasks(
             }
 
             // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
-            val moved = LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
-            if (moved == 0 && taskIdsToMinimize.isNotEmpty()) {
-                LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
-            }
+            LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
         }.onFailure {
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", it)
         }
