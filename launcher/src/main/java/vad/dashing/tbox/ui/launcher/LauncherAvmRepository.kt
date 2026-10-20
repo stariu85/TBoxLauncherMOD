@@ -63,29 +63,61 @@ object LauncherAvmRepository {
                 DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active")
 
                 if (active) {
-                    val isHomeActive = LauncherHomeActivityHolder.isResumed
-                    val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
-                    val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
+                    vad.dashing.tbox.DclLogRecorder.triggerSession(appCtx, "360_CAMERA_ACTIVE")
+                    val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
+                    vad.dashing.tbox.DclLogRecorder.log("AVM", "avm_state changed raw='$raw' active=$active cameraAction=$cameraAction")
 
-                    val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
-                        isCameraPackage(LauncherHistoryTracker.lastActivePackage())
+                    when (cameraAction) {
+                        AVM_CAMERA_ACTION_DO_NOTHING -> {
+                            Log.w(TAG, "AVM turned ON: cameraAction=DO_NOTHING -> leaving active apps untouched")
+                            targetBeforeAvm = null
+                        }
+                        AVM_CAMERA_ACTION_CLOSE_APPS -> {
+                            val isHomeActive = LauncherHomeActivityHolder.isResumed
+                            val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
+                            val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
 
-                    if (isHomeActive || (activePkgIsCamera && lastFromHome)) {
-                        targetBeforeAvm = null
-                    } else {
-                        val history = LauncherHistoryTracker.getHistory(appCtx)
-                        targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
+                            val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
+                                isCameraPackage(LauncherHistoryTracker.lastActivePackage())
+
+                            if (isHomeActive || (activePkgIsCamera && lastFromHome)) {
+                                targetBeforeAvm = null
+                            } else {
+                                val history = LauncherHistoryTracker.getHistory(appCtx)
+                                targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
+                            }
+                            Log.w(TAG, "AVM turned ON: cameraAction=CLOSE_APPS -> closing foreign tasks & going Home")
+                            dismissForeignFreeformTasks(appCtx)
+                            goLauncherHome(appCtx)
+                        }
+                        AVM_CAMERA_ACTION_MINIMIZE_APPS -> {
+                            val isHomeActive = LauncherHomeActivityHolder.isResumed
+                            val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
+                            val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
+
+                            val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
+                                isCameraPackage(LauncherHistoryTracker.lastActivePackage())
+
+                            if (isHomeActive || (activePkgIsCamera && lastFromHome)) {
+                                targetBeforeAvm = null
+                            } else {
+                                val history = LauncherHistoryTracker.getHistory(appCtx)
+                                targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
+                            }
+                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> minimizing foreign tasks & going Home")
+                            minimizeForeignFreeformTasks(appCtx)
+                            goLauncherHome(appCtx)
+                        }
                     }
-                    Log.w(TAG, "AVM turned ON: isHomeActive=$isHomeActive lastFromHome=$lastFromHome foreign=$foreign targetBeforeAvm=$targetBeforeAvm -> going Home & minimizing apps")
-                    goLauncherHome(appCtx)
                 } else {
+                    val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null
-                    if (restoreTarget != null) {
+                    if (cameraAction != AVM_CAMERA_ACTION_DO_NOTHING && restoreTarget != null) {
                         Log.w(TAG, "AVM turned OFF: restoring targetBeforeAvm=$restoreTarget immediately")
                         launchTarget(appCtx, restoreTarget)
                     } else {
-                        Log.w(TAG, "AVM turned OFF: no app was active before AVM, staying on Home")
+                        Log.w(TAG, "AVM turned OFF: cameraAction=$cameraAction restoreTarget=$restoreTarget -> staying as is")
                     }
                 }
             }

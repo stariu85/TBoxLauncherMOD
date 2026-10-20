@@ -232,6 +232,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("back_nav", "Кнопка Назад"),
     LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.undo_24),
     LauncherDockButtonDescriptor("close_apps", "Закрыть приложения", R.drawable.close_apps_24),
+    LauncherDockButtonDescriptor("dcl_log", "Запись лога (5 мин)", R.drawable.menu_icon_log),
 )
 
 @Composable
@@ -1196,6 +1197,59 @@ private fun LauncherBottomDockButtonContent(
                 modifier = Modifier.size(dockDp(32.2f)),
             )
         }
+        "dcl_log" -> {
+            var showPermissionDialog by remember { mutableStateOf(false) }
+
+            if (showPermissionDialog) {
+                LauncherDarkAlertDialog(
+                    onDismissRequest = { showPermissionDialog = false },
+                    title = { Text(stringResource(R.string.launcher_dcl_permission_title)) },
+                    text = { Text(stringResource(R.string.launcher_dcl_permission_desc)) },
+                    confirmButton = {
+                        androidx.compose.material3.Button(
+                            onClick = {
+                                showPermissionDialog = false
+                                vad.dashing.tbox.DclLogRecorder.openStorageSettings(context)
+                            },
+                        ) {
+                            Text(stringResource(R.string.action_settings_open))
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.OutlinedButton(onClick = { showPermissionDialog = false }) {
+                            Text(stringResource(R.string.action_cancel))
+                        }
+                    },
+                )
+            }
+
+            val isLoggingActive = vad.dashing.tbox.DclLogRecorder.isLoggingActive()
+            val tint = if (isLoggingActive) Color(0xFFEF4444) else (if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151))
+
+            LauncherDockIcon(
+                onClick = {
+                    if (vad.dashing.tbox.DclLogRecorder.isLoggingActive()) {
+                        vad.dashing.tbox.DclLogRecorder.stopLogging("Stopped by user via bottom bar button")
+                        Toast.makeText(context, context.getString(R.string.launcher_dcl_logs_stopped_toast), Toast.LENGTH_SHORT).show()
+                    } else {
+                        if (!vad.dashing.tbox.DclLogRecorder.hasStoragePermission(context)) {
+                            showPermissionDialog = true
+                        } else {
+                            LauncherAppConfigStore.setDclLogsEnabled(context, true)
+                            vad.dashing.tbox.DclLogRecorder.triggerSession(context, "BOTTOM_BAR_LOG_BUTTON", durationMs = 300_000L)
+                            Toast.makeText(context, context.getString(R.string.launcher_dcl_logs_started_toast), Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.menu_icon_log),
+                    contentDescription = stringResource(R.string.launcher_dcl_logs_button_title),
+                    colorFilter = ColorFilter.tint(tint),
+                    modifier = Modifier.size(dockDp(28f)),
+                )
+            }
+        }
         "temp_driver" -> LauncherTempStepper(
             tempText = formatHvacSetTemp(driverTemp),
             onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
@@ -1758,6 +1812,7 @@ private fun LauncherDockIcon(
     val wrappedOnClick = remember(onClick, playSound) {
         {
             playSound()
+            vad.dashing.tbox.DclLogRecorder.logUiClick("DockIcon", label = "click")
             onClick()
         }
     }
@@ -1765,6 +1820,7 @@ private fun LauncherDockIcon(
         onDoubleClick?.let {
             {
                 playSound()
+                vad.dashing.tbox.DclLogRecorder.logUiClick("DockIcon", label = "doubleClick")
                 it()
             }
         }
@@ -1773,6 +1829,7 @@ private fun LauncherDockIcon(
         onLongClick?.let {
             {
                 playSound()
+                vad.dashing.tbox.DclLogRecorder.logUiClick("DockIcon", label = "longClick")
                 it()
             }
         }

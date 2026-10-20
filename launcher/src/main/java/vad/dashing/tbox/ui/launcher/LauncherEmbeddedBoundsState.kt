@@ -47,6 +47,16 @@ object LauncherEmbeddedBoundsState {
         val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
         if (bottom <= top || right <= leftEdge) return null
         val rect = Rect(leftEdge, top, right, bottom)
+        vad.dashing.tbox.DclLogRecorder.logAdasBounds(
+            "embeddedBounds()",
+            leftPanelBounds,
+            contentRowBounds,
+            embeddedZoneBounds,
+            screenBounds,
+            rect,
+            topHeaderBottomPx,
+            bottomBarTopPx,
+        )
         android.util.Log.w(
             "LauncherAppLaunch",
             "embeddedBounds=$rect leftPanel=${leftPanel?.right} rowRight=${row.right}",
@@ -91,6 +101,17 @@ object LauncherEmbeddedBoundsState {
         val left = 0
         val top = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
         val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
-        return Rect(left, top, width, bottom)
+        val rect = Rect(left, top, width, bottom)
+        vad.dashing.tbox.DclLogRecorder.logAdasBounds(
+            "vehicleSettingsBounds()",
+            leftPanelBounds,
+            contentRowBounds,
+            embeddedZoneBounds,
+            screenBounds,
+            rect,
+            topHeaderBottomPx,
+            bottomBarTopPx,
+        )
+        return rect
     }
 }

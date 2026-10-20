@@ -3,6 +3,14 @@
     <string name="launcher_standalone_app_name">Dashing Club Launcher</string>
     <string name="launcher_standalone_about_title">About</string>
     <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME launcher for Jetour Dashing.\nOTA.</string>
+    <string name="launcher_dcl_logs_title">DCL log recording</string>
+    <string name="launcher_dcl_logs_desc">Record 3D model, ADAS, and render logs to Downloads/DCLlogs when opening settings or 360 camera</string>
+    <string name="launcher_dcl_permission_title">Grant disk access permission</string>
+    <string name="launcher_dcl_permission_desc">To save logs to Downloads/DCLlogs, grant file access in system settings.</string>
+    <string name="launcher_dcl_logs_button_title">Record log (5 min)</string>
+    <string name="launcher_dcl_logs_started_toast">Log recording started for 5 minutes</string>
+    <string name="launcher_dcl_logs_stopped_toast">Log recording stopped and saved</string>
+    <string name="action_settings_open">Settings</string>
     <string name="update_reboot_hu_title">Reboot HU?</string>
     <string name="update_reboot_hu_body">Reboot the head unit now?</string>
     <string name="update_reboot_hu_later">Later</string>
@@ -21,6 +29,11 @@
     <string name="launcher_sidebar_width_desc">Changes the width of the car panel and Freeform zone</string>
     <string name="launcher_about_app_short">About</string>
     <string name="launcher_update_available_short">Update!</string>
+    <string name="launcher_vs_avm_action_title">Apps behavior on 360 camera start</string>
+    <string name="launcher_vs_avm_action_desc">What to do with active apps when 360 camera activates</string>
+    <string name="launcher_vs_avm_action_do_nothing">Do not touch background apps</string>
+    <string name="launcher_vs_avm_action_close">Close active apps and reopen on exit</string>
+    <string name="launcher_vs_avm_action_minimize">Minimize active apps and restore on exit</string>
     <string name="launcher_camera_switch_mode_title">3D camera view mode</string>
     <string name="launcher_camera_switch_mode_desc">Condition for switching between drive view and top view</string>
     <string name="launcher_camera_switch_mode_pas">Smart (PAS &amp; Park)</string>

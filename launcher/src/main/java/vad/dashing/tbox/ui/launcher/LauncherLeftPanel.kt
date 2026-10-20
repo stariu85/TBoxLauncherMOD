@@ -338,12 +338,14 @@ fun LauncherLeftPanel(
             .onGloballyPositioned { coordinates ->
                 leftPanelHeightPx = coordinates.size.height.toFloat()
                 val rect = coordinates.boundsInWindow()
-                LauncherEmbeddedBoundsState.leftPanelBounds = android.graphics.Rect(
+                val boundsRect = android.graphics.Rect(
                     rect.left.toInt(),
                     rect.top.toInt(),
                     rect.right.toInt(),
                     rect.bottom.toInt(),
                 )
+                LauncherEmbeddedBoundsState.leftPanelBounds = boundsRect
+                vad.dashing.tbox.DclLogRecorder.log("LeftPanel", "onGloballyPositioned leftPanelBounds=$boundsRect carModelScale=$carModelScale adasAlertsInLeftPanel=$adasAlertsInLeftPanel")
                 onCarBoundsChanged(rect)
             }
             .background(LauncherColors.LeftPanelBg),

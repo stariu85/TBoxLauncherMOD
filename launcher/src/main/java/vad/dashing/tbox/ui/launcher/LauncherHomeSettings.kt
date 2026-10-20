@@ -159,6 +159,7 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardOpacitySlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()
+    AvmCameraActionSelector()
     PdcVisualModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
@@ -460,6 +461,63 @@ private fun CameraSwitchModeSelector() {
                     )
                 },
                 modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AvmCameraActionSelector() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.avmCameraActionRevisionFlow
+        .collectAsStateWithLifecycle()
+    val action = remember(context, revision) {
+        LauncherAppConfigStore.avmCameraAction(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_vs_avm_action_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_avm_action_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_vs_avm_action_do_nothing),
+                selected = action == AVM_CAMERA_ACTION_DO_NOTHING,
+                onClick = {
+                    LauncherAppConfigStore.setAvmCameraAction(
+                        context,
+                        AVM_CAMERA_ACTION_DO_NOTHING,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_vs_avm_action_close),
+                selected = action == AVM_CAMERA_ACTION_CLOSE_APPS,
+                onClick = {
+                    LauncherAppConfigStore.setAvmCameraAction(
+                        context,
+                        AVM_CAMERA_ACTION_CLOSE_APPS,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_vs_avm_action_minimize),
+                selected = action == AVM_CAMERA_ACTION_MINIMIZE_APPS,
+                onClick = {
+                    LauncherAppConfigStore.setAvmCameraAction(
+                        context,
+                        AVM_CAMERA_ACTION_MINIMIZE_APPS,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

@@ -49,6 +49,7 @@ internal object LauncherRightPanelOverlayWindow {
     fun isShowing(): Boolean = composeView != null
 
     fun show(context: Context): Boolean {
+        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_RIGHT_PANEL")
         if (isShowing()) {
             updateBounds()
             return true
@@ -83,7 +84,9 @@ internal object LauncherRightPanelOverlayWindow {
             bounds.left,
             bounds.top,
             type,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT,

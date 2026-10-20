@@ -87,6 +87,7 @@ fun LauncherSettingsScreen(
     }
 
     LaunchedEffect(Unit) {
+        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_STANDALONE")
         updateViewModel.checkForUpdateOnStartupIfEnabled()
     }
 
@@ -244,6 +245,70 @@ fun LauncherSettingsScreen(
                 checked = updateCheckEnabled,
                 onCheckedChange = { enabled ->
                     updateViewModel.saveUpdateCheckEnabled(enabled)
+                },
+                colors = launcherSwitchColors(),
+            )
+        }
+
+        val dclLogsEnabledRevision by LauncherAppConfigStore.dclLogsEnabledRevisionFlow.collectAsStateWithLifecycle()
+        val dclLogsEnabled = remember(context, dclLogsEnabledRevision) {
+            LauncherAppConfigStore.dclLogsEnabled(context)
+        }
+        var showDclPermissionDialog by remember { mutableStateOf(false) }
+
+        if (showDclPermissionDialog) {
+            LauncherDarkAlertDialog(
+                onDismissRequest = { showDclPermissionDialog = false },
+                title = { Text(stringResource(R.string.launcher_dcl_permission_title)) },
+                text = { Text(stringResource(R.string.launcher_dcl_permission_desc)) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDclPermissionDialog = false
+                            vad.dashing.tbox.DclLogRecorder.openStorageSettings(context)
+                        },
+                    ) {
+                        Text(stringResource(R.string.action_settings_open))
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showDclPermissionDialog = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.launcher_dcl_logs_title),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextPrimary,
+                )
+                Text(
+                    text = stringResource(R.string.launcher_dcl_logs_desc),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextMuted,
+                )
+            }
+            Switch(
+                checked = dclLogsEnabled,
+                onCheckedChange = { enabled ->
+                    if (enabled) {
+                        if (!vad.dashing.tbox.DclLogRecorder.hasStoragePermission(context)) {
+                            showDclPermissionDialog = true
+                        } else {
+                            LauncherAppConfigStore.setDclLogsEnabled(context, true)
+                            vad.dashing.tbox.DclLogRecorder.triggerSession(context, "SETTINGS_TOGGLED_ON")
+                        }
+                    } else {
+                        LauncherAppConfigStore.setDclLogsEnabled(context, false)
+                    }
                 },
                 colors = launcherSwitchColors(),
             )
