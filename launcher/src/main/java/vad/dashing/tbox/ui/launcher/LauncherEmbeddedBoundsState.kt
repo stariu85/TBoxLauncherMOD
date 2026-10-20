@@ -21,7 +21,7 @@ object LauncherEmbeddedBoundsState {
 
     /** No gap between split panes — even 8px left a ~4px HOME strip visible between apps. */
     private const val SPLIT_GAP_PX = 0
-    private const val BLEED_RIGHT_PX = 8
+    private const val BLEED_RIGHT_PX = 0
     private const val MARGIN_LEFT_PX = 0
 
     /**

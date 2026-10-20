@@ -2,7 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.graphics.Bitmap
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -25,11 +24,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -69,6 +69,9 @@ import vad.dashing.tbox.R
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
+
+private const val DASH_SPACING = 72f
+private const val ROAD_FRAME_INTERVAL_NS = 28_000_000L // 30 FPS target with hysteresis / VSYNC tolerance margin (~28ms)
 
 @Composable
 fun LauncherVirtualRoad(
@@ -111,17 +114,37 @@ fun LauncherVirtualRoad(
     val currentDriveBlend by rememberUpdatedState(driveBlend)
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(Unit) {
+    var lastRoadFrameNs by remember { mutableLongStateOf(0L) }
+
+    val isRoadAnimating = currentSpeedKmh > 0.5f && currentDriveBlend > 0.02f
+
+    LaunchedEffect(isRoadAnimating) {
+        if (!isRoadAnimating) {
+            lastRoadFrameNs = 0L
+            return@LaunchedEffect
+        }
         while (isActive) {
-            withFrameMillis {
+            withFrameNanos { frameNs ->
                 val started = lifecycleOwner.lifecycle.currentState
                     .isAtLeast(Lifecycle.State.STARTED)
                 val hidden = LauncherWindowState.hiddenForExternalApp
-                val spd = currentSpeedKmh
-                val blend = currentDriveBlend
-                if (started && !hidden && spd > 0.5f && blend > 0.02f) {
-                    roadPhase += spd * 0.03f
+                if (!started || hidden) return@withFrameNanos
+
+                if (lastRoadFrameNs == 0L) {
+                    lastRoadFrameNs = frameNs
+                    return@withFrameNanos
                 }
+
+                val deltaNs = frameNs - lastRoadFrameNs
+                if (deltaNs < ROAD_FRAME_INTERVAL_NS) { // Capped to 30 FPS target with hysteresis / VSYNC tolerance margin (~28ms)
+                    return@withFrameNanos
+                }
+
+                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.1f)
+                lastRoadFrameNs = frameNs
+
+                val spd = currentSpeedKmh
+                roadPhase = (roadPhase + spd * 1.8f * dtSec) % DASH_SPACING
             }
         }
     }
@@ -459,8 +482,7 @@ private fun DrawScope.drawVirtualRoad(
         yAt = ::yAt,
     )
 
-    val dashSpacing = (58f + speedKmh * 0.42f).coerceIn(48f, 128f)
-    val phase = roadPhase % dashSpacing
+    val phase = roadPhase % DASH_SPACING
     var y = horizonY + phase
 
     while (y < h) {
@@ -528,7 +550,7 @@ private fun DrawScope.drawVirtualRoad(
                 )
             }
         }
-        y += dashSpacing * (0.55f + 0.85f * t)
+        y += DASH_SPACING * (0.55f + 0.85f * t)
     }
 
     drawBsdBeam(

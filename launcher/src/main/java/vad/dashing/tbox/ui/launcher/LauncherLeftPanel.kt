@@ -53,17 +53,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -273,7 +273,7 @@ fun LauncherLeftPanel(
         currentSmartDriveView = smartDriveViewActive,
     )
 
-    // Hold drive view for up to 1800ms to prevent camera view jumping when CAN speed/gear momentarily drops
+    // Hold drive view for up to 5000ms (5s) to prevent camera view jumping when stopping or CAN speed/gear drops
     var showDriveView by remember { mutableStateOf(rawDriveView) }
     var lastDriveViewTrueMs by remember { mutableLongStateOf(if (rawDriveView) SystemClock.elapsedRealtime() else 0L) }
 
@@ -281,9 +281,12 @@ fun LauncherLeftPanel(
     if (rawDriveView) {
         showDriveView = true
         lastDriveViewTrueMs = nowViewMs
+    } else if (activeGear == 'P' || hasBodyOpen) {
+        showDriveView = false
+        lastDriveViewTrueMs = 0L
     } else {
         val elapsedView = nowViewMs - lastDriveViewTrueMs
-        showDriveView = elapsedView < 1800L
+        showDriveView = elapsedView < 5000L
     }
 
     // Drive mode glow highlighting

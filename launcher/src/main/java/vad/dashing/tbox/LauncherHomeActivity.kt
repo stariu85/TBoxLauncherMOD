@@ -3,33 +3,36 @@ package vad.dashing.tbox
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import vad.dashing.tbox.ui.disposeAppLauncherPickerIconCache
-import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
 import vad.dashing.tbox.ui.launcher.LauncherAboutOverlayWindow
+import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
 import vad.dashing.tbox.ui.launcher.LauncherAppDrawerWindow
 import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
 import vad.dashing.tbox.ui.launcher.LauncherAppPickerOverlayWindow
-import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
-import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
-import vad.dashing.tbox.ui.launcher.LauncherThemeState
-import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
-import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
-import vad.dashing.tbox.ui.launcher.minimizeForeignFreeformTasks
-import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
-import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
-import vad.dashing.tbox.ui.launcher.goLauncherHome
-import androidx.compose.runtime.DisposableEffect
 import vad.dashing.tbox.ui.launcher.LauncherCarModelCache
 import vad.dashing.tbox.ui.launcher.LauncherOverlayBar
+import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
+import vad.dashing.tbox.ui.launcher.LauncherRightPanelOverlayWindow
+import vad.dashing.tbox.ui.launcher.LauncherThemeState
+import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
+import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
+import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
+import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
+import vad.dashing.tbox.ui.launcher.findForeignAppTask
+import vad.dashing.tbox.ui.launcher.goLauncherHome
+import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
+import vad.dashing.tbox.ui.launcher.minimizeForeignFreeformTasks
 
 /**
  * Android HOME handler — Tesla-style launcher surface for the head unit.
@@ -105,8 +108,12 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         LauncherHomeActivityHolder.isResumed = true
-        LauncherForegroundHandoff.restoreLauncherWindow()
-        window.decorView.visibility = android.view.View.VISIBLE
+        val foreign = findForeignAppTask(this)
+        val inAppView = foreign != null && !LauncherRightPanelOverlayWindow.isShowing()
+        if (!inAppView) {
+            LauncherForegroundHandoff.restoreLauncherWindow()
+            window.decorView.visibility = View.VISIBLE
+        }
         LauncherOverlayBar.ensureShowing(this)
     }
 

@@ -20,7 +20,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 
@@ -57,13 +56,7 @@ internal fun LauncherDarkAlertDialog(
             Surface(
                 modifier = modifier
                     .widthIn(min = 280.dp, max = 520.dp)
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    ),
+                    .padding(16.dp),
                 shape = RoundedCornerShape(24.dp),
                 color = LauncherColors.CardDark,
                 shadowElevation = 12.dp,

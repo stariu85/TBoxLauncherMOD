@@ -48,6 +48,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import vad.dashing.tbox.DclLogRecorder
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.exp
@@ -56,7 +57,7 @@ import kotlin.math.exp
 private const val MODEL_YAW_DEG = 135f
 private const val SETTINGS_YAW_DEG = 45f
 
-private val TOP_CAMERA_POS = Float3(0f, 4.8f, 0.08f)
+private val TOP_CAMERA_POS = Float3(0f, 4.2f, 0.70f)
 private val TOP_CAMERA_TARGET = Float3(0f, 0f, 0f)
 /** Raised by +15° in elevation pitch to align the car perspective with the road canvas. */
 private val DRIVE_CAMERA_POS = Float3(0f, 2.20f, 2.85f)
@@ -66,13 +67,12 @@ private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val BASE_MODEL_SCALE = 0.42f
-private const val DYNAMIC_FRAME_INTERVAL_NS = 33_333_333L // 30 FPS for active events
-private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS for idle
+private const val DYNAMIC_FRAME_INTERVAL_NS = 28_000_000L // 30 FPS target with hysteresis / VSYNC tolerance margin (~28ms)
 private const val DYNAMIC_GRACE_PERIOD_NS = 5_000_000_000L // 5 seconds grace period
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
-private const val DRIVE_MODEL_X = 0f
+private const val DRIVE_MODEL_X = 0.12f
 private const val SETTINGS_MODEL_X = 0.14f
 private const val HOME_MODEL_Y = -0.1f
 private const val SETTINGS_MODEL_Y = -0.02f
@@ -434,7 +434,7 @@ private fun LauncherCarFilamentContent(
                         // Trigger 1: Initial 5 seconds after rendering starts
                         val isWithinInitial5Sec = (frameNs - mountNs) < DYNAMIC_GRACE_PERIOD_NS
 
-                        // Trigger 2 & 3: Opening or closing any door, sunroof, or tailgate/trunk
+                        // Trigger 2: Opening or closing any door, sunroof, or tailgate/trunk
                         val bodyStateChanged = (currentRigState.doorFlOpen != lastRigState.doorFlOpen) ||
                             (currentRigState.doorFrOpen != lastRigState.doorFrOpen) ||
                             (currentRigState.doorRlOpen != lastRigState.doorRlOpen) ||
@@ -443,16 +443,22 @@ private fun LauncherCarFilamentContent(
                             (currentRigState.sunroofOpen != lastRigState.sunroofOpen)
 
                         // Trigger 4: Camera view switching or settings transition/orbiting
-                        val isCameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f || transition > 0.001f || (orbit?.interacting == true)
+                        val isCameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
+                            transition > 0.001f ||
+                            (orbit?.interacting == true)
 
-                        if (isWithinInitial5Sec || bodyStateChanged || isCameraSwitching) {
+                        if (isWithinInitial5Sec || bodyStateChanged || isCameraSwitching || !modelReady || preparedFrames < 3) {
                             lastDynamicNs = frameNs
                         }
 
                         val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
-                        val requiredIntervalNs = if (isDynamic) DYNAMIC_FRAME_INTERVAL_NS else STATIC_FRAME_INTERVAL_NS
 
-                        if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
+                        // Freeze 3D Filament rendering completely when stationary & idle
+                        if (!isDynamic) {
+                            return@runCatching
+                        }
+
+                        if (lastFrameNs != 0L && frameNs - lastFrameNs < DYNAMIC_FRAME_INTERVAL_NS) {
                             return@runCatching
                         }
 
@@ -468,6 +474,9 @@ private fun LauncherCarFilamentContent(
                             currentDriveBlend = (currentDriveBlend + dt / 0.750f).coerceAtMost(targetDriveBlend)
                         } else if (currentDriveBlend > targetDriveBlend) {
                             currentDriveBlend = (currentDriveBlend - dt / 0.750f).coerceAtLeast(targetDriveBlend)
+                        }
+                        if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
+                            currentDriveBlend = targetDriveBlend
                         }
 
                         lastSteeringDeg = currentSteering
@@ -532,20 +541,21 @@ private fun LauncherCarFilamentContent(
                         if (frameNs - lastXCheckNs >= 1_000_000_000L) {
                             lastXCheckNs = frameNs
                             if (transition < 0.001f) {
+                                val expectedX = lerp(HOME_MODEL_X, DRIVE_MODEL_X, driveBlend)
                                 var watchdogReset = false
-                                if (abs(node.position.x) > 0.001f) {
-                                    vad.dashing.tbox.DclLogRecorder.log("Watchdog", "Model X shifted to ${node.position.x}, resetting to 0")
-                                    node.position = Position(0f, node.position.y, node.position.z)
+                                if (abs(node.position.x - expectedX) > 0.005f) {
+                                    DclLogRecorder.log("Watchdog", "Model X shifted to ${node.position.x}, resetting to $expectedX")
+                                    node.position = Position(expectedX, node.position.y, node.position.z)
                                     watchdogReset = true
                                 }
-                                if (abs(cameraNode.worldPosition.x) > 0.001f) {
-                                    vad.dashing.tbox.DclLogRecorder.log("Watchdog", "Camera X shifted to ${cameraNode.worldPosition.x}, resetting to 0")
+                                if (abs(cameraNode.worldPosition.x) > 0.005f) {
+                                    DclLogRecorder.log("Watchdog", "Camera X shifted to ${cameraNode.worldPosition.x}, resetting to 0")
                                     cameraNode.worldPosition = Position(0f, cameraNode.worldPosition.y, cameraNode.worldPosition.z)
                                     watchdogReset = true
                                 }
                                 if (watchdogReset) {
                                     val vp = cameraNode.viewport
-                                    vad.dashing.tbox.DclLogRecorder.logModelRender(
+                                    DclLogRecorder.logModelRender(
                                         transition = transition,
                                         driveBlend = driveBlend,
                                         modelX = node.position.x,
@@ -607,14 +617,14 @@ private fun LauncherCarFilamentContent(
                             node.scale = Scale(renderedScale)
                         }
 
-                        if (vad.dashing.tbox.DclLogRecorder.isLoggingActive()) {
+                        if (DclLogRecorder.isLoggingActive()) {
                             val posChanged = abs(node.position.x - dclLastPosX) > 0.0001f || abs(cameraNode.worldPosition.x - dclLastCamX) > 0.0001f
                             val timeElapsed = (frameNs - dclLastLogNs) >= 250_000_000L
                             if (posChanged || timeElapsed) {
                                 dclLastLogNs = frameNs
                                 dclLastPosX = node.position.x
                                 dclLastCamX = cameraNode.worldPosition.x
-                                vad.dashing.tbox.DclLogRecorder.logModelRender(
+                                DclLogRecorder.logModelRender(
                                     transition = transition,
                                     driveBlend = driveBlend,
                                     modelX = node.position.x,
@@ -640,7 +650,7 @@ private fun LauncherCarFilamentContent(
                         }
 
                         animationController?.update(rigStateRef.value, dt)
-                        val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
+                        val publishNs = 1_000_000_000L // 1 second interval
                         if (frameNs - lastAnchorPublishNs >= publishNs) {
                             lastAnchorPublishNs = frameNs
                             val wheels = runCatching {

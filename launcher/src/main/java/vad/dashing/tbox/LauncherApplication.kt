@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 
 /**
  * Standalone HOME launcher process — no TBox UDP / trips / fuel pipeline.
@@ -19,6 +20,8 @@ class LauncherApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppContextHolder.init(this)
+        LauncherAppConfigStore.resetDclLogsOnStartup(this)
+        DclLogRecorder.stopLogging("Launcher restarted")
         DiagFileLog.install(this)
         val settings = SettingsManager(this)
         appScope.launch {

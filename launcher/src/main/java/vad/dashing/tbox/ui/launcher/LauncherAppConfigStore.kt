@@ -133,7 +133,7 @@ internal const val CAMERA_SWITCH_MODE_DEFAULT = CAMERA_SWITCH_MODE_DRIVE_AND_PAR
 internal const val AVM_CAMERA_ACTION_DO_NOTHING = 0
 internal const val AVM_CAMERA_ACTION_CLOSE_APPS = 1
 internal const val AVM_CAMERA_ACTION_MINIMIZE_APPS = 2
-internal const val AVM_CAMERA_ACTION_DEFAULT = AVM_CAMERA_ACTION_DO_NOTHING
+internal const val AVM_CAMERA_ACTION_DEFAULT = AVM_CAMERA_ACTION_MINIMIZE_APPS
 internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
 internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
 internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
@@ -528,6 +528,10 @@ internal object LauncherAppConfigStore {
     fun setDclLogsEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_DCL_LOGS_ENABLED, enabled).apply()
         dclLogsEnabledRevision.value++
+    }
+
+    fun resetDclLogsOnStartup(context: Context) {
+        setDclLogsEnabled(context, false)
     }
 
     fun speedLimitXRatio(context: Context): Float =

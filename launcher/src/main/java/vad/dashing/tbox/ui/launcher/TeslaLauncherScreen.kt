@@ -7,9 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -252,18 +249,27 @@ fun TeslaLauncherScreen(
                                     .fillMaxHeight(),
                             )
                         }
-                        LauncherRightPanel(
-                            canViewModel = canViewModel,
-                            settingsViewModel = settingsViewModel,
-                            tboxViewModel = tboxViewModel,
-                            onOpenConsole = openConsole,
-                            onOpenApps = openAppDrawer,
-                            configRevision = configRevision,
-                            onConfigChanged = onConfigChanged,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                        )
+                        if (LauncherRightPanelOverlayWindow.isShowing()) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .background(LauncherColors.CanvasDark),
+                            )
+                        } else {
+                            LauncherRightPanel(
+                                canViewModel = canViewModel,
+                                settingsViewModel = settingsViewModel,
+                                tboxViewModel = tboxViewModel,
+                                onOpenConsole = openConsole,
+                                onOpenApps = openAppDrawer,
+                                configRevision = configRevision,
+                                onConfigChanged = onConfigChanged,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                            )
+                        }
                     }
                     LauncherBottomBar(
                         canViewModel = canViewModel,

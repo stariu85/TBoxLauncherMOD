@@ -19,6 +19,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import vad.dashing.tbox.CanDataViewModel
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.SettingsManager
@@ -28,6 +29,7 @@ import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.ui.MyLifecycleOwner
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
+import kotlin.math.abs
 
 /**
  * System overlay window for the Launcher Right Panel (Desktop Grid).
@@ -48,8 +50,34 @@ internal object LauncherRightPanelOverlayWindow {
 
     fun isShowing(): Boolean = composeView != null
 
+    private fun calculateStableRightPanelBounds(context: Context): Rect {
+        val measured = LauncherEmbeddedBoundsState.embeddedBounds()
+        if (measured != null && measured.left > 0 && measured.width() > 300 && measured.height() > 300) {
+            return measured
+        }
+
+        val metrics = context.resources.displayMetrics
+        val density = metrics.density
+        val screenW = metrics.widthPixels.coerceAtLeast(1920)
+        val screenH = metrics.heightPixels.coerceAtLeast(1080)
+
+        val adasVisible = LauncherAppConfigStore.adasPanelVisible(context)
+        val sidebarDp = LauncherAppConfigStore.sidebarWidthDp(context)
+        val topBarDp = LauncherAppConfigStore.topBarHeightDp(context)
+        val bottomBarDp = LauncherAppConfigStore.bottomBarHeightDp(context)
+
+        val leftPx = if (adasVisible) (sidebarDp * density).toInt() else 0
+        val topPx = (topBarDp * density).toInt().coerceIn(0, 100).takeIf { it > 0 } ?: 51
+        val bottomPx = screenH - (bottomBarDp * density).toInt().coerceIn(0, 150)
+        val rightPx = screenW
+
+        val rect = Rect(leftPx, topPx, rightPx, bottomPx.coerceAtLeast(topPx + 400))
+        Log.w(TAG, "calculateStableRightPanelBounds fallback=$rect adasVisible=$adasVisible sidebarDp=$sidebarDp")
+        return rect
+    }
+
     fun show(context: Context): Boolean {
-        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_RIGHT_PANEL")
+        DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_RIGHT_PANEL")
         if (isShowing()) {
             updateBounds()
             return true
@@ -62,9 +90,7 @@ internal object LauncherRightPanelOverlayWindow {
             return false
         }
 
-        val bounds = LauncherEmbeddedBoundsState.embeddedBounds()
-            ?: LauncherEmbeddedBoundsState.fullWidthBounds()
-            ?: Rect(520, 51, 1920, 998)
+        val bounds = calculateStableRightPanelBounds(activity)
 
         val owner = MyLifecycleOwner().also {
             it.setCurrentState(Lifecycle.State.CREATED)
@@ -81,8 +107,6 @@ internal object LauncherRightPanelOverlayWindow {
         val params = WindowManager.LayoutParams(
             bounds.width(),
             bounds.height(),
-            bounds.left,
-            bounds.top,
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -92,6 +116,8 @@ internal object LauncherRightPanelOverlayWindow {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            x = bounds.left
+            y = bounds.top
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
@@ -158,11 +184,16 @@ internal object LauncherRightPanelOverlayWindow {
     fun updateBounds() {
         val view = composeView ?: return
         val wm = windowManager ?: return
-        val bounds = LauncherEmbeddedBoundsState.embeddedBounds()
-            ?: LauncherEmbeddedBoundsState.fullWidthBounds()
-            ?: return
+        val bounds = calculateStableRightPanelBounds(view.context)
         runCatching {
             val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+            if (abs(params.x - bounds.left) <= 2 &&
+                abs(params.y - bounds.top) <= 2 &&
+                abs(params.width - bounds.width()) <= 2 &&
+                abs(params.height - bounds.height()) <= 2
+            ) {
+                return
+            }
             params.x = bounds.left
             params.y = bounds.top
             params.width = bounds.width()
