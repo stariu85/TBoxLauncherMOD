@@ -83,6 +83,8 @@ import vad.dashing.tbox.resolveDriveModeDisplayLabel
 import vad.dashing.tbox.tbm.TbmAutomationItem
 import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.LaunchableAppEntry
+import vad.dashing.tbox.ui.clickableWithSound
+import vad.dashing.tbox.ui.combinedClickableWithSound
 import vad.dashing.tbox.ui.rememberLaunchableAppEntries
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
@@ -1392,9 +1394,9 @@ private fun LauncherDraggableHomeDockEntry(
                     .height((60 * iconScale).dp)
                     .then(
                         if (isDragMode) {
-                            Modifier.clickable { onOpenAddMenu(slotIndex) }
+                            Modifier.clickableWithSound { onOpenAddMenu(slotIndex) }
                         } else {
-                            Modifier.combinedClickable(
+                            Modifier.combinedClickableWithSound(
                                 onClick = {},
                                 onLongClick = onEnableDragMode,
                             )
@@ -1452,7 +1454,7 @@ private fun LauncherTbmAutoDockIcon(
             )
             .then(
                 if (!isDragMode) {
-                    Modifier.combinedClickable(
+                    Modifier.combinedClickableWithSound(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,
@@ -1527,7 +1529,7 @@ private fun LauncherAppDockIcon(
             )
             .then(
                 if (!isDragMode) {
-                    Modifier.combinedClickable(
+                    Modifier.combinedClickableWithSound(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,
@@ -1614,7 +1616,7 @@ private fun LauncherSplitDockIcon(
             )
             .then(
                 if (!isDragMode) {
-                    Modifier.combinedClickable(
+                    Modifier.combinedClickableWithSound(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,

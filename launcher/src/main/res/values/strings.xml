@@ -219,6 +219,8 @@
     <string name="launcher_update_available_short">Обновление!</string>
     <string name="launcher_camera_switch_mode_title">Режим переключения камеры 3D-модели</string>
     <string name="launcher_camera_switch_mode_desc">Условие перехода между видом сзади и видом сверху</string>
+    <string name="launcher_camera_animation_title">Анимация камеры 3D-модели</string>
+    <string name="launcher_camera_animation_desc">Плавный перелёт между видом сверху и видом сзади. Если отключено, вид меняется мгновенно с перезапуском рендера</string>
     <string name="launcher_vs_avm_action_title">Поведение приложений при включении камер 360</string>
     <string name="launcher_vs_avm_action_desc">Что делать с активными приложениями при запуске камеры 360</string>
     <string name="launcher_vs_avm_action_do_nothing">Не трогать приложения в фоне</string>
@@ -1373,4 +1375,17 @@
     <string name="settings_home_icon_scale_desc">Масштаб ярлыков приложений в правой панели</string>
     <string name="launcher_top_bar_left_indicators_title">Индикаторы левого угла верхней панели</string>
     <string name="launcher_top_bar_left_indicators_desc">Показывать температуру, топливо, напряжение, загрузку CPU и RAM в левом углу верхней панели</string>
+
+    <string name="launcher_edge_gestures_title">Жесты по краям экрана</string>
+    <string name="launcher_edge_gestures_desc">Свайпы от краев экрана для быстрого вызова функций или приложений</string>
+    <string name="launcher_edge_gestures_enabled">Включить жесты свайпа по краям</string>
+    <string name="launcher_edge_gestures_width">Чувствительность (ширина зоны)</string>
+    <string name="launcher_edge_gesture_left">Свайп от ЛЕВОГО края (слева → вправо)</string>
+    <string name="launcher_edge_gesture_right">Свайп от ПРАВОГО края (справа ← влево)</string>
+    <string name="launcher_edge_gesture_bottom">Свайп от НИЖНЕГО края (снизу ↑ вверх)</string>
+    <string name="launcher_edge_action_none">Нет действия</string>
+    <string name="launcher_edge_action_home">Кнопка «Домой»</string>
+    <string name="launcher_edge_action_back">«Назад»</string>
+    <string name="launcher_edge_action_previous_app">«Предыдущее приложение»</string>
+    <string name="launcher_edge_action_close_all">«Закрыть все приложения»</string>
 </resources>

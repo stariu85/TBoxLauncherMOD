@@ -58,7 +58,7 @@ fun rememberLauncherVehicleMotion(
     }
     val rawSpeed = sanitizeLauncherVehicleSpeed(speedCandidate)
 
-    // Smooth and hold speed for up to 5000ms (5s) to filter out CAN bus dropouts and hold motion when stopping
+    // Filter momentary CAN bus dropouts while cruising (>10 km/h for <250ms), but stop motion immediately when vehicle stops
     var smoothedSpeed by remember { mutableFloatStateOf(rawSpeed) }
     var lastMovingSpeed by remember { mutableFloatStateOf(0f) }
     var lastMovingMs by remember { mutableLongStateOf(0L) }
@@ -70,7 +70,7 @@ fun rememberLauncherVehicleMotion(
         lastMovingMs = nowMs
     } else {
         val elapsed = nowMs - lastMovingMs
-        if (elapsed < 5000L && lastMovingSpeed > 0.5f) {
+        if (elapsed < 250L && lastMovingSpeed > 10f) {
             smoothedSpeed = lastMovingSpeed
         } else {
             smoothedSpeed = 0f

@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.SettingsManager
 
 /** When true, play [SoundEffectConstants.CLICK] for wrapped taps (see [rememberWrappedOnClick]). */
@@ -41,10 +42,13 @@ fun rememberPlaySystemClickSound(): () -> Unit {
     val view = LocalView.current
     return remember(enabled, view) {
         {
-            if (enabled && view.isSoundEffectsEnabled) {
-                view.playSoundEffect(SoundEffectConstants.CLICK)
+            if (enabled) {
+                runCatching {
+                    view.isSoundEffectsEnabled = true
+                    view.playSoundEffect(SoundEffectConstants.CLICK)
+                }
             }
-            vad.dashing.tbox.DclLogRecorder.logUiClick("SystemClick")
+            DclLogRecorder.logUiClick("SystemClick")
         }
     }
 }
@@ -55,7 +59,7 @@ fun rememberWrappedOnClick(onClick: () -> Unit): () -> Unit {
     return remember(onClick, play) {
         {
             play()
-            vad.dashing.tbox.DclLogRecorder.logUiClick("WrappedOnClick")
+            DclLogRecorder.logUiClick("WrappedOnClick")
             onClick()
         }
     }
@@ -67,7 +71,7 @@ fun rememberWrappedOnCheckedChange(onCheckedChange: ((Boolean) -> Unit)?): (Bool
     return remember(onCheckedChange, play) {
         { value ->
             play()
-            vad.dashing.tbox.DclLogRecorder.logUiClick("WrappedOnCheckedChange", details = "value=$value")
+            DclLogRecorder.logUiClick("WrappedOnCheckedChange", details = "value=$value")
             onCheckedChange?.invoke(value)
         }
     }

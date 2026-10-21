@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -159,6 +161,7 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardOpacitySlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()
+    CameraAnimationToggle()
     AvmCameraActionSelector()
     PdcVisualModeSelector()
     SidebarWidthSlider()
@@ -168,6 +171,7 @@ internal fun LauncherHomeSettingsContent() {
     NavButtonsToggle()
     FloatingHomeToggle()
     FloatingHomeSizeSlider()
+    EdgeGesturesSettings()
     ClimateControlsToggle()
     ClimateCardBgToggle()
     ClimateControlsScaleSlider()
@@ -463,6 +467,30 @@ private fun CameraSwitchModeSelector() {
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+}
+
+@Composable
+private fun CameraAnimationToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.cameraAnimationRevisionFlow
+        .collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.cameraAnimationEnabled(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_camera_animation_title),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setCameraAnimationEnabled(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_camera_animation_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
     }
 }
 
@@ -845,6 +873,191 @@ private fun FloatingHomeSizeSlider() {
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
         )
+    }
+}
+
+@Composable
+private fun EdgeGesturesSettings() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.edgeGesturesRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) { LauncherAppConfigStore.edgeGesturesEnabled(context) }
+    var widthDp by remember(context, revision) { mutableFloatStateOf(LauncherAppConfigStore.edgeGesturesWidthDp(context).toFloat()) }
+    val leftAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionLeft(context) }
+    val rightAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionRight(context) }
+    val bottomAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionBottom(context) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_edge_gestures_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = stringResource(R.string.launcher_edge_gestures_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_edge_gestures_enabled),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = enabled,
+                onCheckedChange = { next ->
+                    LauncherAppConfigStore.setEdgeGesturesEnabled(context, next)
+                    if (next) {
+                        LauncherEdgeGestureOverlay.ensureShowing(context)
+                    } else {
+                        LauncherEdgeGestureOverlay.hide()
+                    }
+                },
+                colors = launcherSwitchColors(),
+            )
+        }
+
+        if (enabled) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.launcher_edge_gestures_width),
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 16.sp,
+                    )
+                    Text(
+                        text = "${widthDp.roundToInt()} dp",
+                        color = LauncherColors.TextSecondary,
+                        fontSize = 16.sp,
+                    )
+                }
+                Slider(
+                    value = widthDp,
+                    onValueChange = { widthDp = it },
+                    onValueChangeFinished = {
+                        LauncherAppConfigStore.setEdgeGesturesWidthDp(context, widthDp.roundToInt())
+                    },
+                    valueRange = 15f..35f,
+                    steps = 3,
+                    colors = SliderDefaults.colors(
+                        thumbColor = LauncherColors.AccentCyan,
+                        activeTrackColor = LauncherColors.AccentCyan,
+                        inactiveTrackColor = LauncherColors.TextMuted,
+                    ),
+                )
+            }
+
+            EdgeGestureActionPicker(
+                title = stringResource(R.string.launcher_edge_gesture_left),
+                currentAction = leftAction,
+                onSelectAction = { LauncherAppConfigStore.setEdgeGestureActionLeft(context, it) },
+            )
+
+            EdgeGestureActionPicker(
+                title = stringResource(R.string.launcher_edge_gesture_right),
+                currentAction = rightAction,
+                onSelectAction = { LauncherAppConfigStore.setEdgeGestureActionRight(context, it) },
+            )
+
+            EdgeGestureActionPicker(
+                title = stringResource(R.string.launcher_edge_gesture_bottom),
+                currentAction = bottomAction,
+                onSelectAction = { LauncherAppConfigStore.setEdgeGestureActionBottom(context, it) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EdgeGestureActionPicker(
+    title: String,
+    currentAction: String,
+    onSelectAction: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+
+    val labelNone = stringResource(R.string.launcher_edge_action_none)
+    val labelHome = stringResource(R.string.launcher_edge_action_home)
+    val labelBack = stringResource(R.string.launcher_edge_action_back)
+    val labelUndo = stringResource(R.string.launcher_edge_action_previous_app)
+    val labelClose = stringResource(R.string.launcher_edge_action_close_all)
+
+    val builtInActions = remember(labelNone, labelHome, labelBack, labelUndo, labelClose) {
+        listOf(
+            EDGE_GESTURE_ACTION_NONE to labelNone,
+            EDGE_GESTURE_ACTION_HOME to labelHome,
+            EDGE_GESTURE_ACTION_BACK to labelBack,
+            EDGE_GESTURE_ACTION_PREVIOUS_APP to labelUndo,
+            EDGE_GESTURE_ACTION_CLOSE_ALL to labelClose,
+        )
+    }
+
+    val desktopItems = remember(context) { LauncherHomeStore.loadItems(context) }
+    val desktopActions = remember(context, desktopItems) {
+        val pm = context.packageManager
+        desktopItems.mapNotNull { item ->
+            val key = "shortcut:${item.key}"
+            val label = when (item) {
+                is LauncherHomeItem.App -> {
+                    runCatching {
+                        val info = pm.getApplicationInfo(item.packageName, 0)
+                        pm.getApplicationLabel(info).toString()
+                    }.getOrDefault(item.packageName)
+                }
+                is LauncherHomeItem.Split -> {
+                    val preset = LauncherSplitPresetStore.loadPresets(context).firstOrNull { it.id == item.presetId }
+                    preset?.name?.ifBlank { null } ?: "Сплит: ${item.presetId}"
+                }
+                is LauncherHomeItem.TbmAutomation -> {
+                    item.automationName.ifBlank { "TBM: ${item.automationId}" }
+                }
+            }
+            key to "Ярлык: $label"
+        }
+    }
+
+    val allOptions = remember(builtInActions, desktopActions) { builtInActions + desktopActions }
+    val currentLabel = remember(currentAction, allOptions, labelNone) {
+        allOptions.firstOrNull { it.first == currentAction || currentAction.startsWith(it.first) }?.second
+            ?: labelNone
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text = title, color = LauncherColors.TextPrimary, fontSize = 14.sp)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            LauncherSettingsOptionButton(
+                text = currentLabel,
+                selected = true,
+                onClick = { expanded = !expanded },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.background(LauncherColors.CardDark),
+            ) {
+                allOptions.forEach { (actionKey, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label, color = LauncherColors.TextPrimary) },
+                        onClick = {
+                            expanded = false
+                            onSelectAction(actionKey)
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 

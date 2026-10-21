@@ -45,8 +45,23 @@ internal fun goLauncherHome(
     lastHomeAtMs = now
     Log.w(TAG, "goLauncherHome fromHomeIntent=$fromHomeIntent")
 
+    val settingsWereOpen = LauncherVehicleSettingsUiState.open ||
+        LauncherVehicleSettingsOverlayWindow.isShowing() ||
+        LauncherVehicleSettingsActivity.isOpen() ||
+        MainActivity.isOpen() ||
+        LauncherAboutOverlayWindow.isShowing()
+
     runCatching { onCloseOverlays() }
     runCatching { closeVehicleSettingsOverlay() }
+    runCatching { LauncherAboutOverlayWindow.hide() }
+
+    val foreign = findForeignAppTask(context)
+    if (settingsWereOpen && foreign != null) {
+        Log.w(TAG, "goLauncherHome: settings closed, keeping foreign app task=${foreign.taskId} pkg=${foreign.packageName} visible")
+        LauncherRightPanelOverlayWindow.hide()
+        return
+    }
+
     runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }
     runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
     runCatching { LauncherOverlayElevator.bringLauncherToFront(context) }
@@ -76,7 +91,6 @@ internal fun goLauncherHome(
     }
 
     // Show Right Panel Desktop Overlay above any foreign freeform windows
-    val foreign = findForeignAppTask(context)
     if (foreign != null) {
         LauncherRightPanelOverlayWindow.show(context)
     } else {

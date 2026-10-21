@@ -21,6 +21,7 @@ import vad.dashing.tbox.ui.launcher.LauncherAppDrawerWindow
 import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
 import vad.dashing.tbox.ui.launcher.LauncherAppPickerOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherCarModelCache
+import vad.dashing.tbox.ui.launcher.LauncherEdgeGestureOverlay
 import vad.dashing.tbox.ui.launcher.LauncherOverlayBar
 import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
 import vad.dashing.tbox.ui.launcher.LauncherRightPanelOverlayWindow
@@ -115,6 +116,7 @@ class LauncherHomeActivity : ComponentActivity() {
             window.decorView.visibility = View.VISIBLE
         }
         LauncherOverlayBar.ensureShowing(this)
+        LauncherEdgeGestureOverlay.ensureShowing(this)
     }
 
     override fun onPause() {

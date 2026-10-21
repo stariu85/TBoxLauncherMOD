@@ -21,9 +21,21 @@ private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
+private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
 private const val KEY_DCL_LOGS_ENABLED = "dcl_logs_enabled"
+private const val KEY_EDGE_GESTURES_ENABLED = "edge_gestures_enabled"
+private const val KEY_EDGE_GESTURES_WIDTH = "edge_gestures_width_dp"
+private const val KEY_EDGE_GESTURE_ACTION_LEFT = "edge_gesture_action_left"
+private const val KEY_EDGE_GESTURE_ACTION_RIGHT = "edge_gesture_action_right"
+private const val KEY_EDGE_GESTURE_ACTION_BOTTOM = "edge_gesture_action_bottom"
+
+internal const val EDGE_GESTURE_ACTION_NONE = "none"
+internal const val EDGE_GESTURE_ACTION_HOME = "home"
+internal const val EDGE_GESTURE_ACTION_BACK = "back"
+internal const val EDGE_GESTURE_ACTION_PREVIOUS_APP = "undo"
+internal const val EDGE_GESTURE_ACTION_CLOSE_ALL = "close_all"
 
 const val PDC_VISUAL_ARCS = 0
 const val PDC_VISUAL_CLASSIC = 1
@@ -236,6 +248,8 @@ internal object LauncherAppConfigStore {
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
     private val cameraSwitchModeRevision = MutableStateFlow(0)
     internal val cameraSwitchModeRevisionFlow: StateFlow<Int> = cameraSwitchModeRevision
+    private val cameraAnimationRevision = MutableStateFlow(0)
+    internal val cameraAnimationRevisionFlow: StateFlow<Int> = cameraAnimationRevision
     private val avmCameraActionRevision = MutableStateFlow(0)
     internal val avmCameraActionRevisionFlow: StateFlow<Int> = avmCameraActionRevision
     private val pdcVisualModeRevision = MutableStateFlow(0)
@@ -294,9 +308,51 @@ internal object LauncherAppConfigStore {
     internal val homeIconScaleRevisionFlow: StateFlow<Int> = homeIconScaleRevision
     private val dclLogsEnabledRevision = MutableStateFlow(0)
     internal val dclLogsEnabledRevisionFlow: StateFlow<Int> = dclLogsEnabledRevision
+    private val edgeGesturesRevision = MutableStateFlow(0)
+    internal val edgeGesturesRevisionFlow: StateFlow<Int> = edgeGesturesRevision
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun edgeGesturesEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EDGE_GESTURES_ENABLED, true)
+
+    fun setEdgeGesturesEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_EDGE_GESTURES_ENABLED, enabled).apply()
+        edgeGesturesRevision.value++
+    }
+
+    fun edgeGesturesWidthDp(context: Context): Int =
+        prefs(context).getInt(KEY_EDGE_GESTURES_WIDTH, 20).coerceIn(15, 35)
+
+    fun setEdgeGesturesWidthDp(context: Context, widthDp: Int) {
+        prefs(context).edit().putInt(KEY_EDGE_GESTURES_WIDTH, widthDp.coerceIn(15, 35)).apply()
+        edgeGesturesRevision.value++
+    }
+
+    fun edgeGestureActionLeft(context: Context): String =
+        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_LEFT, EDGE_GESTURE_ACTION_BACK) ?: EDGE_GESTURE_ACTION_BACK
+
+    fun setEdgeGestureActionLeft(context: Context, action: String) {
+        prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_LEFT, action).apply()
+        edgeGesturesRevision.value++
+    }
+
+    fun edgeGestureActionRight(context: Context): String =
+        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_RIGHT, EDGE_GESTURE_ACTION_HOME) ?: EDGE_GESTURE_ACTION_HOME
+
+    fun setEdgeGestureActionRight(context: Context, action: String) {
+        prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_RIGHT, action).apply()
+        edgeGesturesRevision.value++
+    }
+
+    fun edgeGestureActionBottom(context: Context): String =
+        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_BOTTOM, EDGE_GESTURE_ACTION_PREVIOUS_APP) ?: EDGE_GESTURE_ACTION_PREVIOUS_APP
+
+    fun setEdgeGestureActionBottom(context: Context, action: String) {
+        prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_BOTTOM, action).apply()
+        edgeGesturesRevision.value++
+    }
 
     fun carPaintId(context: Context): String {
         val raw = prefs(context).getString(KEY_CAR_PAINT, LauncherCarPaint.defaultId)
@@ -693,6 +749,14 @@ internal object LauncherAppConfigStore {
         val next = mode.coerceIn(0, 1)
         prefs(context).edit().putInt(KEY_CAMERA_SWITCH_MODE, next).apply()
         cameraSwitchModeRevision.value++
+    }
+
+    fun cameraAnimationEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMERA_ANIMATION_ENABLED, true)
+
+    fun setCameraAnimationEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMERA_ANIMATION_ENABLED, enabled).apply()
+        cameraAnimationRevision.value++
     }
 
     fun avmCameraAction(context: Context): Int =

@@ -36,6 +36,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -106,10 +107,12 @@ fun LauncherCar3DModel(
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
     customModelScale: Float = 1f,
+    cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     projectPdcRings: Boolean = false,
     projectHeadlights: Boolean = false,
     textureSurface: Boolean = false,
     isAvmActive: Boolean = false,
+    carHidden: Boolean = false,
 ) {
     Box(modifier = modifier) {
         if (showRoad) {
@@ -136,6 +139,7 @@ fun LauncherCar3DModel(
             settingsUserYawDeg = settingsUserYawDeg,
             settingsUserScale = settingsUserScale,
             customModelScale = customModelScale,
+            cameraSwitchMode = cameraSwitchMode,
             settingsOrbit = settingsOrbit,
             onWheelAnchorsChanged = onWheelAnchorsChanged,
             onDoorAnchorsChanged = onDoorAnchorsChanged,
@@ -146,6 +150,7 @@ fun LauncherCar3DModel(
             projectHeadlights = projectHeadlights,
             textureSurface = textureSurface,
             isAvmActive = isAvmActive,
+            carHidden = carHidden,
             lowPowerPreview = settingsView || settingsProgress > 0.5f,
         )
     }
@@ -167,6 +172,7 @@ private fun LauncherCarFilamentModel(
     settingsUserYawDeg: Float,
     settingsUserScale: Float,
     customModelScale: Float = 1f,
+    cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     settingsOrbit: LauncherSettingsOrbitState?,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
@@ -177,6 +183,7 @@ private fun LauncherCarFilamentModel(
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
     isAvmActive: Boolean = false,
+    carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
     Box(modifier = modifier) {
@@ -195,6 +202,7 @@ private fun LauncherCarFilamentModel(
                 settingsUserYawDeg = settingsUserYawDeg,
                 settingsUserScale = settingsUserScale,
                 customModelScale = customModelScale,
+                cameraSwitchMode = cameraSwitchMode,
                 settingsOrbit = settingsOrbit,
                 onWheelAnchorsChanged = onWheelAnchorsChanged,
                 onDoorAnchorsChanged = onDoorAnchorsChanged,
@@ -205,6 +213,7 @@ private fun LauncherCarFilamentModel(
                 projectHeadlights = projectHeadlights,
                 textureSurface = textureSurface,
                 isAvmActive = isAvmActive,
+                carHidden = carHidden,
                 lowPowerPreview = lowPowerPreview,
             )
         }
@@ -226,6 +235,7 @@ private fun LauncherCarFilamentContent(
     settingsUserYawDeg: Float,
     settingsUserScale: Float,
     customModelScale: Float = 1f,
+    cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     settingsOrbit: LauncherSettingsOrbitState?,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
@@ -236,6 +246,7 @@ private fun LauncherCarFilamentContent(
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
     isAvmActive: Boolean = false,
+    carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -274,6 +285,8 @@ private fun LauncherCarFilamentContent(
     val projectPdcRef = rememberUpdatedState(projectPdcRings)
     val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
     val isAvmRef = rememberUpdatedState(isAvmActive)
+    val carHiddenRef = rememberUpdatedState(carHidden)
+    val cameraSwitchModeRef = rememberUpdatedState(cameraSwitchMode)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
@@ -284,7 +297,15 @@ private fun LauncherCarFilamentContent(
     var mountNs by remember(modelInstance) { mutableLongStateOf(0L) }
     var lastDynamicNs by remember(modelInstance) { mutableLongStateOf(0L) }
     val inDriveGearRef = rememberUpdatedState(inDriveGear || steerPreview)
-    var currentDriveBlend by remember(modelInstance) {
+    val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
+    val cameraAnimEnabled = remember(context, cameraAnimRevision) {
+        LauncherAppConfigStore.cameraAnimationEnabled(context)
+    }
+    val cameraAnimEnabledRef = rememberUpdatedState(cameraAnimEnabled)
+    var currentDriveBlend by remember(modelInstance, inDriveGear, steerPreview) {
+        mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
+    }
+    var lastTargetDriveBlend by remember(modelInstance, inDriveGear, steerPreview) {
         mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -294,7 +315,7 @@ private fun LauncherCarFilamentContent(
     var modelReady by remember(modelInstance) { mutableStateOf(modelInstance != null) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
-        animationSpec = tween(durationMillis = 50),
+        animationSpec = tween(durationMillis = 200),
         label = "launcherCarModelAlpha",
     )
 
@@ -404,7 +425,7 @@ private fun LauncherCarFilamentContent(
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     runCatching {
-                        if (isAvmRef.value) {
+                        if (isAvmRef.value || carHiddenRef.value) {
                             val node = modelNodeRef.get()
                             if (node != null && node.isVisible) {
                                 node.isVisible = false
@@ -468,15 +489,28 @@ private fun LauncherCarFilamentContent(
                             ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.08f)
                         }
 
-                        if (preparedFrames <= 1) {
-                            currentDriveBlend = targetDriveBlend
-                        } else if (currentDriveBlend < targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend + dt / 0.750f).coerceAtMost(targetDriveBlend)
-                        } else if (currentDriveBlend > targetDriveBlend) {
-                            currentDriveBlend = (currentDriveBlend - dt / 0.750f).coerceAtLeast(targetDriveBlend)
-                        }
-                        if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
-                            currentDriveBlend = targetDriveBlend
+                        if (!cameraAnimEnabledRef.value) {
+                            if (targetDriveBlend != lastTargetDriveBlend) {
+                                lastTargetDriveBlend = targetDriveBlend
+                                currentDriveBlend = targetDriveBlend
+                                modelReady = false
+                                preparedFrames = 0
+                            }
+                            if (preparedFrames <= 1) {
+                                currentDriveBlend = targetDriveBlend
+                            }
+                        } else {
+                            lastTargetDriveBlend = targetDriveBlend
+                            if (preparedFrames <= 1) {
+                                currentDriveBlend = targetDriveBlend
+                            } else if (currentDriveBlend < targetDriveBlend) {
+                                currentDriveBlend = (currentDriveBlend + dt / 1.0f).coerceAtMost(targetDriveBlend)
+                            } else if (currentDriveBlend > targetDriveBlend) {
+                                currentDriveBlend = (currentDriveBlend - dt / 1.0f).coerceAtLeast(targetDriveBlend)
+                            }
+                            if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
+                                currentDriveBlend = targetDriveBlend
+                            }
                         }
 
                         lastSteeringDeg = currentSteering
@@ -529,7 +563,8 @@ private fun LauncherCarFilamentContent(
                             transition,
                         )
                         node.rotation = Rotation(y = modelYaw)
-                        val driveModelX = lerp(HOME_MODEL_X, DRIVE_MODEL_X, driveBlend)
+                        val targetDriveModelX = if (cameraSwitchModeRef.value == CAMERA_SWITCH_MODE_PAS_AND_PARK) 0f else DRIVE_MODEL_X
+                        val driveModelX = lerp(HOME_MODEL_X, targetDriveModelX, driveBlend)
                         val driveModelZ = lerp(HOME_MODEL_Z, -0.21f, driveBlend)
                         node.position = Position(
                             x = lerp(driveModelX, SETTINGS_MODEL_X, transition),
@@ -541,7 +576,7 @@ private fun LauncherCarFilamentContent(
                         if (frameNs - lastXCheckNs >= 1_000_000_000L) {
                             lastXCheckNs = frameNs
                             if (transition < 0.001f) {
-                                val expectedX = lerp(HOME_MODEL_X, DRIVE_MODEL_X, driveBlend)
+                                val expectedX = lerp(HOME_MODEL_X, targetDriveModelX, driveBlend)
                                 var watchdogReset = false
                                 if (abs(node.position.x - expectedX) > 0.005f) {
                                     DclLogRecorder.log("Watchdog", "Model X shifted to ${node.position.x}, resetting to $expectedX")
@@ -716,7 +751,8 @@ private fun LauncherCarFilamentContent(
                     initialTransition,
                 )
                 val initialTargetScale = initialBaseScale * initialPinchScale
-                val initialDriveModelX = lerp(HOME_MODEL_X, DRIVE_MODEL_X, currentDriveBlend)
+                val initialTargetDriveModelX = if (cameraSwitchMode == CAMERA_SWITCH_MODE_PAS_AND_PARK) 0f else DRIVE_MODEL_X
+                val initialDriveModelX = lerp(HOME_MODEL_X, initialTargetDriveModelX, currentDriveBlend)
                 val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, currentDriveBlend)
 
                 ModelNode(
@@ -736,7 +772,7 @@ private fun LauncherCarFilamentContent(
                         ),
                     ),
                     apply = {
-                        isVisible = true
+                        isVisible = false
                         modelNodeRef.set(this)
                     },
                 )

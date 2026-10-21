@@ -36,6 +36,8 @@
     <string name="launcher_vs_avm_action_minimize">Minimize active apps and restore on exit</string>
     <string name="launcher_camera_switch_mode_title">3D camera view mode</string>
     <string name="launcher_camera_switch_mode_desc">Condition for switching between drive view and top view</string>
+    <string name="launcher_camera_animation_title">3D camera animation</string>
+    <string name="launcher_camera_animation_desc">Smooth transition between top view and rear view. If disabled, view switches instantly with a render restart</string>
     <string name="launcher_camera_switch_mode_pas">Smart (PAS &amp; Park)</string>
     <string name="launcher_camera_switch_mode_drive">D gear &amp; Park</string>
     <string name="launcher_pdc_visual_mode_title">Parking sensors visualization</string>
@@ -1370,4 +1372,17 @@
     <string name="settings_grid_row_spacing_desc">Vertical spacing between shortcut slots in the right zone</string>
     <string name="settings_home_icon_scale_title">Right zone icon size</string>
     <string name="settings_home_icon_scale_desc">Scale of application shortcuts in the right panel</string>
+
+    <string name="launcher_edge_gestures_title">Edge Swipe Gestures</string>
+    <string name="launcher_edge_gestures_desc">Swipe inward from screen edges to trigger actions or launch shortcuts</string>
+    <string name="launcher_edge_gestures_enabled">Enable edge swipe gestures</string>
+    <string name="launcher_edge_gestures_width">Sensitivity (touch zone width)</string>
+    <string name="launcher_edge_gesture_left">Left edge swipe (left → right)</string>
+    <string name="launcher_edge_gesture_right">Right edge swipe (right ← left)</string>
+    <string name="launcher_edge_gesture_bottom">Bottom edge swipe (bottom ↑ up)</string>
+    <string name="launcher_edge_action_none">No action</string>
+    <string name="launcher_edge_action_home">Home button</string>
+    <string name="launcher_edge_action_back">Back</string>
+    <string name="launcher_edge_action_previous_app">Previous application</string>
+    <string name="launcher_edge_action_close_all">Close all applications</string>
 </resources>

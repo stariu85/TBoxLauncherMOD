@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
@@ -247,13 +248,29 @@ fun LauncherLeftPanel(
     val cameraSwitchMode = remember(context, cameraSwitchModeRevision) {
         LauncherAppConfigStore.cameraSwitchMode(context)
     }
+    val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow
+        .collectAsStateWithLifecycle()
+    val cameraAnimEnabled = remember(context, cameraAnimRevision) {
+        LauncherAppConfigStore.cameraAnimationEnabled(context)
+    }
     var smartDriveViewActive by remember { mutableStateOf(false) }
     var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
-
     val hasBodyOpen = effectiveBody.anyDoorOpen()
 
-    LaunchedEffect(effectiveSpeed, pasObstacle, hasBodyOpen, activeGear, accActive, racing, cameraSwitchMode) {
-        if (activeGear == 'P' || pasObstacle || hasBodyOpen) {
+    val launcherBootMs = remember { SystemClock.elapsedRealtime() }
+    var nowViewMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(100L)
+            nowViewMs = SystemClock.elapsedRealtime()
+        }
+    }
+
+    val isStartupGracePeriod = cameraAnimEnabled && (nowViewMs - launcherBootMs < 5000L)
+
+    LaunchedEffect(effectiveSpeed, pasObstacle, hasBodyOpen, activeGear, accActive, racing, cameraSwitchMode, isStartupGracePeriod) {
+        if (isStartupGracePeriod || activeGear == 'P' || pasObstacle || hasBodyOpen) {
             smartDriveViewActive = false
         } else if (racing || accActive || effectiveSpeed >= 20f) {
             smartDriveViewActive = true
@@ -261,24 +278,30 @@ fun LauncherLeftPanel(
     }
 
     val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
-    val rawDriveView = isDriveViewActive(
-        speedKmh = effectiveSpeed,
-        pasObstacle = pasObstacle,
-        hasBodyOpen = hasBodyOpen,
-        isParkGear = activeGear == 'P',
-        isDriveGear = inDriveGear,
-        accActive = accActive,
-        racing = racing,
-        cameraSwitchMode = cameraSwitchMode,
-        currentSmartDriveView = smartDriveViewActive,
-    )
+    val rawDriveView = if (isStartupGracePeriod) {
+        false
+    } else {
+        isDriveViewActive(
+            speedKmh = effectiveSpeed,
+            pasObstacle = pasObstacle,
+            hasBodyOpen = hasBodyOpen,
+            isParkGear = activeGear == 'P',
+            isDriveGear = inDriveGear,
+            accActive = accActive,
+            racing = racing,
+            cameraSwitchMode = cameraSwitchMode,
+            currentSmartDriveView = smartDriveViewActive,
+        )
+    }
 
     // Hold drive view for up to 5000ms (5s) to prevent camera view jumping when stopping or CAN speed/gear drops
-    var showDriveView by remember { mutableStateOf(rawDriveView) }
-    var lastDriveViewTrueMs by remember { mutableLongStateOf(if (rawDriveView) SystemClock.elapsedRealtime() else 0L) }
+    var showDriveView by remember { mutableStateOf(false) }
+    var lastDriveViewTrueMs by remember { mutableLongStateOf(0L) }
 
-    val nowViewMs = SystemClock.elapsedRealtime()
-    if (rawDriveView) {
+    if (isStartupGracePeriod) {
+        showDriveView = false
+        lastDriveViewTrueMs = 0L
+    } else if (rawDriveView) {
         showDriveView = true
         lastDriveViewTrueMs = nowViewMs
     } else if (activeGear == 'P' || hasBodyOpen) {
@@ -478,7 +501,8 @@ fun LauncherLeftPanel(
             val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
             val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen
-            if (!carHidden) {
+            val showCarInComposition = cameraAnimEnabled || !carHidden
+            if (showCarInComposition) {
                 LauncherCar3DModel(
                     rigState = rigState,
                     speedKmh = effectiveSpeed,
@@ -490,10 +514,12 @@ fun LauncherLeftPanel(
                     paintId = paintId,
                     showRoad = false,
                     isAvmActive = isAvmActive,
+                    carHidden = carHidden,
                     settingsView = settingsProgress > 0.02f,
                     settingsProgress = settingsProgress,
                     settingsUserYawDeg = settingsUserYawDeg,
                     customModelScale = carModelScale,
+                    cameraSwitchMode = cameraSwitchMode,
                     onClick = if (!racing) onOpenVehicleSettings else null,
                     onLongClick = if (!racing) onColorPickerOpen else null,
                     onWheelAnchorsChanged = { wheelAnchors = it },
@@ -507,9 +533,11 @@ fun LauncherLeftPanel(
                         .fillMaxSize()
                         .graphicsLayer {
                             translationX = if (racing) with(density) { carLaneShift.toPx() } else 0f
+                            alpha = if (carHidden) 0f else 1f
                         },
                 )
-                if (settingsProgress < 0.15f && !racing) {
+            }
+            if (!carHidden && settingsProgress < 0.15f && !racing) {
                     LauncherTireBadges(
                         state = effectiveTires,
                         // ADAS strip shows a small pressure-only pill next to the wheel.
@@ -547,7 +575,6 @@ fun LauncherLeftPanel(
                         frame = headlightFrame,
                         modifier = Modifier.fillMaxSize(),
                     )
-                }
             }
 
             // Overlay layer for 3D speed limit sign floating over the 3D car area
