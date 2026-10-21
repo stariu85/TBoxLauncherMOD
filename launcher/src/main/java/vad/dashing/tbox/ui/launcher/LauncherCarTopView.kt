@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -62,7 +63,7 @@ fun LauncherCarTopView(
     val driveTarget = if (state.speedKmh > DRIVE_SPEED_THRESHOLD_KMH) 1f else 0f
     val driveBlend by animateFloatAsState(
         targetValue = driveTarget,
-        animationSpec = tween(900),
+        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
         label = "driveBlend",
     )
 

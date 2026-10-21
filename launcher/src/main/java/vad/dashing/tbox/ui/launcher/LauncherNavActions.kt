@@ -36,29 +36,76 @@ internal fun goLauncherHome(
     context: Context,
     onCloseOverlays: () -> Unit = {},
     fromHomeIntent: Boolean = false,
+    source: String = "unknown",
 ) {
+    val stateBefore = LauncherNavLogger.captureCurrentState(context)
     val now = SystemClock.uptimeMillis()
     if (now - lastHomeAtMs < HOME_DEBOUNCE_MS) {
-        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent")
+        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source")
+        LauncherNavLogger.logNavAction(
+            action = "HOME",
+            source = source,
+            stateBefore = stateBefore,
+            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms)",
+        )
         return
     }
     lastHomeAtMs = now
-    Log.w(TAG, "goLauncherHome fromHomeIntent=$fromHomeIntent")
+    Log.w(TAG, "goLauncherHome fromHomeIntent=$fromHomeIntent source=$source")
 
     val settingsWereOpen = LauncherVehicleSettingsUiState.open ||
         LauncherVehicleSettingsOverlayWindow.isShowing() ||
         LauncherVehicleSettingsActivity.isOpen() ||
         MainActivity.isOpen() ||
-        LauncherAboutOverlayWindow.isShowing()
+        LauncherAboutOverlayWindow.isShowing() ||
+        LauncherAppDrawerWindow.isShowing() ||
+        LauncherAppPickerOverlayWindow.isShowing()
 
-    runCatching { onCloseOverlays() }
-    runCatching { closeVehicleSettingsOverlay() }
-    runCatching { LauncherAboutOverlayWindow.hide() }
+    val closedList = mutableListOf<String>()
+    runCatching {
+        onCloseOverlays()
+        closedList += "CustomOverlays"
+    }
+    runCatching {
+        closeVehicleSettingsOverlay()
+        closedList += "VehicleSettings"
+    }
+    runCatching {
+        if (LauncherAboutOverlayWindow.isShowing()) {
+            LauncherAboutOverlayWindow.hide()
+            closedList += "AboutOverlay"
+        }
+    }
+    runCatching {
+        if (LauncherAppDrawerWindow.isShowing()) {
+            LauncherAppDrawerWindow.hide()
+            closedList += "AppDrawer"
+        }
+    }
+    runCatching {
+        if (LauncherAppPickerOverlayWindow.isShowing()) {
+            LauncherAppPickerOverlayWindow.hide()
+            closedList += "AppPicker"
+        }
+    }
+    runCatching {
+        if (MainActivity.isOpen()) {
+            MainActivity.finishIfOpen()
+            closedList += "MainActivity"
+        }
+    }
 
     val hasForeignApp = hasActiveForeignApp(context)
     if (settingsWereOpen && hasForeignApp) {
         Log.w(TAG, "goLauncherHome: settings closed, keeping foreign app visible")
         LauncherRightPanelOverlayWindow.hide()
+        LauncherNavLogger.logNavAction(
+            action = "HOME",
+            source = source,
+            stateBefore = stateBefore,
+            decision = "Closed settings overlays [${closedList.joinToString()}], keeping active foreign app visible",
+            result = "RightPanelOverlay hidden",
+        )
         return
     }
 
@@ -68,12 +115,16 @@ internal fun goLauncherHome(
 
     // Bring Launcher Home activity to front immediately on Main Thread
     val home = LauncherHomeActivityHolder.instance
+    var broughtToFront = false
     if (home != null && !home.isFinishing && !home.isDestroyed) {
         runCatching { home.window.decorView.visibility = View.VISIBLE }
         runCatching {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
+            broughtToFront = true
             Log.w(TAG, "goLauncherHome: brought to front task=${home.taskId}")
+        }.onFailure {
+            LauncherNavLogger.logNavError("HOME", source, "Failed moveTaskToFront for Home taskId=${home.taskId}", it, stateBefore)
         }
     }
 
@@ -87,6 +138,7 @@ internal fun goLauncherHome(
             )
         }.onFailure {
             Log.w(TAG, "goLauncherHome: startActivity failed", it)
+            LauncherNavLogger.logNavError("HOME", source, "startActivity(CATEGORY_HOME) failed", it, stateBefore)
         }
     }
 
@@ -96,6 +148,14 @@ internal fun goLauncherHome(
     } else {
         LauncherRightPanelOverlayWindow.hide()
     }
+
+    LauncherNavLogger.logNavAction(
+        action = "HOME",
+        source = source,
+        stateBefore = stateBefore,
+        decision = "closedOverlays=[${closedList.joinToString()}], broughtHomeToFront=$broughtToFront, fromHomeIntent=$fromHomeIntent",
+        result = "hasForeignApp=$hasForeignApp, RightPanelOverlay=${if (hasForeignApp) "shown" else "hidden"}",
+    )
 }
 
 /**
@@ -112,15 +172,25 @@ internal fun goLauncherBack(
     context: Context,
     vehicleSettingsOpen: Boolean,
     onCloseVehicleSettings: () -> Unit,
+    source: String = "unknown",
 ) {
+    val stateBefore = LauncherNavLogger.captureCurrentState(context)
+
     if (backDispatchInProgress.get()) {
-        Log.w(TAG, "goLauncherBack: skip re-entrant (inject/BackHandler loop)")
+        Log.w(TAG, "goLauncherBack: skip re-entrant (inject/BackHandler loop) source=$source")
+        LauncherNavLogger.logNavAction(
+            action = "BACK",
+            source = source,
+            stateBefore = stateBefore,
+            decision = "Skipped re-entrant BACK loop",
+        )
         return
     }
 
     when {
         LauncherRightPanelOverlayWindow.isShowing() -> {
             LauncherRightPanelOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed RightPanelOverlay")
             return
         }
         vehicleSettingsOpen ||
@@ -129,33 +199,46 @@ internal fun goLauncherBack(
             LauncherVehicleSettingsActivity.isOpen() -> {
             onCloseVehicleSettings()
             closeVehicleSettingsOverlay()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed VehicleSettingsOverlay")
             return
         }
         MainActivity.isOpen() -> {
             MainActivity.finishIfOpen()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed MainActivity")
             return
         }
         LauncherAboutOverlayWindow.isShowing() -> {
             LauncherAboutOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AboutOverlay")
             return
         }
         LauncherAppPickerOverlayWindow.isShowing() -> {
             LauncherAppPickerOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppPickerOverlay")
             return
         }
         LauncherDockSlotPickerOverlayWindow.isShowing() -> {
             LauncherDockSlotPickerOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed DockSlotPickerOverlay")
             return
         }
         LauncherAppDrawerWindow.isShowing() -> {
             LauncherAppDrawerWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppDrawerWindow")
             return
         }
     }
 
     val foreign = findForeignAppTask(context)
     if (foreign == null) {
-        Log.w(TAG, "goLauncherBack: no foreign app — ignore")
+        Log.w(TAG, "goLauncherBack: no foreign app — ignore source=$source")
+        LauncherNavLogger.logNavAction(
+            action = "BACK",
+            source = source,
+            stateBefore = stateBefore,
+            decision = "No active foreign app task found in stack",
+            result = "Ignored",
+        )
         return
     }
 
@@ -165,19 +248,32 @@ internal fun goLauncherBack(
     if (isTaskAtRoot(context, foreign)) {
         Log.w(
             TAG,
-            "goLauncherBack: at root task=${foreign.taskId} pkg=${foreign.packageName} — keep (no Back)",
+            "goLauncherBack: at root task=${foreign.taskId} pkg=${foreign.packageName} — keep (no Back) source=$source",
+        )
+        LauncherNavLogger.logNavAction(
+            action = "BACK",
+            source = source,
+            stateBefore = stateBefore,
+            decision = "Task is at root (numActivities <= 1 or top==base) for pkg=${foreign.packageName} taskId=${foreign.taskId}",
+            result = "Skipped KEYCODE_BACK to keep freeform window open (prevent app finish)",
         )
         return
     }
 
-    Log.w(TAG, "goLauncherBack: BACK task=${foreign.taskId} pkg=${foreign.packageName}")
-    dispatchPhysicalBackDelayed(context, foreign)
+    Log.w(TAG, "goLauncherBack: BACK task=${foreign.taskId} pkg=${foreign.packageName} source=$source")
+    LauncherNavLogger.logNavAction(
+        action = "BACK",
+        source = source,
+        stateBefore = stateBefore,
+        decision = "Dispatching BACK into foreign task=${foreign.taskId} pkg=${foreign.packageName} top=${foreign.topActivityClass}",
+    )
+    dispatchPhysicalBackDelayed(context, foreign, source)
 }
 
 /**
  * Focus freeform, then deliver Back. No relaunch if the app finishes itself.
  */
-private fun dispatchPhysicalBackDelayed(context: Context, foreign: ForeignAppTask) {
+private fun dispatchPhysicalBackDelayed(context: Context, foreign: ForeignAppTask, source: String) {
     val appCtx = context.applicationContext
     if (!backDispatchInProgress.compareAndSet(false, true)) {
         Log.w(TAG, "dispatchPhysicalBack: already in progress")
@@ -190,11 +286,16 @@ private fun dispatchPhysicalBackDelayed(context: Context, foreign: ForeignAppTas
             // Re-check: stack may already be at root after focus settle.
             if (isTaskAtRoot(appCtx, foreign)) {
                 Log.w(TAG, "BACK skip after settle: at root pkg=${foreign.packageName}")
+                LauncherNavLogger.logNavAction(
+                    action = "BACK_DELAYED",
+                    source = source,
+                    decision = "Skipped after focus settle: task reached root for pkg=${foreign.packageName}",
+                )
                 return@Thread
             }
             moveTaskToFrontId(appCtx, foreign.taskId)
             runCatching { Thread.sleep(60L) }
-            dispatchPhysicalBack()
+            dispatchPhysicalBack(source)
         } finally {
             backDispatchInProgress.set(false)
         }
@@ -229,21 +330,28 @@ internal fun isTaskAtRoot(context: Context, foreign: ForeignAppTask): Boolean {
  * Same path as Back Button Pro: accessibility GLOBAL_ACTION_BACK when the service
  * is connected; otherwise InputManager inject (scrcpy/HW-style flags).
  */
-internal fun dispatchPhysicalBack() {
+internal fun dispatchPhysicalBack(source: String = "unknown") {
     if (!LauncherNavAccessibilityService.isConnected()) {
         LauncherHomeActivityHolder.instance?.let {
             LauncherAccessibilityHelper.ensureNavBackServiceEnabled(it)
         }
     }
     if (LauncherNavAccessibilityService.dispatchGlobalBack()) {
-        Log.w(TAG, "BACK via accessibility global action")
+        Log.w(TAG, "BACK via accessibility global action source=$source")
+        LauncherNavLogger.logNavAction("BACK_DELIVER", source, result = "Dispatched via AccessibilityService GLOBAL_ACTION_BACK")
         return
     }
     if (injectKeyEvent(KeyEvent.KEYCODE_BACK)) {
-        Log.w(TAG, "BACK via InputManager inject")
+        Log.w(TAG, "BACK via InputManager inject source=$source")
+        LauncherNavLogger.logNavAction("BACK_DELIVER", source, result = "Dispatched via InputManager KEYCODE_BACK inject")
         return
     }
-    Log.e(TAG, "BACK FAILED: could not deliver KEYCODE_BACK")
+    Log.e(TAG, "BACK FAILED: could not deliver KEYCODE_BACK source=$source")
+    LauncherNavLogger.logNavError(
+        action = "BACK_DELIVER",
+        source = source,
+        reason = "Failed to deliver KEYCODE_BACK: AccessibilityService not connected and InputManager inject failed",
+    )
 }
 
 internal fun injectKeyEvent(keyCode: Int): Boolean {
@@ -291,10 +399,7 @@ private val ignoredLauncherPackages = setOf(
 )
 
 internal fun hasActiveForeignApp(context: Context): Boolean {
-    val tracked = FreeformLaunchRegistry.snapshot()
-    if (tracked.isNotEmpty()) return true
-    val lastActive = LauncherHistoryTracker.lastActivePackage()
-    return !lastActive.isNullOrBlank() && lastActive !in ignoredLauncherPackages
+    return findForeignAppTask(context) != null
 }
 
 internal fun isSplitActiveOnScreen(context: Context): Boolean {

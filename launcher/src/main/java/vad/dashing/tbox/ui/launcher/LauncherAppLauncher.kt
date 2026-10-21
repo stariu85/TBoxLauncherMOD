@@ -391,9 +391,10 @@ private fun startResolved(
         if (categories?.isEmpty() != false) addCategory(Intent.CATEGORY_LAUNCHER)
     }
     val component = launchIntent.component
+    val modeStr = if (forceFullscreen) "FULLSCREEN" else if (preferEmbedded) "EMBEDDED" else "FULL_WIDTH"
     Log.w(
         TAG,
-        "startResolved pkg=$packageName component=$component embedded=$preferEmbedded fullscreen=$forceFullscreen",
+        "startResolved pkg=$packageName component=$component embedded=$preferEmbedded fullscreen=$forceFullscreen mode=$modeStr",
     )
 
     if (isCameraPackage(packageName)) {
@@ -406,7 +407,7 @@ private fun startResolved(
     } else if (preferEmbedded) {
         LauncherEmbeddedBoundsState.embeddedBounds()
     } else {
-        null
+        LauncherEmbeddedBoundsState.fullWidthBounds()
     }
     val extrasMap = launchIntent.extras?.let { bundle ->
         runCatching {
@@ -424,6 +425,17 @@ private fun startResolved(
         forceFullscreen = forceFullscreen,
         bounds = targetBounds,
         extras = extrasMap,
+    )
+
+    LauncherNavLogger.logAppLaunch(
+        packageName = packageName,
+        component = component?.flattenToString(),
+        intentAction = launchIntent.action,
+        intentFlags = flagsHex,
+        mode = modeStr,
+        bounds = targetBounds,
+        strategy = "startResolved (freeformEnabled=${isFreeformEnabled(context)})",
+        success = true,
     )
 
     LauncherRightPanelOverlayWindow.hide()
@@ -493,11 +505,21 @@ private fun startResolved(
         .onSuccess {
             LastAppTracker.recordLaunch(context, packageName)
             Log.w(TAG, "startActivity OK pkg=$packageName")
+            LauncherNavLogger.logAppLaunch(
+                packageName = packageName,
+                component = component?.flattenToString(),
+                intentAction = fallbackIntent.action,
+                intentFlags = "0x" + Integer.toHexString(fallbackIntent.flags),
+                mode = modeStr,
+                bounds = targetBounds,
+                strategy = "fallback startActivity",
+                success = true,
+            )
             return
         }
-        .onFailure {
-            Log.w(TAG, "startActivity failed pkg=$packageName", it)
-            showLaunchFailed(context, packageName, component, it)
+        .onFailure { err ->
+            Log.w(TAG, "startActivity failed pkg=$packageName", err)
+            showLaunchFailed(context, packageName, component, err)
         }
 }
 
@@ -549,6 +571,12 @@ private fun showLaunchFailed(
     error: Throwable?,
 ) {
     Log.e(TAG, "All launch strategies failed for $packageName component=$component", error)
+    LauncherNavLogger.logNavError(
+        action = "APP_LAUNCH",
+        source = "showLaunchFailed",
+        reason = "All launch strategies failed for package=$packageName component=$component",
+        error = error,
+    )
     Toast.makeText(
         context,
         "Не удалось открыть ${packageName.substringAfterLast('.')}",

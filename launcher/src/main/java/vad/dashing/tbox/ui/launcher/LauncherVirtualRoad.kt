@@ -105,7 +105,7 @@ fun LauncherVirtualRoad(
     }
     val driveBlend by animateFloatAsState(
         targetValue = driveTarget,
-        animationSpec = tween(1000),
+        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
         label = "roadDriveBlend",
     )
 

@@ -175,6 +175,7 @@ fun TeslaLauncherScreen(
                 context = context,
                 vehicleSettingsOpen = false,
                 onCloseVehicleSettings = {},
+                source = "TeslaScreen:BackHandler",
             )
         }
 

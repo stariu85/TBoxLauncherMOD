@@ -326,20 +326,21 @@ internal fun executeEdgeGesture(context: Context, actionKey: String) {
 
     when {
         actionKey == EDGE_GESTURE_ACTION_HOME -> {
-            goLauncherHome(context)
+            goLauncherHome(context, source = "EdgeGesture:home")
         }
         actionKey == EDGE_GESTURE_ACTION_BACK -> {
             goLauncherBack(
                 context = context,
                 vehicleSettingsOpen = LauncherVehicleSettingsUiState.open,
                 onCloseVehicleSettings = { closeVehicleSettingsOverlay() },
+                source = "EdgeGesture:back",
             )
         }
         actionKey == EDGE_GESTURE_ACTION_PREVIOUS_APP -> {
-            performUndoLaunch(context)
+            performUndoLaunch(context, source = "EdgeGesture:previous_app")
         }
         actionKey == EDGE_GESTURE_ACTION_CLOSE_ALL -> {
-            dismissForeignFreeformTasks(context)
+            dismissForeignFreeformTasks(context, source = "EdgeGesture:close_all")
         }
         actionKey.startsWith("shortcut:") -> {
             val key = actionKey.removePrefix("shortcut:")

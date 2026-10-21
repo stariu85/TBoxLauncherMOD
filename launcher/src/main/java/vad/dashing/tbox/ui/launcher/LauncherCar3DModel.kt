@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -515,9 +516,9 @@ private fun LauncherCarFilamentContent(
                             if (preparedFrames <= 1) {
                                 currentDriveBlend = targetDriveBlend
                             } else if (currentDriveBlend < targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend + dt / 1.0f).coerceAtMost(targetDriveBlend)
+                                currentDriveBlend = (currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
                             } else if (currentDriveBlend > targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend - dt / 1.0f).coerceAtLeast(targetDriveBlend)
+                                currentDriveBlend = (currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
                             }
                             if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
                                 currentDriveBlend = targetDriveBlend
@@ -532,7 +533,11 @@ private fun LauncherCarFilamentContent(
                             LauncherCarSurfaceRecovery.onFrameObserved()
                         }
 
-                        val driveBlend = currentDriveBlend
+                        val driveBlend = if (cameraAnimEnabledRef.value) {
+                            FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
+                        } else {
+                            currentDriveBlend.coerceIn(0f, 1f)
+                        }
                         val driveScale = lerp(1f, 1.21f, driveBlend)
                         val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
 
@@ -749,7 +754,12 @@ private fun LauncherCarFilamentContent(
             ) {
                 val initialTransition = settingsProgress.coerceIn(0f, 1f)
                 val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
-                val initialDriveScale = lerp(1f, 1.21f, currentDriveBlend)
+                val initialDriveBlend = if (cameraAnimEnabled) {
+                    FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
+                } else {
+                    currentDriveBlend.coerceIn(0f, 1f)
+                }
+                val initialDriveScale = lerp(1f, 1.21f, initialDriveBlend)
                 val initialHomeScale = BASE_MODEL_SCALE * initialDriveScale
                 val initialSettingsScale = SETTINGS_MODEL_SCALE * safeCustomScale
                 val initialBaseScale = lerp(initialHomeScale, initialSettingsScale, initialTransition)
@@ -763,8 +773,8 @@ private fun LauncherCarFilamentContent(
                 )
                 val initialTargetScale = initialBaseScale * initialPinchScale
                 val initialTargetDriveModelX = if (cameraSwitchMode == CAMERA_SWITCH_MODE_PAS_AND_PARK) 0f else DRIVE_MODEL_X
-                val initialDriveModelX = lerp(HOME_MODEL_X, initialTargetDriveModelX, currentDriveBlend)
-                val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, currentDriveBlend)
+                val initialDriveModelX = lerp(HOME_MODEL_X, initialTargetDriveModelX, initialDriveBlend)
+                val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, initialDriveBlend)
 
                 ModelNode(
                     modelInstance = modelInstance,
@@ -790,9 +800,14 @@ private fun LauncherCarFilamentContent(
             }
         }
         if (onClick != null || onLongClick != null) {
-            val tapWidth = lerp(200.dp, 170.dp, currentDriveBlend)
-            val tapHeight = lerp(260.dp, 210.dp, currentDriveBlend)
-            val tapOffsetY = 115.dp * currentDriveBlend
+            val tapDriveBlend = if (cameraAnimEnabled) {
+                FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
+            } else {
+                currentDriveBlend.coerceIn(0f, 1f)
+            }
+            val tapWidth = lerp(200.dp, 170.dp, tapDriveBlend)
+            val tapHeight = lerp(260.dp, 210.dp, tapDriveBlend)
+            val tapOffsetY = 115.dp * tapDriveBlend
 
             Box(
                 modifier = Modifier

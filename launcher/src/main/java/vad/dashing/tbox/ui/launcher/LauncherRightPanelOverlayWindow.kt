@@ -11,6 +11,10 @@ import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -142,6 +146,7 @@ internal object LauncherRightPanelOverlayWindow {
                                     .fillMaxSize()
                                     .background(LauncherColors.CanvasDark),
                             ) {
+                                var configRevision by remember { mutableIntStateOf(0) }
                                 LauncherRightPanel(
                                     canViewModel = canViewModel,
                                     settingsViewModel = settingsViewModel,
@@ -154,8 +159,8 @@ internal object LauncherRightPanelOverlayWindow {
                                         hide()
                                         LauncherAppDrawerWindow.show(activity, settingsViewModel, {})
                                     },
-                                    configRevision = 0,
-                                    onConfigChanged = {},
+                                    configRevision = configRevision,
+                                    onConfigChanged = { configRevision++ },
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }

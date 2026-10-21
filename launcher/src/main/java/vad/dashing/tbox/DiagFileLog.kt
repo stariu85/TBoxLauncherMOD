@@ -36,6 +36,9 @@ object DiagFileLog {
     @Volatile
     private var logFile: File? = null
 
+    @Volatile
+    var enabled: Boolean = true
+
     private val timeFormat = ThreadLocal.withInitial {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     }
@@ -97,7 +100,7 @@ object DiagFileLog {
             "W" -> Log.w(TAG, "$tag: $message")
             else -> Log.i(TAG, "$tag: $message")
         }
-        if (file == null) return
+        if (file == null || !enabled) return
         writer.execute {
             synchronized(lock) {
                 runCatching {

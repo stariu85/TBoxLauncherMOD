@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.Manifest
 import android.app.ActivityManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -9,10 +10,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.location.GnssStatus
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -54,10 +62,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import vad.dashing.tbox.CanDataViewModel
+import vad.dashing.tbox.LocValues
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.ui.theme.tboxCaption
@@ -276,6 +286,11 @@ internal fun LauncherHeaderStatusIcons(
     val bluetoothConnected = rememberBluetoothConnected()
     val networkType = mobileNetworkTypeLabel(netState.netStatus)
 
+    val satInfo = rememberSatelliteInfo(
+        tboxConnected = tboxConnected,
+        locValues = locValues,
+    )
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -283,6 +298,24 @@ internal fun LauncherHeaderStatusIcons(
     ) {
         if (showVehicleAlerts) {
             LauncherVehicleAlertsStrip()
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val satColor = if (satInfo.hasFix) Color(0xFF22C55E) else Color(0xFFF97316)
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_satellite),
+                contentDescription = stringResource(R.string.location_visible_satellites),
+                modifier = Modifier.size(22.dp),
+                colorFilter = ColorFilter.tint(satColor),
+            )
+            Text(
+                text = "${satInfo.visibleSatellites}/${satInfo.usingSatellites}",
+                color = LauncherColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Light,
+            )
         }
         Box(
             modifier = Modifier
@@ -333,15 +366,118 @@ internal fun LauncherHeaderStatusIcons(
                     colorFilter = ColorFilter.tint(StatusIconTint),
                 )
             }
-            if (locValues.updateTime != null && !locValues.hasGpsFix) {
-                Image(
-                    painter = painterResource(R.drawable.ic_launcher_gps_off),
-                    contentDescription = stringResource(R.string.launcher_gps_no_fix),
-                    modifier = Modifier.size(17.dp),
-                    colorFilter = ColorFilter.tint(Color(0xFFEF4444)),
-                )
+        }
+    }
+}
+
+private data class SatelliteInfo(
+    val visibleSatellites: Int = 0,
+    val usingSatellites: Int = 0,
+    val hasFix: Boolean = false,
+)
+
+@Composable
+private fun rememberSatelliteInfo(
+    tboxConnected: Boolean,
+    locValues: LocValues,
+): SatelliteInfo {
+    val context = LocalContext.current
+    val now = System.currentTimeMillis()
+    val isTboxLocFresh = tboxConnected &&
+            locValues.updateTime != null &&
+            (now - locValues.updateTime.time <= 15_000L)
+
+    var systemSatInfo by remember { mutableStateOf(SatelliteInfo()) }
+
+    val useSystemFallback = !isTboxLocFresh
+
+    DisposableEffect(useSystemFallback, context) {
+        if (!useSystemFallback) {
+            onDispose { }
+        } else {
+            val hasPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasPermission) {
+                systemSatInfo = SatelliteInfo()
+                onDispose { }
+            } else {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                val mainHandler = Handler(Looper.getMainLooper())
+
+                var lastLocationFix = false
+
+                val locationListener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        lastLocationFix = true
+                    }
+                    override fun onProviderEnabled(provider: String) {}
+                    override fun onProviderDisabled(provider: String) {
+                        if (provider == LocationManager.GPS_PROVIDER) {
+                            lastLocationFix = false
+                        }
+                    }
+                }
+
+                val gnssCallback = object : GnssStatus.Callback() {
+                    override fun onSatelliteStatusChanged(status: GnssStatus) {
+                        val total = status.satelliteCount
+                        var used = 0
+                        for (i in 0 until total) {
+                            if (status.usedInFix(i)) {
+                                used++
+                            }
+                        }
+                        val fix = used > 0 || lastLocationFix
+                        systemSatInfo = SatelliteInfo(
+                            visibleSatellites = total,
+                            usingSatellites = used,
+                            hasFix = fix
+                        )
+                    }
+                }
+
+                try {
+                    lm?.registerGnssStatusCallback(gnssCallback, mainHandler)
+                    lm?.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        3000L,
+                        0f,
+                        locationListener,
+                        Looper.getMainLooper()
+                    )
+                    val lastLoc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    if (lastLoc != null && (System.currentTimeMillis() - lastLoc.time <= 30_000L)) {
+                        lastLocationFix = true
+                    }
+                } catch (_: SecurityException) {
+                    systemSatInfo = SatelliteInfo()
+                } catch (_: Exception) {
+                    // Ignored
+                }
+
+                onDispose {
+                    try {
+                        lm?.unregisterGnssStatusCallback(gnssCallback)
+                        lm?.removeUpdates(locationListener)
+                    } catch (_: Exception) {
+                        // Ignored
+                    }
+                }
             }
         }
+    }
+
+    return if (isTboxLocFresh) {
+        SatelliteInfo(
+            visibleSatellites = locValues.visibleSatellites,
+            usingSatellites = locValues.usingSatellites,
+            hasFix = locValues.hasGpsFix,
+        )
+    } else {
+        systemSatInfo
     }
 }
 

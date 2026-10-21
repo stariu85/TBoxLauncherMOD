@@ -138,17 +138,44 @@ internal fun tryLaunchIntentInBounds(
     val activity = context.findLauncherActivity()
     val appCtx = context.applicationContext
     val targetBounds = Rect(bounds)
+    val launchModeStr = if (launchAdjacent) "SPLIT_ADJACENT" else "FREEFORM"
+
     return runCatching {
         (activity ?: context).startActivity(launchIntent, options.toBundle())
     }.onSuccess {
         LastAppTracker.recordLaunch(context, packageName)
         Log.w("LauncherAppLaunch", "freeform startActivity OK pkg=$packageName bounds=$targetBounds")
         FreeformLaunchRegistry.record(packageName, targetBounds)
+
+        LauncherNavLogger.logAppLaunch(
+            packageName = packageName,
+            component = launchIntent.component?.flattenToString(),
+            intentAction = launchIntent.action,
+            intentFlags = "0x" + Integer.toHexString(launchIntent.flags),
+            mode = launchModeStr,
+            bounds = targetBounds,
+            windowingMode = WINDOWING_MODE_FREEFORM,
+            strategy = "ActivityOptions(WINDOWING_MODE_FREEFORM=5)",
+            success = true,
+        )
+
         // Games often splash then request fullscreen. Keep pinning freeform
         // for a few seconds so they stay in the embedded window.
         pinFreeformBounds(appCtx, packageName, targetBounds)
-    }.onFailure {
-        Log.w("LauncherAppLaunch", "freeform startActivity failed pkg=$packageName bounds=$targetBounds", it)
+    }.onFailure { err ->
+        Log.w("LauncherAppLaunch", "freeform startActivity failed pkg=$packageName bounds=$targetBounds", err)
+        LauncherNavLogger.logAppLaunch(
+            packageName = packageName,
+            component = launchIntent.component?.flattenToString(),
+            intentAction = launchIntent.action,
+            intentFlags = "0x" + Integer.toHexString(launchIntent.flags),
+            mode = launchModeStr,
+            bounds = targetBounds,
+            windowingMode = WINDOWING_MODE_FREEFORM,
+            strategy = "ActivityOptions(WINDOWING_MODE_FREEFORM=5)",
+            success = false,
+            error = err,
+        )
     }.isSuccess
 }
 
@@ -438,10 +465,12 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
 internal fun minimizeForeignFreeformTasks(
     context: Context,
     onComplete: () -> Unit = {},
+    source: String = "unknown",
 ) {
     val appCtx = context.applicationContext
     val launcherPackage = appCtx.packageName
     val tracked = FreeformLaunchRegistry.snapshot()
+    val stateBefore = LauncherNavLogger.captureCurrentState(context)
 
     CoroutineScope(Dispatchers.IO).launch {
         runCatching {
@@ -457,6 +486,13 @@ internal fun minimizeForeignFreeformTasks(
                     taskIdsToMinimize += taskId
                 }
             }
+
+            LauncherNavLogger.logNavAction(
+                action = "MINIMIZE_APPS",
+                source = source,
+                stateBefore = stateBefore,
+                decision = "Minimizing foreign taskIds=[${taskIdsToMinimize.joinToString()}], trackedPkgs=[${tracked.joinToString()}]",
+            )
 
             for (taskId in taskIdsToMinimize) {
                 runCatching {
@@ -476,15 +512,29 @@ internal fun minimizeForeignFreeformTasks(
                         }
                     }
                     Log.w("LauncherAppLaunch", "minimize foreign task=$taskId pkg=$pkg completed success=$success")
-                }.onFailure {
-                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${it.message}")
+                    LauncherNavLogger.logNavAction(
+                        action = "MINIMIZE_TASK",
+                        source = source,
+                        decision = "moveTaskBackwards task=$taskId pkg=$pkg",
+                        result = "success=$success",
+                    )
+                }.onFailure { err ->
+                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${err.message}")
+                    LauncherNavLogger.logNavError("MINIMIZE_TASK", source, "Failed minimizing task=$taskId", err)
                 }
             }
 
             // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
-            LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
-        }.onFailure {
-            Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", it)
+            val moved = LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
+            LauncherNavLogger.logNavAction(
+                action = "MINIMIZE_APPS",
+                source = source,
+                stateBefore = stateBefore,
+                result = "Minimized taskIds count=${taskIdsToMinimize.size}, shell moved stacks count=$moved",
+            )
+        }.onFailure { err ->
+            Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", err)
+            LauncherNavLogger.logNavError("MINIMIZE_APPS", source, "Failed minimizing foreign freeform tasks", err, stateBefore)
         }
         withContext(Dispatchers.Main) {
             onComplete()
@@ -499,10 +549,12 @@ internal fun minimizeForeignFreeformTasks(
 internal fun dismissForeignFreeformTasks(
     context: Context,
     onComplete: () -> Unit = {},
+    source: String = "unknown",
 ) {
     val appCtx = context.applicationContext
     val launcherPackage = appCtx.packageName
     val tracked = FreeformLaunchRegistry.snapshot()
+    val stateBefore = LauncherNavLogger.captureCurrentState(context)
     FreeformLaunchRegistry.clear()
 
     CoroutineScope(Dispatchers.IO).launch {
@@ -522,28 +574,61 @@ internal fun dismissForeignFreeformTasks(
                 }
             }
 
+            LauncherNavLogger.logNavAction(
+                action = "CLOSE_APPS",
+                source = source,
+                stateBefore = stateBefore,
+                decision = "Closing foreign packages=[${packagesToStop.joinToString()}]",
+            )
+
             for (pkg in packagesToStop) {
-                if (!isPackageSafeToStop(appCtx, pkg)) continue
+                if (!isPackageSafeToStop(appCtx, pkg)) {
+                    LauncherNavLogger.logNavAction(
+                        action = "CLOSE_APPS",
+                        source = source,
+                        decision = "Skipped force-stop for protected system/launcher package: $pkg",
+                    )
+                    continue
+                }
 
                 // Force-stop the package via shell `am force-stop`
+                var forceStopOk = false
                 runCatching {
                     val pb = ProcessBuilder("am", "force-stop", pkg)
                     val proc = pb.start()
-                    proc.waitFor()
-                    Log.w("LauncherAppLaunch", "am force-stop $pkg completed")
-                }.onFailure {
-                    Log.w("LauncherAppLaunch", "am force-stop $pkg failed: ${it.message}")
+                    val exit = proc.waitFor()
+                    forceStopOk = exit == 0
+                    Log.w("LauncherAppLaunch", "am force-stop $pkg completed exit=$exit")
+                }.onFailure { err ->
+                    Log.w("LauncherAppLaunch", "am force-stop $pkg failed: ${err.message}")
+                    LauncherNavLogger.logNavError("CLOSE_APPS", source, "am force-stop failed for pkg=$pkg", err)
                 }
 
-                findTaskIdForPackage(am, pkg)?.let { taskId ->
-                    removeTaskId(am, taskId)
+                val taskId = findTaskIdForPackage(am, pkg)
+                var removedTaskOk = false
+                if (taskId != null) {
+                    removedTaskOk = removeTaskId(am, taskId)
                 }
+
+                LauncherNavLogger.logNavAction(
+                    action = "CLOSE_APP_PKG",
+                    source = source,
+                    decision = "force-stop pkg=$pkg (taskId=$taskId)",
+                    result = "am force-stop ok=$forceStopOk, removeTask ok=$removedTaskOk",
+                )
             }
 
             // Shell fallback: am stack remove
-            LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
-        }.onFailure {
-            Log.w("LauncherAppLaunch", "dismissForeignFreeform failed", it)
+            val removedStacks = LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
+            LauncherNavLogger.logNavAction(
+                action = "CLOSE_APPS",
+                source = source,
+                stateBefore = stateBefore,
+                result = "Closed packages count=${packagesToStop.size}, shell removed stacks count=$removedStacks",
+            )
+        }.onFailure { err ->
+            Log.w("LauncherAppLaunch", "dismissForeignFreeform failed", err)
+            LauncherNavLogger.logNavError("CLOSE_APPS", source, "Failed dismissing foreign freeform tasks", err, stateBefore)
         }
         withContext(Dispatchers.Main) {
             onComplete()

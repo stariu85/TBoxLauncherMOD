@@ -246,7 +246,8 @@ internal fun isCameraTarget(target: LaunchedTarget?): Boolean {
  * - If on Home screen or Launcher Settings: closes settings, launches the last launched app or split preset.
  * - If currently inside an app: launches the previous launched app or split preset.
  */
-internal fun performUndoLaunch(context: Context) {
+internal fun performUndoLaunch(context: Context, source: String = "unknown") {
+    val stateBefore = LauncherNavLogger.captureCurrentState(context)
     LauncherRightPanelOverlayWindow.hide()
     val settingsWereOpen = LauncherVehicleSettingsUiState.open ||
         LauncherVehicleSettingsOverlayWindow.isShowing() ||
@@ -254,17 +255,35 @@ internal fun performUndoLaunch(context: Context) {
         MainActivity.isOpen() ||
         LauncherAboutOverlayWindow.isShowing()
 
+    val closedList = mutableListOf<String>()
     if (settingsWereOpen) {
         closeVehicleSettingsOverlay()
+        closedList += "VehicleSettings"
         MainActivity.finishIfOpen()
+        closedList += "MainActivity"
         LauncherAboutOverlayWindow.hide()
+        closedList += "AboutOverlay"
     }
 
     val history = LauncherHistoryTracker.getHistory(context)
     if (history.isEmpty()) {
         val lastPkg = LauncherStateStore.lastLaunchedAppPackage(context)
         if (lastPkg.isNotBlank()) {
+            LauncherNavLogger.logNavAction(
+                action = "PREVIOUS_APP",
+                source = source,
+                stateBefore = stateBefore,
+                decision = "History list empty -> falling back to stored lastLaunchedAppPackage=$lastPkg",
+                result = "Launching $lastPkg",
+            )
             launchLauncherApp(context, lastPkg)
+        } else {
+            LauncherNavLogger.logNavError(
+                action = "PREVIOUS_APP",
+                source = source,
+                reason = "No history available and no stored lastLaunchedAppPackage found",
+                state = stateBefore,
+            )
         }
         return
     }
@@ -279,8 +298,19 @@ internal fun performUndoLaunch(context: Context) {
             ?: if (history.size >= 2) history[history.size - 2] else history.last()
     }
 
-    Log.d(TAG, "performUndoLaunch isHomeActive=$isHomeActive targetToLaunch=$targetToLaunch historySize=${history.size}")
-    launchTarget(context, targetToLaunch)
+    Log.d(TAG, "performUndoLaunch isHomeActive=$isHomeActive targetToLaunch=$targetToLaunch historySize=${history.size} source=$source")
+    LauncherNavLogger.logNavAction(
+        action = "PREVIOUS_APP",
+        source = source,
+        stateBefore = stateBefore,
+        decision = "isHomeActive=$isHomeActive, closedOverlays=[${closedList.joinToString()}], selected targetToLaunch=$targetToLaunch from history(size=${history.size})",
+        result = "Launching target",
+    )
+    runCatching {
+        launchTarget(context, targetToLaunch)
+    }.onFailure {
+        LauncherNavLogger.logNavError("PREVIOUS_APP", source, "Failed launching previous app target=$targetToLaunch", it, stateBefore)
+    }
 }
 
 internal fun launchTarget(context: Context, target: LaunchedTarget) {

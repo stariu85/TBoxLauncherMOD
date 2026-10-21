@@ -73,6 +73,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
@@ -88,7 +90,6 @@ import vad.dashing.tbox.ui.combinedClickableWithSound
 import vad.dashing.tbox.ui.rememberLaunchableAppEntries
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
-import kotlin.math.roundToInt
 
 private sealed class HomeDockEntry(val key: String) {
     data class App(val entry: LaunchableAppEntry, val index: Int) : HomeDockEntry("app_${entry.packageName}_$index")
@@ -1266,46 +1267,51 @@ private fun LauncherDraggableHomeDockEntry(
                                 onStartDrag(entry, itemLeftX, itemTopPx)
                             },
                             onDragEnd = {
-                                val colShift = (offsetX / cellWidthPx).roundToInt()
-                                val rowShift = (offsetY / cellHeightPx).roundToInt()
-
-                                val currentColumn = slotIndex % gridColumns
-                                val currentRow = slotIndex / gridColumns
-
-                                val targetColumn = (currentColumn + colShift).coerceIn(0, gridColumns - 1)
-                                val targetRow = currentRow + rowShift
-
-                                val bottomBarTop = LauncherEmbeddedBoundsState.bottomBarTopPx
-                                val droppedTopY = itemTopPx + offsetY
-                                val isDroppedInBottomBar = (bottomBarTop > 0 && droppedTopY >= bottomBarTop - 40) ||
-                                    (targetRow >= gridRows) ||
-                                    (offsetY > cellHeightPx * (gridRows - currentRow - 0.3f))
-
-                                val buttonId = when (entry) {
-                                    is HomeDockEntry.App -> "pkg:${entry.entry.packageName}"
-                                    is HomeDockEntry.Split -> "split:${entry.preset.id}"
-                                    is HomeDockEntry.TbmAuto -> "tbm:${entry.automationId}"
-                                    else -> null
-                                }
-                                if (isDroppedInBottomBar && buttonId != null) {
-                                    val droppedLeftX = itemLeftX + offsetX
-                                    val displayMetrics = context.resources.displayMetrics
-                                    val screenWidthPx = displayMetrics.widthPixels
-                                    val slotUnitWidthPx = ((screenWidthPx - (24f * displayMetrics.density)) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(1f)
-                                    val targetBottomSlot = (droppedLeftX / slotUnitWidthPx).roundToInt().coerceIn(0, GRID_SLOTS_TOTAL_COUNT - 1)
-
-                                    LauncherAppConfigStore.setButtonInUnifiedSlot(context, targetBottomSlot, buttonId)
-                                    onConfigChanged()
+                                val hasMoved = abs(offsetX) > 10f || abs(offsetY) > 10f
+                                if (!hasMoved) {
+                                    onOpenContextMenu(slotIndex)
                                 } else {
-                                    val isDraggedAboveGrid = targetRow < 0 && offsetY < -cellHeightPx * (currentRow + 0.6f)
+                                    val colShift = (offsetX / cellWidthPx).roundToInt()
+                                    val rowShift = (offsetY / cellHeightPx).roundToInt()
 
-                                    if (isDraggedAboveGrid) {
-                                        onRemoveItem(slotIndex)
+                                    val currentColumn = slotIndex % gridColumns
+                                    val currentRow = slotIndex / gridColumns
+
+                                    val targetColumn = (currentColumn + colShift).coerceIn(0, gridColumns - 1)
+                                    val targetRow = currentRow + rowShift
+
+                                    val bottomBarTop = LauncherEmbeddedBoundsState.bottomBarTopPx
+                                    val droppedTopY = itemTopPx + offsetY
+                                    val isDroppedInBottomBar = (bottomBarTop > 0 && droppedTopY >= bottomBarTop - 40) ||
+                                        (targetRow >= gridRows) ||
+                                        (offsetY > cellHeightPx * (gridRows - currentRow - 0.3f))
+
+                                    val buttonId = when (entry) {
+                                        is HomeDockEntry.App -> "pkg:${entry.entry.packageName}"
+                                        is HomeDockEntry.Split -> "split:${entry.preset.id}"
+                                        is HomeDockEntry.TbmAuto -> "tbm:${entry.automationId}"
+                                        else -> null
+                                    }
+                                    if (isDroppedInBottomBar && buttonId != null) {
+                                        val droppedLeftX = itemLeftX + offsetX
+                                        val displayMetrics = context.resources.displayMetrics
+                                        val screenWidthPx = displayMetrics.widthPixels
+                                        val slotUnitWidthPx = ((screenWidthPx - (24f * displayMetrics.density)) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(1f)
+                                        val targetBottomSlot = (droppedLeftX / slotUnitWidthPx).roundToInt().coerceIn(0, GRID_SLOTS_TOTAL_COUNT - 1)
+
+                                        LauncherAppConfigStore.setButtonInUnifiedSlot(context, targetBottomSlot, buttonId)
+                                        onConfigChanged()
                                     } else {
-                                        val validTargetRow = targetRow.coerceIn(0, gridRows - 1)
-                                        val targetSlot = validTargetRow * gridColumns + targetColumn
-                                        if (targetSlot != slotIndex) {
-                                            onMoveItem(slotIndex, targetSlot)
+                                        val isDraggedAboveGrid = targetRow < 0 && offsetY < -cellHeightPx * (currentRow + 0.6f)
+
+                                        if (isDraggedAboveGrid) {
+                                            onRemoveItem(slotIndex)
+                                        } else {
+                                            val validTargetRow = targetRow.coerceIn(0, gridRows - 1)
+                                            val targetSlot = validTargetRow * gridColumns + targetColumn
+                                            if (targetSlot != slotIndex) {
+                                                onMoveItem(slotIndex, targetSlot)
+                                            }
                                         }
                                     }
                                 }
@@ -1408,8 +1414,8 @@ private fun LauncherDraggableHomeDockEntry(
                     Icon(
                         imageVector = Icons.Filled.Add,
                         contentDescription = "Добавить иконку",
-                        tint = LauncherColors.AccentCyan.copy(alpha = 0.6f),
-                        modifier = Modifier.size((20 * iconScale).dp),
+                        tint = LauncherColors.AccentCyan.copy(alpha = 0.8f),
+                        modifier = Modifier.size((22 * iconScale).dp),
                     )
                 }
             }

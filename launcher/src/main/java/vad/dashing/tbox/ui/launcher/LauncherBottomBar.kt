@@ -1157,6 +1157,7 @@ private fun LauncherBottomDockButtonContent(
                 goLauncherHome(
                     context = context,
                     onCloseOverlays = { onCloseVehicleSettings() },
+                    source = "BottomBar:home_nav",
                 )
             },
         ) {
@@ -1168,6 +1169,7 @@ private fun LauncherBottomDockButtonContent(
                     context = context,
                     vehicleSettingsOpen = LauncherVehicleSettingsUiState.open,
                     onCloseVehicleSettings = onCloseVehicleSettings,
+                    source = "BottomBar:back_nav",
                 )
             },
         ) {
@@ -1175,7 +1177,7 @@ private fun LauncherBottomDockButtonContent(
         }
         "undo_nav", "undo_24", "last_app" -> LauncherDockIcon(
             onClick = {
-                performUndoLaunch(context)
+                performUndoLaunch(context, source = "BottomBar:undo_nav")
             },
         ) {
             Image(
@@ -1187,7 +1189,7 @@ private fun LauncherBottomDockButtonContent(
         }
         "close_apps", "close_apps_nav", "close_apps_24" -> LauncherDockIcon(
             onClick = {
-                dismissForeignFreeformTasks(context)
+                dismissForeignFreeformTasks(context, source = "BottomBar:close_apps")
             },
         ) {
             Image(

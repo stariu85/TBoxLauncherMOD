@@ -136,7 +136,7 @@ internal object LauncherOverlayBar {
                                 .background(buttonBg)
                                 .border(1.dp, buttonBorder, CircleShape)
                                 .clickable {
-                                    goLauncherHome(activity)
+                                    goLauncherHome(activity, source = "OverlayBar:home")
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
