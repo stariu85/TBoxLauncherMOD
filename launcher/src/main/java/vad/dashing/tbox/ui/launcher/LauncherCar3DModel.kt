@@ -186,8 +186,19 @@ private fun LauncherCarFilamentModel(
     carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
+    val context = LocalContext.current
+    val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
+    val cameraAnimEnabled = remember(context, cameraAnimRevision) {
+        LauncherAppConfigStore.cameraAnimationEnabled(context)
+    }
+    val contentKey = if (cameraAnimEnabled) {
+        modelRevision.hashCode()
+    } else {
+        modelRevision.hashCode() * 31 + inDriveGear.hashCode()
+    }
+
     Box(modifier = modifier) {
-        key(modelRevision) {
+        key(contentKey) {
             LauncherCarFilamentContent(
                 modifier = Modifier.fillMaxSize(),
                 onClick = onClick,

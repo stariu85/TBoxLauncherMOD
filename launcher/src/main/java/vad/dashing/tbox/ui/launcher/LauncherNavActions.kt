@@ -55,9 +55,9 @@ internal fun goLauncherHome(
     runCatching { closeVehicleSettingsOverlay() }
     runCatching { LauncherAboutOverlayWindow.hide() }
 
-    val foreign = findForeignAppTask(context)
-    if (settingsWereOpen && foreign != null) {
-        Log.w(TAG, "goLauncherHome: settings closed, keeping foreign app task=${foreign.taskId} pkg=${foreign.packageName} visible")
+    val hasForeignApp = hasActiveForeignApp(context)
+    if (settingsWereOpen && hasForeignApp) {
+        Log.w(TAG, "goLauncherHome: settings closed, keeping foreign app visible")
         LauncherRightPanelOverlayWindow.hide()
         return
     }
@@ -90,8 +90,8 @@ internal fun goLauncherHome(
         }
     }
 
-    // Show Right Panel Desktop Overlay above any foreign freeform windows
-    if (foreign != null) {
+    // Show Right Panel Desktop Overlay IMMEDIATELY (0ms delay) above any foreign freeform windows
+    if (hasForeignApp) {
         LauncherRightPanelOverlayWindow.show(context)
     } else {
         LauncherRightPanelOverlayWindow.hide()
@@ -289,6 +289,13 @@ private val ignoredLauncherPackages = setOf(
     "ca.dstudio.atvlauncher",
     "com.android.systemui",
 )
+
+internal fun hasActiveForeignApp(context: Context): Boolean {
+    val tracked = FreeformLaunchRegistry.snapshot()
+    if (tracked.isNotEmpty()) return true
+    val lastActive = LauncherHistoryTracker.lastActivePackage()
+    return !lastActive.isNullOrBlank() && lastActive !in ignoredLauncherPackages
+}
 
 internal fun isSplitActiveOnScreen(context: Context): Boolean {
     val launcher = context.packageName
