@@ -40,6 +40,7 @@ class BackgroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(applicationContext)
         startAsForeground()
         MbCanEngineFacade.ensureInitialized()
         scope.launch {

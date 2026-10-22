@@ -88,8 +88,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.em
+import kotlin.math.abs
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,7 +145,6 @@ import vad.dashing.tbox.ui.sendToggleHvacSync
 import vad.dashing.tbox.ui.sendToggleRearWindowMirrorsDefrost
 import vad.dashing.tbox.ui.sendToggleSteeringWheelHeat
 import vad.dashing.tbox.ui.theme.tboxCaption
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -686,9 +691,18 @@ private fun LauncherDockSlotPickerPopup(
     }
 }
 
-private fun formatHvacSetTemp(celsius: Float?): String {
-    if (celsius == null || celsius <= 0f) return "—"
-    return "${celsius.roundToInt()}°"
+private fun formatHvacSetTempAnnotated(celsius: Float?): AnnotatedString {
+    if (celsius == null || celsius <= 0f) return AnnotatedString("—")
+    val tenths = (celsius * 10f).roundToInt()
+    val whole = tenths / 10
+    val fraction = abs(tenths % 10)
+
+    return buildAnnotatedString {
+        append("$whole.")
+        withStyle(style = SpanStyle(fontSize = 0.7.em)) {
+            append(fraction.toString())
+        }
+    }
 }
 
 private val LocalClimateCardBgVisible = compositionLocalOf { false }
@@ -1291,15 +1305,15 @@ private fun LauncherBottomDockButtonContent(
             }
         }
         "temp_driver" -> LauncherTempStepper(
-            tempText = formatHvacSetTemp(driverTemp),
-            onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
-            onUp = { sendAdjustHvacTemperature(context, driverTemp, 1.0f, HvacTempZone.Driver) },
+            tempText = formatHvacSetTempAnnotated(driverTemp),
+            onDown = { sendAdjustHvacTemperature(context, driverTemp, -0.5f, HvacTempZone.Driver) },
+            onUp = { sendAdjustHvacTemperature(context, driverTemp, 0.5f, HvacTempZone.Driver) },
             onTextClick = { launchClimateApp(context) },
         )
         "temp_pass" -> LauncherTempStepper(
-            tempText = formatHvacSetTemp(passTemp),
-            onDown = { sendAdjustHvacTemperature(context, passTemp, -1.0f, HvacTempZone.Passenger) },
-            onUp = { sendAdjustHvacTemperature(context, passTemp, 1.0f, HvacTempZone.Passenger) },
+            tempText = formatHvacSetTempAnnotated(passTemp),
+            onDown = { sendAdjustHvacTemperature(context, passTemp, -0.5f, HvacTempZone.Passenger) },
+            onUp = { sendAdjustHvacTemperature(context, passTemp, 0.5f, HvacTempZone.Passenger) },
             onTextClick = { launchClimateApp(context) },
         )
         "audio_volume" -> {
@@ -1497,7 +1511,7 @@ private fun LauncherBottomDockButtonContent(
 
 @Composable
 private fun LauncherTempStepper(
-    tempText: String,
+    tempText: AnnotatedString,
     onDown: () -> Unit,
     onUp: () -> Unit,
     onTextClick: (() -> Unit)? = null,
@@ -1506,43 +1520,50 @@ private fun LauncherTempStepper(
     val thresholdPx = remember(density) { with(density) { 18.dp.toPx() } }
     var totalDragY by remember { mutableFloatStateOf(0f) }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
-        modifier = Modifier.pointerInput(Unit) {
-            detectVerticalDragGestures(
-                onDragStart = { totalDragY = 0f },
-                onDragEnd = { totalDragY = 0f },
-                onDragCancel = { totalDragY = 0f },
-                onVerticalDrag = { change, dragAmount ->
-                    change.consume()
-                    totalDragY += dragAmount
-                    if (totalDragY <= -thresholdPx) {
-                        onUp()
-                        totalDragY = 0f
-                    } else if (totalDragY >= thresholdPx) {
-                        onDown()
-                        totalDragY = 0f
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { totalDragY = 0f },
+                    onDragEnd = { totalDragY = 0f },
+                    onDragCancel = { totalDragY = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragY += dragAmount
+                        if (totalDragY <= -thresholdPx) {
+                            onUp()
+                            totalDragY = 0f
+                        } else if (totalDragY >= thresholdPx) {
+                            onDown()
+                            totalDragY = 0f
+                        }
                     }
-                }
-            )
-        }
+                )
+            },
+        contentAlignment = Alignment.Center,
     ) {
-        LauncherDockIcon(onClick = onDown) {
-            Icon(
-                Icons.Filled.KeyboardArrowDown,
-                null,
-                tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(dockDp(26.4f)),
-            )
+        Box(
+            modifier = Modifier.align(Alignment.CenterStart),
+            contentAlignment = Alignment.Center,
+        ) {
+            LauncherDockIcon(onClick = onDown) {
+                Icon(
+                    Icons.Filled.KeyboardArrowDown,
+                    null,
+                    tint = LauncherColors.TextSecondary,
+                    modifier = Modifier.size(dockDp(26.4f)),
+                )
+            }
         }
         Text(
             text = tempText,
             style = MaterialTheme.typography.tboxCaption,
             color = LauncherColors.TextPrimary,
-            fontSize = dockSp(24f),
+            fontSize = dockSp(19.2f),
             fontWeight = FontWeight.Light,
             modifier = Modifier
+                .align(Alignment.Center)
                 .then(
                     if (onTextClick != null) {
                         Modifier.clickable(onClick = onTextClick)
@@ -1552,13 +1573,18 @@ private fun LauncherTempStepper(
                 )
                 .padding(horizontal = 1.dp),
         )
-        LauncherDockIcon(onClick = onUp) {
-            Icon(
-                Icons.Filled.KeyboardArrowUp,
-                null,
-                tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(dockDp(26.4f)),
-            )
+        Box(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            contentAlignment = Alignment.Center,
+        ) {
+            LauncherDockIcon(onClick = onUp) {
+                Icon(
+                    Icons.Filled.KeyboardArrowUp,
+                    null,
+                    tint = LauncherColors.TextSecondary,
+                    modifier = Modifier.size(dockDp(26.4f)),
+                )
+            }
         }
     }
 }

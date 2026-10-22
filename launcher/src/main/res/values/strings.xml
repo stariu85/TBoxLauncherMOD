@@ -178,6 +178,7 @@
     <string name="launcher_adas_hma">Автодальний</string>
     <string name="launcher_adas_tja">Помощь в пробке</string>
     <string name="launcher_adas_srr_fault">Слепые зоны</string>
+    <string name="launcher_adas_wiper">Стеклоочистители</string>
     <string name="launcher_nav_accessibility_label">Dashing Club: кнопка Назад</string>
     <string name="launcher_nav_accessibility_desc">Нужен для кнопки «Назад» в доке лаунчера. Данные не передаются наружу.</string>
     <string name="launcher_open_adas_cd">Открыть ADAS</string>

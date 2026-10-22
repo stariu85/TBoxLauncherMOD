@@ -49,6 +49,19 @@ object LauncherDevVehicleState {
     var highBeam by mutableStateOf(false)
     var turnLeft by mutableStateOf(false)
     var turnRight by mutableStateOf(false)
+    /** Wiper status simulation: null/0 = Off, 1 = Auto, 2 = Low speed, 3 = High speed. */
+    var wiperStatus by mutableStateOf<Int?>(null)
+
+    fun cycleWiperStatus() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        wiperStatus = when (wiperStatus) {
+            null, 0 -> 1 // Auto (cyan/turquoise)
+            1 -> 2 // Low (black)
+            2 -> 3 // High (black)
+            else -> null // Off
+        }
+    }
 
     fun cycleBsdLeft() {
         simulateEnabled = true

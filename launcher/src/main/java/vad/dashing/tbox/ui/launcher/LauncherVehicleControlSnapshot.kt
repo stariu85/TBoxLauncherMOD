@@ -29,6 +29,7 @@ data class LauncherVehicleControlSnapshot(
     val lightControlRaw: Int? = null,
     val bcmLowBeam: Boolean? = null,
     val bcmHighBeam: Boolean? = null,
+    val bcmWiperStatus: Int? = null,
     val hmaOn: Boolean? = null,
     val rearFogLight: Boolean? = null,
     val homelightDelay: Int? = null,
@@ -115,6 +116,12 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
     val actualLowBeam = bcmLights?.first
     val actualHighBeam = bcmLights?.second
 
+    val bcmWiper = runCatching {
+        val bcmCls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleBcmStatus")
+        val bcm = MbCanEngineFacade.getMbCanData(21, bcmCls) ?: return@runCatching null
+        (bcmCls.getMethod("getWiperSts").invoke(bcm) as? Number)?.toInt()
+    }.getOrNull()
+
     val core = LauncherVehicleControlSnapshot(
         doorAutoLock = onOff12(get(MbCanKnownVehiclePropertyId.DOOR_AUTO_LOCK)),
         doorIgnOffUnlock = onOff21(get(MbCanKnownVehiclePropertyId.DOOR_IGNOFF_UNLOCK)),
@@ -129,6 +136,7 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         lightControlRaw = get(MbCanKnownVehiclePropertyId.LIGHT_CONTROL)?.takeIf { it in 1..4 },
         bcmLowBeam = actualLowBeam,
         bcmHighBeam = actualHighBeam,
+        bcmWiperStatus = bcmWiper,
         hmaOn = null,
         rearFogLight = onOff12(get(MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)),
         homelightDelay = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_HOMELIGHT_DELAY)?.takeIf { it in 0..3 },

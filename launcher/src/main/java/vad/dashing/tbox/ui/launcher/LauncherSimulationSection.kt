@@ -273,6 +273,17 @@ fun SimulationSectionCard(
                     active = LauncherDevVehicleState.turnRight,
                     onClick = { LauncherDevVehicleState.toggleTurnRight() },
                 )
+                val wiperLabel = when (LauncherDevVehicleState.wiperStatus) {
+                    1 -> "Дворники: АВТО (бирюзовая)"
+                    2 -> "Дворники: Медленно (черная)"
+                    3 -> "Дворники: Быстро (черная)"
+                    else -> "Дворники: Выкл (нет)"
+                }
+                SimulationToggleRow(
+                    label = wiperLabel,
+                    active = LauncherDevVehicleState.wiperStatus != null && LauncherDevVehicleState.wiperStatus != 0,
+                    onClick = { LauncherDevVehicleState.cycleWiperStatus() },
+                )
 
                 Spacer(Modifier.height(4.dp))
                 SimulationTireRow(

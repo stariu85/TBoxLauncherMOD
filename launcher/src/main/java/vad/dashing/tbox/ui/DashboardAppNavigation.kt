@@ -427,14 +427,14 @@ enum class HvacTempZone {
 internal fun decodeHvacTemperatureRaw(raw: Int): Float? = when {
     raw in MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MIN..
         MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MAX ->
-        (raw.toFloat() / MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS).roundToInt().toFloat()
+        raw.toFloat() / MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS.toFloat()
     // Some firmwares briefly report already-in-°C integers.
     raw in 16..30 -> raw.toFloat()
     else -> null
 }
 
 /**
- * OEM hard-key path ([HardKeyService] / MBACTempView): read raw HVAC temp, then ±10 (whole 1°C steps).
+ * OEM hard-key path ([HardKeyService] / MBACTempView): read raw HVAC temp, then adjust by deltaCelsius.
  */
 internal fun sendAdjustHvacTemperature(
     context: Context,
@@ -449,13 +449,9 @@ internal fun sendAdjustHvacTemperature(
         hvacTempRefreshSuppressedUntilMs = now + 2_500L
     }
     val scale = MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_PER_CELSIUS
-    val stepDir = when {
-        deltaCelsius > 0f -> 1
-        deltaCelsius < 0f -> -1
-        else -> return
-    }
-    // 1.0°C step in raw units = 10 units
-    val stepRaw = stepDir * scale
+    val stepRaw = (deltaCelsius * scale).roundToInt()
+    if (stepRaw == 0) return
+
     val syncActive = isHvacSyncOn()
     val propertyId = when (zone) {
         HvacTempZone.Driver -> MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE
@@ -469,12 +465,12 @@ internal fun sendAdjustHvacTemperature(
                 currentCelsius != null -> (currentCelsius * scale).roundToInt()
                 else -> 220
             }
-            val rawRounded = (currentRaw / 10) * 10
+            val rawRounded = ((currentRaw + 2) / 5) * 5
             val nextRaw = (rawRounded + stepRaw).coerceIn(
                 MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MIN,
                 MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE_RAW_MAX,
             )
-            val celsius = (nextRaw.toFloat() / scale).roundToInt().toFloat()
+            val celsius = nextRaw.toFloat() / scale.toFloat()
 
             if (zone == HvacTempZone.Driver && syncActive) {
                 // When SYNC is active, changing driver temperature updates both zones locally and sends ONLY driver temp.

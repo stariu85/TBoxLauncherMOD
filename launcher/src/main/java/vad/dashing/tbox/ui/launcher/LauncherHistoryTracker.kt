@@ -221,6 +221,24 @@ object LauncherHistoryTracker {
             .putString(KEY_HISTORY_JSON, array.toString())
             .apply()
     }
+
+    @Synchronized
+    fun clearHistory(context: Context) {
+        inMemoryHistory = mutableListOf()
+        lastActivePackageName = null
+        lastLaunchFromHome = false
+        lastSplitLaunchMs = 0L
+        runCatching {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .remove(KEY_HISTORY_JSON)
+                .apply()
+        }
+        vad.dashing.tbox.LauncherStateStore.clearLastLaunchedApp(context)
+        LauncherActiveAppTracker.clearAll()
+        FreeformLaunchRegistry.clear()
+        Log.w(TAG, "History and last app state cleared on system startup")
+    }
 }
 
 internal fun isCameraPackage(packageName: String?): Boolean {

@@ -96,18 +96,6 @@ internal fun goLauncherHome(
     }
 
     val hasForeignApp = hasActiveForeignApp(context)
-    if (settingsWereOpen && hasForeignApp) {
-        Log.w(TAG, "goLauncherHome: settings closed, keeping foreign app visible")
-        LauncherRightPanelOverlayWindow.hide()
-        LauncherNavLogger.logNavAction(
-            action = "HOME",
-            source = source,
-            stateBefore = stateBefore,
-            decision = "Closed settings overlays [${closedList.joinToString()}], keeping active foreign app visible",
-            result = "RightPanelOverlay hidden",
-        )
-        return
-    }
 
     LauncherActiveAppTracker.onHomePressed()
 
@@ -153,7 +141,7 @@ internal fun goLauncherHome(
         action = "HOME",
         source = source,
         stateBefore = stateBefore,
-        decision = "closedOverlays=[${closedList.joinToString()}], broughtHomeToFront=$broughtToFront, fromHomeIntent=$fromHomeIntent",
+        decision = "closedOverlays=[${closedList.joinToString()}], settingsWereOpen=$settingsWereOpen, broughtHomeToFront=$broughtToFront, fromHomeIntent=$fromHomeIntent",
         result = "hasForeignApp=$hasForeignApp, RightPanelOverlay=${if (hasForeignApp) "shown" else "hidden"}",
     )
 }

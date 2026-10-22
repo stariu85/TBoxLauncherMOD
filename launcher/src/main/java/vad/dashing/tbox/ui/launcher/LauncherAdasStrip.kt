@@ -142,6 +142,18 @@ fun LauncherAdasStrip(
     val showManualHighBeam = !isHmaOn && isHighBeamBurning
     val showHeadlights = showLowBeam || showAutoMode || showHmaMode || showManualHighBeam || showAll
 
+    val rawWiperStatus = if (LauncherDevVehicleState.simulateEnabled) {
+        LauncherDevVehicleState.wiperStatus
+    } else {
+        snapshot.bcmWiperStatus
+    }
+    val effectiveWiperStatus = rawWiperStatus ?: if (showAll) 1 else null
+    val showWiper = effectiveWiperStatus != null && effectiveWiperStatus != 0
+    val wiperTint = when (effectiveWiperStatus) {
+        1 -> LauncherColors.AccentCyan
+        else -> Color.Black
+    }
+
     val pasOn = (parkingRadar is MbCanBinaryState.On) || showAll
     val cruiseActive = (cruiseSpeed ?: 0u) > 0u || showAll
     val showAcc = adas.accActive || adas.accStandby || showAll
@@ -152,7 +164,7 @@ fun LauncherAdasStrip(
     val showTja = adas.tja != LauncherAdasAssistIcon.Hidden || showAll
     val showSrr = adas.srrSystem != LauncherSrrSystemState.Hidden || showAll
     if (!pasOn && !cruiseActive && !showAcc && !showAlerts &&
-        !showLanes && !showSla && !showHmaMode && !showTja && !showSrr && !showHeadlights
+        !showLanes && !showSla && !showHmaMode && !showTja && !showSrr && !showHeadlights && !showWiper
     ) {
         return
     }
@@ -163,6 +175,7 @@ fun LauncherAdasStrip(
         if (showLowBeam || showAll) add("headlights_low")
         if (showHmaMode || showAll) add("high_beam_auto")
         if (showManualHighBeam || showAll) add("high_beam_manual")
+        if (showWiper) add("wiper")
         if (showTja) add("tja")
         if (adas.srrSystem == LauncherSrrSystemState.Fault || showAll) add("srr_fault")
         if (showAcc || cruiseActive) add("acc")
@@ -243,6 +256,17 @@ fun LauncherAdasStrip(
                 innerIconSizeDp = innerIconSizeDp,
                 activationKey = "high_beam_manual",
                 activationTimeMs = activationTimes["high_beam_manual"] ?: 0L,
+            )
+        }
+        if (showWiper) {
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_wiper),
+                tint = wiperTint,
+                iconRes = R.drawable.ic_widget_wiper_windshield,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
+                activationKey = "wiper",
+                activationTimeMs = activationTimes["wiper"] ?: 0L,
             )
         }
         if (showTja) {
@@ -457,12 +481,17 @@ private fun LauncherAdasIcon(
     activationTimeMs: Long = 0L,
 ) {
     val alpha = if (activationKey != null) rememberAdasFlashingAlpha(activationKey, activationTimeMs) else 1.0f
+    val containerBg = if (tint == Color.Black) {
+        Color.White.copy(alpha = 0.85f)
+    } else {
+        tint.copy(alpha = 0.14f)
+    }
     Box(
         modifier = Modifier
             .graphicsLayer { this.alpha = alpha }
             .size(iconBoxSizeDp.dp)
             .clip(CircleShape)
-            .background(tint.copy(alpha = 0.14f)),
+            .background(containerBg),
         contentAlignment = Alignment.Center,
     ) {
         Image(

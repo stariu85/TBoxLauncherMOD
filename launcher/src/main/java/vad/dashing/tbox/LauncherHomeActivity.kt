@@ -63,6 +63,7 @@ class LauncherHomeActivity : ComponentActivity() {
         // After reinstall / process death OEM freeform stacks often survive alone on top.
         // Delay slightly so WM finishes enumerating stacks post-install.
         val appCtx = applicationContext
+        vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
         window.decorView.postDelayed({ minimizeForeignFreeformTasks(appCtx) }, 400L)
 
         settingsManager = SettingsManager(this)

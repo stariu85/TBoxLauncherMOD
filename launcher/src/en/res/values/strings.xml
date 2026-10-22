@@ -124,6 +124,7 @@
     <string name="launcher_adas_hma">Auto high beam</string>
     <string name="launcher_adas_tja">Traffic assist</string>
     <string name="launcher_adas_srr_fault">Blind spot</string>
+    <string name="launcher_adas_wiper">Wipers</string>
     <string name="launcher_adas_obj_car">Car</string>
     <string name="launcher_adas_obj_truck">Truck</string>
     <string name="launcher_adas_obj_moto">Moto</string>
