@@ -3,7 +3,6 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
-import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -52,10 +51,6 @@ internal object LauncherDockSlotPickerOverlayWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
-            return false
-        }
 
         val owner = MyLifecycleOwner().also {
             it.setCurrentState(Lifecycle.State.CREATED)
@@ -73,9 +68,10 @@ internal object LauncherDockSlotPickerOverlayWindow {
         val metrics = activity.resources.displayMetrics
         val density = metrics.density
         val bottomOffsetPx = ((bottomBarHeightDp + 12) * density).toInt()
+        val pickerWidthPx = ((560 * density).toInt()).coerceAtMost(metrics.widthPixels - (32 * density).toInt())
 
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            pickerWidthPx,
             WindowManager.LayoutParams.WRAP_CONTENT,
             type,
             WindowManager.LayoutParams.FLAG_DIM_BEHIND or

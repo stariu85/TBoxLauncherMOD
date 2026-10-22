@@ -2,19 +2,16 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,11 +33,9 @@ import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 
 /**
- * Focusable system overlay for the launcher app drawer.
+ * Focusable system overlay for the launcher app drawer positioned over the ADAS car zone.
  *
- * Freeform tasks are separate application windows, therefore a Compose zIndex in HOME
- * cannot place the drawer above them. TYPE_APPLICATION_OVERLAY provides the required
- * window ordering while keeping the drawer implementation shared.
+ * Launches apps in EMBEDDED mode.
  */
 internal object LauncherAppDrawerWindow {
     private const val TAG = "LauncherAppDrawerWin"
@@ -49,11 +44,39 @@ internal object LauncherAppDrawerWindow {
     private var composeView: ComposeView? = null
     private var lifecycleOwner: MyLifecycleOwner? = null
     private var windowManager: WindowManager? = null
-    private var editMode by mutableStateOf(false)
     private var configRevision by mutableIntStateOf(0)
     private var onConfigChanged: (() -> Unit)? = null
 
     fun isShowing(): Boolean = composeView != null
+
+    private fun calculateAdasPanelBounds(context: Context): Rect {
+        val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
+        val metrics = (activity ?: context).resources.displayMetrics
+        val density = metrics.density
+        val screenH = metrics.heightPixels.coerceAtLeast(1080)
+
+        val adasVisible = LauncherAppConfigStore.adasPanelVisible(context)
+        val sidebarDp = LauncherAppConfigStore.sidebarWidthDp(context)
+        val topBarDp = LauncherAppConfigStore.topBarHeightDp(context)
+        val bottomBarDp = LauncherAppConfigStore.bottomBarHeightDp(context)
+
+        val widthPx = if (adasVisible) (sidebarDp * density).toInt().coerceIn(300, 500) else (344 * density).toInt()
+        val topPx = (topBarDp * density).toInt().coerceIn(0, 100).takeIf { it > 0 } ?: 51
+        val bottomPx = screenH - (bottomBarDp * density).toInt().coerceIn(0, 150)
+
+        val top = LauncherEmbeddedBoundsState.topHeaderBottomPx.takeIf { it > 0 } ?: topPx
+        val bottom = LauncherEmbeddedBoundsState.bottomBarTopPx.takeIf { it > 0 } ?: bottomPx
+        val measuredLeftPanel = LauncherEmbeddedBoundsState.leftPanelBounds
+
+        val width = if (measuredLeftPanel != null && measuredLeftPanel.width() > 200) {
+            measuredLeftPanel.width()
+        } else {
+            widthPx
+        }
+        val height = (bottom - top).coerceAtLeast(400)
+
+        return Rect(0, top, width, top + height)
+    }
 
     fun show(
         context: Context,
@@ -69,6 +92,8 @@ internal object LauncherAppDrawerWindow {
             return false
         }
 
+        val bounds = calculateAdasPanelBounds(activity)
+
         val owner = MyLifecycleOwner().also {
             it.setCurrentState(Lifecycle.State.CREATED)
             it.setCurrentState(Lifecycle.State.STARTED)
@@ -82,15 +107,19 @@ internal object LauncherAppDrawerWindow {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            bounds.width(),
+            bounds.height(),
             type,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            x = bounds.left
+            y = bounds.top
+            dimAmount = 0.35f
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
@@ -101,9 +130,17 @@ internal object LauncherAppDrawerWindow {
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode != KeyEvent.KEYCODE_BACK) return@setOnKeyListener false
                 if (event.action == KeyEvent.ACTION_UP) {
-                    if (editMode) editMode = false else hide()
+                    hide()
                 }
                 true
+            }
+            setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_OUTSIDE) {
+                    hide()
+                    true
+                } else {
+                    false
+                }
             }
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
@@ -112,31 +149,22 @@ internal object LauncherAppDrawerWindow {
                 ProvideUiClickSounds {
                     val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
                     TboxAppTheme(theme = 2) {
-                        val navigationBarInset = WindowInsets.navigationBars
-                            .exclude(WindowInsets.ime)
-                            .asPaddingValues()
-                            .calculateBottomPadding()
                         BackHandler {
-                            if (editMode) editMode = false else hide()
+                            hide()
                         }
                         LauncherAppDrawer(
                             visible = true,
                             settingsViewModel = settingsViewModel,
                             onDismiss = ::hide,
-                            editMode = editMode,
-                            onEditModeChange = { editMode = it },
                             configRevision = configRevision,
                             onConfigChanged = {
                                 configRevision++
                                 this@LauncherAppDrawerWindow.onConfigChanged?.invoke()
                             },
                             onLaunchApp = { app ->
-                                // Remove the focusable overlay before creating/focusing freeform.
                                 hide()
-                                launchLauncherApp(activity, app.packageName, app.activityName)
+                                launchLauncherAppEmbedded(activity, app.packageName, app.activityName)
                             },
-                            dragToLauncherEnabled = false,
-                            bottomInset = navigationBarInset,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -146,7 +174,6 @@ internal object LauncherAppDrawerWindow {
 
         return runCatching {
             this.onConfigChanged = onConfigChanged
-            editMode = false
             lifecycleOwner = owner
             windowManager = wm
             wm.addView(view, params)
@@ -171,7 +198,6 @@ internal object LauncherAppDrawerWindow {
             .onFailure { Log.w(TAG, "Unable to remove app drawer overlay", it) }
         windowManager = null
         onConfigChanged = null
-        editMode = false
         lifecycleOwner?.let { owner ->
             owner.setCurrentState(Lifecycle.State.DESTROYED)
             owner.clear()

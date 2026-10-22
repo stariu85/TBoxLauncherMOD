@@ -407,11 +407,42 @@ private fun rememberSatelliteInfo(
                 val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
                 val mainHandler = Handler(Looper.getMainLooper())
 
+                var hardwareGnssActive = false
                 var lastLocationFix = false
+
+                fun extractSatellitesFromLocation(location: Location): Pair<Int, Int> {
+                    val extras = location.extras ?: return 0 to 0
+                    val visible = extras.getInt("satellites_in_view", 0).takeIf { it > 0 }
+                        ?: extras.getInt("satellites_visible", 0).takeIf { it > 0 }
+                        ?: extras.getInt("visible_satellites", 0).takeIf { it > 0 }
+                        ?: extras.getInt("satellites", 0)
+
+                    val used = extras.getInt("satellites_used", 0).takeIf { it > 0 }
+                        ?: extras.getInt("satellites_used_in_fix", 0).takeIf { it > 0 }
+                        ?: extras.getInt("used_satellites", 0).takeIf { it > 0 }
+                        ?: extras.getInt("satellites", 0)
+
+                    val finalVisible = maxOf(visible, used)
+                    return finalVisible to used
+                }
+
+                fun processLocation(location: Location) {
+                    lastLocationFix = true
+                    val (visible, used) = extractSatellitesFromLocation(location)
+                    @Suppress("DEPRECATION")
+                    val isMock = location.isFromMockProvider
+                    if (!hardwareGnssActive || isMock) {
+                        systemSatInfo = SatelliteInfo(
+                            visibleSatellites = visible,
+                            usingSatellites = used,
+                            hasFix = true,
+                        )
+                    }
+                }
 
                 val locationListener = object : LocationListener {
                     override fun onLocationChanged(location: Location) {
-                        lastLocationFix = true
+                        processLocation(location)
                     }
                     override fun onProviderEnabled(provider: String) {}
                     override fun onProviderDisabled(provider: String) {
@@ -423,6 +454,7 @@ private fun rememberSatelliteInfo(
 
                 val gnssCallback = object : GnssStatus.Callback() {
                     override fun onSatelliteStatusChanged(status: GnssStatus) {
+                        hardwareGnssActive = true
                         val total = status.satelliteCount
                         var used = 0
                         for (i in 0 until total) {
@@ -441,16 +473,30 @@ private fun rememberSatelliteInfo(
 
                 try {
                     lm?.registerGnssStatusCallback(gnssCallback, mainHandler)
-                    lm?.requestLocationUpdates(
+
+                    val providers = listOfNotNull(
                         LocationManager.GPS_PROVIDER,
-                        3000L,
-                        0f,
-                        locationListener,
-                        Looper.getMainLooper()
+                        LocationManager.PASSIVE_PROVIDER,
+                        LocationManager.NETWORK_PROVIDER.takeIf { lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true }
                     )
-                    val lastLoc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                    if (lastLoc != null && (System.currentTimeMillis() - lastLoc.time <= 30_000L)) {
-                        lastLocationFix = true
+
+                    for (provider in providers) {
+                        try {
+                            lm?.requestLocationUpdates(
+                                provider,
+                                2000L,
+                                0f,
+                                locationListener,
+                                Looper.getMainLooper()
+                            )
+                        } catch (_: Exception) {}
+                    }
+
+                    val initialLoc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                        ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+
+                    if (initialLoc != null) {
+                        processLocation(initialLoc)
                     }
                 } catch (_: SecurityException) {
                     systemSatInfo = SatelliteInfo()

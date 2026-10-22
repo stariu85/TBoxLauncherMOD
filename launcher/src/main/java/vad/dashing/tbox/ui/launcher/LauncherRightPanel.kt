@@ -396,106 +396,6 @@ fun LauncherRightPanel(
         )
     }
 
-    if (contextMenuIndex >= 0) {
-        val item = homeItems.firstOrNull { it.slotIndex == contextMenuIndex }
-        LauncherDarkAlertDialog(
-            onDismissRequest = { contextMenuIndex = -1 },
-            title = { Text(stringResource(R.string.launcher_icon_menu_title), color = LauncherColors.TextPrimary) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (item is LauncherHomeItem.App) {
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_configure),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    settingsIndex = contextMenuIndex
-                                    contextMenuIndex = -1
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                    }
-                    if (item is LauncherHomeItem.Split) {
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_configure),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    contextMenuIndex = -1
-                                    splitEditPreset = splitPresets.firstOrNull { it.id == item.presetId }
-                                    splitCreateVisible = true
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                    }
-                    if (item is LauncherHomeItem.TbmAutomation) {
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_change_icon),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    changeIconSlotIndex = contextMenuIndex
-                                    contextMenuIndex = -1
-                                    tbmIconPickerVisible = true
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                    }
-                    if (item != null) {
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_drag),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    isDragMode = true
-                                    contextMenuIndex = -1
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                        val isAutostart = item.key == autostartKey
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_autostart) +
-                                if (isAutostart) " ✓" else "",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    LauncherHomeStore.setAutostartKey(
-                                        context,
-                                        if (isAutostart) null else item.key,
-                                    )
-                                    onConfigChanged()
-                                    contextMenuIndex = -1
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.launcher_icon_menu_remove),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                LauncherHomeStore.removeAtSlot(context, contextMenuIndex)
-                                onConfigChanged()
-                                contextMenuIndex = -1
-                            }
-                            .padding(12.dp),
-                        color = LauncherColors.WarningRed,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { contextMenuIndex = -1 }) {
-                    Text(stringResource(R.string.action_cancel), color = LauncherColors.TextSecondary)
-                }
-            },
-        )
-    }
-
     val settingsItem = homeItems.firstOrNull { it.slotIndex == settingsIndex } as? LauncherHomeItem.App
     if (settingsItem != null) {
         var currentMode by remember(settingsItem.packageName, settingsIndex) {
@@ -1197,6 +1097,492 @@ fun LauncherRightPanel(
                 )
             }
         }
+
+        LauncherAppPickerDialog(
+            visible = appPickerVisible || replaceIndex >= 0,
+            title = stringResource(R.string.launcher_grid_pick_app),
+            apps = pickerApps,
+            onDismiss = {
+                appPickerVisible = false
+                replaceIndex = -1
+                pickerSlotIndex = -1
+            },
+            onPick = { app ->
+                if (replaceIndex >= 0) {
+                    LauncherHomeStore.replaceAtSlot(context, replaceIndex, LauncherHomeItem.App(app.packageName, replaceIndex))
+                } else {
+                    LauncherHomeStore.addApp(context, app.packageName, targetSlot = pickerSlotIndex)
+                }
+                onConfigChanged()
+                appPickerVisible = false
+                replaceIndex = -1
+                pickerSlotIndex = -1
+            },
+        )
+
+        LauncherSplitPresetCreateDialog(
+            visible = splitCreateVisible,
+            apps = pickerApps,
+            initialPreset = splitEditPreset,
+            pinToHomeOnSave = false,
+            onDismiss = {
+                splitCreateVisible = false
+                splitEditPreset = null
+            },
+            onSaved = {
+                if (splitEditPreset == null) {
+                    val latestPreset = LauncherSplitPresetStore.loadPresets(context).lastOrNull()
+                    if (latestPreset != null) {
+                        LauncherHomeStore.addSplit(context, latestPreset.id, targetSlot = pickerSlotIndex)
+                    }
+                }
+                onConfigChanged()
+                pickerSlotIndex = -1
+            },
+        )
+
+        LauncherTbmAutomationPickerDialog(
+            visible = tbmAutomationPickerVisible,
+            isLoading = tbmAutomationLoading,
+            automations = tbmAutomations,
+            errorMessage = tbmAutomationError,
+            onDismiss = {
+                tbmAutomationPickerVisible = false
+            },
+            onPick = { automation ->
+                selectedTbmAutomation = automation
+                tbmAutomationPickerVisible = false
+                tbmIconPickerVisible = true
+            },
+        )
+
+        LauncherTbmAutomationEditDialog(
+            visible = tbmIconPickerVisible || changeIconSlotIndex >= 0,
+            initialAutomationName = if (changeIconSlotIndex >= 0) {
+                (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.automationName ?: ""
+            } else {
+                selectedTbmAutomation?.name ?: ""
+            },
+            initialIconName = if (changeIconSlotIndex >= 0) {
+                (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.iconName ?: "play"
+            } else "play",
+            onDismiss = {
+                tbmIconPickerVisible = false
+                changeIconSlotIndex = -1
+                selectedTbmAutomation = null
+            },
+            onSave = { iconName, customTitle ->
+                if (changeIconSlotIndex >= 0) {
+                    LauncherHomeStore.updateTbmAutomation(context, changeIconSlotIndex, iconName, customTitle)
+                } else {
+                    selectedTbmAutomation?.let { auto ->
+                        LauncherHomeStore.addTbmAutomation(
+                            context = context,
+                            automationId = auto.id,
+                            automationName = customTitle,
+                            iconName = iconName,
+                            targetSlot = pickerSlotIndex,
+                        )
+                    }
+                }
+                onConfigChanged()
+                tbmIconPickerVisible = false
+                changeIconSlotIndex = -1
+                selectedTbmAutomation = null
+                pickerSlotIndex = -1
+            },
+        )
+
+        if (addMenuVisible) {
+            LauncherDarkAlertDialog(
+                onDismissRequest = { addMenuVisible = false },
+                title = { Text(stringResource(R.string.launcher_home_add_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = stringResource(R.string.launcher_home_add_app),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    addMenuVisible = false
+                                    appPickerVisible = true
+                                }
+                                .padding(12.dp),
+                            color = LauncherColors.TextPrimary,
+                        )
+                        Text(
+                            text = stringResource(R.string.launcher_home_add_split),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    addMenuVisible = false
+                                    splitEditPreset = null
+                                    splitCreateVisible = true
+                                }
+                                .padding(12.dp),
+                            color = LauncherColors.TextPrimary,
+                        )
+                        val notConnectedMsg = stringResource(R.string.launcher_tbm_automations_not_connected)
+                        Text(
+                            text = stringResource(R.string.launcher_home_add_tbm_automation),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    addMenuVisible = false
+                                    tbmAutomationPickerVisible = true
+                                    tbmAutomationLoading = true
+                                    tbmAutomationError = null
+                                    scope.launch {
+                                        val res = tbmRepository.refreshAutomations()
+                                        tbmAutomationLoading = false
+                                        if (res.isFailure) {
+                                            val errText = res.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: notConnectedMsg
+                                            tbmAutomationError = errText
+                                        }
+                                    }
+                                }
+                                .padding(12.dp),
+                            color = LauncherColors.TextPrimary,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { addMenuVisible = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+            )
+        }
+
+        if (contextMenuIndex >= 0) {
+            val item = homeItems.firstOrNull { it.slotIndex == contextMenuIndex }
+            LauncherDarkAlertDialog(
+                onDismissRequest = { contextMenuIndex = -1 },
+                title = { Text(stringResource(R.string.launcher_icon_menu_title), color = LauncherColors.TextPrimary) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (item is LauncherHomeItem.App) {
+                            Text(
+                                text = stringResource(R.string.launcher_icon_menu_configure),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        settingsIndex = contextMenuIndex
+                                        contextMenuIndex = -1
+                                    }
+                                    .padding(12.dp),
+                                color = LauncherColors.TextPrimary,
+                            )
+                        }
+                        if (item is LauncherHomeItem.Split) {
+                            Text(
+                                text = stringResource(R.string.launcher_icon_menu_configure),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        contextMenuIndex = -1
+                                        splitEditPreset = splitPresets.firstOrNull { it.id == item.presetId }
+                                        splitCreateVisible = true
+                                    }
+                                    .padding(12.dp),
+                                color = LauncherColors.TextPrimary,
+                            )
+                        }
+                        if (item is LauncherHomeItem.TbmAutomation) {
+                            Text(
+                                text = stringResource(R.string.launcher_icon_menu_change_icon),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        changeIconSlotIndex = contextMenuIndex
+                                        contextMenuIndex = -1
+                                        tbmIconPickerVisible = true
+                                    }
+                                    .padding(12.dp),
+                                color = LauncherColors.TextPrimary,
+                            )
+                        }
+                        if (item != null) {
+                            Text(
+                                text = stringResource(R.string.launcher_icon_menu_drag),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        isDragMode = true
+                                        contextMenuIndex = -1
+                                    }
+                                    .padding(12.dp),
+                                color = LauncherColors.TextPrimary,
+                            )
+                            val isAutostart = item.key == autostartKey
+                            Text(
+                                text = stringResource(R.string.launcher_icon_menu_autostart) +
+                                    if (isAutostart) " ✓" else "",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        LauncherHomeStore.setAutostartKey(
+                                            context,
+                                            if (isAutostart) null else item.key,
+                                        )
+                                        onConfigChanged()
+                                        contextMenuIndex = -1
+                                    }
+                                    .padding(12.dp),
+                                color = LauncherColors.TextPrimary,
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.launcher_icon_menu_remove),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    LauncherHomeStore.removeAtSlot(context, contextMenuIndex)
+                                    onConfigChanged()
+                                    contextMenuIndex = -1
+                                }
+                                .padding(12.dp),
+                            color = LauncherColors.WarningRed,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { contextMenuIndex = -1 }) {
+                        Text(stringResource(R.string.action_cancel), color = LauncherColors.TextSecondary)
+                    }
+                },
+            )
+        }
+
+        val settingsItem = if (settingsIndex >= 0) homeItems.firstOrNull { it.slotIndex == settingsIndex } as? LauncherHomeItem.App else null
+        if (settingsItem != null) {
+            var currentMode by remember(settingsItem.packageName, settingsIndex) {
+                mutableStateOf(LauncherAppConfigStore.appLaunchMode(context, settingsItem.packageName))
+            }
+            val appLabel = appsByPackage[settingsItem.packageName]?.label
+                ?: settingsItem.packageName.substringAfterLast('.')
+            LauncherDarkAlertDialog(
+                onDismissRequest = { settingsIndex = -1 },
+                title = { Text(stringResource(R.string.launcher_icon_settings_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = appLabel,
+                            color = LauncherColors.TextSecondary,
+                            fontSize = 14.sp,
+                        )
+                        Text(
+                            text = stringResource(R.string.launcher_icon_menu_mode_title),
+                            color = LauncherColors.TextMuted,
+                            fontSize = 12.sp,
+                        )
+
+                        val modes = listOf(
+                            LauncherAppLaunchMode.EMBEDDED to (
+                                stringResource(R.string.launcher_icon_menu_mode_embedded) to
+                                    stringResource(R.string.launcher_icon_menu_mode_embedded_desc)
+                            ),
+                            LauncherAppLaunchMode.FULL_WIDTH to (
+                                stringResource(R.string.launcher_icon_menu_mode_full_width) to
+                                    stringResource(R.string.launcher_icon_menu_mode_full_width_desc)
+                            ),
+                            LauncherAppLaunchMode.FULLSCREEN to (
+                                stringResource(R.string.launcher_icon_menu_mode_fullscreen) to
+                                    stringResource(R.string.launcher_icon_menu_mode_fullscreen_desc)
+                            ),
+                        )
+
+                        modes.forEach { (mode, titles) ->
+                            val selected = currentMode == mode
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (selected) LauncherColors.AccentCyan.copy(alpha = 0.15f)
+                                        else Color(0xFF1E222A),
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (selected) LauncherColors.AccentCyan else Color.Transparent,
+                                        shape = RoundedCornerShape(10.dp),
+                                    )
+                                    .clickable {
+                                        currentMode = mode
+                                        LauncherAppConfigStore.setAppLaunchMode(
+                                            context,
+                                            settingsItem.packageName,
+                                            mode,
+                                        )
+                                        onConfigChanged()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = titles.first,
+                                        color = if (selected) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    )
+                                    Text(
+                                        text = titles.second,
+                                        color = LauncherColors.TextMuted,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = {
+                                        currentMode = mode
+                                        LauncherAppConfigStore.setAppLaunchMode(
+                                            context,
+                                            settingsItem.packageName,
+                                            mode,
+                                        )
+                                        onConfigChanged()
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = LauncherColors.AccentCyan,
+                                        unselectedColor = LauncherColors.TextMuted,
+                                    ),
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = stringResource(R.string.launcher_icon_menu_change_app),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    replaceIndex = settingsIndex
+                                    settingsIndex = -1
+                                }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            color = LauncherColors.AccentCyan,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { settingsIndex = -1 }) {
+                        Text(stringResource(R.string.action_close))
+                    }
+                },
+            )
+        }
+
+        if (showHiddenDialogVisible) {
+            val hiddenApps = remember(rawApps, hidden) { rawApps.filter { it.packageName in hidden } }
+            LauncherDarkAlertDialog(
+                onDismissRequest = { showHiddenDialogVisible = false },
+                title = { Text("Скрытые приложения") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (hiddenApps.isEmpty() && hidden.isEmpty()) {
+                            Text(
+                                text = "Нет скрытых приложений",
+                                color = LauncherColors.TextMuted,
+                                fontSize = 13.sp,
+                            )
+                        } else {
+                            val scrollState = rememberScrollState()
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp)
+                                    .verticalScroll(scrollState),
+                            ) {
+                                hidden.forEach { pkg ->
+                                    val app = hiddenApps.firstOrNull { it.packageName == pkg }
+                                    val label = app?.label ?: pkg.substringAfterLast('.')
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(LauncherColors.CardDark)
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f),
+                                        ) {
+                                            if (app?.icon != null) {
+                                                Image(
+                                                    bitmap = app.icon,
+                                                    contentDescription = label,
+                                                    modifier = Modifier.size(24.dp),
+                                                    contentScale = ContentScale.Fit,
+                                                )
+                                            }
+                                            Text(
+                                                text = label,
+                                                color = LauncherColors.TextPrimary,
+                                                fontSize = 13.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                LauncherAppConfigStore.showPackage(context, pkg)
+                                                onConfigChanged()
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        ) {
+                                            Text(
+                                                text = "Показать",
+                                                color = LauncherColors.AccentCyan,
+                                                fontSize = 12.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            TextButton(
+                                onClick = {
+                                    LauncherAppConfigStore.unhideAllPackages(context)
+                                    onConfigChanged()
+                                    showHiddenDialogVisible = false
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = "Показать все скрытые",
+                                    color = LauncherColors.AccentCyan,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showHiddenDialogVisible = false }) {
+                        Text(stringResource(R.string.action_close))
+                    }
+                },
+            )
+        }
+
+        if (vehicleStatusDialogVisible) {
+            LauncherVehicleStatusDialog(
+                onDismissRequest = { vehicleStatusDialogVisible = false },
+            )
+        }
+
+        LauncherWallpaperDialog(
+            visible = wallpaperDialogVisible,
+            onDismissRequest = { wallpaperDialogVisible = false },
+        )
     }
 }
 
@@ -1258,7 +1644,7 @@ private fun LauncherDraggableHomeDockEntry(
                 }
             )
             .then(
-                if (isInteractive) {
+                if (isInteractive && isDragMode) {
                     Modifier.pointerInput(entry.key, slotIndex, isDragMode, gridColumns, gridRows) {
                         detectDragGesturesAfterLongPress(
                             onDragStart = {
@@ -1268,9 +1654,7 @@ private fun LauncherDraggableHomeDockEntry(
                             },
                             onDragEnd = {
                                 val hasMoved = abs(offsetX) > 10f || abs(offsetY) > 10f
-                                if (!hasMoved) {
-                                    onOpenContextMenu(slotIndex)
-                                } else {
+                                if (hasMoved) {
                                     val colShift = (offsetX / cellWidthPx).roundToInt()
                                     val rowShift = (offsetY / cellHeightPx).roundToInt()
 
@@ -1352,9 +1736,11 @@ private fun LauncherDraggableHomeDockEntry(
                 onClick = {
                     if (!isDragMode) {
                         launchLauncherApp(context, entry.entry.packageName, entry.entry.activityName)
+                    } else {
+                        onOpenContextMenu(slotIndex)
                     }
                 },
-                onLongClick = { onOpenContextMenu(slotIndex) },
+                onLongClick = onEnableDragMode,
             )
             is HomeDockEntry.Split -> LauncherSplitDockIcon(
                 preset = entry.preset,
@@ -1366,9 +1752,11 @@ private fun LauncherDraggableHomeDockEntry(
                 onClick = {
                     if (!isDragMode) {
                         launchSplitPreset(context, entry.preset, visibleApps)
+                    } else {
+                        onOpenContextMenu(slotIndex)
                     }
                 },
-                onLongClick = { onOpenContextMenu(slotIndex) },
+                onLongClick = onEnableDragMode,
             )
             is HomeDockEntry.TbmAuto -> LauncherTbmAutoDockIcon(
                 automationId = entry.automationId,
@@ -1390,9 +1778,11 @@ private fun LauncherDraggableHomeDockEntry(
                                 Toast.makeText(context, failMsg, Toast.LENGTH_SHORT).show()
                             }
                         }
+                    } else {
+                        onOpenContextMenu(slotIndex)
                     }
                 },
-                onLongClick = { onOpenContextMenu(slotIndex) },
+                onLongClick = onEnableDragMode,
             )
             is HomeDockEntry.Empty -> Box(
                 modifier = Modifier
@@ -1459,15 +1849,19 @@ private fun LauncherTbmAutoDockIcon(
                 shape = RoundedCornerShape((16 * iconScale).dp),
             )
             .then(
-                if (!isDragMode) {
+                if (isDragMode) {
+                    Modifier.clickableWithSound(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                    )
+                } else {
                     Modifier.combinedClickableWithSound(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,
                         onLongClick = onLongClick,
                     )
-                } else {
-                    Modifier
                 }
             ),
         contentAlignment = Alignment.Center,
@@ -1534,15 +1928,19 @@ private fun LauncherAppDockIcon(
                 shape = RoundedCornerShape((16 * iconScale).dp),
             )
             .then(
-                if (!isDragMode) {
+                if (isDragMode) {
+                    Modifier.clickableWithSound(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                    )
+                } else {
                     Modifier.combinedClickableWithSound(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,
                         onLongClick = onLongClick,
                     )
-                } else {
-                    Modifier
                 }
             ),
         contentAlignment = Alignment.Center,
@@ -1621,15 +2019,19 @@ private fun LauncherSplitDockIcon(
                 shape = RoundedCornerShape((16 * iconScale).dp),
             )
             .then(
-                if (!isDragMode) {
+                if (isDragMode) {
+                    Modifier.clickableWithSound(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                    )
+                } else {
                     Modifier.combinedClickableWithSound(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onClick,
                         onLongClick = onLongClick,
                     )
-                } else {
-                    Modifier
                 }
             ),
         contentAlignment = Alignment.Center,

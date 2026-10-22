@@ -117,10 +117,6 @@ fun TeslaLauncherScreen(
     val settingsOpen = LauncherVehicleSettingsUiState.open
     val isDraggingApp = LauncherDropTargetState.draggingPackage != null
 
-    val openConsole: () -> Unit = {
-        launchTBoxSettings(context)
-    }
-
     val onConfigChanged: () -> Unit = { configRevision++ }
     val iconRevision by settingsViewModel.launcherAppIconRevision.collectAsStateWithLifecycle()
 
@@ -129,14 +125,6 @@ fun TeslaLauncherScreen(
     }
     val closeVehicleSettings: () -> Unit = {
         closeVehicleSettingsOverlay()
-    }
-    val openAppDrawer: () -> Unit = {
-        val shownAsSystemOverlay = LauncherAppDrawerWindow.show(
-            context = context,
-            settingsViewModel = settingsViewModel,
-            onConfigChanged = onConfigChanged,
-        )
-        appDrawerVisible = !shownAsSystemOverlay
     }
 
     LaunchedEffect(appDrawerVisible) {
@@ -250,27 +238,12 @@ fun TeslaLauncherScreen(
                                     .fillMaxHeight(),
                             )
                         }
-                        if (LauncherRightPanelOverlayWindow.isShowing()) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .background(LauncherColors.CanvasDark),
-                            )
-                        } else {
-                            LauncherRightPanel(
-                                canViewModel = canViewModel,
-                                settingsViewModel = settingsViewModel,
-                                tboxViewModel = tboxViewModel,
-                                onOpenConsole = openConsole,
-                                onOpenApps = openAppDrawer,
-                                configRevision = configRevision,
-                                onConfigChanged = onConfigChanged,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(),
-                            )
-                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(LauncherColors.CanvasDark),
+                        )
                     }
                     LauncherBottomBar(
                         canViewModel = canViewModel,
@@ -324,10 +297,13 @@ fun TeslaLauncherScreen(
                     visible = appDrawerVisible,
                     settingsViewModel = settingsViewModel,
                     onDismiss = { appDrawerVisible = false },
-                    editMode = drawerEditMode,
-                    onEditModeChange = { drawerEditMode = it },
                     configRevision = configRevision,
                     onConfigChanged = onConfigChanged,
+                    onLaunchApp = { app ->
+                        appDrawerVisible = false
+                        launchLauncherAppEmbedded(context, app.packageName, app.activityName)
+                    },
+                    modifier = Modifier.fillMaxSize(),
                 )
                 LauncherAppDragOverlay(
                     dragging = isDraggingApp,

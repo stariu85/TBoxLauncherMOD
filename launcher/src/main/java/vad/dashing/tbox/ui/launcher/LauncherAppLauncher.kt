@@ -71,6 +71,7 @@ internal fun launchLauncherAppFullWidth(
         Toast.makeText(context, "Не удалось найти запуск для $packageName", Toast.LENGTH_SHORT).show()
         return
     }
+    LauncherRightPanelOverlayWindow.hide()
     val bounds = LauncherEmbeddedBoundsState.fullWidthBounds()
     tryLaunchIntentInBounds(
         context = context,
@@ -495,6 +496,7 @@ private fun startResolved(
 
     if (component != null && tryStartMainActivity(context, packageName, component, activity)) {
         LastAppTracker.recordLaunch(context, packageName)
+        LauncherActiveAppTracker.onAppLaunched(packageName, topActivityClass = component.className)
         return
     }
 
@@ -504,6 +506,7 @@ private fun startResolved(
     runCatching { (activity ?: context).startActivity(fallbackIntent) }
         .onSuccess {
             LastAppTracker.recordLaunch(context, packageName)
+            LauncherActiveAppTracker.onAppLaunched(packageName, topActivityClass = component?.className)
             Log.w(TAG, "startActivity OK pkg=$packageName")
             LauncherNavLogger.logAppLaunch(
                 packageName = packageName,

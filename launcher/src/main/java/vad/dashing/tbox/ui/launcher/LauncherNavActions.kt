@@ -109,6 +109,8 @@ internal fun goLauncherHome(
         return
     }
 
+    LauncherActiveAppTracker.onHomePressed()
+
     runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }
     runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
     runCatching { LauncherOverlayElevator.bringLauncherToFront(context) }
@@ -120,15 +122,17 @@ internal fun goLauncherHome(
         runCatching { home.window.decorView.visibility = View.VISIBLE }
         runCatching {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
-            broughtToFront = true
+            if (home.taskId > 0) {
+                am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
+                broughtToFront = true
+            }
             Log.w(TAG, "goLauncherHome: brought to front task=${home.taskId}")
         }.onFailure {
             LauncherNavLogger.logNavError("HOME", source, "Failed moveTaskToFront for Home taskId=${home.taskId}", it, stateBefore)
         }
     }
 
-    if (!fromHomeIntent) {
+    if (!fromHomeIntent && !hasForeignApp) {
         runCatching {
             context.startActivity(
                 Intent(Intent.ACTION_MAIN).apply {
@@ -142,12 +146,8 @@ internal fun goLauncherHome(
         }
     }
 
-    // Show Right Panel Desktop Overlay IMMEDIATELY (0ms delay) above any foreign freeform windows
-    if (hasForeignApp) {
-        LauncherRightPanelOverlayWindow.show(context)
-    } else {
-        LauncherRightPanelOverlayWindow.hide()
-    }
+    // Show Primary Right Panel Desktop Overlay IMMEDIATELY (0ms delay)
+    LauncherRightPanelOverlayWindow.show(context)
 
     LauncherNavLogger.logNavAction(
         action = "HOME",
@@ -389,57 +389,17 @@ internal data class ForeignAppTask(
     val topActivityClass: String?,
 )
 
-private val ignoredLauncherPackages = setOf(
-    "vad.dashing.tbox",
-    "com.wt.launcher3",
-    "com.android.launcher3",
-    "com.android.launcherWT",
-    "ca.dstudio.atvlauncher",
-    "com.android.systemui",
-)
-
 internal fun hasActiveForeignApp(context: Context): Boolean {
     return findForeignAppTask(context) != null
 }
 
-internal fun isSplitActiveOnScreen(context: Context): Boolean {
-    val launcher = context.packageName
-    val stacks = LauncherAmStackShell.listStacks()
-    val visibleForeignTasks = stacks.filter { row ->
-        row.visible &&
-            row.packageName != null &&
-            row.packageName != launcher &&
-            row.packageName != "com.wt.launcher3" &&
-            row.packageName != "com.android.launcher3" &&
-            row.packageName != "com.android.launcherWT" &&
-            row.packageName != "ca.dstudio.atvlauncher" &&
-            row.taskId != null
-    }
-    return visibleForeignTasks.size >= 2
+internal fun isSplitActiveOnScreen(@Suppress("UNUSED_PARAMETER") context: Context): Boolean {
+    return FreeformLaunchRegistry.snapshot().size >= 2
 }
 
 internal fun findForeignAppTask(context: Context): ForeignAppTask? {
-    val launcher = context.packageName
-    val stacks = LauncherAmStackShell.listStacks()
-
-    val foreignRows = stacks.filter { row ->
-        row.taskId != null &&
-            !row.packageName.isNullOrBlank() &&
-            row.packageName != launcher &&
-            row.packageName !in ignoredLauncherPackages
-    }
-
-    if (foreignRows.isNotEmpty()) {
-        val visibleTask = foreignRows.filter { it.visible }.maxByOrNull { it.stackId }
-        if (visibleTask != null) {
-            return ForeignAppTask(visibleTask.taskId!!, visibleTask.packageName!!, visibleTask.topActivityClass)
-        }
-
-        val topTask = foreignRows.maxByOrNull { it.stackId }
-        if (topTask != null) {
-            return ForeignAppTask(topTask.taskId!!, topTask.packageName!!, topTask.topActivityClass)
-        }
-    }
+    val activeTask = LauncherActiveAppTracker.getActiveForeignTask()
+    if (activeTask != null) return activeTask
 
     val trackedPackages = FreeformLaunchRegistry.snapshot()
     val lastActive = LauncherHistoryTracker.lastActivePackage()
@@ -450,9 +410,7 @@ internal fun findForeignAppTask(context: Context): ForeignAppTask? {
     }
 
     if (fallbackPkg != null) {
-        val row = stacks.firstOrNull { it.packageName == fallbackPkg && it.taskId != null }
-        val taskId = row?.taskId ?: -1
-        return ForeignAppTask(taskId, fallbackPkg, row?.topActivityClass)
+        return ForeignAppTask(-1, fallbackPkg, null)
     }
 
     return null

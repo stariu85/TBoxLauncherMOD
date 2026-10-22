@@ -96,6 +96,9 @@ class LauncherHomeActivity : ComponentActivity() {
             }
         }
         startBackgroundService()
+        if (findForeignAppTask(this) == null) {
+            LauncherRightPanelOverlayWindow.ensureShowing(this)
+        }
         LauncherOverlayBar.ensureShowing(this)
     }
 
@@ -103,6 +106,9 @@ class LauncherHomeActivity : ComponentActivity() {
         super.onRestart()
         LauncherHomeActivityHolder.instance = this
         startBackgroundService()
+        if (findForeignAppTask(this) == null) {
+            LauncherRightPanelOverlayWindow.ensureShowing(this)
+        }
         LauncherOverlayBar.ensureShowing(this)
     }
 
@@ -114,6 +120,9 @@ class LauncherHomeActivity : ComponentActivity() {
         if (!inAppView) {
             LauncherForegroundHandoff.restoreLauncherWindow()
             window.decorView.visibility = View.VISIBLE
+        }
+        if (foreign == null) {
+            LauncherRightPanelOverlayWindow.ensureShowing(this)
         }
         LauncherOverlayBar.ensureShowing(this)
         LauncherEdgeGestureOverlay.ensureShowing(this)
@@ -138,6 +147,7 @@ class LauncherHomeActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        LauncherRightPanelOverlayWindow.destroy()
         LauncherAppDrawerWindow.hide()
         LauncherAppPickerOverlayWindow.hide()
         LauncherVehicleSettingsOverlayWindow.hide()

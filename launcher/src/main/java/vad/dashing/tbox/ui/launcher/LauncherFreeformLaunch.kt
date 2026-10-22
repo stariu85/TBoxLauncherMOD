@@ -122,7 +122,7 @@ internal fun tryLaunchIntentInBounds(
         // Reuse one freeform task so resize applies to the window the user sees.
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (launchAdjacent) {
-            addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
         }
     }
     val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
@@ -144,6 +144,10 @@ internal fun tryLaunchIntentInBounds(
         (activity ?: context).startActivity(launchIntent, options.toBundle())
     }.onSuccess {
         LastAppTracker.recordLaunch(context, packageName)
+        LauncherActiveAppTracker.onAppLaunched(
+            packageName = packageName,
+            topActivityClass = launchIntent.component?.className,
+        )
         Log.w("LauncherAppLaunch", "freeform startActivity OK pkg=$packageName bounds=$targetBounds")
         FreeformLaunchRegistry.record(packageName, targetBounds)
 
@@ -555,7 +559,11 @@ internal fun dismissForeignFreeformTasks(
     val launcherPackage = appCtx.packageName
     val tracked = FreeformLaunchRegistry.snapshot()
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
+    LauncherActiveAppTracker.clearAll()
     FreeformLaunchRegistry.clear()
+
+    // Show desktop overlay immediately on click
+    LauncherRightPanelOverlayWindow.show(context)
 
     CoroutineScope(Dispatchers.IO).launch {
         runCatching {

@@ -112,5 +112,17 @@ class LauncherHeadlightBeamsTest {
         )
         assertTrue(beams.lowBeam)
         assertTrue(beams.highBeam)
+
+        val stalkBeams = resolveHeadlightBeams(
+            simulateEnabled = false,
+            simLowBeam = false,
+            simHighBeam = false,
+            lightControlRaw = LIGHT_CONTROL_OFF,
+            headlightsSwitch = 3,
+            bcmLowBeam = false,
+            bcmHighBeam = false,
+        )
+        assertTrue(stalkBeams.lowBeam)
+        assertTrue(stalkBeams.highBeam)
     }
 }

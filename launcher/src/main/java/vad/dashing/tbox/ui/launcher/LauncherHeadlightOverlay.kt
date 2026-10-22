@@ -73,7 +73,7 @@ internal fun resolveHeadlightBeams(
     if (simulateEnabled) {
         return LauncherHeadlightBeams(lowBeam = simLowBeam, highBeam = simHighBeam)
     }
-    val high = bcmHighBeam == true
+    val high = headlightsSwitch == 3 || bcmHighBeam == true
     val low = when {
         high -> true
         lightControlRaw == LIGHT_CONTROL_OFF -> false
@@ -81,7 +81,6 @@ internal fun resolveHeadlightBeams(
         lightControlRaw == LIGHT_CONTROL_LOW_BEAM -> true
         lightControlRaw == LIGHT_CONTROL_AUTO -> bcmLowBeam == true
         bcmLowBeam != null -> bcmLowBeam
-        headlightsSwitch == 3 -> true
         else -> false
     }
     return LauncherHeadlightBeams(lowBeam = low, highBeam = high)
@@ -99,17 +98,17 @@ fun LauncherHeadlightOverlay(
     val isShort = !isLong && (beams.lowBeam || hma == LauncherAdasAssistIcon.Dark)
     if (!isLong && !isShort) return
 
-    val color = if (isLong) Color(0xFFEAF4FF) else LauncherColors.AccentBlue
-    val coreAlpha = if (isLong) 0.58f else 0.45f
+    val color = if (isLong) Color(0xFFEAF4FF) else Color(0xFFFFF1C2)
+    val coreAlpha = if (isLong) 0.58f else 0.36f
     val leftFan = if (isLong) {
         if (frame.leftHighFan.size >= 2) frame.leftHighFan else frame.leftLowFan
     } else {
-        if (frame.leftShortFan.size >= 2) frame.leftShortFan else frame.leftLowFan
+        if (frame.leftLowFan.size >= 2) frame.leftLowFan else frame.leftShortFan
     }
     val rightFan = if (isLong) {
         if (frame.rightHighFan.size >= 2) frame.rightHighFan else frame.rightLowFan
     } else {
-        if (frame.rightShortFan.size >= 2) frame.rightShortFan else frame.rightLowFan
+        if (frame.rightLowFan.size >= 2) frame.rightLowFan else frame.rightShortFan
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {

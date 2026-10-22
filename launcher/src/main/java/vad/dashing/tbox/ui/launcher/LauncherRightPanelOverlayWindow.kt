@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
-import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -54,6 +53,14 @@ internal object LauncherRightPanelOverlayWindow {
 
     fun isShowing(): Boolean = composeView != null
 
+    fun ensureShowing(context: Context) {
+        if (isShowing()) {
+            updateBounds()
+            return
+        }
+        show(context)
+    }
+
     private fun calculateStableRightPanelBounds(context: Context): Rect {
         val measured = LauncherEmbeddedBoundsState.embeddedBounds()
         if (measured != null && measured.left > 0 && measured.width() > 300 && measured.height() > 300) {
@@ -89,10 +96,6 @@ internal object LauncherRightPanelOverlayWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
-            return false
-        }
 
         val bounds = calculateStableRightPanelBounds(activity)
 
@@ -112,8 +115,7 @@ internal object LauncherRightPanelOverlayWindow {
             bounds.width(),
             bounds.height(),
             type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -134,6 +136,8 @@ internal object LauncherRightPanelOverlayWindow {
         )[SettingsViewModel::class.java]
 
         val view = ComposeView(activity).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
@@ -175,6 +179,7 @@ internal object LauncherRightPanelOverlayWindow {
             windowManager = wm
             wm.addView(view, params)
             composeView = view
+            view.requestFocus()
             Log.w(TAG, "right panel overlay window shown bounds=$bounds")
             true
         }.onFailure {
@@ -220,5 +225,9 @@ internal object LauncherRightPanelOverlayWindow {
         }
         lifecycleOwner = null
         Log.w(TAG, "right panel overlay window hidden")
+    }
+
+    fun destroy() {
+        hide()
     }
 }

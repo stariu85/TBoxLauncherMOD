@@ -7,6 +7,12 @@ import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.SystemClock
 import android.widget.Toast
+import androidx.lifecycle.ViewModelProvider
+import vad.dashing.tbox.LauncherHomeActivity
+import vad.dashing.tbox.LauncherHomeActivityHolder
+import vad.dashing.tbox.SettingsManager
+import vad.dashing.tbox.SettingsViewModel
+import vad.dashing.tbox.SettingsViewModelFactory
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -230,6 +236,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("rear_defrost", "Обогрев заднего стекла", R.drawable.ic_widget_rear_window_mirrors_defrost),
     LauncherDockButtonDescriptor("home_nav", "Кнопка Домой"),
     LauncherDockButtonDescriptor("back_nav", "Кнопка Назад"),
+    LauncherDockButtonDescriptor("all_apps", "Все приложения", R.drawable.ic_all_apps_dock),
     LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.undo_24),
     LauncherDockButtonDescriptor("close_apps", "Закрыть приложения", R.drawable.close_apps_24),
     LauncherDockButtonDescriptor("dcl_log", "Запись лога (5 мин)", R.drawable.menu_icon_log),
@@ -285,7 +292,7 @@ internal fun LauncherDockSlotPickerContent(
         border = BorderStroke(1.dp, popupBorder),
         shadowElevation = 12.dp,
         modifier = Modifier
-            .widthIn(min = 280.dp, max = maxPopupWidthDp)
+            .fillMaxWidth()
             .padding(8.dp),
     ) {
         Column(
@@ -895,19 +902,27 @@ fun LauncherBottomBar(
                 val missingPresets = remember(splitPresets, presentIds, hidden) {
                     splitPresets.filter { "split:${it.id}" !in presentIds && it.leftPackage !in hidden && it.rightPackage !in hidden }
                 }
+                val bottomBarHeightDp = remember(context) { LauncherAppConfigStore.bottomBarHeightDp(context) }
 
-                LauncherDockSlotPickerPopup(
-                    slotIndex = slotIdx,
-                    missingButtons = missingButtons,
-                    pickerApps = pickerApps,
-                    splitPresets = missingPresets,
-                    onSelectButton = { buttonId ->
-                        LauncherAppConfigStore.setButtonInUnifiedSlot(context, slotIdx, buttonId)
-                        triggerEditingMode()
-                        pickerSlotIndex = null
-                    },
-                    onDismiss = { pickerSlotIndex = null },
-                )
+                DisposableEffect(slotIdx) {
+                    LauncherDockSlotPickerOverlayWindow.show(
+                        context = context,
+                        slotIndex = slotIdx,
+                        missingButtons = missingButtons,
+                        pickerApps = pickerApps,
+                        splitPresets = missingPresets,
+                        bottomBarHeightDp = bottomBarHeightDp,
+                        onSelectButton = { buttonId ->
+                            LauncherAppConfigStore.setButtonInUnifiedSlot(context, slotIdx, buttonId)
+                            triggerEditingMode()
+                            pickerSlotIndex = null
+                        },
+                        onDismiss = { pickerSlotIndex = null },
+                    )
+                    onDispose {
+                        LauncherDockSlotPickerOverlayWindow.hide()
+                    }
+                }
             }
         }
     }
@@ -1174,6 +1189,29 @@ private fun LauncherBottomDockButtonContent(
             },
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.launcher_back_cd), tint = LauncherColors.TextSecondary)
+        }
+        "all_apps", "all_apps_nav", "apps_drawer" -> LauncherDockIcon(
+            onClick = {
+                val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
+                if (activity != null) {
+                    val settingsViewModel = ViewModelProvider(
+                        activity,
+                        SettingsViewModelFactory(SettingsManager(activity)),
+                    )[SettingsViewModel::class.java]
+                    LauncherAppDrawerWindow.show(
+                        context = activity,
+                        settingsViewModel = settingsViewModel,
+                        onConfigChanged = {},
+                    )
+                }
+            },
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_all_apps_dock),
+                contentDescription = "Все приложения",
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(28f)),
+            )
         }
         "undo_nav", "undo_24", "last_app" -> LauncherDockIcon(
             onClick = {

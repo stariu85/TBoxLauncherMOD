@@ -136,7 +136,7 @@ fun LauncherAdasStrip(
     val isHighBeamBurning = headlightBeams.highBeam
     val isLowBeamBurning = headlightBeams.lowBeam
 
-    val showLowBeam = isLowBeamBurning
+    val showLowBeam = isLowBeamBurning && !isAutoMode
     val showAutoMode = isAutoMode
     val showHmaMode = isHmaOn
     val showManualHighBeam = !isHmaOn && isHighBeamBurning
