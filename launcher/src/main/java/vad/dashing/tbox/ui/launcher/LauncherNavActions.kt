@@ -147,19 +147,14 @@ internal fun goLauncherHome(
 }
 
 /**
- * Back: close launcher overlays first; else send KEYCODE_BACK into freeform
- * only when the task has a deeper stack (numActivities > 1).
- *
- * On the app root — do nothing (keep the freeform window). Never relaunch.
- * Closing freeform is Home only.
- *
- * Back Button Pro does the same delivery via AccessibilityService.performGlobalAction
- * (GLOBAL_ACTION_BACK); we mirror that, with InputManager inject as fallback.
+ * Back action: complete analog of the physical Back button on the steering wheel.
+ * Delivers a system BACK (GLOBAL_ACTION_BACK / KEYCODE_BACK) directly into the currently focused window.
  */
+@Suppress("UNUSED_PARAMETER")
 internal fun goLauncherBack(
     context: Context,
-    vehicleSettingsOpen: Boolean,
-    onCloseVehicleSettings: () -> Unit,
+    vehicleSettingsOpen: Boolean = false,
+    onCloseVehicleSettings: () -> Unit = {},
     source: String = "unknown",
 ) {
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
@@ -175,143 +170,14 @@ internal fun goLauncherBack(
         return
     }
 
-    when {
-        LauncherRightPanelOverlayWindow.isShowing() -> {
-            LauncherRightPanelOverlayWindow.hide()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed RightPanelOverlay")
-            return
-        }
-        vehicleSettingsOpen ||
-            LauncherVehicleSettingsUiState.open ||
-            LauncherVehicleSettingsOverlayWindow.isShowing() ||
-            LauncherVehicleSettingsActivity.isOpen() -> {
-            onCloseVehicleSettings()
-            closeVehicleSettingsOverlay()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed VehicleSettingsOverlay")
-            return
-        }
-        MainActivity.isOpen() -> {
-            MainActivity.finishIfOpen()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed MainActivity")
-            return
-        }
-        LauncherAboutOverlayWindow.isShowing() -> {
-            LauncherAboutOverlayWindow.hide()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AboutOverlay")
-            return
-        }
-        LauncherAppPickerOverlayWindow.isShowing() -> {
-            LauncherAppPickerOverlayWindow.hide()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppPickerOverlay")
-            return
-        }
-        LauncherDockSlotPickerOverlayWindow.isShowing() -> {
-            LauncherDockSlotPickerOverlayWindow.hide()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed DockSlotPickerOverlay")
-            return
-        }
-        LauncherAppDrawerWindow.isShowing() -> {
-            LauncherAppDrawerWindow.hide()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppDrawerWindow")
-            return
-        }
-    }
-
-    val foreign = findForeignAppTask(context)
-    if (foreign == null) {
-        Log.w(TAG, "goLauncherBack: no foreign app — ignore source=$source")
-        LauncherNavLogger.logNavAction(
-            action = "BACK",
-            source = source,
-            stateBefore = stateBefore,
-            decision = "No active foreign app task found in stack",
-            result = "Ignored",
-        )
-        return
-    }
-
-    // Keep freeform on screen, but never Back-finish the root activity.
-    moveTaskToFrontId(context, foreign.taskId)
-
-    if (isTaskAtRoot(context, foreign)) {
-        Log.w(
-            TAG,
-            "goLauncherBack: at root task=${foreign.taskId} pkg=${foreign.packageName} — keep (no Back) source=$source",
-        )
-        LauncherNavLogger.logNavAction(
-            action = "BACK",
-            source = source,
-            stateBefore = stateBefore,
-            decision = "Task is at root (numActivities <= 1 or top==base) for pkg=${foreign.packageName} taskId=${foreign.taskId}",
-            result = "Skipped KEYCODE_BACK to keep freeform window open (prevent app finish)",
-        )
-        return
-    }
-
-    Log.w(TAG, "goLauncherBack: BACK task=${foreign.taskId} pkg=${foreign.packageName} source=$source")
+    Log.w(TAG, "goLauncherBack: dispatching physical Back (steering wheel analog) source=$source")
     LauncherNavLogger.logNavAction(
         action = "BACK",
         source = source,
         stateBefore = stateBefore,
-        decision = "Dispatching BACK into foreign task=${foreign.taskId} pkg=${foreign.packageName} top=${foreign.topActivityClass}",
+        decision = "Dispatching physical Back into active window (steering wheel analog)",
     )
-    dispatchPhysicalBackDelayed(context, foreign, source)
-}
-
-/**
- * Focus freeform, then deliver Back. No relaunch if the app finishes itself.
- */
-private fun dispatchPhysicalBackDelayed(context: Context, foreign: ForeignAppTask, source: String) {
-    val appCtx = context.applicationContext
-    if (!backDispatchInProgress.compareAndSet(false, true)) {
-        Log.w(TAG, "dispatchPhysicalBack: already in progress")
-        return
-    }
-    moveTaskToFrontId(context, foreign.taskId)
-    Thread({
-        try {
-            runCatching { Thread.sleep(180L) }
-            // Re-check: stack may already be at root after focus settle.
-            if (isTaskAtRoot(appCtx, foreign)) {
-                Log.w(TAG, "BACK skip after settle: at root pkg=${foreign.packageName}")
-                LauncherNavLogger.logNavAction(
-                    action = "BACK_DELAYED",
-                    source = source,
-                    decision = "Skipped after focus settle: task reached root for pkg=${foreign.packageName}",
-                )
-                return@Thread
-            }
-            moveTaskToFrontId(appCtx, foreign.taskId)
-            runCatching { Thread.sleep(60L) }
-            dispatchPhysicalBack(source)
-        } finally {
-            backDispatchInProgress.set(false)
-        }
-    }, "launcher-back").apply { isDaemon = true }.start()
-}
-
-/** True when Back would finish the task (single activity / top == base). */
-internal fun isTaskAtRoot(context: Context, foreign: ForeignAppTask): Boolean {
-    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return true
-    @Suppress("DEPRECATION")
-    val task = runCatching {
-        am.getRunningTasks(64)?.firstOrNull { it.id == foreign.taskId }
-    }.getOrNull()
-    if (task != null) {
-        val num = task.numActivities
-        val top = task.topActivity
-        val base = task.baseActivity
-        val atRoot = num <= 1 || (top != null && base != null && top == base)
-        Log.w(TAG, "isTaskAtRoot task=${foreign.taskId} num=$num top=$top base=$base -> $atRoot")
-        return atRoot
-    }
-    val launch = context.packageManager.getLaunchIntentForPackage(foreign.packageName)
-    val launchCls = launch?.component?.className
-    val topCls = foreign.topActivityClass
-    val atRoot = launchCls != null && topCls != null &&
-        (launchCls == topCls || launchCls.endsWith(topCls) || topCls.endsWith(launchCls))
-    Log.w(TAG, "isTaskAtRoot fallback pkg=${foreign.packageName} launch=$launchCls top=$topCls -> $atRoot")
-    return atRoot
+    dispatchPhysicalBack(source)
 }
 
 /**

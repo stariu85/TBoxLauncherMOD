@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Rect
 import android.media.AudioManager
 import android.os.SystemClock
 import android.widget.Toast
@@ -826,7 +827,18 @@ fun LauncherBottomBar(
                         Box(
                             modifier = Modifier
                                 .weight(itemSpan.toFloat())
-                                .height(bottomBarHeightDp.dp),
+                                .height(bottomBarHeightDp.dp)
+                                .onGloballyPositioned { coordinates ->
+                                    if (index == 0) {
+                                        val bounds = coordinates.boundsInWindow()
+                                        LauncherEmbeddedBoundsState.slot0Bounds = Rect(
+                                            bounds.left.toInt(),
+                                            bounds.top.toInt(),
+                                            bounds.right.toInt(),
+                                            bounds.bottom.toInt(),
+                                        )
+                                    }
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
                             if (itemId != null) {
@@ -1188,8 +1200,6 @@ private fun LauncherBottomDockButtonContent(
             onClick = {
                 goLauncherBack(
                     context = context,
-                    vehicleSettingsOpen = LauncherVehicleSettingsUiState.open,
-                    onCloseVehicleSettings = onCloseVehicleSettings,
                     source = "BottomBar:back_nav",
                 )
             },
