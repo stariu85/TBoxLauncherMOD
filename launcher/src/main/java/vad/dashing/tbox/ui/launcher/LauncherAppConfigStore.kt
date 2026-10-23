@@ -24,7 +24,6 @@ private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
 private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
-private const val KEY_DCL_LOGS_ENABLED = "dcl_logs_enabled"
 private const val KEY_EDGE_GESTURES_ENABLED = "edge_gestures_enabled"
 private const val KEY_EDGE_GESTURES_WIDTH = "edge_gestures_width_dp"
 private const val KEY_EDGE_GESTURE_ACTION_LEFT = "edge_gesture_action_left"
@@ -69,14 +68,15 @@ private const val KEY_WALLPAPER_SCALE_MODE = "wallpaper_scale_mode"
 internal const val GRID_SLOTS_TOTAL_COUNT = 20
 
 internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
-    null, // Reserved empty slot 0 so floating Home button never overlaps icons
+    null,          // Slot 0 (1st cell left): Reserved for floating Home button
+    "all_apps",    // Slot 1 (2nd cell left): "Все приложения" by default
     "seat_heat_left",
     "seat_vent_left",
-    "temp_driver", // Occupies slots 3 and 4 (span = 2)
-    null,          // Slot 4 absorbed by temp_driver
+    "temp_driver", // Occupies slots 4 and 5 (span = 2)
+    null,          // Slot 5 absorbed by temp_driver
     "hvac_auto",
-    "temp_pass",   // Occupies slots 6 and 7 (span = 2)
-    null,          // Slot 7 absorbed by temp_pass
+    "temp_pass",   // Occupies slots 7 and 8 (span = 2)
+    null,          // Slot 8 absorbed by temp_pass
     "seat_heat_right",
     "seat_vent_right",
     "recirc",
@@ -84,7 +84,6 @@ internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
     "windscreen_heat",
     "front_defrost",
     "rear_defrost",
-    null,
     null,
     null,
     null,
@@ -306,8 +305,6 @@ internal object LauncherAppConfigStore {
     internal val gridRowSpacingRevisionFlow: StateFlow<Int> = gridRowSpacingRevision
     private val homeIconScaleRevision = MutableStateFlow(0)
     internal val homeIconScaleRevisionFlow: StateFlow<Int> = homeIconScaleRevision
-    private val dclLogsEnabledRevision = MutableStateFlow(0)
-    internal val dclLogsEnabledRevisionFlow: StateFlow<Int> = dclLogsEnabledRevision
     private val edgeGesturesRevision = MutableStateFlow(0)
     internal val edgeGesturesRevisionFlow: StateFlow<Int> = edgeGesturesRevision
 
@@ -576,18 +573,6 @@ internal object LauncherAppConfigStore {
     fun setAdasBsdAlertOverlayEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_BSD_ALERT_OVERLAY, enabled).apply()
         adasBsdAlertOverlayRevision.value++
-    }
-
-    fun dclLogsEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_DCL_LOGS_ENABLED, false)
-
-    fun setDclLogsEnabled(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_DCL_LOGS_ENABLED, enabled).apply()
-        dclLogsEnabledRevision.value++
-    }
-
-    fun resetDclLogsOnStartup(context: Context) {
-        setDclLogsEnabled(context, false)
     }
 
     fun speedLimitXRatio(context: Context): Float =

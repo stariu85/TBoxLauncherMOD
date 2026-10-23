@@ -63,7 +63,6 @@ object LauncherAvmRepository {
                 DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active")
 
                 if (active) {
-                    vad.dashing.tbox.DclLogRecorder.triggerSession(appCtx, "360_CAMERA_ACTIVE")
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     vad.dashing.tbox.DclLogRecorder.log("AVM", "avm_state changed raw='$raw' active=$active cameraAction=$cameraAction")
 

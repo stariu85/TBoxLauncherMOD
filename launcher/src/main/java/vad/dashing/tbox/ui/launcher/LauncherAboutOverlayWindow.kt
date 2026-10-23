@@ -54,7 +54,6 @@ internal object LauncherAboutOverlayWindow {
     /** Returns true when the About console was shown as a system overlay window. */
     fun show(context: Context): Boolean {
         if (isShowing()) return true
-        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_ABOUT")
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false

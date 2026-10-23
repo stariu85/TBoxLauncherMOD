@@ -314,10 +314,10 @@ private fun LauncherCarFilamentContent(
         LauncherAppConfigStore.cameraAnimationEnabled(context)
     }
     val cameraAnimEnabledRef = rememberUpdatedState(cameraAnimEnabled)
-    var currentDriveBlend by remember(modelInstance, inDriveGear, steerPreview) {
+    var currentDriveBlend by remember(modelInstance) {
         mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
     }
-    var lastTargetDriveBlend by remember(modelInstance, inDriveGear, steerPreview) {
+    var lastTargetDriveBlend by remember(modelInstance) {
         mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -516,9 +516,9 @@ private fun LauncherCarFilamentContent(
                             if (preparedFrames <= 1) {
                                 currentDriveBlend = targetDriveBlend
                             } else if (currentDriveBlend < targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
+                                currentDriveBlend = (currentDriveBlend + dt / 1.0f).coerceAtMost(targetDriveBlend)
                             } else if (currentDriveBlend > targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
+                                currentDriveBlend = (currentDriveBlend - dt / 1.0f).coerceAtLeast(targetDriveBlend)
                             }
                             if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
                                 currentDriveBlend = targetDriveBlend

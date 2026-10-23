@@ -22,7 +22,6 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import vad.dashing.tbox.CanDataViewModel
-import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.SettingsManager
@@ -88,7 +87,6 @@ internal object LauncherRightPanelOverlayWindow {
     }
 
     fun show(context: Context): Boolean {
-        DclLogRecorder.triggerSession(context, "SETTINGS_OPENED_RIGHT_PANEL")
         if (isShowing()) {
             updateBounds()
             return true

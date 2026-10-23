@@ -276,21 +276,6 @@ internal fun LauncherDockSlotPickerContent(
     val popupBorder = if (isDark) Color(0x5038BDF8) else Color(0x3094A3B8)
     val pickerIconColor = if (isDark) LauncherColors.AccentCyan else Color(0xFF374151)
 
-    var selectedTbmAutoForEdit by remember { mutableStateOf<TbmAutomationItem?>(null) }
-
-    LauncherTbmAutomationEditDialog(
-        visible = selectedTbmAutoForEdit != null,
-        initialAutomationName = selectedTbmAutoForEdit?.name.orEmpty(),
-        initialIconName = "play",
-        onDismiss = { selectedTbmAutoForEdit = null },
-        onSave = { iconName, customTitle ->
-            selectedTbmAutoForEdit?.let { auto ->
-                onSelectButton("tbm_auto:${auto.id}:$iconName:$customTitle")
-            }
-            selectedTbmAutoForEdit = null
-        },
-    )
-
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = popupBg,
@@ -492,7 +477,12 @@ internal fun LauncherDockSlotPickerContent(
                     }
                 }
 
-                if (isTbmConnected && tbmAutomations.isNotEmpty()) {
+                val homeItemsForTbm = remember(context) { LauncherHomeStore.loadItems(context) }
+                val configuredTbmAutomations = remember(homeItemsForTbm) {
+                    homeItemsForTbm.filterIsInstance<LauncherHomeItem.TbmAutomation>()
+                }
+
+                if (configuredTbmAutomations.isNotEmpty()) {
                     Text(
                         text = stringResource(R.string.launcher_home_add_tbm_automation),
                         color = LauncherColors.TextMuted,
@@ -506,14 +496,16 @@ internal fun LauncherDockSlotPickerContent(
                             .horizontalScroll(rememberScrollState())
                             .padding(vertical = 6.dp),
                     ) {
-                        tbmAutomations.forEach { auto ->
+                        configuredTbmAutomations.forEach { auto ->
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(LauncherColors.CardDark)
-                                    .clickable { selectedTbmAutoForEdit = auto }
+                                    .clickable {
+                                        onSelectButton("tbm_auto:${auto.automationId}:${auto.iconName}:${auto.automationName}")
+                                    }
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                             ) {
                                 Box(
@@ -521,14 +513,14 @@ internal fun LauncherDockSlotPickerContent(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
-                                        contentDescription = auto.name,
+                                        imageVector = resolveTbmIconVector(auto.iconName),
+                                        contentDescription = auto.automationName,
                                         tint = pickerIconColor,
-                                        modifier = Modifier.size(31.dp),
+                                        modifier = Modifier.size(28.dp),
                                     )
                                 }
                                 Text(
-                                    text = auto.name,
+                                    text = auto.automationName,
                                     color = LauncherColors.TextPrimary,
                                     fontSize = 13.sp,
                                     maxLines = 1,
@@ -1289,8 +1281,7 @@ private fun LauncherBottomDockButtonContent(
                         if (!vad.dashing.tbox.DclLogRecorder.hasStoragePermission(context)) {
                             showPermissionDialog = true
                         } else {
-                            LauncherAppConfigStore.setDclLogsEnabled(context, true)
-                            vad.dashing.tbox.DclLogRecorder.triggerSession(context, "BOTTOM_BAR_LOG_BUTTON", durationMs = 300_000L)
+                            vad.dashing.tbox.DclLogRecorder.startSession(context, durationMs = 300_000L)
                             Toast.makeText(context, context.getString(R.string.launcher_dcl_logs_started_toast), Toast.LENGTH_SHORT).show()
                         }
                     }

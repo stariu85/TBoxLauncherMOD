@@ -142,24 +142,6 @@ internal fun LauncherSplitPresetCreateDialog(
     }
     var pickSide by remember { mutableStateOf<String?>(null) }
 
-    if (pickSide != null) {
-        LauncherAppPickerDialog(
-            visible = true,
-            title = if (pickSide == "left") stringResource(R.string.launcher_split_pick_left)
-            else stringResource(R.string.launcher_split_pick_right),
-            apps = apps,
-            onDismiss = { pickSide = null },
-            onPick = { entry ->
-                editing = if (pickSide == "left") {
-                    editing.copy(leftPackage = entry.packageName)
-                } else {
-                    editing.copy(rightPackage = entry.packageName)
-                }
-                pickSide = null
-            },
-        )
-    }
-
     val draft = editing
     var name by remember(draft.id) { mutableStateOf(draft.name) }
     var ratio by remember(draft.id) { mutableFloatStateOf(draft.leftRatio) }
@@ -227,6 +209,24 @@ internal fun LauncherSplitPresetCreateDialog(
             }
         },
     )
+
+    if (pickSide != null) {
+        LauncherAppPickerDialog(
+            visible = true,
+            title = if (pickSide == "left") stringResource(R.string.launcher_split_pick_left)
+            else stringResource(R.string.launcher_split_pick_right),
+            apps = apps,
+            onDismiss = { pickSide = null },
+            onPick = { entry ->
+                editing = if (pickSide == "left") {
+                    editing.copy(leftPackage = entry.packageName)
+                } else {
+                    editing.copy(rightPackage = entry.packageName)
+                }
+                pickSide = null
+            },
+        )
+    }
 }
 
 @Composable
@@ -244,24 +244,6 @@ internal fun LauncherSplitPresetsDialog(
     var presets by remember(context, configRevision) { mutableStateOf(LauncherSplitPresetStore.loadPresets(context)) }
     var editing by remember { mutableStateOf<LauncherSplitPreset?>(null) }
     var pickSide by remember { mutableStateOf<String?>(null) }
-
-    if (pickSide != null && editing != null) {
-        LauncherAppPickerDialog(
-            visible = true,
-            title = if (pickSide == "left") stringResource(R.string.launcher_split_pick_left)
-            else stringResource(R.string.launcher_split_pick_right),
-            apps = apps,
-            onDismiss = { pickSide = null },
-            onPick = { entry ->
-                editing = if (pickSide == "left") {
-                    editing!!.copy(leftPackage = entry.packageName)
-                } else {
-                    editing!!.copy(rightPackage = entry.packageName)
-                }
-                pickSide = null
-            },
-        )
-    }
 
     if (editing != null) {
         val draft = editing!!
@@ -298,6 +280,25 @@ internal fun LauncherSplitPresetsDialog(
             },
             dismissButton = { TextButton(onClick = { editing = null }) { Text(stringResource(R.string.action_cancel)) } },
         )
+
+        if (pickSide != null) {
+            LauncherAppPickerDialog(
+                visible = true,
+                title = if (pickSide == "left") stringResource(R.string.launcher_split_pick_left)
+                else stringResource(R.string.launcher_split_pick_right),
+                apps = apps,
+                onDismiss = { pickSide = null },
+                onPick = { entry ->
+                    editing = if (pickSide == "left") {
+                        editing!!.copy(leftPackage = entry.packageName)
+                    } else {
+                        editing!!.copy(rightPackage = entry.packageName)
+                    }
+                    pickSide = null
+                },
+            )
+        }
+
         return
     }
 

@@ -167,6 +167,8 @@ fun LauncherRightPanel(
     var activeDraggingEntry by remember { mutableStateOf<HomeDockEntry?>(null) }
     var activeDraggingX by remember { mutableFloatStateOf(0f) }
     var activeDraggingY by remember { mutableFloatStateOf(0f) }
+    var dragStartX by remember { mutableFloatStateOf(0f) }
+    var dragStartY by remember { mutableFloatStateOf(0f) }
     var rightPanelLeftPx by remember { mutableFloatStateOf(0f) }
     var rightPanelTopPx by remember { mutableFloatStateOf(0f) }
 
@@ -687,6 +689,15 @@ fun LauncherRightPanel(
                         onClick = {},
                         onLongClick = {},
                     )
+                    is HomeDockEntry.TbmAuto -> LauncherTbmAutoDockIcon(
+                        automationId = entry.automationId,
+                        name = entry.name,
+                        iconName = entry.iconName,
+                        iconScale = homeIconScale,
+                        isDragMode = true,
+                        onClick = {},
+                        onLongClick = {},
+                    )
                     else -> {}
                 }
             }
@@ -1022,12 +1033,14 @@ fun LauncherRightPanel(
                             },
                             onStartDrag = { dragEntry, startX, startY ->
                                 activeDraggingEntry = dragEntry
+                                dragStartX = startX
+                                dragStartY = startY
                                 activeDraggingX = startX
                                 activeDraggingY = startY
                             },
-                            onDragUpdate = { dx, dy ->
-                                activeDraggingX += dx
-                                activeDraggingY += dy
+                            onDragUpdate = { totalDx, totalDy ->
+                                activeDraggingX = dragStartX + totalDx
+                                activeDraggingY = dragStartY + totalDy
                             },
                             onEndDrag = {
                                 activeDraggingEntry = null
@@ -1098,6 +1111,27 @@ fun LauncherRightPanel(
             }
         }
 
+        LauncherSplitPresetCreateDialog(
+            visible = splitCreateVisible,
+            apps = pickerApps,
+            initialPreset = splitEditPreset,
+            pinToHomeOnSave = false,
+            onDismiss = {
+                splitCreateVisible = false
+                splitEditPreset = null
+            },
+            onSaved = {
+                if (splitEditPreset == null) {
+                    val latestPreset = LauncherSplitPresetStore.loadPresets(context).lastOrNull()
+                    if (latestPreset != null) {
+                        LauncherHomeStore.addSplit(context, latestPreset.id, targetSlot = pickerSlotIndex)
+                    }
+                }
+                onConfigChanged()
+                pickerSlotIndex = -1
+            },
+        )
+
         LauncherAppPickerDialog(
             visible = appPickerVisible || replaceIndex >= 0,
             title = stringResource(R.string.launcher_grid_pick_app),
@@ -1116,27 +1150,6 @@ fun LauncherRightPanel(
                 onConfigChanged()
                 appPickerVisible = false
                 replaceIndex = -1
-                pickerSlotIndex = -1
-            },
-        )
-
-        LauncherSplitPresetCreateDialog(
-            visible = splitCreateVisible,
-            apps = pickerApps,
-            initialPreset = splitEditPreset,
-            pinToHomeOnSave = false,
-            onDismiss = {
-                splitCreateVisible = false
-                splitEditPreset = null
-            },
-            onSaved = {
-                if (splitEditPreset == null) {
-                    val latestPreset = LauncherSplitPresetStore.loadPresets(context).lastOrNull()
-                    if (latestPreset != null) {
-                        LauncherHomeStore.addSplit(context, latestPreset.id, targetSlot = pickerSlotIndex)
-                    }
-                }
-                onConfigChanged()
                 pickerSlotIndex = -1
             },
         )
@@ -1664,38 +1677,15 @@ private fun LauncherDraggableHomeDockEntry(
                                     val targetColumn = (currentColumn + colShift).coerceIn(0, gridColumns - 1)
                                     val targetRow = currentRow + rowShift
 
-                                    val bottomBarTop = LauncherEmbeddedBoundsState.bottomBarTopPx
-                                    val droppedTopY = itemTopPx + offsetY
-                                    val isDroppedInBottomBar = (bottomBarTop > 0 && droppedTopY >= bottomBarTop - 40) ||
-                                        (targetRow >= gridRows) ||
-                                        (offsetY > cellHeightPx * (gridRows - currentRow - 0.3f))
+                                    val isDraggedAboveGrid = targetRow < 0 && offsetY < -cellHeightPx * (currentRow + 0.6f)
 
-                                    val buttonId = when (entry) {
-                                        is HomeDockEntry.App -> "pkg:${entry.entry.packageName}"
-                                        is HomeDockEntry.Split -> "split:${entry.preset.id}"
-                                        is HomeDockEntry.TbmAuto -> "tbm:${entry.automationId}"
-                                        else -> null
-                                    }
-                                    if (isDroppedInBottomBar && buttonId != null) {
-                                        val droppedLeftX = itemLeftX + offsetX
-                                        val displayMetrics = context.resources.displayMetrics
-                                        val screenWidthPx = displayMetrics.widthPixels
-                                        val slotUnitWidthPx = ((screenWidthPx - (24f * displayMetrics.density)) / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(1f)
-                                        val targetBottomSlot = (droppedLeftX / slotUnitWidthPx).roundToInt().coerceIn(0, GRID_SLOTS_TOTAL_COUNT - 1)
-
-                                        LauncherAppConfigStore.setButtonInUnifiedSlot(context, targetBottomSlot, buttonId)
-                                        onConfigChanged()
+                                    if (isDraggedAboveGrid) {
+                                        onRemoveItem(slotIndex)
                                     } else {
-                                        val isDraggedAboveGrid = targetRow < 0 && offsetY < -cellHeightPx * (currentRow + 0.6f)
-
-                                        if (isDraggedAboveGrid) {
-                                            onRemoveItem(slotIndex)
-                                        } else {
-                                            val validTargetRow = targetRow.coerceIn(0, gridRows - 1)
-                                            val targetSlot = validTargetRow * gridColumns + targetColumn
-                                            if (targetSlot != slotIndex) {
-                                                onMoveItem(slotIndex, targetSlot)
-                                            }
+                                        val validTargetRow = targetRow.coerceIn(0, gridRows - 1)
+                                        val targetSlot = validTargetRow * gridColumns + targetColumn
+                                        if (targetSlot != slotIndex) {
+                                            onMoveItem(slotIndex, targetSlot)
                                         }
                                     }
                                 }
@@ -1712,7 +1702,7 @@ private fun LauncherDraggableHomeDockEntry(
                                 change.consume()
                                 offsetX += dragAmount.x
                                 offsetY += dragAmount.y
-                                onDragUpdate(dragAmount.x, dragAmount.y)
+                                onDragUpdate(offsetX, offsetY)
                             },
                         )
                     }

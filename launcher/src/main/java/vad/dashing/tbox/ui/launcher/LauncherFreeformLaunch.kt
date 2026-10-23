@@ -140,6 +140,31 @@ internal fun tryLaunchIntentInBounds(
     val targetBounds = Rect(bounds)
     val launchModeStr = if (launchAdjacent) "SPLIT_ADJACENT" else "FREEFORM"
 
+    val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val existingTaskId = findTaskIdForPackage(am, packageName)
+    if (existingTaskId != null) {
+        forceFreeformBoundsByTaskId(context, existingTaskId, targetBounds, bringToFront = true, label = packageName)
+        LastAppTracker.recordLaunch(context, packageName)
+        LauncherActiveAppTracker.onAppLaunched(
+            packageName = packageName,
+            topActivityClass = launchIntent.component?.className,
+        )
+        FreeformLaunchRegistry.record(packageName, targetBounds)
+        Log.w("LauncherAppLaunch", "Reused existing task $existingTaskId for pkg=$packageName bounds=$targetBounds")
+        LauncherNavLogger.logAppLaunch(
+            packageName = packageName,
+            component = launchIntent.component?.flattenToString(),
+            intentAction = launchIntent.action,
+            intentFlags = "0x" + Integer.toHexString(launchIntent.flags),
+            mode = "REUSED_TASK",
+            bounds = targetBounds,
+            windowingMode = WINDOWING_MODE_FREEFORM,
+            strategy = "am.moveTaskToFront",
+            success = true,
+        )
+        return true
+    }
+
     return runCatching {
         (activity ?: context).startActivity(launchIntent, options.toBundle())
     }.onSuccess {

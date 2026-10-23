@@ -14,7 +14,6 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
-import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -26,16 +25,15 @@ import java.util.concurrent.Executors
  * Saves log files into `Downloads/DCLlogs` directory.
  *
  * Requirements:
- * - Triggers on opening settings or launching 360 camera.
- * - Writes for 2 minutes after trigger.
+ * - Started manually via bottom bar (dock) log button.
+ * - Writes for 5 minutes (300 seconds) after start.
  * - Keeps max 5 log files in `downloads/DCLlogs`, deleting the oldest ones on rotation.
- * - Enabled/disabled via Launcher Settings. Disabled by default.
  */
 object DclLogRecorder {
     private const val TAG = "DclLogRecorder"
     private const val DIR_NAME = "DCLlogs"
     private const val MAX_LOG_FILES = 5
-    private const val SESSION_DURATION_MS = 120_000L // 2 minutes
+    private const val SESSION_DURATION_MS = 300_000L // 5 minutes
 
     private val lock = Any()
     private val executor = Executors.newSingleThreadExecutor { r ->
@@ -127,14 +125,14 @@ object DclLogRecorder {
     }
 
     /**
-     * Call when opening Settings or launching 360 Camera or pressing the Log button.
-     * Starts or extends a recording session if DCL logs are enabled in settings.
+     * Starts or extends a recording session triggered manually by the dock log button.
      */
-    fun triggerSession(context: Context, reason: String, durationMs: Long = SESSION_DURATION_MS) {
+    fun startSession(
+        context: Context,
+        reason: String = "BOTTOM_BAR_LOG_BUTTON",
+        durationMs: Long = SESSION_DURATION_MS,
+    ) {
         val appCtx = context.applicationContext
-        if (!LauncherAppConfigStore.dclLogsEnabled(appCtx)) {
-            return
-        }
         if (!hasStoragePermission(appCtx)) {
             Log.w(TAG, "Cannot start DCL logging session: storage permission not granted")
             return

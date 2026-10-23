@@ -77,11 +77,20 @@ internal object LauncherOverlayBar {
         val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
+        val screenW = activity.resources.displayMetrics.widthPixels.coerceAtLeast(1920)
         val density = activity.resources.displayMetrics.density
-        val marginPx = (15 * density).toInt()
 
         val initialHomeSizeDp = LauncherAppConfigStore.floatingHomeSizeDp(activity)
         val initialButtonDiameterPx = (initialHomeSizeDp * density).toInt()
+
+        val bottomBarHeightDp = LauncherAppConfigStore.bottomBarHeightDp(activity)
+        val bottomBarHeightPx = (bottomBarHeightDp * density).toInt()
+
+        val slotUnitWidthPx = (screenW - (24 * density)) / 20f
+        val slot0CenterX = (12 * density) + (slotUnitWidthPx / 2f)
+
+        val slot0X = (slot0CenterX - initialButtonDiameterPx / 2f).toInt().coerceAtLeast(0)
+        val slot0Y = ((bottomBarHeightPx - initialButtonDiameterPx) / 2).coerceAtLeast(0)
 
         val params = WindowManager.LayoutParams(
             initialButtonDiameterPx,
@@ -93,8 +102,8 @@ internal object LauncherOverlayBar {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.START
-            x = marginPx
-            y = marginPx
+            x = slot0X
+            y = slot0Y
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
@@ -111,13 +120,18 @@ internal object LauncherOverlayBar {
                 val buttonDiameterPx = (currentHomeSizeDp * density).toInt()
                 val iconSizeDp = (currentHomeSizeDp * 0.52f).dp
 
+                val calcBottomBarHeightDp = remember(context) { LauncherAppConfigStore.bottomBarHeightDp(context) }
+                val calcBottomBarHeightPx = (calcBottomBarHeightDp * density).toInt()
+                val calcSlot0X = ((12 * density) + ((screenW - (24 * density)) / 20f) / 2f - buttonDiameterPx / 2f).toInt().coerceAtLeast(0)
+                val calcSlot0Y = ((calcBottomBarHeightPx - buttonDiameterPx) / 2).coerceAtLeast(0)
+
                 SideEffect {
-                    if (params.width != buttonDiameterPx || params.height != buttonDiameterPx || params.x != marginPx || params.y != marginPx) {
+                    if (params.width != buttonDiameterPx || params.height != buttonDiameterPx || params.x != calcSlot0X || params.y != calcSlot0Y) {
                         params.gravity = Gravity.BOTTOM or Gravity.START
                         params.width = buttonDiameterPx
                         params.height = buttonDiameterPx
-                        params.x = marginPx
-                        params.y = marginPx
+                        params.x = calcSlot0X
+                        params.y = calcSlot0Y
                         runCatching { wm.updateViewLayout(this, params) }
                     }
                 }

@@ -398,10 +398,6 @@ private fun startResolved(
         "startResolved pkg=$packageName component=$component embedded=$preferEmbedded fullscreen=$forceFullscreen mode=$modeStr",
     )
 
-    if (isCameraPackage(packageName)) {
-        vad.dashing.tbox.DclLogRecorder.triggerSession(context, "360_CAMERA_LAUNCHED_PKG: $packageName")
-    }
-
     val flagsHex = "0x" + Integer.toHexString(launchIntent.flags)
     val targetBounds = if (forceFullscreen) {
         LauncherEmbeddedBoundsState.fullScreenBounds()
