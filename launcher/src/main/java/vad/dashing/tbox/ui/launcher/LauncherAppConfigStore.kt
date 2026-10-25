@@ -126,7 +126,7 @@ internal const val DOCK_ICON_SCALE_MAX = 2.00f
 internal const val TOP_BAR_HEIGHT_DEFAULT = 32
 internal const val TOP_BAR_HEIGHT_MIN = 28
 internal const val TOP_BAR_HEIGHT_MAX = 72
-internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 65
+internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 70
 internal const val BOTTOM_BAR_HEIGHT_MIN = 48
 internal const val BOTTOM_BAR_HEIGHT_MAX = 110
 internal const val FLOATING_HOME_SIZE_DEFAULT = 55
@@ -151,9 +151,9 @@ internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
 internal const val ADAS_DISTANCE_LABEL_OFFSET_DEFAULT = 0.50f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MIN = 0.00f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
-internal const val CLIMATE_SCALE_DEFAULT = 1.00f
-internal const val CLIMATE_SCALE_MIN = 0.70f
-internal const val CLIMATE_SCALE_MAX = 2.00f
+internal const val CLIMATE_SCALE_DEFAULT = 1.50f
+internal const val CLIMATE_SCALE_MIN = 1.05f
+internal const val CLIMATE_SCALE_MAX = 1.70f
 internal const val GRID_COLUMNS_DEFAULT = 12
 internal const val GRID_COLUMNS_MIN = 5
 internal const val GRID_COLUMNS_MAX = 20
@@ -186,6 +186,22 @@ private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 private const val KEY_CRUISE_INCREASE_INTERVAL = "cruise_increase_interval"
 private const val KEY_CRUISE_DECREASE_INTERVAL = "cruise_decrease_interval"
+private const val KEY_TIRE_PRESSURE_ON_CAR_ENABLED = "tire_pressure_on_car_enabled"
+private const val KEY_TIRE_PRESSURE_ONLY_LOW = "tire_pressure_only_low"
+private const val KEY_TIRE_PRESSURE_LOW_THRESHOLD = "tire_pressure_low_threshold"
+private const val KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS = "tire_pressure_always_in_settings"
+private const val KEY_TIRE_PRESSURE_PERSIST_ENABLED = "tire_pressure_persist_enabled"
+private const val KEY_SAVED_TIRE_PRESSURE_FL = "saved_tire_pressure_fl"
+private const val KEY_SAVED_TIRE_PRESSURE_FR = "saved_tire_pressure_fr"
+private const val KEY_SAVED_TIRE_PRESSURE_RL = "saved_tire_pressure_rl"
+private const val KEY_SAVED_TIRE_PRESSURE_RR = "saved_tire_pressure_rr"
+private const val KEY_SAVED_TIRE_TEMP_FL = "saved_tire_temp_fl"
+private const val KEY_SAVED_TIRE_TEMP_FR = "saved_tire_temp_fr"
+private const val KEY_SAVED_TIRE_TEMP_RL = "saved_tire_temp_rl"
+private const val KEY_SAVED_TIRE_TEMP_RR = "saved_tire_temp_rr"
+internal const val TIRE_PRESSURE_LOW_THRESHOLD_DEFAULT = 2.0f
+internal const val TIRE_PRESSURE_LOW_THRESHOLD_MIN = 1.8f
+internal const val TIRE_PRESSURE_LOW_THRESHOLD_MAX = 2.4f
 internal const val GRID_SLOT_COUNT = 9
 private const val DOCK_SLOT_COUNT = 4
 
@@ -273,6 +289,8 @@ internal object LauncherAppConfigStore {
     internal val climateCardBgRevisionFlow: StateFlow<Int> = climateCardBgRevision
     private val bottomSlotsRevision = MutableStateFlow(0)
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
+    private val tirePressureConfigRevision = MutableStateFlow(0)
+    internal val tirePressureConfigRevisionFlow: StateFlow<Int> = tirePressureConfigRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
     private val cruisePanelRevision = MutableStateFlow(0)
@@ -573,6 +591,85 @@ internal object LauncherAppConfigStore {
     fun setAdasBsdAlertOverlayEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_BSD_ALERT_OVERLAY, enabled).apply()
         adasBsdAlertOverlayRevision.value++
+    }
+
+    fun tirePressureOnCarEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ON_CAR_ENABLED, true)
+
+    fun setTirePressureOnCarEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ON_CAR_ENABLED, enabled).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureOnlyLow(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ONLY_LOW, true)
+
+    fun setTirePressureOnlyLow(context: Context, onlyLow: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ONLY_LOW, onlyLow).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureLowThreshold(context: Context): Float =
+        prefs(context).getFloat(KEY_TIRE_PRESSURE_LOW_THRESHOLD, TIRE_PRESSURE_LOW_THRESHOLD_DEFAULT)
+            .coerceIn(TIRE_PRESSURE_LOW_THRESHOLD_MIN, TIRE_PRESSURE_LOW_THRESHOLD_MAX)
+
+    fun setTirePressureLowThreshold(context: Context, threshold: Float) {
+        val next = threshold.coerceIn(TIRE_PRESSURE_LOW_THRESHOLD_MIN, TIRE_PRESSURE_LOW_THRESHOLD_MAX)
+        prefs(context).edit().putFloat(KEY_TIRE_PRESSURE_LOW_THRESHOLD, next).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureAlwaysInSettings(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS, false)
+
+    fun setTirePressureAlwaysInSettings(context: Context, always: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS, always).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressurePersistEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_PERSIST_ENABLED, true)
+
+    fun setTirePressurePersistEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_PERSIST_ENABLED, enabled).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun saveTirePressures(context: Context, state: LauncherTireState) {
+        if (!tirePressurePersistEnabled(context)) return
+        val edit = prefs(context).edit()
+        state.fl.pressureBar?.let { edit.putFloat(KEY_SAVED_TIRE_PRESSURE_FL, it) }
+        state.fr.pressureBar?.let { edit.putFloat(KEY_SAVED_TIRE_PRESSURE_FR, it) }
+        state.rl.pressureBar?.let { edit.putFloat(KEY_SAVED_TIRE_PRESSURE_RL, it) }
+        state.rr.pressureBar?.let { edit.putFloat(KEY_SAVED_TIRE_PRESSURE_RR, it) }
+        state.fl.temperatureC?.let { edit.putInt(KEY_SAVED_TIRE_TEMP_FL, it) }
+        state.fr.temperatureC?.let { edit.putInt(KEY_SAVED_TIRE_TEMP_FR, it) }
+        state.rl.temperatureC?.let { edit.putInt(KEY_SAVED_TIRE_TEMP_RL, it) }
+        state.rr.temperatureC?.let { edit.putInt(KEY_SAVED_TIRE_TEMP_RR, it) }
+        edit.apply()
+    }
+
+    fun loadSavedTirePressures(context: Context): LauncherTireState? {
+        if (!tirePressurePersistEnabled(context)) return null
+        val p = prefs(context)
+        val flP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_FL)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_FL, -1f).takeIf { it > 0f } else null
+        val frP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_FR)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_FR, -1f).takeIf { it > 0f } else null
+        val rlP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_RL)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_RL, -1f).takeIf { it > 0f } else null
+        val rrP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_RR)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_RR, -1f).takeIf { it > 0f } else null
+
+        val flT = if (p.contains(KEY_SAVED_TIRE_TEMP_FL)) p.getInt(KEY_SAVED_TIRE_TEMP_FL, -100).takeIf { it != -100 } else null
+        val frT = if (p.contains(KEY_SAVED_TIRE_TEMP_FR)) p.getInt(KEY_SAVED_TIRE_TEMP_FR, -100).takeIf { it != -100 } else null
+        val rlT = if (p.contains(KEY_SAVED_TIRE_TEMP_RL)) p.getInt(KEY_SAVED_TIRE_TEMP_RL, -100).takeIf { it != -100 } else null
+        val rrT = if (p.contains(KEY_SAVED_TIRE_TEMP_RR)) p.getInt(KEY_SAVED_TIRE_TEMP_RR, -100).takeIf { it != -100 } else null
+
+        if (flP == null && frP == null && rlP == null && rrP == null) return null
+
+        return LauncherTireState(
+            fl = LauncherTireWheelState(pressureBar = flP, temperatureC = flT, available = true),
+            fr = LauncherTireWheelState(pressureBar = frP, temperatureC = frT, available = true),
+            rl = LauncherTireWheelState(pressureBar = rlP, temperatureC = rlT, available = true),
+            rr = LauncherTireWheelState(pressureBar = rrP, temperatureC = rrT, available = true),
+        )
     }
 
     fun speedLimitXRatio(context: Context): Float =

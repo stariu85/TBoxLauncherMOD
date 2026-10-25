@@ -241,9 +241,9 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("front_defrost", "Обдув лобового", R.drawable.ic_widget_hvac_defroster_front),
     LauncherDockButtonDescriptor("rear_defrost", "Обогрев заднего стекла", R.drawable.ic_widget_rear_window_mirrors_defrost),
     LauncherDockButtonDescriptor("home_nav", "Кнопка Домой"),
-    LauncherDockButtonDescriptor("back_nav", "Кнопка Назад"),
+    LauncherDockButtonDescriptor("back_nav", "Кнопка Назад", R.drawable.undo_24),
     LauncherDockButtonDescriptor("all_apps", "Все приложения", R.drawable.ic_all_apps_dock),
-    LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.undo_24),
+    LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.ic_undo_app),
     LauncherDockButtonDescriptor("close_apps", "Закрыть приложения", R.drawable.close_apps_24),
     LauncherDockButtonDescriptor("dcl_log", "Запись лога (5 мин)", R.drawable.menu_icon_log),
 )
@@ -909,8 +909,16 @@ fun LauncherBottomBar(
                 val missingButtons = ALL_CLIMATE_DOCK_BUTTONS.filter { it.id !in presentIds }
                 val rawApps = rememberLaunchableAppEntries(null, 0)
                 val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
-                val pickerApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
                 val homeItems = remember(context, configRevision) { LauncherHomeStore.loadItems(context) }
+                val desktopAppPackages = remember(homeItems) {
+                    homeItems.filterIsInstance<LauncherHomeItem.App>()
+                        .map { it.packageName }
+                        .toSet()
+                }
+                val pickerApps = remember(rawApps, hidden, desktopAppPackages) {
+                    LauncherAppConfigStore.filterVisible(rawApps, hidden)
+                        .filter { it.packageName in desktopAppPackages }
+                }
                 val activeSplitIds = remember(homeItems) {
                     homeItems.filterIsInstance<LauncherHomeItem.Split>().map { it.presetId }.toSet()
                 }
@@ -1107,7 +1115,7 @@ private fun LauncherBottomDockButtonContent(
                     painter = painterResource(drawableRes),
                     contentDescription = "Очистка воздуха PM 2.5",
                     colorFilter = ColorFilter.tint(tint),
-                    modifier = Modifier.size(dockDp(24f)),
+                    modifier = Modifier.size(dockDp(26.4f)),
                 )
             }
         }
@@ -1121,7 +1129,7 @@ private fun LauncherBottomDockButtonContent(
                     painter = painterResource(R.drawable.ic_widget_hvac_power),
                     contentDescription = "Питание климата",
                     colorFilter = ColorFilter.tint(tint),
-                    modifier = Modifier.size(dockDp(24f)),
+                    modifier = Modifier.size(dockDp(26.4f)),
                 )
             }
         }
@@ -1163,7 +1171,7 @@ private fun LauncherBottomDockButtonContent(
                     painter = painterResource(R.drawable.ic_widget_hvac_ac),
                     contentDescription = "Кондиционер AC",
                     colorFilter = ColorFilter.tint(tint),
-                    modifier = Modifier.size(dockDp(24f)),
+                    modifier = Modifier.size(dockDp(26.4f)),
                 )
             }
         }
@@ -1181,7 +1189,7 @@ private fun LauncherBottomDockButtonContent(
                     painter = painterResource(drawableRes),
                     contentDescription = "Направление обдува",
                     colorFilter = ColorFilter.tint(HvacOnColor),
-                    modifier = Modifier.size(dockDp(24f)),
+                    modifier = Modifier.size(dockDp(31.68f)),
                 )
             }
         }
@@ -1204,7 +1212,12 @@ private fun LauncherBottomDockButtonContent(
                 )
             },
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.launcher_back_cd), tint = LauncherColors.TextSecondary)
+            Image(
+                painter = painterResource(R.drawable.undo_24),
+                contentDescription = stringResource(R.string.launcher_back_cd),
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(17.35f)),
+            )
         }
         "all_apps", "all_apps_nav", "apps_drawer" -> LauncherDockIcon(
             onClick = {
@@ -1214,7 +1227,7 @@ private fun LauncherBottomDockButtonContent(
                         activity,
                         SettingsViewModelFactory(SettingsManager(activity)),
                     )[SettingsViewModel::class.java]
-                    LauncherAppDrawerWindow.show(
+                    LauncherAppDrawerWindow.toggle(
                         context = activity,
                         settingsViewModel = settingsViewModel,
                         onConfigChanged = {},
@@ -1226,7 +1239,7 @@ private fun LauncherBottomDockButtonContent(
                 painter = painterResource(R.drawable.ic_all_apps_dock),
                 contentDescription = "Все приложения",
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
-                modifier = Modifier.size(dockDp(28f)),
+                modifier = Modifier.size(dockDp(21.42f)),
             )
         }
         "undo_nav", "undo_24", "last_app" -> LauncherDockIcon(
@@ -1235,10 +1248,10 @@ private fun LauncherBottomDockButtonContent(
             },
         ) {
             Image(
-                painter = painterResource(R.drawable.undo_24),
+                painter = painterResource(R.drawable.ic_undo_app),
                 contentDescription = "Предыдущее приложение",
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
-                modifier = Modifier.size(dockDp(28f)),
+                modifier = Modifier.size(dockDp(36.29f)),
             )
         }
         "close_apps", "close_apps_nav", "close_apps_24" -> LauncherDockIcon(
@@ -1250,7 +1263,7 @@ private fun LauncherBottomDockButtonContent(
                 painter = painterResource(R.drawable.close_apps_24),
                 contentDescription = "Закрыть приложения",
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
-                modifier = Modifier.size(dockDp(32.2f)),
+                modifier = Modifier.size(dockDp(28.98f)),
             )
         }
         "dcl_log" -> {
@@ -1349,7 +1362,7 @@ private fun LauncherBottomDockButtonContent(
             LauncherSeatVentIcon(raw = leftRaw)
         }
         "recirc" -> LauncherDockIcon(onClick = { sendToggleHvacAirRecirculation(context) }) {
-            LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc)
+            LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc, sizeDp = 28.6f)
         }
         "seat_heat_right" -> LauncherDockIcon(onClick = {
             sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
@@ -1656,7 +1669,7 @@ private fun LauncherVolumeStepper(
 }
 
 @Composable
-private fun LauncherHvacIcon(drawableRes: Int, state: MbCanBinaryState) {
+private fun LauncherHvacIcon(drawableRes: Int, state: MbCanBinaryState, sizeDp: Float = 26f) {
     val tint = when (state) {
         is MbCanBinaryState.On -> HvacOnColor
         is MbCanBinaryState.Off -> HvacOffColor
@@ -1665,7 +1678,7 @@ private fun LauncherHvacIcon(drawableRes: Int, state: MbCanBinaryState) {
     Image(
         painter = painterResource(drawableRes),
         contentDescription = null,
-        modifier = Modifier.size(dockDp(26f)),
+        modifier = Modifier.size(dockDp(sizeDp)),
         colorFilter = ColorFilter.tint(tint),
     )
 }
@@ -1707,12 +1720,12 @@ private fun LauncherSeatModeIcon(
 @Composable
 private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
     val level = heatLevel(raw)
-    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(dockDp(25.5f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_widget_seat),
             contentDescription = null,
             modifier = Modifier
-                .size(dockDp(26f))
+                .size(dockDp(22.1f))
                 .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
             colorFilter = ColorFilter.tint(if (level > 0) SeatHeatOnColor else HvacOffColor),
         )
@@ -1725,7 +1738,7 @@ private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
                 painter = painterResource(drawable),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(dockDp(26f))
+                    .size(dockDp(22.1f))
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                 colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
             )
@@ -1736,12 +1749,12 @@ private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
 @Composable
 private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
     val level = ventLevel(raw)
-    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(dockDp(25.5f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_widget_seat),
             contentDescription = null,
             modifier = Modifier
-                .size(dockDp(26f))
+                .size(dockDp(22.1f))
                 .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
             colorFilter = ColorFilter.tint(if (level > 0) HvacOnColor else HvacOffColor),
         )
@@ -1755,7 +1768,7 @@ private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
                 painter = painterResource(drawable),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(dockDp(26f))
+                    .size(dockDp(22.1f))
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                 colorFilter = ColorFilter.tint(if (enabled) HvacOnColor else HvacOffColor),
             )

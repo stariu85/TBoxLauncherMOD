@@ -70,6 +70,8 @@ import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.LocValues
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
+import vad.dashing.tbox.tbm.TbmConnectionState
+import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
 import java.io.File
@@ -303,7 +305,11 @@ internal fun LauncherHeaderStatusIcons(
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val satColor = if (satInfo.hasFix) Color(0xFF22C55E) else Color(0xFFF97316)
+            val satColor = when {
+                satInfo.isInertial -> Color(0xFF3B82F6) // Blue for Inertial Navigation System
+                satInfo.hasFix -> Color(0xFF22C55E)     // Green for GPS Fix
+                else -> Color(0xFFF97316)              // Orange for No Fix
+            }
             Image(
                 painter = painterResource(R.drawable.ic_launcher_satellite),
                 contentDescription = stringResource(R.string.location_visible_satellites),
@@ -374,6 +380,7 @@ private data class SatelliteInfo(
     val visibleSatellites: Int = 0,
     val usingSatellites: Int = 0,
     val hasFix: Boolean = false,
+    val isInertial: Boolean = false,
 )
 
 @Composable
@@ -382,6 +389,17 @@ private fun rememberSatelliteInfo(
     locValues: LocValues,
 ): SatelliteInfo {
     val context = LocalContext.current
+    val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+    val tbmConnState by tbmRepo.connectionState.collectAsStateWithLifecycle()
+    val tbmSatVisible by tbmRepo.geoSatellitesVisible.collectAsStateWithLifecycle()
+    val tbmSatUsed by tbmRepo.geoSatellitesUsed.collectAsStateWithLifecycle()
+    val tbmFixValid by tbmRepo.geoFixValid.collectAsStateWithLifecycle()
+    val tbmLocateStatus by tbmRepo.locateStatusSignal.collectAsStateWithLifecycle()
+    val tbmSpeedSource by tbmRepo.geoSpeedSource.collectAsStateWithLifecycle()
+
+    val isTbmConnected = tbmConnState is TbmConnectionState.Connected
+    val isTbmGeoAvailable = isTbmConnected && (tbmSatVisible != null || tbmSatUsed != null || tbmFixValid != null || tbmLocateStatus != null)
+
     val now = System.currentTimeMillis()
     val isTboxLocFresh = tboxConnected &&
             locValues.updateTime != null &&
@@ -389,7 +407,7 @@ private fun rememberSatelliteInfo(
 
     var systemSatInfo by remember { mutableStateOf(SatelliteInfo()) }
 
-    val useSystemFallback = !isTboxLocFresh
+    val useSystemFallback = !isTbmGeoAvailable && !isTboxLocFresh
 
     DisposableEffect(useSystemFallback, context) {
         if (!useSystemFallback) {
@@ -516,14 +534,30 @@ private fun rememberSatelliteInfo(
         }
     }
 
-    return if (isTboxLocFresh) {
-        SatelliteInfo(
-            visibleSatellites = locValues.visibleSatellites,
-            usingSatellites = locValues.usingSatellites,
-            hasFix = locValues.hasGpsFix,
-        )
-    } else {
-        systemSatInfo
+    return when {
+        isTbmGeoAvailable -> {
+            val visible = tbmSatVisible ?: tbmSatUsed ?: 0
+            val used = tbmSatUsed ?: 0
+            val fix = tbmFixValid == true || tbmLocateStatus == true
+            val inertial = tbmSpeedSource == "retention" || tbmSpeedSource == "can"
+            SatelliteInfo(
+                visibleSatellites = maxOf(visible, used),
+                usingSatellites = used,
+                hasFix = fix,
+                isInertial = inertial,
+            )
+        }
+        isTboxLocFresh -> {
+            SatelliteInfo(
+                visibleSatellites = locValues.visibleSatellites,
+                usingSatellites = locValues.usingSatellites,
+                hasFix = locValues.hasGpsFix,
+                isInertial = false,
+            )
+        }
+        else -> {
+            systemSatInfo
+        }
     }
 }
 

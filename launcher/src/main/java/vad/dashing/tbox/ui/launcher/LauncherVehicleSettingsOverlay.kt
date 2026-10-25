@@ -30,10 +30,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -300,6 +302,22 @@ internal fun LauncherVehicleSettingsContent(
     )
     val wheelPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
     val wheelTemp by canViewModel.wheelsTemperature.collectAsStateWithLifecycle()
+    val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
+    var tirePressureOnCarEnabled by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureOnCarEnabled(context))
+    }
+    var tirePressureOnlyLow by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureOnlyLow(context))
+    }
+    var tirePressureLowThreshold by remember(context, tirePressureConfigRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.tirePressureLowThreshold(context))
+    }
+    var tirePressureAlwaysInSettings by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureAlwaysInSettings(context))
+    }
+    var tirePressurePersistEnabled by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressurePersistEnabled(context))
+    }
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val pasOn = parkingRadar is MbCanBinaryState.On
@@ -366,6 +384,87 @@ internal fun LauncherVehicleSettingsContent(
             LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_fr), wheelPressure.wheel2, wheelTemp.wheel2)
             LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_rl), wheelPressure.wheel3, wheelTemp.wheel3)
             LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_rr), wheelPressure.wheel4, wheelTemp.wheel4)
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_tire_pressure_show_on_car),
+                active = tirePressureOnCarEnabled,
+                onClick = {
+                    val next = !tirePressureOnCarEnabled
+                    tirePressureOnCarEnabled = next
+                    LauncherAppConfigStore.setTirePressureOnCarEnabled(context, next)
+                },
+            )
+
+            if (tirePressureOnCarEnabled) {
+                LauncherSettingsToggleRow(
+                    label = stringResource(R.string.launcher_vs_tire_pressure_only_low),
+                    active = tirePressureOnlyLow,
+                    onClick = {
+                        val next = !tirePressureOnlyLow
+                        tirePressureOnlyLow = next
+                        LauncherAppConfigStore.setTirePressureOnlyLow(context, next)
+                    },
+                )
+
+                LauncherSettingsToggleRow(
+                    label = stringResource(R.string.launcher_vs_tire_pressure_always_in_settings),
+                    active = tirePressureAlwaysInSettings,
+                    onClick = {
+                        val next = !tirePressureAlwaysInSettings
+                        tirePressureAlwaysInSettings = next
+                        LauncherAppConfigStore.setTirePressureAlwaysInSettings(context, next)
+                    },
+                )
+
+                Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.launcher_vs_tire_pressure_threshold),
+                            color = LauncherColors.TextPrimary,
+                            fontSize = 14.sp,
+                        )
+                        Text(
+                            text = "${valueToString(tirePressureLowThreshold, 1)} bar",
+                            color = LauncherColors.AccentCyan,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Slider(
+                        value = tirePressureLowThreshold,
+                        onValueChange = { newValue ->
+                            val rounded = (newValue * 10f).roundToInt() / 10f
+                            tirePressureLowThreshold = rounded
+                            LauncherAppConfigStore.setTirePressureLowThreshold(context, rounded)
+                        },
+                        valueRange = 1.8f..2.4f,
+                        steps = 5,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = LauncherColors.AccentCyan,
+                            activeTrackColor = LauncherColors.AccentCyan,
+                        ),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_tire_pressure_persist),
+                active = tirePressurePersistEnabled,
+                onClick = {
+                    val next = !tirePressurePersistEnabled
+                    tirePressurePersistEnabled = next
+                    LauncherAppConfigStore.setTirePressurePersistEnabled(context, next)
+                },
+            )
         }
 
         LauncherVehicleSectionCard(

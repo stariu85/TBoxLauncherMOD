@@ -1,5 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
+import vad.dashing.tbox.Wheels
+
 /**
  * TPMS wheel index matches OEM [MBTiresView] / CAN 0x51B:
  * 0=FL, 1=FR, 2=RL, 3=RR.
@@ -12,7 +14,7 @@ enum class LauncherWheelCorner(val index: Int) {
 }
 
 /**
- * Per-wheel TPMS snapshot from mbCAN [MBCanTireInfo].
+ * Per-wheel TPMS snapshot from mbCAN [MBCanTireInfo] or TBox CAN (0x51B).
  *
  * OEM “abnormal” = [warningSts] != 0; pressure `-1` means calibrating / invalid
  * (shown as `---/--` in carsettings).
@@ -24,10 +26,13 @@ data class LauncherTireWheelState(
     val calibrating: Boolean = false,
     val available: Boolean = false,
 ) {
-    /** Show callout next to the 3D car — OEM abnormal or clearly low pressure (<2.0 bar). */
+    /** Show callout next to the 3D car — OEM abnormal or clearly low pressure (< [lowPressureThreshold]). */
+    fun needsAttention(lowPressureThreshold: Float = LOW_PRESSURE_BAR): Boolean =
+        warningSts != 0 || calibrating || (available && pressureBar == null) ||
+            (pressureBar != null && pressureBar < lowPressureThreshold)
+
     val needsAttention: Boolean
-        get() = warningSts != 0 || calibrating || (available && pressureBar == null) ||
-            (pressureBar != null && pressureBar < LOW_PRESSURE_BAR)
+        get() = needsAttention(LOW_PRESSURE_BAR)
 
     companion object {
         /** User-requested visual threshold for low-pressure callout. */
@@ -48,8 +53,39 @@ data class LauncherTireState(
         LauncherWheelCorner.RR -> rr
     }
 
+    fun hasAttention(lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR): Boolean =
+        fl.needsAttention(lowPressureThreshold) ||
+            fr.needsAttention(lowPressureThreshold) ||
+            rl.needsAttention(lowPressureThreshold) ||
+            rr.needsAttention(lowPressureThreshold)
+
     val hasAttention: Boolean
-        get() = fl.needsAttention || fr.needsAttention || rl.needsAttention || rr.needsAttention
+        get() = hasAttention(LauncherTireWheelState.LOW_PRESSURE_BAR)
+
+    val hasAvailableData: Boolean
+        get() = (fl.available && fl.pressureBar != null) ||
+            (fr.available && fr.pressureBar != null) ||
+            (rl.available && rl.pressureBar != null) ||
+            (rr.available && rr.pressureBar != null)
+}
+
+internal fun mergeTireStateWithCanData(mbCanTires: LauncherTireState, canWheels: Wheels): LauncherTireState {
+    fun mergeWheel(wheel: LauncherTireWheelState, canPressure: Float?): LauncherTireWheelState {
+        if (wheel.available && wheel.pressureBar != null) return wheel
+        if (canPressure != null) {
+            return wheel.copy(
+                pressureBar = canPressure,
+                available = true,
+            )
+        }
+        return wheel
+    }
+    return LauncherTireState(
+        fl = mergeWheel(mbCanTires.fl, canWheels.wheel1),
+        fr = mergeWheel(mbCanTires.fr, canWheels.wheel2),
+        rl = mergeWheel(mbCanTires.rl, canWheels.wheel3),
+        rr = mergeWheel(mbCanTires.rr, canWheels.wheel4),
+    )
 }
 
 internal fun parseLauncherTireWheel(info: Any?): LauncherTireWheelState {

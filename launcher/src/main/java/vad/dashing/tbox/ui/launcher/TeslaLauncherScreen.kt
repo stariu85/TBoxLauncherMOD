@@ -1,6 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.os.Build
+import vad.dashing.tbox.LauncherHomeActivity
+import vad.dashing.tbox.LauncherHomeActivityHolder
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -158,13 +160,8 @@ fun TeslaLauncherScreen(
                 appDrawerVisible = false
             }
         }
-        BackHandler(enabled = !settingsOpen && !LauncherEggRace.active) {
-            goLauncherBack(
-                context = context,
-                vehicleSettingsOpen = false,
-                onCloseVehicleSettings = {},
-                source = "TeslaScreen:BackHandler",
-            )
+        BackHandler(enabled = !settingsOpen && !appDrawerVisible && !LauncherEggRace.active) {
+            // Root desktop Back handler: consume Back to prevent LauncherHomeActivity from finishing
         }
 
         Box(
@@ -184,6 +181,7 @@ fun TeslaLauncherScreen(
             val topBarHeightDp = remember(context, topBarRevision) {
                 LauncherAppConfigStore.topBarHeightDp(context)
             }
+
             LauncherDevScaleProvider {
                 Column(
                     modifier = modifier
@@ -243,7 +241,24 @@ fun TeslaLauncherScreen(
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .background(LauncherColors.CanvasDark),
-                        )
+                        ) {
+                            var rightPanelConfigRev by remember { mutableIntStateOf(0) }
+                            LauncherRightPanel(
+                                canViewModel = canViewModel,
+                                settingsViewModel = settingsViewModel,
+                                tboxViewModel = tboxViewModel,
+                                onOpenConsole = { launchTBoxSettings(context) },
+                                onOpenApps = {
+                                    val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
+                                    if (activity != null) {
+                                        LauncherAppDrawerWindow.toggle(activity, settingsViewModel, {})
+                                    }
+                                },
+                                configRevision = rightPanelConfigRev,
+                                onConfigChanged = { rightPanelConfigRev++ },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                     LauncherBottomBar(
                         canViewModel = canViewModel,

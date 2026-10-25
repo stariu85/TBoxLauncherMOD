@@ -18,6 +18,7 @@ internal object LauncherAmStackShell {
         val visible: Boolean,
         /** Class of the task's top activity (from topActivity=ComponentInfo), if printed. */
         val topActivityClass: String? = null,
+        val bounds: android.graphics.Rect? = null,
     )
 
     fun listStacks(): List<StackRow> {
@@ -29,16 +30,18 @@ internal object LauncherAmStackShell {
         var pkg: String? = null
         var visible = false
         var topClass: String? = null
+        var stackBounds: android.graphics.Rect? = null
 
         fun flush() {
             val id = stackId ?: return
-            rows += StackRow(id, mode, taskId, pkg, visible, topClass)
+            rows += StackRow(id, mode, taskId, pkg, visible, topClass, stackBounds)
             stackId = null
             mode = ""
             taskId = null
             pkg = null
             visible = false
             topClass = null
+            stackBounds = null
         }
 
         for (raw in out.lineSequence()) {
@@ -61,6 +64,15 @@ internal object LauncherAmStackShell {
             }
             Regex("""visible=(true|false)""").find(line)?.let {
                 visible = it.groupValues[1] == "true"
+            }
+            val boundsMatch = Regex("""bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)""").find(line)
+                ?: Regex("""mBounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)""").find(line)
+            if (boundsMatch != null) {
+                val l = boundsMatch.groupValues[1].toInt()
+                val t = boundsMatch.groupValues[2].toInt()
+                val r = boundsMatch.groupValues[3].toInt()
+                val b = boundsMatch.groupValues[4].toInt()
+                stackBounds = android.graphics.Rect(l, t, r, b)
             }
         }
         flush()
@@ -119,14 +131,21 @@ internal object LauncherAmStackShell {
         for (s in stacks) {
             val pkg = s.packageName ?: continue
             if (pkg == launcherPackage) continue
-            val isFreeform = s.windowingMode.equals("freeform", ignoreCase = true) ||
+            val isFreeformMode = s.windowingMode.equals("freeform", ignoreCase = true) ||
                 s.windowingMode.equals("extend", ignoreCase = true)
-            val tracked = pkg in packages
-            if (!isFreeform && !tracked) continue
-            if (removeStack(s.stackId)) {
-                removed++
-                FreeformLaunchRegistry.remove(pkg)
-                Log.w(TAG, "removed stack=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
+            val isFullscreenBounds = s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000
+            val isTrulyFreeform = isFreeformMode && !isFullscreenBounds
+
+            if (isTrulyFreeform) {
+                if (removeStack(s.stackId)) {
+                    removed++
+                    FreeformLaunchRegistry.remove(pkg)
+                    Log.w(TAG, "removed freeform stack=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
+                }
+            } else {
+                if (moveStackToBack(s.stackId)) {
+                    Log.w(TAG, "moved fullscreen stack to back id=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
+                }
             }
         }
         return removed

@@ -23,15 +23,12 @@ import java.lang.reflect.Proxy
 object LauncherVehicleAlertsRepository {
     private const val ENGINE_CLASS = "com.mengbo.mbCan.MBCanEngine"
     private const val POLL_MS = 1_200L
-    /** After a live chime/seat push, ignore stale cache clears for a short window. */
-    private const val BELT_PUSH_STICKY_MS = 3_500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var pollJob: Job? = null
     private var chimeProxy: Any? = null
     private var seatBeltProxy: Any? = null
     private var active = false
-    private var beltStickyUntilElapsedMs = 0L
 
     private var driverBelt = false
     private var passengerBelt = false
@@ -82,7 +79,6 @@ object LauncherVehicleAlertsRepository {
         // Listener slots in the OEM engine are global. Keep our registered proxy instead of
         // calling unRegistIMBChimeStatusListener(), which can also remove another consumer.
         active = false
-        beltStickyUntilElapsedMs = 0L
         clearSignals()
         _state.value = LauncherVehicleAlertsState()
     }
@@ -161,9 +157,9 @@ object LauncherVehicleAlertsRepository {
         if (status == null) return
         val d = byteActive(status, "getDriverWarning")
         val p = byteActive(status, "getPassengerWarning")
-        driverBelt = d
-        passengerBelt = p
-        noteBeltPush(anyActive = d || p)
+        if (d) driverBelt = true
+        if (p) passengerBelt = true
+        checkDoorsAndClearBelts()
         publish()
     }
 
@@ -174,27 +170,26 @@ object LauncherVehicleAlertsRepository {
         val rl = byteActive(chime, "getICM_2_RLSeatBeltWarningSts")
         val rm = byteActive(chime, "getICM_2_RMSeatBeltWarningSts")
         val rr = byteActive(chime, "getICM_2_RRSeatBeltWarningSts")
-        driverBelt = d
-        passengerBelt = p
-        rearLeftBelt = rl
-        rearMidBelt = rm
-        rearRightBelt = rr
-        noteBeltPush(anyActive = d || p || rl || rm || rr)
+        if (d) driverBelt = true
+        if (p) passengerBelt = true
+        if (rl) rearLeftBelt = true
+        if (rm) rearMidBelt = true
+        if (rr) rearRightBelt = true
+        checkDoorsAndClearBelts()
         publish()
     }
 
     /**
-     * Seat-belt type-15 push dispatch in OEM engine is empty; cache via [getMbCanData] and chime
-     * remain the sources of truth. A short sticky window prevents one stale zero poll from
-     * clearing a fresh warning, without permanently disabling polling.
+     * Polls seat-belt cache via [getMbCanData] and chime. Latches warnings once triggered
+     * so indicator flashes then remains steadily lit until the person buckles or exits (door opens).
      */
     private fun pollSeatBeltCache() {
         val chime = readCachedChime()
-        var d = driverBelt
-        var p = passengerBelt
-        var rl = rearLeftBelt
-        var rm = rearMidBelt
-        var rr = rearRightBelt
+        var d = false
+        var p = false
+        var rl = false
+        var rm = false
+        var rr = false
         if (chime != null) {
             d = byteActive(chime, "getICM_2_DriverSeatBeltWarningSts")
             p = byteActive(chime, "getICM_2_PassengerSeatBeltWarningSts")
@@ -204,35 +199,30 @@ object LauncherVehicleAlertsRepository {
         }
         readSeatBeltWarning()?.let { snap ->
             // Type 15 is authoritative for the two front seats.
-            d = snap.first
-            p = snap.second
+            if (snap.first) d = true
+            if (snap.second) p = true
         }
-        val sticky = android.os.SystemClock.elapsedRealtime() < beltStickyUntilElapsedMs
-        if (sticky) {
-            // Only allow upgrades to "warning on" while sticky; never clear from stale cache.
-            driverBelt = driverBelt || d
-            passengerBelt = passengerBelt || p
-            rearLeftBelt = rearLeftBelt || rl
-            rearMidBelt = rearMidBelt || rm
-            rearRightBelt = rearRightBelt || rr
-        } else {
-            driverBelt = d
-            passengerBelt = p
-            rearLeftBelt = rl
-            rearMidBelt = rm
-            rearRightBelt = rr
-        }
+        if (d) driverBelt = true
+        if (p) passengerBelt = true
+        if (rl) rearLeftBelt = true
+        if (rm) rearMidBelt = true
+        if (rr) rearRightBelt = true
+
+        checkDoorsAndClearBelts()
     }
 
-    private fun noteBeltPush(anyActive: Boolean) {
-        if (anyActive) {
-            beltStickyUntilElapsedMs =
-                android.os.SystemClock.elapsedRealtime() + BELT_PUSH_STICKY_MS
+    private fun checkDoorsAndClearBelts() {
+        val body = effectiveBody()
+        if (body.doorFlOpen) driverBelt = false
+        if (body.doorFrOpen) passengerBelt = false
+        if (body.doorRlOpen) rearLeftBelt = false
+        if (body.doorRrOpen) rearRightBelt = false
+        if (body.doorRlOpen || body.doorRrOpen) rearMidBelt = false
+
+        if (LauncherDevVehicleState.simulateEnabled) {
+            if (!LauncherDevVehicleState.seatBeltDriver) driverBelt = false
+            if (!LauncherDevVehicleState.seatBeltPassenger) passengerBelt = false
         }
-        vad.dashing.tbox.DiagFileLog.i(
-            "SeatBelt",
-            "push d=$driverBelt p=$passengerBelt rl=$rearLeftBelt rm=$rearMidBelt rr=$rearRightBelt stickyMs=$BELT_PUSH_STICKY_MS",
-        )
     }
 
     private fun readCachedChime(): Any? {

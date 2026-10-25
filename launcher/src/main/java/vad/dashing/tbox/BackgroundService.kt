@@ -41,6 +41,7 @@ class BackgroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(applicationContext)
+        vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper.ensureNavBackServiceEnabled(applicationContext)
         startAsForeground()
         MbCanEngineFacade.ensureInitialized()
         scope.launch {

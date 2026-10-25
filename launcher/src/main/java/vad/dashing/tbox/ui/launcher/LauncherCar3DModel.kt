@@ -70,7 +70,7 @@ private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val BASE_MODEL_SCALE = 0.42f
 private const val DYNAMIC_FRAME_INTERVAL_NS = 28_000_000L // 30 FPS target with hysteresis / VSYNC tolerance margin (~28ms)
-private const val DYNAMIC_GRACE_PERIOD_NS = 5_000_000_000L // 5 seconds grace period
+private const val DYNAMIC_GRACE_PERIOD_NS = 2_000_000_000L // 2 seconds grace period
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
@@ -464,8 +464,8 @@ private fun LauncherCarFilamentContent(
                             0f
                         }
 
-                        // Trigger 1: Initial 5 seconds after rendering starts
-                        val isWithinInitial5Sec = (frameNs - mountNs) < DYNAMIC_GRACE_PERIOD_NS
+                        // Trigger 1: Initial 2 seconds after rendering starts
+                        val isWithinInitial2Sec = (frameNs - mountNs) < DYNAMIC_GRACE_PERIOD_NS
 
                         // Trigger 2: Opening or closing any door, sunroof, or tailgate/trunk
                         val bodyStateChanged = (currentRigState.doorFlOpen != lastRigState.doorFlOpen) ||
@@ -480,11 +480,17 @@ private fun LauncherCarFilamentContent(
                             transition > 0.001f ||
                             (orbit?.interacting == true)
 
-                        if (isWithinInitial5Sec || bodyStateChanged || isCameraSwitching || !modelReady || preparedFrames < 3) {
+                        val wasDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
+
+                        if (isWithinInitial2Sec || bodyStateChanged || isCameraSwitching || !modelReady || preparedFrames < 3) {
                             lastDynamicNs = frameNs
                         }
 
                         val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
+
+                        if (!wasDynamic && isDynamic) {
+                            lastFrameNs = 0L
+                        }
 
                         // Freeze 3D Filament rendering completely when stationary & idle
                         if (!isDynamic) {
@@ -516,9 +522,9 @@ private fun LauncherCarFilamentContent(
                             if (preparedFrames <= 1) {
                                 currentDriveBlend = targetDriveBlend
                             } else if (currentDriveBlend < targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend + dt / 1.0f).coerceAtMost(targetDriveBlend)
+                                currentDriveBlend = (currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
                             } else if (currentDriveBlend > targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend - dt / 1.0f).coerceAtLeast(targetDriveBlend)
+                                currentDriveBlend = (currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
                             }
                             if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
                                 currentDriveBlend = targetDriveBlend

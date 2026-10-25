@@ -40,9 +40,9 @@ import java.io.File
 fun LauncherWallpaperDialog(
     visible: Boolean,
     onDismissRequest: () -> Unit,
+    onTemporarilyHide: (() -> Unit)? = null,
+    onRestoreDialog: (() -> Unit)? = null,
 ) {
-    if (!visible) return
-
     val context = LocalContext.current
     var darkUri by remember(visible) {
         mutableStateOf(LauncherAppConfigStore.wallpaperDarkUri(context))
@@ -71,7 +71,10 @@ fun LauncherWallpaperDialog(
             }
         }
         targetThemeForPicker = null
+        onRestoreDialog?.invoke()
     }
+
+    if (!visible) return
 
     LauncherDarkAlertDialog(
         onDismissRequest = onDismissRequest,
@@ -92,6 +95,7 @@ fun LauncherWallpaperDialog(
                     selectButtonLabel = stringResource(R.string.launcher_wallpaper_select_dark),
                     onPickSystem = {
                         targetThemeForPicker = true
+                        onTemporarilyHide?.invoke()
                         systemImagePicker.launch("image/*")
                     },
                     onClear = {
@@ -110,6 +114,7 @@ fun LauncherWallpaperDialog(
                     selectButtonLabel = stringResource(R.string.launcher_wallpaper_select_light),
                     onPickSystem = {
                         targetThemeForPicker = false
+                        onTemporarilyHide?.invoke()
                         systemImagePicker.launch("image/*")
                     },
                     onClear = {

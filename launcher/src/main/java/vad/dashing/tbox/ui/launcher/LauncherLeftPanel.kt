@@ -146,6 +146,24 @@ fun LauncherLeftPanel(
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
+    val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
+    val tirePressureOnCarEnabled = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureOnCarEnabled(context)
+    }
+    val tirePressureOnlyLow = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureOnlyLow(context)
+    }
+    val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureLowThreshold(context)
+    }
+    val tirePressureAlwaysInSettings = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureAlwaysInSettings(context)
+    }
+
+    LaunchedEffect(context) {
+        LauncherTireRepository.init(context)
+    }
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)
 
     val racing = LauncherEggRace.active
@@ -165,8 +183,15 @@ fun LauncherLeftPanel(
     } else {
         vehicleBody
     }
+    val mergedTires = remember(tires, wheelsPressure, context) {
+        val merged = mergeTireStateWithCanData(tires, wheelsPressure)
+        if (merged.hasAvailableData) {
+            LauncherAppConfigStore.saveTirePressures(context, merged)
+        }
+        merged
+    }
     // Simulation overrides (hidden settings tab) take precedence over live TPMS.
-    val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: tires
+    val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: mergedTires
     // Same for ADAS: cruise/BSD/PDC sim replaces the live mbCAN state.
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val headlightBeams = rememberHeadlightBeams()
@@ -542,12 +567,18 @@ fun LauncherLeftPanel(
                         },
                 )
             }
-            if (!carHidden && settingsProgress < 0.15f && !racing) {
+            val inSettingsView = settingsProgress > 0.01f
+            val showBadgesInSettings = tirePressureAlwaysInSettings || settingsProgress < 0.15f
+            val effectiveShowAll = !tirePressureOnlyLow || (tirePressureAlwaysInSettings && inSettingsView)
+            if (!carHidden && showBadgesInSettings && !racing) {
                     LauncherTireBadges(
                         state = effectiveTires,
                         // ADAS strip shows a small pressure-only pill next to the wheel.
                         compact = true,
                         wheelAnchorsPx = wheelAnchors,
+                        enabled = tirePressureOnCarEnabled,
+                        showAll = effectiveShowAll,
+                        lowPressureThreshold = tirePressureLowThreshold,
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (!bodyRigAvailable) {

@@ -13,7 +13,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.view.WindowManager
+import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LastAppTracker
+import java.lang.reflect.Method
 import java.util.concurrent.TimeUnit
 
 private const val TAG = "LauncherFreeform"
@@ -114,6 +117,10 @@ internal fun tryLaunchIntentInBounds(
     bounds: Rect,
     launchAdjacent: Boolean = false,
 ): Boolean {
+    val home = LauncherHomeActivityHolder.instance
+    home?.runOnUiThread {
+        runCatching { home.window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) }
+    }
     ensureFreeformImmersivePolicy(context)
     val launchIntent = Intent(intent).apply {
         if (action.isNullOrBlank()) action = Intent.ACTION_MAIN
@@ -450,7 +457,6 @@ internal fun listForeignFreeformTaskIds(
     val stacks = activityManagerStackInfos()
     for (info in stacks) {
         if (visibleOnly && !stackInfoVisible(info)) continue
-        if (!stackInfoLooksFreeform(info)) continue
         val topPkg = stackInfoTopPackage(info)
         if (topPkg == launcherPackage) continue
         val taskIds = stackInfoTaskIds(info) ?: continue
@@ -530,36 +536,30 @@ internal fun minimizeForeignFreeformTasks(
                     val pkg = taskInfo?.topActivity?.packageName ?: taskInfo?.baseActivity?.packageName
                     if (pkg == launcherPackage) return@runCatching
 
-                    val success = moveTaskBackwards(taskId)
+                    val freeform = isTaskInFreeformMode(taskId)
+                    val success = removeTaskId(am, taskId)
+                    if (pkg != null) FreeformLaunchRegistry.remove(pkg)
 
-                    if (!success) {
-                        runCatching {
-                            val pb = ProcessBuilder("am", "task", "move-to-back", taskId.toString())
-                            val proc = pb.start()
-                            proc.waitFor(300L, TimeUnit.MILLISECONDS)
-                            runCatching { proc.destroy() }
-                        }
-                    }
-                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId pkg=$pkg completed success=$success")
+                    Log.w("LauncherAppLaunch", "minimize foreign task=$taskId pkg=$pkg freeform=$freeform completed success=$success")
                     LauncherNavLogger.logNavAction(
-                        action = "MINIMIZE_TASK",
+                        action = "REMOVE_TASK",
                         source = source,
-                        decision = "moveTaskBackwards task=$taskId pkg=$pkg",
+                        decision = "removeTaskId task=$taskId pkg=$pkg",
                         result = "success=$success",
                     )
                 }.onFailure { err ->
                     Log.w("LauncherAppLaunch", "minimize foreign task=$taskId failed: ${err.message}")
-                    LauncherNavLogger.logNavError("MINIMIZE_TASK", source, "Failed minimizing task=$taskId", err)
+                    LauncherNavLogger.logNavError("REMOVE_TASK", source, "Failed removing task=$taskId", err)
                 }
             }
 
-            // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
-            val moved = LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
+            // Shell stack dismiss for OEM HU freeform / split / embedded stacks
+            val removed = LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
             LauncherNavLogger.logNavAction(
                 action = "MINIMIZE_APPS",
                 source = source,
                 stateBefore = stateBefore,
-                result = "Minimized taskIds count=${taskIdsToMinimize.size}, shell moved stacks count=$moved",
+                result = "Removed taskIds count=${taskIdsToMinimize.size}, shell removed stacks count=$removed",
             )
         }.onFailure { err ->
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", err)
@@ -697,40 +697,67 @@ private fun stackInfoBounds(info: Any): Rect? {
     return null
 }
 
+private fun isTaskInFreeformMode(taskId: Int): Boolean {
+    for (info in activityManagerStackInfos()) {
+        val taskIds = stackInfoTaskIds(info) ?: continue
+        if (taskId in taskIds) {
+            val bounds = stackInfoBounds(info)
+            if (bounds != null && !bounds.isEmpty && bounds.width() >= 1900 && bounds.height() >= 1000) {
+                return false
+            }
+            val mode = stackInfoWindowingMode(info)
+            if (mode == WINDOWING_MODE_FREEFORM || mode == WINDOWING_MODE_EXTEND) return true
+            if (bounds != null && !bounds.isEmpty && (bounds.width() < 1900 || bounds.height() < 1000)) return true
+        }
+    }
+    return false
+}
+
+// --- Cached Reflection Objects for ActivityManager & ActivityManagerService ---
+
+private val cachedActivityManagerService: Any? by lazy {
+    runCatching {
+        val getService = ActivityManager::class.java.getDeclaredMethod("getService")
+        getService.isAccessible = true
+        getService.invoke(null)
+    }.onFailure {
+        Log.w("LauncherAppLaunch", "Failed getting ActivityManagerService", it)
+    }.getOrNull()
+}
+
+private val cachedRemoveTaskAmMethod: Method? by lazy {
+    runCatching {
+        ActivityManager::class.java.getMethod("removeTask", Int::class.javaPrimitiveType)
+    }.getOrNull()
+}
+
+private val cachedRemoveTaskServiceMethod: Method? by lazy {
+    cachedActivityManagerService?.javaClass?.methods?.firstOrNull { m ->
+        m.name == "removeTask" && m.parameterTypes.size == 1
+    }
+}
+
+private val cachedGetAllStackInfosMethod: Method? by lazy {
+    cachedActivityManagerService?.javaClass?.methods?.firstOrNull { m ->
+        m.name == "getAllStackInfos" && m.parameterTypes.isEmpty()
+    }
+}
+
 private fun removeTaskId(am: ActivityManager, taskId: Int): Boolean {
     val viaAm = runCatching {
-        val method = ActivityManager::class.java.getMethod(
-            "removeTask",
-            Int::class.javaPrimitiveType,
-        )
+        val method = cachedRemoveTaskAmMethod ?: return@runCatching false
         method.invoke(am, taskId) as? Boolean ?: true
     }.getOrDefault(false)
     if (viaAm) return true
     return runCatching {
-        val service = activityManagerService() ?: return false
-        val method = service.javaClass.methods.firstOrNull { m ->
-            m.name == "removeTask" && m.parameterTypes.size == 1
-        } ?: return false
+        val service = cachedActivityManagerService ?: return false
+        val method = cachedRemoveTaskServiceMethod ?: return false
         method.invoke(service, taskId)
         true
     }.onFailure {
         Log.w("LauncherAppLaunch", "removeTask failed task=$taskId", it)
     }.getOrDefault(false)
 }
-
-internal fun moveTaskBackwards(taskId: Int): Boolean =
-    runCatching {
-        val service = activityManagerService() ?: return false
-        val method = service.javaClass.methods.firstOrNull { m ->
-            (m.name == "moveTaskBackwards" || m.name == "moveTaskToBack") &&
-                m.parameterTypes.size == 1 &&
-                (m.parameterTypes[0] == Int::class.javaPrimitiveType || m.parameterTypes[0] == Integer.TYPE)
-        } ?: return false
-        method.invoke(service, taskId)
-        true
-    }.onFailure {
-        Log.w("LauncherAppLaunch", "moveTaskBackwards failed task=$taskId", it)
-    }.getOrDefault(false)
 
 internal fun moveTaskToFrontId(context: Context, taskId: Int): Boolean =
     runCatching {
@@ -741,18 +768,10 @@ internal fun moveTaskToFrontId(context: Context, taskId: Int): Boolean =
         Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it)
     }.getOrDefault(false)
 
-private fun activityManagerService(): Any? {
-    val getService = ActivityManager::class.java.getDeclaredMethod("getService")
-    getService.isAccessible = true
-    return getService.invoke(null)
-}
-
 private fun activityManagerStackInfos(): List<Any> {
     return runCatching {
-        val service = activityManagerService() ?: return emptyList()
-        val method = service.javaClass.methods.firstOrNull {
-            it.name == "getAllStackInfos" && it.parameterTypes.isEmpty()
-        } ?: return emptyList()
+        val service = cachedActivityManagerService ?: return emptyList()
+        val method = cachedGetAllStackInfosMethod ?: return emptyList()
         @Suppress("UNCHECKED_CAST")
         (method.invoke(service) as? List<Any?>)?.filterNotNull().orEmpty()
     }.onFailure {

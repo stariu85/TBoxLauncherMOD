@@ -115,5 +115,5 @@ internal fun launchSplitApps(
             LauncherNavLogger.logNavError("SPLIT_LAUNCH", "launchSplitApps", "Failed launching right split app pkg=${right.packageName}")
             Toast.makeText(context, context.getString(R.string.launcher_split_right_failed), Toast.LENGTH_SHORT).show()
         }
-    }, 450L)
+    }, 150L)
 }

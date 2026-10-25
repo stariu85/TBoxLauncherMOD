@@ -27,6 +27,16 @@ class LauncherNavAccessibilityService : AccessibilityService() {
             }.getOrDefault(false)
         }
 
+        /**
+         * Home via the accessibility global action. Works without INJECT_EVENTS.
+         */
+        fun dispatchGlobalHome(): Boolean {
+            val service = instance ?: return false
+            return runCatching {
+                service.performGlobalAction(GLOBAL_ACTION_HOME)
+            }.getOrDefault(false)
+        }
+
         fun isConnected(): Boolean = instance != null
     }
 

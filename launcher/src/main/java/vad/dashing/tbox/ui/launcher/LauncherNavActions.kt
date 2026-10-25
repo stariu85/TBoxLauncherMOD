@@ -4,12 +4,14 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.input.InputManager
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
 import vad.dashing.tbox.LauncherForegroundHandoff
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
@@ -95,16 +97,25 @@ internal fun goLauncherHome(
         }
     }
 
-    val hasForeignApp = hasActiveForeignApp(context)
+    val home = LauncherHomeActivityHolder.instance
+    if (home != null) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runCatching { home.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) }
+        } else {
+            home.runOnUiThread {
+                runCatching { home.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) }
+            }
+        }
+    }
 
+    val hasForeignApp = hasActiveForeignApp(context)
+    runCatching { minimizeForeignFreeformTasks(context) }
     LauncherActiveAppTracker.onHomePressed()
 
     runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }
     runCatching { LauncherOverlayElevator.clearHoldWithoutRestore() }
     runCatching { LauncherOverlayElevator.bringLauncherToFront(context) }
 
-    // Bring Launcher Home activity to front immediately on Main Thread
-    val home = LauncherHomeActivityHolder.instance
     var broughtToFront = false
     if (home != null && !home.isFinishing && !home.isDestroyed) {
         runCatching { home.window.decorView.visibility = View.VISIBLE }
@@ -120,29 +131,32 @@ internal fun goLauncherHome(
         }
     }
 
-    if (!fromHomeIntent && !hasForeignApp) {
+    if (!fromHomeIntent) {
         runCatching {
             context.startActivity(
                 Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
                 },
             )
         }.onFailure {
             Log.w(TAG, "goLauncherHome: startActivity failed", it)
             LauncherNavLogger.logNavError("HOME", source, "startActivity(CATEGORY_HOME) failed", it, stateBefore)
         }
+        LauncherNavAccessibilityService.dispatchGlobalHome()
     }
 
-    // Show Primary Right Panel Desktop Overlay IMMEDIATELY (0ms delay)
-    LauncherRightPanelOverlayWindow.show(context)
+    LauncherRightPanelOverlayWindow.hide()
 
     LauncherNavLogger.logNavAction(
         action = "HOME",
         source = source,
         stateBefore = stateBefore,
         decision = "closedOverlays=[${closedList.joinToString()}], settingsWereOpen=$settingsWereOpen, broughtHomeToFront=$broughtToFront, fromHomeIntent=$fromHomeIntent",
-        result = "hasForeignApp=$hasForeignApp, RightPanelOverlay=${if (hasForeignApp) "shown" else "hidden"}",
+        result = "hasForeignApp=$hasForeignApp",
     )
 }
 
@@ -170,12 +184,55 @@ internal fun goLauncherBack(
         return
     }
 
-    Log.w(TAG, "goLauncherBack: dispatching physical Back (steering wheel analog) source=$source")
+    when {
+        vehicleSettingsOpen ||
+            LauncherVehicleSettingsUiState.open ||
+            LauncherVehicleSettingsOverlayWindow.isShowing() ||
+            LauncherVehicleSettingsActivity.isOpen() -> {
+            onCloseVehicleSettings()
+            closeVehicleSettingsOverlay()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed VehicleSettingsOverlay")
+            return
+        }
+        MainActivity.isOpen() -> {
+            MainActivity.finishIfOpen()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed MainActivity")
+            return
+        }
+        LauncherAboutOverlayWindow.isShowing() -> {
+            LauncherAboutOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AboutOverlay")
+            return
+        }
+        LauncherAppPickerOverlayWindow.isShowing() -> {
+            LauncherAppPickerOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppPickerOverlay")
+            return
+        }
+        LauncherDockSlotPickerOverlayWindow.isShowing() -> {
+            LauncherDockSlotPickerOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed DockSlotPickerOverlay")
+            return
+        }
+        LauncherAppDrawerWindow.isShowing() -> {
+            LauncherAppDrawerWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppDrawerWindow")
+            return
+        }
+    }
+
+    if (findForeignAppTask(context) == null) {
+        Log.w(TAG, "goLauncherBack: on root desktop — BACK ignored")
+        LauncherNavLogger.logNavAction("BACK", source, stateBefore, decision = "Ignored on root desktop")
+        return
+    }
+
+    Log.w(TAG, "goLauncherBack: dispatching physical Back source=$source")
     LauncherNavLogger.logNavAction(
         action = "BACK",
         source = source,
         stateBefore = stateBefore,
-        decision = "Dispatching physical Back into active window (steering wheel analog)",
+        decision = "Dispatching physical Back into active window",
     )
     dispatchPhysicalBack(source)
 }

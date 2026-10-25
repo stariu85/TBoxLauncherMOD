@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -51,7 +52,12 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LauncherHomeActivityHolder.instance = this
-        Log.w("LauncherAppLaunch", "LauncherHomeActivity onCreate v${BuildConfig.VERSION_NAME}")
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // Intercept Back button: consume Back to prevent LauncherHomeActivity from finishing
+            }
+        })
+        Log.w("LauncherAppLaunch", "LauncherHomeActivity onCreate")
         // ActivityViewCapabilityProbe: construct+VD OK; startActivity on launchDisplayId still denied
         // even with MANAGE_ACTIVITY_STACKS+ACTIVITY_EMBEDDING granted. Needs INJECT_EVENTS (signature).
         applyLauncherWindowFlags()
@@ -106,6 +112,7 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onRestart() {
         super.onRestart()
         LauncherHomeActivityHolder.instance = this
+        LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
         startBackgroundService()
         if (findForeignAppTask(this) == null) {
             LauncherRightPanelOverlayWindow.ensureShowing(this)
@@ -116,9 +123,13 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         LauncherHomeActivityHolder.isResumed = true
+        LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
         val foreign = findForeignAppTask(this)
         val inAppView = foreign != null && !LauncherRightPanelOverlayWindow.isShowing()
-        if (!inAppView) {
+        if (inAppView) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
             LauncherForegroundHandoff.restoreLauncherWindow()
             window.decorView.visibility = View.VISIBLE
         }
@@ -132,6 +143,24 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onPause() {
         LauncherHomeActivityHolder.isResumed = false
         super.onPause()
+    }
+
+    @android.annotation.SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val foreign = findForeignAppTask(this)
+            val hasOverlays = LauncherVehicleSettingsOverlayWindow.isShowing() ||
+                LauncherVehicleSettingsActivity.isOpen() ||
+                MainActivity.isOpen() ||
+                LauncherAboutOverlayWindow.isShowing() ||
+                LauncherAppDrawerWindow.isShowing() ||
+                LauncherAppPickerOverlayWindow.isShowing()
+            if (foreign == null && !hasOverlays) {
+                Log.w(TAG, "Hardware Back on root desktop ignored")
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -60,7 +60,7 @@ internal object LauncherAppDrawerWindow {
         val topBarDp = LauncherAppConfigStore.topBarHeightDp(context)
         val bottomBarDp = LauncherAppConfigStore.bottomBarHeightDp(context)
 
-        val widthPx = if (adasVisible) (sidebarDp * density).toInt().coerceIn(300, 500) else (344 * density).toInt()
+        val widthPx = if (adasVisible) (sidebarDp * density).toInt() else (344 * density).toInt()
         val topPx = (topBarDp * density).toInt().coerceIn(0, 100).takeIf { it > 0 } ?: 51
         val bottomPx = screenH - (bottomBarDp * density).toInt().coerceIn(0, 150)
 
@@ -76,6 +76,19 @@ internal object LauncherAppDrawerWindow {
         val height = (bottom - top).coerceAtLeast(400)
 
         return Rect(0, top, width, top + height)
+    }
+
+    fun toggle(
+        context: Context,
+        settingsViewModel: SettingsViewModel,
+        onConfigChanged: () -> Unit = {},
+    ): Boolean {
+        return if (isShowing()) {
+            hide()
+            true
+        } else {
+            show(context, settingsViewModel, onConfigChanged)
+        }
     }
 
     fun show(

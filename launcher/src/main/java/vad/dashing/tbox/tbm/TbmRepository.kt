@@ -85,6 +85,21 @@ class TbmRepository(
     private val _tboxConnectedSignal = MutableStateFlow<Boolean?>(null)
     val tboxConnectedSignal: StateFlow<Boolean?> = _tboxConnectedSignal.asStateFlow()
 
+    private val _geoSatellitesVisible = MutableStateFlow<Int?>(null)
+    val geoSatellitesVisible: StateFlow<Int?> = _geoSatellitesVisible.asStateFlow()
+
+    private val _geoSatellitesUsed = MutableStateFlow<Int?>(null)
+    val geoSatellitesUsed: StateFlow<Int?> = _geoSatellitesUsed.asStateFlow()
+
+    private val _geoSpeedSource = MutableStateFlow<String?>(null)
+    val geoSpeedSource: StateFlow<String?> = _geoSpeedSource.asStateFlow()
+
+    private val _geoFixValid = MutableStateFlow<Boolean?>(null)
+    val geoFixValid: StateFlow<Boolean?> = _geoFixValid.asStateFlow()
+
+    private val _locateStatusSignal = MutableStateFlow<Boolean?>(null)
+    val locateStatusSignal: StateFlow<Boolean?> = _locateStatusSignal.asStateFlow()
+
     private var pollingJob: Job? = null
 
     // Default signal set for Launcher widgets/panels
@@ -100,6 +115,10 @@ class TbmRepository(
         "modem_signal_level",
         "tbox_connected",
         "locate_status",
+        "geo_satellites_visible",
+        "geo_satellites_used",
+        "geo_speed_source",
+        "geo_fix_valid",
     )
 
     companion object {
@@ -122,6 +141,7 @@ class TbmRepository(
 
             if (!token.isNullOrEmpty()) {
                 _connectionState.value = TbmConnectionState.Connected(health)
+                startPolling()
             } else {
                 _connectionState.value = TbmConnectionState.PairingRequired
             }
@@ -258,6 +278,21 @@ class TbmRepository(
         _gearboxOilTemperature.value = map["gear_box_oil_temperature"]?.asFloat()
         _modemSignalLevel.value = map["modem_signal_level"]?.asInt()
         _tboxConnectedSignal.value = when (val v = map["tbox_connected"]) {
+            is Boolean -> v
+            "on" -> true
+            "off" -> false
+            else -> null
+        }
+        _geoSatellitesVisible.value = map["geo_satellites_visible"]?.asInt()
+        _geoSatellitesUsed.value = map["geo_satellites_used"]?.asInt()
+        _geoSpeedSource.value = map["geo_speed_source"]?.toString()
+        _geoFixValid.value = when (val v = map["geo_fix_valid"]) {
+            is Boolean -> v
+            "on" -> true
+            "off" -> false
+            else -> null
+        }
+        _locateStatusSignal.value = when (val v = map["locate_status"]) {
             is Boolean -> v
             "on" -> true
             "off" -> false

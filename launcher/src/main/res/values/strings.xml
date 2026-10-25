@@ -337,6 +337,11 @@
     <string name="launcher_home_long_press_settings">Удержание: настройки авто</string>
     <string name="launcher_vs_section_status_sub">TBox, топливо, пробег</string>
     <string name="launcher_vs_section_wheels_sub">Давление и температура шин</string>
+    <string name="launcher_vs_tire_pressure_show_on_car">Показывать давление на модели</string>
+    <string name="launcher_vs_tire_pressure_only_low">Показывать только при низком давлении</string>
+    <string name="launcher_vs_tire_pressure_threshold">Порог низкого давления</string>
+    <string name="launcher_vs_tire_pressure_always_in_settings">Всегда показывать в настройках</string>
+    <string name="launcher_vs_tire_pressure_persist">Запоминать давление с последней поездки</string>
     <string name="launcher_vs_section_body">Кузов</string>
     <string name="launcher_vs_section_body_sub">Двери и багажник</string>
     <string name="launcher_vs_section_cabin_sub">Температура и климат</string>

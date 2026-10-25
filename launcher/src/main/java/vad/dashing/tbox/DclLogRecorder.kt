@@ -263,23 +263,49 @@ object DclLogRecorder {
         watchdogTriggered: Boolean = false,
     ) {
         if (!isSessionActive) return
-        val msg = buildString {
+        val msg = buildString(256) {
             append("MODEL_RENDER ")
             if (watchdogTriggered) append("[WATCHDOG_RESET] ")
-            append("trans=").append(String.format(Locale.US, "%.3f", transition))
-            append(" blend=").append(String.format(Locale.US, "%.3f", driveBlend))
-            append(" pos=(").append(String.format(Locale.US, "%.4f,%.4f,%.4f", modelX, modelY, modelZ)).append(")")
-            append(" yaw=").append(String.format(Locale.US, "%.1f", modelYaw))
-            append(" scale=").append(String.format(Locale.US, "%.4f", modelScale))
-            append(" camPos=(").append(String.format(Locale.US, "%.4f,%.4f,%.4f", cameraX, cameraY, cameraZ)).append(")")
-            append(" camTarget=(").append(String.format(Locale.US, "%.4f,%.4f,%.4f", targetX, targetY, targetZ)).append(")")
-            append(" vp=").append(viewportW).append("x").append(viewportH)
-            append(" cfgScale=").append(String.format(Locale.US, "%.2f", customModelScale))
-            append(" usrYaw=").append(String.format(Locale.US, "%.1f", userYaw))
-            append(" usrScale=").append(String.format(Locale.US, "%.2f", userScale))
+            append("trans="); appendFloat(transition, 3)
+            append(" blend="); appendFloat(driveBlend, 3)
+            append(" pos=("); appendFloat(modelX, 4); append(','); appendFloat(modelY, 4); append(','); appendFloat(modelZ, 4); append(')')
+            append(" yaw="); appendFloat(modelYaw, 1)
+            append(" scale="); appendFloat(modelScale, 4)
+            append(" camPos=("); appendFloat(cameraX, 4); append(','); appendFloat(cameraY, 4); append(','); appendFloat(cameraZ, 4); append(')')
+            append(" camTarget=("); appendFloat(targetX, 4); append(','); appendFloat(targetY, 4); append(','); appendFloat(targetZ, 4); append(')')
+            append(" vp=").append(viewportW).append('x').append(viewportH)
+            append(" cfgScale="); appendFloat(customModelScale, 2)
+            append(" usrYaw="); appendFloat(userYaw, 1)
+            append(" usrScale="); appendFloat(userScale, 2)
             append(" avm=").append(isAvmActive)
         }
         log("ModelRender", msg)
+    }
+
+    private fun StringBuilder.appendFloat(value: Float, decimals: Int) {
+        if (value.isNaN() || value.isInfinite()) {
+            append(value)
+            return
+        }
+        if (value < 0f) {
+            append('-')
+            appendFloat(-value, decimals)
+            return
+        }
+        var multiplier = 1f
+        repeat(decimals) { multiplier *= 10f }
+        val rounded = kotlin.math.round(value * multiplier).toLong()
+        val integerPart = rounded / multiplier.toLong()
+        val fractionalPart = rounded % multiplier.toLong()
+        append(integerPart)
+        if (decimals > 0) {
+            append('.')
+            var fracStr = fractionalPart.toString()
+            while (fracStr.length < decimals) {
+                fracStr = "0$fracStr"
+            }
+            append(fracStr)
+        }
     }
 
     /**

@@ -27,8 +27,8 @@ import vad.dashing.tbox.valueToString
 import kotlin.math.roundToInt
 
 /**
- * OEM-style TPMS callouts beside the 3D car — only for wheels that need attention
- * (`WarningSts != 0` or calibrating / invalid pressure).
+ * OEM-style TPMS callouts beside the 3D car — shown when enabled according to
+ * user settings (`showAll` or when wheels need attention below `lowPressureThreshold`).
  */
 @Composable
 fun LauncherTireBadges(
@@ -37,15 +37,19 @@ fun LauncherTireBadges(
     wheelAnchorsPx: Map<LauncherWheelCorner, Offset> = emptyMap(),
     showAll: Boolean = false,
     compact: Boolean = false,
+    enabled: Boolean = true,
+    lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
 ) {
-    if (!showAll && !state.hasAttention) return
+    if (!enabled) return
+    val needsAttentionAny = state.hasAttention(lowPressureThreshold)
+    if (!showAll && !needsAttentionAny) return
 
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
         val boxWidthPx = with(density) { maxWidth.toPx() }
         val boxHeightPx = with(density) { maxHeight.toPx() }
-        val badgeWidth = if (compact) 56.dp else 92.dp
-        val badgeHeight = if (compact) 26.dp else 62.dp
+        val badgeWidth = if (compact) 62.dp else 98.dp
+        val badgeHeight = if (compact) 28.dp else 68.dp
         val badgeWidthPx = with(density) { badgeWidth.toPx() }
         val badgeHeightPx = with(density) { badgeHeight.toPx() }
         val visibleCorners = LauncherWheelCorner.entries.filter { corner ->
@@ -53,7 +57,7 @@ fun LauncherTireBadges(
             if (showAll) {
                 wheel.available
             } else {
-                wheel.needsAttention
+                wheel.needsAttention(lowPressureThreshold)
             }
         }
         val layout = layoutTireCallouts(
@@ -63,7 +67,7 @@ fun LauncherTireBadges(
             containerHeight = boxHeightPx,
             calloutWidth = badgeWidthPx,
             calloutHeight = badgeHeightPx,
-            gap = with(density) { 8.dp.toPx() },
+            gap = with(density) { 18.dp.toPx() },
         )
         Canvas(modifier = Modifier.fillMaxSize()) {
             visibleCorners.forEach { corner ->
@@ -90,6 +94,7 @@ fun LauncherTireBadges(
                 corner = corner,
                 wheel = state.wheel(corner),
                 compact = compact,
+                lowPressureThreshold = lowPressureThreshold,
                 modifier = Modifier
                     .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
                     .width(badgeWidth),
@@ -104,6 +109,7 @@ private fun LauncherTireBadge(
     wheel: LauncherTireWheelState,
     compact: Boolean,
     modifier: Modifier = Modifier,
+    lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
 ) {
     val label = stringResource(
         when (corner) {
@@ -115,7 +121,7 @@ private fun LauncherTireBadge(
     )
     val tint = when {
         wheel.warningSts != 0 ||
-            (wheel.pressureBar != null && wheel.pressureBar < LauncherTireWheelState.LOW_PRESSURE_BAR) ->
+            (wheel.pressureBar != null && wheel.pressureBar < lowPressureThreshold) ->
             LauncherColors.WarningRed
         wheel.calibrating || (wheel.available && wheel.pressureBar == null) ->
             LauncherColors.WarningAmber
@@ -133,9 +139,15 @@ private fun LauncherTireBadge(
         ?.takeIf { wheel.available && !wheel.calibrating }
         ?.let { "$it${stringResource(R.string.unit_celsius)}" }
 
+    val badgeBg = if (LauncherThemeState.darkTheme) {
+        Color(0xF02A3444)
+    } else {
+        Color(0xE6FFFFFF)
+    }
+
     Column(
         modifier = modifier
-            .background(Color(0xE6FFFFFF), RoundedCornerShape(8.dp))
+            .background(badgeBg, RoundedCornerShape(8.dp))
             .padding(
                 horizontal = if (compact) 6.dp else 8.dp,
                 vertical = if (compact) 3.dp else 5.dp,
@@ -146,14 +158,14 @@ private fun LauncherTireBadge(
             Text(
                 text = label,
                 color = tint.copy(alpha = 0.85f),
-                fontSize = 10.sp,
+                fontSize = 11.5.sp,
                 fontWeight = FontWeight.Medium,
             )
         }
         Text(
             text = pressureText,
             color = tint,
-            fontSize = if (compact) 12.sp else 13.sp,
+            fontSize = if (compact) 13.8.sp else 15.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
@@ -161,7 +173,7 @@ private fun LauncherTireBadge(
             Text(
                 text = tempText,
                 color = tint.copy(alpha = 0.9f),
-                fontSize = 11.sp,
+                fontSize = 12.7.sp,
             )
         }
     }
