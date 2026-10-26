@@ -8,16 +8,22 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -120,18 +126,14 @@ internal object LauncherAppDrawerWindow {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         val params = WindowManager.LayoutParams(
-            bounds.width(),
-            bounds.height(),
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
             type,
             WindowManager.LayoutParams.FLAG_DIM_BEHIND or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = bounds.left
-            y = bounds.top
             dimAmount = 0.35f
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
@@ -147,39 +149,59 @@ internal object LauncherAppDrawerWindow {
                 }
                 true
             }
-            setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                    hide()
-                    true
-                } else {
-                    false
-                }
-            }
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
-                ProvideUiClickSounds {
-                    val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
-                    TboxAppTheme(theme = 2) {
-                        BackHandler {
-                            hide()
+                val density = LocalDensity.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = ::hide,
+                        ),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = with(density) { bounds.left.toDp() },
+                                y = with(density) { bounds.top.toDp() },
+                            )
+                            .size(
+                                width = with(density) { bounds.width().toDp() },
+                                height = with(density) { bounds.height().toDp() },
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {},
+                            ),
+                    ) {
+                        ProvideUiClickSounds {
+                            val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
+                            TboxAppTheme(theme = 2) {
+                                BackHandler {
+                                    hide()
+                                }
+                                LauncherAppDrawer(
+                                    visible = true,
+                                    settingsViewModel = settingsViewModel,
+                                    onDismiss = ::hide,
+                                    configRevision = configRevision,
+                                    onConfigChanged = {
+                                        configRevision++
+                                        this@LauncherAppDrawerWindow.onConfigChanged?.invoke()
+                                    },
+                                    onLaunchApp = { app ->
+                                        hide()
+                                        launchLauncherAppEmbedded(activity, app.packageName, app.activityName)
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
-                        LauncherAppDrawer(
-                            visible = true,
-                            settingsViewModel = settingsViewModel,
-                            onDismiss = ::hide,
-                            configRevision = configRevision,
-                            onConfigChanged = {
-                                configRevision++
-                                this@LauncherAppDrawerWindow.onConfigChanged?.invoke()
-                            },
-                            onLaunchApp = { app ->
-                                hide()
-                                launchLauncherAppEmbedded(activity, app.packageName, app.activityName)
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
                     }
                 }
             }

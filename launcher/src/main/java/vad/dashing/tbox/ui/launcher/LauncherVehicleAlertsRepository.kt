@@ -157,8 +157,8 @@ object LauncherVehicleAlertsRepository {
         if (status == null) return
         val d = byteActive(status, "getDriverWarning")
         val p = byteActive(status, "getPassengerWarning")
-        if (d) driverBelt = true
-        if (p) passengerBelt = true
+        driverBelt = d
+        passengerBelt = p
         checkDoorsAndClearBelts()
         publish()
     }
@@ -170,18 +170,18 @@ object LauncherVehicleAlertsRepository {
         val rl = byteActive(chime, "getICM_2_RLSeatBeltWarningSts")
         val rm = byteActive(chime, "getICM_2_RMSeatBeltWarningSts")
         val rr = byteActive(chime, "getICM_2_RRSeatBeltWarningSts")
-        if (d) driverBelt = true
-        if (p) passengerBelt = true
-        if (rl) rearLeftBelt = true
-        if (rm) rearMidBelt = true
-        if (rr) rearRightBelt = true
+        driverBelt = d
+        passengerBelt = p
+        rearLeftBelt = rl
+        rearMidBelt = rm
+        rearRightBelt = rr
         checkDoorsAndClearBelts()
         publish()
     }
 
     /**
-     * Polls seat-belt cache via [getMbCanData] and chime. Latches warnings once triggered
-     * so indicator flashes then remains steadily lit until the person buckles or exits (door opens).
+     * Polls seat-belt cache via [getMbCanData] and chime. Updates warnings based on current status
+     * and clears warnings when person buckles or exits (door opens).
      */
     private fun pollSeatBeltCache() {
         val chime = readCachedChime()
@@ -199,14 +199,14 @@ object LauncherVehicleAlertsRepository {
         }
         readSeatBeltWarning()?.let { snap ->
             // Type 15 is authoritative for the two front seats.
-            if (snap.first) d = true
-            if (snap.second) p = true
+            d = snap.first
+            p = snap.second
         }
-        if (d) driverBelt = true
-        if (p) passengerBelt = true
-        if (rl) rearLeftBelt = true
-        if (rm) rearMidBelt = true
-        if (rr) rearRightBelt = true
+        driverBelt = d
+        passengerBelt = p
+        rearLeftBelt = rl
+        rearMidBelt = rm
+        rearRightBelt = rr
 
         checkDoorsAndClearBelts()
     }

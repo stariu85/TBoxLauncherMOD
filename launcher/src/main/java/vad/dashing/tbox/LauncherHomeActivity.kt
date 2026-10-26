@@ -1,8 +1,10 @@
 package vad.dashing.tbox
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -145,9 +147,13 @@ class LauncherHomeActivity : ComponentActivity() {
         super.onPause()
     }
 
-    @android.annotation.SuppressLint("RestrictedApi")
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN) {
+    @SuppressLint("RestrictedApi", "BackPressed")
+    @Suppress("BackPressed")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        @Suppress("BackPressed")
+        @SuppressLint("BackPressed")
+        val isBack = event.keyCode == KeyEvent.KEYCODE_BACK
+        if (isBack) {
             val foreign = findForeignAppTask(this)
             val hasOverlays = LauncherVehicleSettingsOverlayWindow.isShowing() ||
                 LauncherVehicleSettingsActivity.isOpen() ||
@@ -156,7 +162,7 @@ class LauncherHomeActivity : ComponentActivity() {
                 LauncherAppDrawerWindow.isShowing() ||
                 LauncherAppPickerOverlayWindow.isShowing()
             if (foreign == null && !hasOverlays) {
-                Log.w(TAG, "Hardware Back on root desktop ignored")
+                Log.w(TAG, "Hardware Back on root desktop ignored (action=${event.action})")
                 return true
             }
         }
