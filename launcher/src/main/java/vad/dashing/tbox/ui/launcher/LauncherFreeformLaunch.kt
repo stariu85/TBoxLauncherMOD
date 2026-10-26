@@ -148,6 +148,14 @@ internal fun closeFullWidthAppsIfOpen(
     for (s in stacks) {
         val pkg = s.packageName ?: continue
         if (pkg == launcherPackage) continue
+
+        // If FreeformLaunchRegistry explicitly recorded this pkg as narrow (< 1900),
+        // do NOT treat it as full-width even if system stack temporarily reports width >= 1900.
+        val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
+        if (recordedBounds != null && recordedBounds.width() < 1900) {
+            continue
+        }
+
         val isFullWidth = s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000
         if (isFullWidth) {
             packagesToStop += pkg
@@ -187,6 +195,12 @@ internal fun closeFullWidthAppsIfOpen(
         for (s in LauncherAmStackShell.listStacks()) {
             val pkg = s.packageName ?: continue
             if (pkg == launcherPackage) continue
+
+            val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
+            if (recordedBounds != null && recordedBounds.width() < 1900) {
+                continue
+            }
+
             if (s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000) {
                 LauncherAmStackShell.removeStack(s.stackId)
                 FreeformLaunchRegistry.remove(pkg)
