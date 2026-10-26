@@ -833,8 +833,8 @@ internal object LauncherAppConfigStore {
         cameraSwitchModeRevision.value++
     }
 
-    fun cameraAnimationEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CAMERA_ANIMATION_ENABLED, true)
+    @Suppress("UNUSED_PARAMETER")
+    fun cameraAnimationEnabled(context: Context): Boolean = true
 
     fun setCameraAnimationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CAMERA_ANIMATION_ENABLED, enabled).apply()

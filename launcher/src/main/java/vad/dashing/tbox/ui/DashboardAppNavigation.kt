@@ -7,6 +7,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.LastAppTracker
@@ -517,8 +518,8 @@ internal fun sendAdjustHvacTemperature(
 private var hvacTempRefreshSuppressedUntilMs = 0L
 
 /** Pull both zone setpoints and fan parameters from mbCAN into [CanDataRepository] and [UniversalCanRepository]. */
-internal fun refreshHvacTemperaturesFromMbCan() {
-    if (SystemClock.uptimeMillis() < hvacTempRefreshSuppressedUntilMs) return
+internal suspend fun refreshHvacTemperaturesFromMbCan() = withContext(Dispatchers.IO) {
+    if (SystemClock.uptimeMillis() < hvacTempRefreshSuppressedUntilMs) return@withContext
     runCatching {
         MbCanEngineFacade
             .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE)

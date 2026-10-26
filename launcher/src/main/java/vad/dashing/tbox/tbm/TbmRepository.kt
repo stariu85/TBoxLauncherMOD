@@ -101,9 +101,10 @@ class TbmRepository(
     val locateStatusSignal: StateFlow<Boolean?> = _locateStatusSignal.asStateFlow()
 
     private var pollingJob: Job? = null
+    private var healthCheckJob: Job? = null
 
-    // Default signal set for Launcher widgets/panels
-    val defaultInterestedSignals = listOf(
+    // Default signal sets grouped by API source for Launcher widgets/panels
+    val defaultAppSignals = listOf(
         "fuel_level_liters",
         "fuel_level_percent_filtered",
         "active_trip_distance_km",
@@ -111,7 +112,6 @@ class TbmRepository(
         "active_trip_duration_s",
         "active_trip_motor_hours",
         "motor_hours",
-        "gear_box_oil_temperature",
         "modem_signal_level",
         "tbox_connected",
         "locate_status",
@@ -121,11 +121,30 @@ class TbmRepository(
         "geo_fix_valid",
     )
 
+    val defaultTboxSignals = listOf(
+        "gear_box_oil_temperature",
+    )
+
+    val defaultInterestedSignals = defaultAppSignals + defaultTboxSignals
+
     companion object {
         private const val TBM_CLIENT_ID = "ras.dashing.tbox.launcher"
     }
 
+    fun startHealthMonitoring(recheckIntervalMs: Long = 60_000L) {
+        if (healthCheckJob?.isActive == true) return
+        healthCheckJob = scope.launch {
+            while (isActive) {
+                if (_connectionState.value !is TbmConnectionState.Connected) {
+                    checkHealth()
+                }
+                delay(recheckIntervalMs)
+            }
+        }
+    }
+
     suspend fun checkHealth(): Result<TbmHealthResponse> {
+        startHealthMonitoring()
         _connectionState.value = TbmConnectionState.Connecting
         val healthResult = apiClient.checkHealth()
         healthResult.onSuccess { health ->
@@ -236,7 +255,8 @@ class TbmRepository(
     }
 
     fun startPolling(
-        signalIds: List<String> = defaultInterestedSignals,
+        appSignalIds: List<String> = defaultAppSignals,
+        tboxSignalIds: List<String> = defaultTboxSignals,
         intervalMs: Long = 3000L,
     ) {
         pollingJob?.cancel()
@@ -249,13 +269,45 @@ class TbmRepository(
                     continue
                 }
 
-                val result = apiClient.getSignals(ids = signalIds, token = token)
-                result.onSuccess { signalValues ->
-                    val map = signalValues.associateBy({ it.id }, { it.value })
-                    _signals.value = map
-                    updateTypedSignals(map)
-                }.onFailure { err ->
-                    _connectionState.value = TbmConnectionState.Error(err.message ?: "Polling failed")
+                val mergedMap = mutableMapOf<String, Any?>()
+                var hasError = false
+                var lastErrorMessage = ""
+
+                if (appSignalIds.isNotEmpty()) {
+                    val appResult = apiClient.getSignals(ids = appSignalIds, source = "app", token = token)
+                    appResult.onSuccess { signalValues ->
+                        signalValues.forEach { item ->
+                            mergedMap[item.id] = item.value
+                        }
+                    }.onFailure { err ->
+                        hasError = true
+                        lastErrorMessage = err.message ?: "App signals polling failed"
+                    }
+                }
+
+                if (tboxSignalIds.isNotEmpty()) {
+                    val tboxResult = apiClient.getSignals(ids = tboxSignalIds, source = "tbox", token = token)
+                    tboxResult.onSuccess { signalValues ->
+                        signalValues.forEach { item ->
+                            mergedMap[item.id] = item.value
+                        }
+                    }.onFailure { err ->
+                        if (!hasError) {
+                            hasError = true
+                            lastErrorMessage = err.message ?: "TBox signals polling failed"
+                        }
+                    }
+                }
+
+                if (mergedMap.isNotEmpty()) {
+                    val currentMap = _signals.value.toMutableMap()
+                    currentMap.putAll(mergedMap)
+                    _signals.value = currentMap
+                    updateTypedSignals(currentMap)
+                }
+
+                if (hasError && mergedMap.isEmpty()) {
+                    _connectionState.value = TbmConnectionState.Error(lastErrorMessage)
                 }
 
                 delay(intervalMs)

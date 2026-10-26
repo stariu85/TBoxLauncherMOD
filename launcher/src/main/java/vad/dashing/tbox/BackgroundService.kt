@@ -21,6 +21,7 @@ import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanDiagnostics
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
 import vad.dashing.tbox.ui.launcher.LauncherOemDelegate
 import vad.dashing.tbox.ui.launcher.LauncherOemFullscreenPolicy
@@ -48,7 +49,9 @@ class BackgroundService : Service() {
             UniversalCanRepository.bind(scope)
         }
         scope.launch {
-            vad.dashing.tbox.tbm.TbmRepositoryProvider.get(applicationContext).checkHealth()
+            val tbmRepo = TbmRepositoryProvider.get(applicationContext)
+            tbmRepo.startHealthMonitoring()
+            tbmRepo.checkHealth()
         }
         tboxLink = TboxLinkManager(applicationContext).also { it.start() }
     }

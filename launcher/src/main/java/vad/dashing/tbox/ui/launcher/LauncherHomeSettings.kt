@@ -161,7 +161,6 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardOpacitySlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()
-    CameraAnimationToggle()
     AvmCameraActionSelector()
     PdcVisualModeSelector()
     SidebarWidthSlider()
@@ -467,30 +466,6 @@ private fun CameraSwitchModeSelector() {
                 modifier = Modifier.weight(1f),
             )
         }
-    }
-}
-
-@Composable
-private fun CameraAnimationToggle() {
-    val context = LocalContext.current
-    val revision by LauncherAppConfigStore.cameraAnimationRevisionFlow
-        .collectAsStateWithLifecycle()
-    val enabled = remember(context, revision) {
-        LauncherAppConfigStore.cameraAnimationEnabled(context)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_camera_animation_title),
-            active = enabled,
-            onClick = {
-                LauncherAppConfigStore.setCameraAnimationEnabled(context, !enabled)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_camera_animation_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
     }
 }
 

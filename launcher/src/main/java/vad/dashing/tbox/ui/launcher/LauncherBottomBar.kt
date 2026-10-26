@@ -742,7 +742,7 @@ fun LauncherBottomBar(
     LaunchedEffect(Unit) {
         while (isActive) {
             refreshHvacTemperaturesFromMbCan()
-            delay(1_000L)
+            delay(30_000L)
         }
     }
 
