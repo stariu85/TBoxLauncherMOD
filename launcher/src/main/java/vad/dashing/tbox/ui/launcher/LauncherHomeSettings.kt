@@ -158,6 +158,23 @@ internal fun LauncherHomeSettingsContent() {
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
+    val closePlayerAfterPlaybackRevision by LauncherAppConfigStore.closePlayerAfterPlaybackRevisionFlow
+        .collectAsStateWithLifecycle()
+    val closePlayerAfterPlayback = remember(context, closePlayerAfterPlaybackRevision) {
+        LauncherAppConfigStore.closePlayerAfterPlayback(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_close_player_after_playback_title),
+        active = closePlayerAfterPlayback,
+        onClick = {
+            LauncherAppConfigStore.setClosePlayerAfterPlayback(context, !closePlayerAfterPlayback)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_close_player_after_playback_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
     MediaCardOpacitySlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()

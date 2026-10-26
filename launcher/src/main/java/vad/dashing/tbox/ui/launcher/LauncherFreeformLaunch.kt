@@ -209,6 +209,64 @@ internal fun closeFullWidthAppsIfOpen(
     }
 }
 
+internal fun removeAppTaskWindow(context: Context, packageName: String) {
+    if (packageName.isBlank()) return
+    val appCtx = context.applicationContext
+    val myPkg = appCtx.packageName
+    if (packageName == myPkg) return
+
+    Log.w(TAG, "removeAppTaskWindow: removing task window for package=$packageName")
+    val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val taskId = findTaskIdForPackage(am, packageName)
+    var removedTaskOk = false
+    if (taskId != null) {
+        removedTaskOk = removeTaskId(am, taskId)
+        Log.w(TAG, "removeAppTaskWindow: removeTaskId task=$taskId pkg=$packageName success=$removedTaskOk")
+    } else {
+        Log.w(TAG, "removeAppTaskWindow: taskId not found for pkg=$packageName")
+    }
+
+    runCatching {
+        for (s in LauncherAmStackShell.listStacks()) {
+            if (s.packageName == packageName && s.packageName != myPkg) {
+                LauncherAmStackShell.removeStack(s.stackId)
+            }
+        }
+    }
+
+    FreeformLaunchRegistry.remove(packageName)
+    if (packageName == LauncherActiveAppTracker.activeAppPackage()) {
+        LauncherActiveAppTracker.clearActiveApp()
+    }
+}
+
+internal fun closeAppPackage(context: Context, packageName: String) {
+    if (packageName.isBlank()) return
+    val appCtx = context.applicationContext
+    if (!isPackageSafeToStop(appCtx, packageName)) return
+
+    Log.w(TAG, "closeAppPackage: force-stopping package=$packageName")
+    runCatching {
+        val pb = ProcessBuilder("am", "force-stop", packageName)
+        val proc = pb.start()
+        proc.waitFor(300L, TimeUnit.MILLISECONDS)
+        Log.w(TAG, "closeAppPackage: am force-stop $packageName completed")
+    }.onFailure { err ->
+        Log.w(TAG, "closeAppPackage: am force-stop $packageName failed: ${err.message}")
+    }
+
+    val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val taskId = findTaskIdForPackage(am, packageName)
+    if (taskId != null) {
+        removeTaskId(am, taskId)
+    }
+
+    FreeformLaunchRegistry.remove(packageName)
+    if (packageName == LauncherActiveAppTracker.activeAppPackage()) {
+        LauncherActiveAppTracker.clearActiveApp()
+    }
+}
+
 internal fun tryLaunchIntentInBounds(
     context: Context,
     packageName: String,

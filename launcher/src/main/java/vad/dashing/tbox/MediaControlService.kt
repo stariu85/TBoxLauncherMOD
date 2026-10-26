@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
+import vad.dashing.tbox.ui.launcher.removeAppTaskWindow
 import java.util.LinkedHashSet
 
 const val MUSIC_WIDGET_DATA_KEY = "musicWidget"
@@ -444,6 +446,7 @@ object SharedMediaControlService {
             try {
                 val deadline = SystemClock.elapsedRealtime() + LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS
                 var shouldSendFallbackKey = false
+                var sessionFound = false
                 while (SystemClock.elapsedRealtime() < deadline) {
                     var shouldExit = false
                     synchronized(this@SharedMediaControlService) {
@@ -458,11 +461,13 @@ object SharedMediaControlService {
                             controller == null -> Unit
                             controller.playbackState.isPlayingState() -> {
                                 shouldExit = true
+                                sessionFound = true
                             }
                             else -> {
                                 controller.transportControls.play()
                                 shouldSendFallbackKey = true
                                 shouldExit = true
+                                sessionFound = true
                             }
                         }
                     }
@@ -471,6 +476,10 @@ object SharedMediaControlService {
                 }
                 if (shouldSendFallbackKey) {
                     sendMediaPlayKeyEvent(appContext, targetPackage)
+                }
+                if (sessionFound && LauncherAppConfigStore.closePlayerAfterPlayback(appContext)) {
+                    delay(500L)
+                    removeAppTaskWindow(appContext, targetPackage)
                 }
             } catch (e: Exception) {
                 TboxRepository.addLog("ERROR", "MediaControl", "Late play retry failed: ${e.message}")

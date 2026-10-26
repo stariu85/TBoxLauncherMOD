@@ -14,6 +14,7 @@ private const val KEY_CAR_PAINT = "car_paint_id"
 private const val KEY_DEFAULT_MEDIA = "default_media_package"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
+private const val KEY_CLOSE_PLAYER_AFTER_PLAYBACK = "close_player_after_playback"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
@@ -246,6 +247,8 @@ internal object LauncherAppConfigStore {
     internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
     private val mediaMiniPlayerRevision = MutableStateFlow(0)
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
+    private val closePlayerAfterPlaybackRevision = MutableStateFlow(0)
+    internal val closePlayerAfterPlaybackRevisionFlow: StateFlow<Int> = closePlayerAfterPlaybackRevision
     private val dockIconScaleRevision = MutableStateFlow(0)
     internal val dockIconScaleRevisionFlow: StateFlow<Int> = dockIconScaleRevision
     private val topBarHeightRevision = MutableStateFlow(0)
@@ -402,6 +405,14 @@ internal object LauncherAppConfigStore {
     fun setMediaMiniPlayerVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_MEDIA_MINI_PLAYER_VISIBLE, visible).apply()
         mediaMiniPlayerRevision.value++
+    }
+
+    fun closePlayerAfterPlayback(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLOSE_PLAYER_AFTER_PLAYBACK, false)
+
+    fun setClosePlayerAfterPlayback(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLOSE_PLAYER_AFTER_PLAYBACK, enabled).apply()
+        closePlayerAfterPlaybackRevision.value++
     }
 
     fun dockIconScale(context: Context): Float =
