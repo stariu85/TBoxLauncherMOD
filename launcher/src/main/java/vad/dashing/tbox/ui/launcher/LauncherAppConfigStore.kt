@@ -190,6 +190,7 @@ private const val KEY_TIRE_PRESSURE_ON_CAR_ENABLED = "tire_pressure_on_car_enabl
 private const val KEY_TIRE_PRESSURE_ONLY_LOW = "tire_pressure_only_low"
 private const val KEY_TIRE_PRESSURE_LOW_THRESHOLD = "tire_pressure_low_threshold"
 private const val KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS = "tire_pressure_always_in_settings"
+private const val KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED = "tire_pressure_inertia_animation_enabled"
 private const val KEY_TIRE_PRESSURE_PERSIST_ENABLED = "tire_pressure_persist_enabled"
 private const val KEY_SAVED_TIRE_PRESSURE_FL = "saved_tire_pressure_fl"
 private const val KEY_SAVED_TIRE_PRESSURE_FR = "saved_tire_pressure_fr"
@@ -624,6 +625,14 @@ internal object LauncherAppConfigStore {
 
     fun setTirePressureAlwaysInSettings(context: Context, always: Boolean) {
         prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS, always).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureInertiaAnimationEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED, true)
+
+    fun setTirePressureInertiaAnimationEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED, enabled).apply()
         tirePressureConfigRevision.value++
     }
 

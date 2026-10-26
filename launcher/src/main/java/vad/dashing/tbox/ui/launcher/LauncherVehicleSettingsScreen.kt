@@ -116,6 +116,19 @@ fun LauncherVehicleSettingsScreen(
 
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val tiresReal by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
+    val tirePressureAlwaysInSettings = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureAlwaysInSettings(context)
+    }
+    val tirePressureOnlyLow = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureOnlyLow(context)
+    }
+    val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureLowThreshold(context)
+    }
+    val tirePressureInertiaEnabled = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureInertiaAnimationEnabled(context)
+    }
     val simulate = LauncherDevVehicleState.simulateEnabled
     val effectiveBody = if (simulate) LauncherDevVehicleState.bodyState() else vehicleBody
     val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: tiresReal
@@ -376,12 +389,18 @@ fun LauncherVehicleSettingsScreen(
                 textureSurface = true,
                 modifier = Modifier.fillMaxSize(),
             )
-            LauncherTireBadges(
-                state = effectiveTires,
-                wheelAnchorsPx = wheelAnchors,
-                showAll = true,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (tirePressureAlwaysInSettings) {
+                LauncherTireBadges(
+                    state = effectiveTires,
+                    wheelAnchorsPx = wheelAnchors,
+                    showAll = !tirePressureOnlyLow,
+                    lowPressureThreshold = tirePressureLowThreshold,
+                    speedKmh = motion.speedKmh,
+                    isRearView = true,
+                    inertiaEnabled = tirePressureInertiaEnabled,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             if (!bodyRigAvailable) {
                 LauncherDoorBadges(
                     body = effectiveBody,

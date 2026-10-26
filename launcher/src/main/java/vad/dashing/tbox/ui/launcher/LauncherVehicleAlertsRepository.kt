@@ -196,11 +196,15 @@ object LauncherVehicleAlertsRepository {
             rl = byteActive(chime, "getICM_2_RLSeatBeltWarningSts")
             rm = byteActive(chime, "getICM_2_RMSeatBeltWarningSts")
             rr = byteActive(chime, "getICM_2_RRSeatBeltWarningSts")
-        }
-        readSeatBeltWarning()?.let { snap ->
-            // Type 15 is authoritative for the two front seats.
-            d = snap.first
-            p = snap.second
+            readSeatBeltWarning()?.let { snap ->
+                if (snap.first) d = true
+                if (snap.second) p = true
+            }
+        } else {
+            readSeatBeltWarning()?.let { snap ->
+                d = snap.first
+                p = snap.second
+            }
         }
         driverBelt = d
         passengerBelt = p

@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.romainguy.kotlin.math.Float3
@@ -318,6 +320,15 @@ private fun LauncherCarFilamentContent(
     }
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val customSceneLifecycleOwner = remember(modelInstance, lifecycleOwner) {
+        AdasSceneLifecycleOwner(lifecycleOwner.lifecycle)
+    }
+    DisposableEffect(customSceneLifecycleOwner) {
+        onDispose {
+            customSceneLifecycleOwner.destroy()
+        }
+    }
+
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
     var renderedScale by remember(modelInstance) { mutableFloatStateOf(BASE_MODEL_SCALE) }
     var modelReady by remember(modelInstance) { mutableStateOf(modelInstance != null) }
@@ -340,6 +351,48 @@ private fun LauncherCarFilamentContent(
     }
     val animationController = remember(modelInstance) {
         modelInstance?.let(LauncherCarAnimationController::bind)
+    }
+
+    // Trigger 1: Body state (doors, tailgate, sunroof)
+    val bodyActive = rigState.doorFlOpen ||
+        rigState.doorFrOpen ||
+        rigState.doorRlOpen ||
+        rigState.doorRrOpen ||
+        rigState.tailgateOpen ||
+        rigState.sunroofOpen
+
+    // Trigger 2: Camera switching or drive gear blend transition
+    val rawTransition = settingsProgress.coerceIn(0f, 1f)
+    val transition = if (rawTransition < 0.001f) 0f else rawTransition
+    val targetDriveBlend = if (transition > 0.02f) {
+        0f
+    } else if (inDriveGear || steerPreview) {
+        1f
+    } else {
+        0f
+    }
+    val cameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f || transition > 0.001f
+
+    // Trigger 3: User orbit interaction
+    val orbitInteracting = settingsOrbit?.interacting == true
+
+    // Trigger 4: Initializing / loading
+    val isInitializing = !modelReady
+
+    val isTriggerActive = bodyActive || cameraSwitching || orbitInteracting || isInitializing
+
+    LaunchedEffect(isTriggerActive, isAvmActive, carHidden) {
+        if (isAvmActive || carHidden) {
+            customSceneLifecycleOwner.pauseScene()
+        } else {
+            // Resume scene immediately when exiting camera/settings or when triggers fire
+            customSceneLifecycleOwner.resumeScene()
+            if (!isTriggerActive) {
+                // Keep rendering active for 2 seconds after camera/settings exit or action completion
+                delay(2_000L)
+                customSceneLifecycleOwner.pauseScene()
+            }
+        }
     }
 
     DisposableEffect(lifecycleOwner, lowPowerPreview) {
@@ -367,7 +420,7 @@ private fun LauncherCarFilamentContent(
         val modelLoadedAt = SystemClock.elapsedRealtime()
         while (isActive) {
             delay(1_000L)
-            val resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            val resumed = customSceneLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             if (!resumed) continue
             if (LauncherCarSurfaceRecovery.isCovered()) continue
             val last = lastFrameNs
@@ -411,7 +464,7 @@ private fun LauncherCarFilamentContent(
                     .fillMaxSize()
                     .graphicsLayer { alpha = modelAlpha }
                     .pointerInteropFilter { false },
-                lifecycle = lifecycleOwner.lifecycle,
+                lifecycle = customSceneLifecycleOwner.lifecycle,
                 // TextureSurface composites inline so Compose overlays (tire/door badges)
                 // draw above the model; the default SurfaceView stays for the home panel
                 // where overlays sit beside the car silhouette.
@@ -812,3 +865,53 @@ private fun LauncherCarFilamentContent(
 }
 
 private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/**
+ * Custom [LifecycleOwner] for the 3D SceneView.
+ * Allows independent pause/resume control based on custom vehicle and camera triggers,
+ * preventing rendering freezes when external freeform apps take focus.
+ */
+internal class AdasSceneLifecycleOwner(
+    private val hostLifecycle: Lifecycle,
+) : LifecycleOwner {
+    private val registry = LifecycleRegistry(this)
+    override val lifecycle: Lifecycle get() = registry
+
+    private val hostObserver = LifecycleEventObserver { _, event ->
+        when (event) {
+            Lifecycle.Event.ON_DESTROY -> {
+                if (registry.currentState != Lifecycle.State.DESTROYED) {
+                    registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    init {
+        registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        hostLifecycle.addObserver(hostObserver)
+    }
+
+    fun resumeScene() {
+        if (hostLifecycle.currentState == Lifecycle.State.DESTROYED) return
+        if (registry.currentState != Lifecycle.State.RESUMED) {
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
+    }
+
+    fun pauseScene() {
+        if (registry.currentState == Lifecycle.State.RESUMED) {
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        }
+    }
+
+    fun destroy() {
+        hostLifecycle.removeObserver(hostObserver)
+        if (registry.currentState != Lifecycle.State.DESTROYED) {
+            registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        }
+    }
+}

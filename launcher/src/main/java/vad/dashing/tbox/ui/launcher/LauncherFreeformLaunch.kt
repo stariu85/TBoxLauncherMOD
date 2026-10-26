@@ -110,6 +110,91 @@ internal fun tryLaunchSettingsIntentInFreeform(
     return tryLaunchIntentInBounds(context, resolved.packageName, targeted, bounds)
 }
 
+internal fun closeFullWidthAppsIfOpen(
+    context: Context,
+    launchingPackage: String,
+    targetBounds: Rect,
+) {
+    // Only close full-width apps if the new target launch is NOT full-width (EMBEDDED or SPLIT, width < 1900).
+    // If launching a new FULL_WIDTH app (width >= 1900), do NOT close previous full-width apps —
+    // let the new full-width app open on top of the old one.
+    if (targetBounds.width() >= 1900) return
+
+    val appCtx = context.applicationContext
+    val launcherPackage = appCtx.packageName
+    val tracked = FreeformLaunchRegistry.snapshot()
+    val packagesToStop = mutableSetOf<String>()
+
+    // 1. Check packages recorded in FreeformLaunchRegistry
+    for (pkg in tracked) {
+        if (pkg == launcherPackage) continue
+        val bounds = FreeformLaunchRegistry.lastBounds(pkg)
+        if (bounds != null && bounds.width() >= 1900) {
+            packagesToStop += pkg
+        }
+    }
+
+    // 2. Check active app in LauncherActiveAppTracker
+    val activePkg = LauncherActiveAppTracker.activeAppPackage()
+    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage) {
+        val bounds = FreeformLaunchRegistry.lastBounds(activePkg)
+        if (bounds != null && bounds.width() >= 1900) {
+            packagesToStop += activePkg
+        }
+    }
+
+    // 3. Check system stacks via LauncherAmStackShell
+    val stacks = runCatching { LauncherAmStackShell.listStacks() }.getOrDefault(emptyList())
+    for (s in stacks) {
+        val pkg = s.packageName ?: continue
+        if (pkg == launcherPackage) continue
+        val isFullWidth = s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000
+        if (isFullWidth) {
+            packagesToStop += pkg
+        }
+    }
+
+    if (packagesToStop.isEmpty()) return
+
+    Log.w(TAG, "closeFullWidthAppsIfOpen: closing full-width packages=$packagesToStop launchingPkg=$launchingPackage targetWidth=${targetBounds.width()}")
+
+    val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    for (pkg in packagesToStop) {
+        if (!isPackageSafeToStop(appCtx, pkg)) continue
+
+        runCatching {
+            val pb = ProcessBuilder("am", "force-stop", pkg)
+            val proc = pb.start()
+            proc.waitFor(300L, TimeUnit.MILLISECONDS)
+            Log.w(TAG, "closeFullWidthAppsIfOpen: am force-stop $pkg completed")
+        }.onFailure { err ->
+            Log.w(TAG, "closeFullWidthAppsIfOpen: am force-stop $pkg failed: ${err.message}")
+        }
+
+        val taskId = findTaskIdForPackage(am, pkg)
+        if (taskId != null) {
+            removeTaskId(am, taskId)
+        }
+
+        FreeformLaunchRegistry.remove(pkg)
+        if (pkg == LauncherActiveAppTracker.activeAppPackage()) {
+            LauncherActiveAppTracker.clearActiveApp()
+        }
+    }
+
+    // Secondary shell cleanup for full-width stacks if any remain
+    runCatching {
+        for (s in LauncherAmStackShell.listStacks()) {
+            val pkg = s.packageName ?: continue
+            if (pkg == launcherPackage) continue
+            if (s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000) {
+                LauncherAmStackShell.removeStack(s.stackId)
+                FreeformLaunchRegistry.remove(pkg)
+            }
+        }
+    }
+}
+
 internal fun tryLaunchIntentInBounds(
     context: Context,
     packageName: String,
@@ -117,6 +202,7 @@ internal fun tryLaunchIntentInBounds(
     bounds: Rect,
     launchAdjacent: Boolean = false,
 ): Boolean {
+    closeFullWidthAppsIfOpen(context, launchingPackage = packageName, targetBounds = bounds)
     val home = LauncherHomeActivityHolder.instance
     home?.runOnUiThread {
         runCatching { home.window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) }

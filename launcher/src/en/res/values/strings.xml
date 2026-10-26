@@ -1294,7 +1294,8 @@
     <string name="launcher_vs_tire_pressure_show_on_car">Show tire pressure on car model</string>
     <string name="launcher_vs_tire_pressure_only_low">Show only on low pressure</string>
     <string name="launcher_vs_tire_pressure_threshold">Low pressure threshold</string>
-    <string name="launcher_vs_tire_pressure_always_in_settings">Always show in settings</string>
+    <string name="launcher_vs_tire_pressure_always_in_settings">Show on model in settings</string>
+    <string name="launcher_vs_tire_pressure_inertia_animation">Inertial tire badge animation</string>
     <string name="launcher_vs_tire_pressure_persist">Remember tire pressure from last trip</string>
     <string name="launcher_vs_sim_acc">ACC Cruise Active</string>
     <string name="launcher_vs_sim_adas_header">ADAS / Assists</string>

@@ -90,33 +90,21 @@ object LauncherAvmRepository {
                             goLauncherHome(appCtx)
                         }
                         AVM_CAMERA_ACTION_MINIMIZE_APPS -> {
-                            val isHomeActive = LauncherHomeActivityHolder.isResumed
-                            val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
-                            val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
-
-                            val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
-                                isCameraPackage(LauncherHistoryTracker.lastActivePackage())
-
-                            if (isHomeActive || (activePkgIsCamera && lastFromHome)) {
-                                targetBeforeAvm = null
-                            } else {
-                                val history = LauncherHistoryTracker.getHistory(appCtx)
-                                targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
-                            }
-                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> minimizing foreign tasks & going Home")
-                            minimizeForeignFreeformTasks(appCtx)
-                            goLauncherHome(appCtx)
+                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> showing black overlay over current screen")
+                            targetBeforeAvm = null
+                            LauncherAvmBlackOverlayWindow.show(appCtx)
                         }
                     }
                 } else {
+                    LauncherAvmBlackOverlayWindow.hide()
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null
-                    if (cameraAction != AVM_CAMERA_ACTION_DO_NOTHING && restoreTarget != null) {
-                        Log.w(TAG, "AVM turned OFF: restoring targetBeforeAvm=$restoreTarget immediately")
+                    if (cameraAction == AVM_CAMERA_ACTION_CLOSE_APPS && restoreTarget != null) {
+                        Log.w(TAG, "AVM turned OFF: cameraAction=CLOSE_APPS -> restoring targetBeforeAvm=$restoreTarget")
                         launchTarget(appCtx, restoreTarget)
                     } else {
-                        Log.w(TAG, "AVM turned OFF: cameraAction=$cameraAction restoreTarget=$restoreTarget -> staying as is")
+                        Log.w(TAG, "AVM turned OFF: cameraAction=$cameraAction -> staying as is")
                     }
                 }
             }

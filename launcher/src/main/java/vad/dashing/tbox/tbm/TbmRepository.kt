@@ -276,8 +276,15 @@ class TbmRepository(
                 if (appSignalIds.isNotEmpty()) {
                     val appResult = apiClient.getSignals(ids = appSignalIds, source = "app", token = token)
                     appResult.onSuccess { signalValues ->
+                        val receivedIds = HashSet<String>()
                         signalValues.forEach { item ->
                             mergedMap[item.id] = item.value
+                            receivedIds.add(item.id)
+                        }
+                        appSignalIds.forEach { id ->
+                            if (!receivedIds.contains(id)) {
+                                mergedMap[id] = null
+                            }
                         }
                     }.onFailure { err ->
                         hasError = true
@@ -288,8 +295,15 @@ class TbmRepository(
                 if (tboxSignalIds.isNotEmpty()) {
                     val tboxResult = apiClient.getSignals(ids = tboxSignalIds, source = "tbox", token = token)
                     tboxResult.onSuccess { signalValues ->
+                        val receivedIds = HashSet<String>()
                         signalValues.forEach { item ->
                             mergedMap[item.id] = item.value
+                            receivedIds.add(item.id)
+                        }
+                        tboxSignalIds.forEach { id ->
+                            if (!receivedIds.contains(id)) {
+                                mergedMap[id] = null
+                            }
                         }
                     }.onFailure { err ->
                         if (!hasError) {
@@ -337,7 +351,9 @@ class TbmRepository(
         }
         _geoSatellitesVisible.value = map["geo_satellites_visible"]?.asInt()
         _geoSatellitesUsed.value = map["geo_satellites_used"]?.asInt()
-        _geoSpeedSource.value = map["geo_speed_source"]?.toString()
+        _geoSpeedSource.value = map["geo_speed_source"]?.toString()?.takeIf {
+            it.isNotBlank() && !it.equals("null", ignoreCase = true) && !it.equals("none", ignoreCase = true)
+        }
         _geoFixValid.value = when (val v = map["geo_fix_valid"]) {
             is Boolean -> v
             "on" -> true

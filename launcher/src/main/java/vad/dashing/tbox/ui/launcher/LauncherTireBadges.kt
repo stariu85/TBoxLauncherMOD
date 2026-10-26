@@ -1,7 +1,10 @@
 package vad.dashing.tbox.ui.launcher
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -22,8 +27,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.valueToString
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -39,10 +48,55 @@ fun LauncherTireBadges(
     compact: Boolean = false,
     enabled: Boolean = true,
     lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
+    speedKmh: Float = 0f,
+    isRearView: Boolean = false,
+    inertiaEnabled: Boolean = true,
 ) {
     if (!enabled) return
     val needsAttentionAny = state.hasAttention(lowPressureThreshold)
     if (!showAll && !needsAttentionAny) return
+
+    val targetYAnim = remember { Animatable(0f) }
+    val targetXAnim = remember { Animatable(0f) }
+
+    LaunchedEffect(inertiaEnabled, isRearView) {
+        if (!inertiaEnabled || !isRearView) {
+            launch { targetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
+            launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
+            return@LaunchedEffect
+        }
+        var lastSpeed = speedKmh
+        while (isActive) {
+            delay(100L) // 10 Hz calculation rate
+            val currentSpeed = speedKmh
+            val delta = currentSpeed - lastSpeed
+            lastSpeed = currentSpeed
+
+            // Offset Y: +25dp on acceleration (delta > 0), -25dp on braking (delta < 0)
+            val targetY = (delta * 8f).coerceIn(-25f, 25f)
+            // Offset X: up to 10dp outwards on acceleration or braking
+            val targetX = (abs(delta) * 3.5f).coerceIn(0f, 10f)
+
+            launch {
+                targetYAnim.animateTo(
+                    targetValue = targetY,
+                    animationSpec = spring(
+                        dampingRatio = 0.65f,
+                        stiffness = 35f, // ~2 seconds spring relaxation to steady state
+                    ),
+                )
+            }
+            launch {
+                targetXAnim.animateTo(
+                    targetValue = targetX,
+                    animationSpec = spring(
+                        dampingRatio = 0.65f,
+                        stiffness = 35f,
+                    ),
+                )
+            }
+        }
+    }
 
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
@@ -55,7 +109,7 @@ fun LauncherTireBadges(
         val visibleCorners = LauncherWheelCorner.entries.filter { corner ->
             val wheel = state.wheel(corner)
             if (showAll) {
-                wheel.available
+                wheel.available || !state.hasAvailableData
             } else {
                 wheel.needsAttention(lowPressureThreshold)
             }
@@ -69,11 +123,24 @@ fun LauncherTireBadges(
             calloutHeight = badgeHeightPx,
             gap = with(density) { 18.dp.toPx() },
         )
+
+        val yOffsetDp = targetYAnim.value
+        val xOffsetMagnitudeDp = targetXAnim.value
+
         Canvas(modifier = Modifier.fillMaxSize()) {
             visibleCorners.forEach { corner ->
                 val anchor = wheelAnchorsPx[corner] ?: return@forEach
                 val rect = layout[corner] ?: return@forEach
-                val endX = if (rect.left < anchor.x) rect.left + rect.width else rect.left
+
+                val isLeftWheel = corner == LauncherWheelCorner.FL || corner == LauncherWheelCorner.RL
+                val cornerXOffsetDp = if (isLeftWheel) -xOffsetMagnitudeDp else xOffsetMagnitudeDp
+                val cornerXOffsetPx = with(density) { cornerXOffsetDp.dp.toPx() }
+                val cornerYOffsetPx = with(density) { yOffsetDp.dp.toPx() }
+
+                val shiftedLeft = rect.left + cornerXOffsetPx
+                val shiftedTop = rect.top + cornerYOffsetPx
+
+                val endX = if (shiftedLeft < anchor.x) shiftedLeft + rect.width else shiftedLeft
                 val wheel = state.wheel(corner)
                 drawLine(
                     color = if (wheel.warningSts != 0) {
@@ -82,7 +149,7 @@ fun LauncherTireBadges(
                         LauncherColors.AccentCyan.copy(alpha = 0.55f)
                     },
                     start = anchor,
-                    end = Offset(endX, rect.top + rect.height / 2f),
+                    end = Offset(endX, shiftedTop + rect.height / 2f),
                     strokeWidth = with(density) { 1.5.dp.toPx() },
                     cap = StrokeCap.Round,
                 )
@@ -90,13 +157,21 @@ fun LauncherTireBadges(
         }
         for (corner in visibleCorners) {
             val rect = layout[corner] ?: continue
+            val isLeftWheel = corner == LauncherWheelCorner.FL || corner == LauncherWheelCorner.RL
+            val cornerXOffsetDp = if (isLeftWheel) -xOffsetMagnitudeDp else xOffsetMagnitudeDp
+            val cornerXOffsetPx = with(density) { cornerXOffsetDp.dp.toPx() }
+            val cornerYOffsetPx = with(density) { yOffsetDp.dp.toPx() }
+
+            val shiftedLeft = rect.left + cornerXOffsetPx
+            val shiftedTop = rect.top + cornerYOffsetPx
+
             LauncherTireBadge(
                 corner = corner,
                 wheel = state.wheel(corner),
                 compact = compact,
                 lowPressureThreshold = lowPressureThreshold,
                 modifier = Modifier
-                    .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
+                    .offset { IntOffset(shiftedLeft.roundToInt(), shiftedTop.roundToInt()) }
                     .width(badgeWidth),
             )
         }

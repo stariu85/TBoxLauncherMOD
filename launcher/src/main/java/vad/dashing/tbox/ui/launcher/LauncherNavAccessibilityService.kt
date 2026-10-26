@@ -22,6 +22,21 @@ class LauncherNavAccessibilityService : AccessibilityService() {
          */
         fun dispatchGlobalBack(): Boolean {
             val service = instance ?: return false
+            val home = vad.dashing.tbox.LauncherHomeActivityHolder.instance
+            if (home != null && vad.dashing.tbox.LauncherHomeActivityHolder.isResumed) {
+                if (findForeignAppTask(home) == null) {
+                    val hasOverlays = LauncherVehicleSettingsOverlayWindow.isShowing() ||
+                        vad.dashing.tbox.LauncherVehicleSettingsActivity.isOpen() ||
+                        vad.dashing.tbox.MainActivity.isOpen() ||
+                        LauncherAboutOverlayWindow.isShowing() ||
+                        LauncherAppDrawerWindow.isShowing() ||
+                        LauncherAppPickerOverlayWindow.isShowing()
+                    if (!hasOverlays) {
+                        android.util.Log.w("LauncherNav", "dispatchGlobalBack: ignored on root desktop")
+                        return false
+                    }
+                }
+            }
             return runCatching {
                 service.performGlobalAction(GLOBAL_ACTION_BACK)
             }.getOrDefault(false)

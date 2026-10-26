@@ -539,7 +539,7 @@ private fun rememberSatelliteInfo(
             val visible = tbmSatVisible ?: tbmSatUsed ?: 0
             val used = tbmSatUsed ?: 0
             val fix = tbmFixValid == true || tbmLocateStatus == true
-            val inertial = tbmSpeedSource == "retention" || tbmSpeedSource == "can"
+            val inertial = (tbmSpeedSource == "retention" || tbmSpeedSource == "can") && !fix
             SatelliteInfo(
                 visibleSatellites = maxOf(visible, used),
                 usingSatellites = used,

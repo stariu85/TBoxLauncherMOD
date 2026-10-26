@@ -148,17 +148,14 @@ fun LauncherLeftPanel(
     val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
     val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
     val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
-    val tirePressureOnCarEnabled = remember(context, tirePressureConfigRevision) {
-        LauncherAppConfigStore.tirePressureOnCarEnabled(context)
-    }
     val tirePressureOnlyLow = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureOnlyLow(context)
     }
     val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureLowThreshold(context)
     }
-    val tirePressureAlwaysInSettings = remember(context, tirePressureConfigRevision) {
-        LauncherAppConfigStore.tirePressureAlwaysInSettings(context)
+    val tirePressureInertiaEnabled = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureInertiaAnimationEnabled(context)
     }
 
     LaunchedEffect(context) {
@@ -567,20 +564,19 @@ fun LauncherLeftPanel(
                         },
                 )
             }
-            val inSettingsView = settingsProgress > 0.01f
-            val showBadgesInSettings = tirePressureAlwaysInSettings || settingsProgress < 0.15f
-            val effectiveShowAll = !tirePressureOnlyLow || (tirePressureAlwaysInSettings && inSettingsView)
-            if (!carHidden && showBadgesInSettings && !racing) {
-                    LauncherTireBadges(
-                        state = effectiveTires,
-                        // ADAS strip shows a small pressure-only pill next to the wheel.
-                        compact = true,
-                        wheelAnchorsPx = wheelAnchors,
-                        enabled = tirePressureOnCarEnabled,
-                        showAll = effectiveShowAll,
-                        lowPressureThreshold = tirePressureLowThreshold,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+            if (!carHidden && !racing) {
+                LauncherTireBadges(
+                    state = effectiveTires,
+                    // ADAS strip shows a small pressure-only pill next to the wheel.
+                    compact = true,
+                    wheelAnchorsPx = wheelAnchors,
+                    showAll = !tirePressureOnlyLow,
+                    lowPressureThreshold = tirePressureLowThreshold,
+                    speedKmh = effectiveSpeed,
+                    isRearView = showDriveView,
+                    inertiaEnabled = tirePressureInertiaEnabled,
+                    modifier = Modifier.fillMaxSize(),
+                )
                     if (!bodyRigAvailable) {
                         LauncherDoorBadges(
                             body = effectiveBody,

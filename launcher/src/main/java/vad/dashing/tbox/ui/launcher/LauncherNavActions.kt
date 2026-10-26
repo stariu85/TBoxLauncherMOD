@@ -15,6 +15,7 @@ import android.view.WindowManager
 import vad.dashing.tbox.LauncherForegroundHandoff
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
+import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.MainActivity
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -242,6 +243,20 @@ internal fun goLauncherBack(
  * is connected; otherwise InputManager inject (scrcpy/HW-style flags).
  */
 internal fun dispatchPhysicalBack(source: String = "unknown") {
+    val home = LauncherHomeActivityHolder.instance
+    if (home != null && LauncherHomeActivityHolder.isResumed && findForeignAppTask(home) == null) {
+        val hasOverlays = LauncherVehicleSettingsOverlayWindow.isShowing() ||
+            LauncherVehicleSettingsActivity.isOpen() ||
+            MainActivity.isOpen() ||
+            LauncherAboutOverlayWindow.isShowing() ||
+            LauncherAppDrawerWindow.isShowing() ||
+            LauncherAppPickerOverlayWindow.isShowing()
+        if (!hasOverlays) {
+            Log.w(TAG, "dispatchPhysicalBack: ignored on root desktop source=$source")
+            LauncherNavLogger.logNavAction("BACK_DELIVER", source, result = "Ignored on root desktop")
+            return
+        }
+    }
     if (!LauncherNavAccessibilityService.isConnected()) {
         LauncherHomeActivityHolder.instance?.let {
             LauncherAccessibilityHelper.ensureNavBackServiceEnabled(it)
@@ -309,6 +324,14 @@ internal fun isSplitActiveOnScreen(@Suppress("UNUSED_PARAMETER") context: Contex
 }
 
 internal fun findForeignAppTask(context: Context): ForeignAppTask? {
+    if (LauncherHomeActivityHolder.isResumed && LauncherRightPanelOverlayWindow.isShowing()) {
+        val activeTask = LauncherActiveAppTracker.getActiveForeignTask()
+        if (activeTask != null && LauncherWindowState.hiddenForExternalApp) {
+            return activeTask
+        }
+        return null
+    }
+
     val activeTask = LauncherActiveAppTracker.getActiveForeignTask()
     if (activeTask != null) return activeTask
 
