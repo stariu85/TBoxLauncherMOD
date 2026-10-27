@@ -341,6 +341,7 @@
     <string name="launcher_vs_section_wheels_sub">Давление и температура шин</string>
     <string name="launcher_vs_tire_pressure_show_on_car">Показывать давление на модели</string>
     <string name="launcher_vs_tire_pressure_only_low">Показывать только при низком давлении</string>
+    <string name="launcher_vs_tire_pressure_only_top_view">Показывать только при виде сверху</string>
     <string name="launcher_vs_tire_pressure_threshold">Порог низкого давления</string>
     <string name="launcher_vs_tire_pressure_always_in_settings">Показ на модели в настройках</string>
     <string name="launcher_vs_tire_pressure_inertia_animation">Инерция плашек при движении</string>

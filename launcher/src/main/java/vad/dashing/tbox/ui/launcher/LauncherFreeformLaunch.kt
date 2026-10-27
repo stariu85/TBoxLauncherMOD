@@ -115,10 +115,10 @@ internal fun closeFullWidthAppsIfOpen(
     launchingPackage: String,
     targetBounds: Rect,
 ) {
-    // Only close full-width apps if the new target launch is NOT full-width (EMBEDDED or SPLIT, width < 1900).
-    // If launching a new FULL_WIDTH app (width >= 1900), do NOT close previous full-width apps —
+    // Only close full-width apps if the new target launch is NOT full-width (EMBEDDED or SPLIT, left != 0).
+    // If launching a new FULL_WIDTH app (left == 0), do NOT close previous full-width apps —
     // let the new full-width app open on top of the old one.
-    if (targetBounds.width() >= 1900) return
+    if (targetBounds.left == 0) return
 
     val appCtx = context.applicationContext
     val launcherPackage = appCtx.packageName
@@ -129,7 +129,7 @@ internal fun closeFullWidthAppsIfOpen(
     for (pkg in tracked) {
         if (pkg == launcherPackage) continue
         val bounds = FreeformLaunchRegistry.lastBounds(pkg)
-        if (bounds != null && bounds.width() >= 1900) {
+        if (bounds != null && bounds.left == 0) {
             packagesToStop += pkg
         }
     }
@@ -138,7 +138,7 @@ internal fun closeFullWidthAppsIfOpen(
     val activePkg = LauncherActiveAppTracker.activeAppPackage()
     if (!activePkg.isNullOrBlank() && activePkg != launcherPackage) {
         val bounds = FreeformLaunchRegistry.lastBounds(activePkg)
-        if (bounds != null && bounds.width() >= 1900) {
+        if (bounds != null && bounds.left == 0) {
             packagesToStop += activePkg
         }
     }
@@ -149,14 +149,14 @@ internal fun closeFullWidthAppsIfOpen(
         val pkg = s.packageName ?: continue
         if (pkg == launcherPackage) continue
 
-        // If FreeformLaunchRegistry explicitly recorded this pkg as narrow (< 1900),
-        // do NOT treat it as full-width even if system stack temporarily reports width >= 1900.
+        // If FreeformLaunchRegistry explicitly recorded this pkg as narrow (left != 0),
+        // do NOT treat it as full-width even if system stack temporarily reports left == 0.
         val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
-        if (recordedBounds != null && recordedBounds.width() < 1900) {
+        if (recordedBounds != null && recordedBounds.left != 0) {
             continue
         }
 
-        val isFullWidth = s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000
+        val isFullWidth = s.bounds != null && s.bounds.left == 0 && s.bounds.height() >= 1000
         if (isFullWidth) {
             packagesToStop += pkg
         }
@@ -164,21 +164,10 @@ internal fun closeFullWidthAppsIfOpen(
 
     if (packagesToStop.isEmpty()) return
 
-    Log.w(TAG, "closeFullWidthAppsIfOpen: closing full-width packages=$packagesToStop launchingPkg=$launchingPackage targetWidth=${targetBounds.width()}")
+    Log.w(TAG, "closeFullWidthAppsIfOpen: closing full-width packages=$packagesToStop launchingPkg=$launchingPackage targetLeft=${targetBounds.left}")
 
     val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     for (pkg in packagesToStop) {
-        if (!isPackageSafeToStop(appCtx, pkg)) continue
-
-        runCatching {
-            val pb = ProcessBuilder("am", "force-stop", pkg)
-            val proc = pb.start()
-            proc.waitFor(300L, TimeUnit.MILLISECONDS)
-            Log.w(TAG, "closeFullWidthAppsIfOpen: am force-stop $pkg completed")
-        }.onFailure { err ->
-            Log.w(TAG, "closeFullWidthAppsIfOpen: am force-stop $pkg failed: ${err.message}")
-        }
-
         val taskId = findTaskIdForPackage(am, pkg)
         if (taskId != null) {
             removeTaskId(am, taskId)
@@ -197,11 +186,11 @@ internal fun closeFullWidthAppsIfOpen(
             if (pkg == launcherPackage) continue
 
             val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
-            if (recordedBounds != null && recordedBounds.width() < 1900) {
+            if (recordedBounds != null && recordedBounds.left != 0) {
                 continue
             }
 
-            if (s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000) {
+            if (s.bounds != null && s.bounds.left == 0 && s.bounds.height() >= 1000) {
                 LauncherAmStackShell.removeStack(s.stackId)
                 FreeformLaunchRegistry.remove(pkg)
             }
@@ -860,12 +849,12 @@ private fun isTaskInFreeformMode(taskId: Int): Boolean {
         val taskIds = stackInfoTaskIds(info) ?: continue
         if (taskId in taskIds) {
             val bounds = stackInfoBounds(info)
-            if (bounds != null && !bounds.isEmpty && bounds.width() >= 1900 && bounds.height() >= 1000) {
+            if (bounds != null && !bounds.isEmpty && bounds.left == 0 && bounds.height() >= 1000) {
                 return false
             }
             val mode = stackInfoWindowingMode(info)
             if (mode == WINDOWING_MODE_FREEFORM || mode == WINDOWING_MODE_EXTEND) return true
-            if (bounds != null && !bounds.isEmpty && (bounds.width() < 1900 || bounds.height() < 1000)) return true
+            if (bounds != null && !bounds.isEmpty && (bounds.left != 0 || bounds.height() < 1000)) return true
         }
     }
     return false

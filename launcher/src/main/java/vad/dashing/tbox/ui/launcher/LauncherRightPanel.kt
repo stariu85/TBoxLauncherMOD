@@ -76,6 +76,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsViewModel
@@ -2156,6 +2157,10 @@ private fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val wheelsPressure by CanDataRepository.wheelsPressure.collectAsStateWithLifecycle()
+    val effectiveTires = remember(tiresState, wheelsPressure) {
+        mergeTireStateWithCanData(tiresState, wheelsPressure)
+    }
     val simShowAll = LauncherDevVehicleState.showAllIndicators
 
     val alerts = if (simShowAll) alertsState.alerts else alertsState.alerts.filterNot { it.id.isBodyOpenAlert }
@@ -2163,7 +2168,7 @@ private fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
 
     val hasCritical = simShowAll ||
         alerts.any { it.severity == LauncherAlertSeverity.Critical } ||
-        tiresState.hasAttention ||
+        effectiveTires.hasAttention ||
         adas.fcwActive || adas.aebHint || adas.accTakeOver || adas.adasTakeOver ||
         adas.srrSystem == LauncherSrrSystemState.Fault
 
@@ -2214,6 +2219,10 @@ private fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetail
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val wheelsPressure by CanDataRepository.wheelsPressure.collectAsStateWithLifecycle()
+    val effectiveTires = remember(tiresState, wheelsPressure) {
+        mergeTireStateWithCanData(tiresState, wheelsPressure)
+    }
     val simShowAll = LauncherDevVehicleState.showAllIndicators
 
     val alerts = if (simShowAll) alertsState.alerts else alertsState.alerts.filterNot { it.id.isBodyOpenAlert }
@@ -2230,12 +2239,12 @@ private fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetail
             )
         }
 
-        if (tiresState.hasAttention) {
+        if (effectiveTires.hasAttention) {
             val lowCorners = listOf(
-                "Переднее левое" to tiresState.fl,
-                "Переднее правое" to tiresState.fr,
-                "Заднее левое" to tiresState.rl,
-                "Заднее правое" to tiresState.rr,
+                "Переднее левое" to effectiveTires.fl,
+                "Переднее правое" to effectiveTires.fr,
+                "Заднее левое" to effectiveTires.rl,
+                "Заднее правое" to effectiveTires.rr,
             ).filter { it.second.needsAttention }
 
             lowCorners.forEach { (cornerName, wheel) ->

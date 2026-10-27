@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -56,6 +57,7 @@ fun LauncherTireBadges(
     val needsAttentionAny = state.hasAttention(lowPressureThreshold)
     if (!showAll && !needsAttentionAny) return
 
+    val currentSpeedState = rememberUpdatedState(speedKmh)
     val targetYAnim = remember { Animatable(0f) }
     val targetXAnim = remember { Animatable(0f) }
 
@@ -65,10 +67,10 @@ fun LauncherTireBadges(
             launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
             return@LaunchedEffect
         }
-        var lastSpeed = speedKmh
+        var lastSpeed = currentSpeedState.value
         while (isActive) {
             delay(100L) // 10 Hz calculation rate
-            val currentSpeed = speedKmh
+            val currentSpeed = currentSpeedState.value
             val delta = currentSpeed - lastSpeed
             lastSpeed = currentSpeed
 

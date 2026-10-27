@@ -1295,6 +1295,7 @@
     <string name="launcher_vs_section_wheels_sub">Tire pressure and temperature</string>
     <string name="launcher_vs_tire_pressure_show_on_car">Show tire pressure on car model</string>
     <string name="launcher_vs_tire_pressure_only_low">Show only on low pressure</string>
+    <string name="launcher_vs_tire_pressure_only_top_view">Show only in top view</string>
     <string name="launcher_vs_tire_pressure_threshold">Low pressure threshold</string>
     <string name="launcher_vs_tire_pressure_always_in_settings">Show on model in settings</string>
     <string name="launcher_vs_tire_pressure_inertia_animation">Inertial tire badge animation</string>

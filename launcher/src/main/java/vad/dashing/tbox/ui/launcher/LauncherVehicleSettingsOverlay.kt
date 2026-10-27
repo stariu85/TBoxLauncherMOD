@@ -306,6 +306,9 @@ internal fun LauncherVehicleSettingsContent(
     var tirePressureOnlyLow by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressureOnlyLow(context))
     }
+    var tirePressureOnlyTopView by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureOnlyTopView(context))
+    }
     var tirePressureLowThreshold by remember(context, tirePressureConfigRevision) {
         mutableFloatStateOf(LauncherAppConfigStore.tirePressureLowThreshold(context))
     }
@@ -394,6 +397,16 @@ internal fun LauncherVehicleSettingsContent(
                     val next = !tirePressureOnlyLow
                     tirePressureOnlyLow = next
                     LauncherAppConfigStore.setTirePressureOnlyLow(context, next)
+                },
+            )
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_tire_pressure_only_top_view),
+                active = tirePressureOnlyTopView,
+                onClick = {
+                    val next = !tirePressureOnlyTopView
+                    tirePressureOnlyTopView = next
+                    LauncherAppConfigStore.setTirePressureOnlyTopView(context, next)
                 },
             )
 

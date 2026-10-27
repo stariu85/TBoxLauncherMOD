@@ -66,7 +66,8 @@ internal object LauncherSplitPresetStore {
 
     fun deletePreset(context: Context, id: String) {
         savePresets(context, loadPresets(context).filterNot { it.id == id })
-        if (LauncherHomeStore.autostartKey(context) == "split:$id") {
+        val autostartKey = LauncherHomeStore.autostartKey(context)
+        if (autostartKey != null && autostartKey.startsWith("split:") && autostartKey.removePrefix("split:").substringBefore('@') == id) {
             LauncherHomeStore.setAutostartKey(context, null)
         }
     }

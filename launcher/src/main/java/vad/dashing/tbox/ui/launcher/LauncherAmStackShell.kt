@@ -133,7 +133,7 @@ internal object LauncherAmStackShell {
             if (pkg == launcherPackage) continue
             val isFreeformMode = s.windowingMode.equals("freeform", ignoreCase = true) ||
                 s.windowingMode.equals("extend", ignoreCase = true)
-            val isFullscreenBounds = s.bounds != null && s.bounds.width() >= 1900 && s.bounds.height() >= 1000
+            val isFullscreenBounds = s.bounds != null && s.bounds.left == 0 && s.bounds.height() >= 1000
             val isTrulyFreeform = isFreeformMode && !isFullscreenBounds
 
             if (isTrulyFreeform) {

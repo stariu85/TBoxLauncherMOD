@@ -184,15 +184,29 @@ internal object LauncherHomeStore {
         val items = loadItems(context).toMutableList()
         val fromItem = items.firstOrNull { it.slotIndex == fromSlot } ?: return
         val targetItem = items.firstOrNull { it.slotIndex == toSlot }
+        val currentAutostart = autostartKey(context)
 
         if (targetItem != null) {
             val idxFrom = items.indexOf(fromItem)
             val idxTarget = items.indexOf(targetItem)
-            items[idxFrom] = fromItem.withSlot(toSlot)
-            items[idxTarget] = targetItem.withSlot(fromSlot)
+            val newFrom = fromItem.withSlot(toSlot)
+            val newTarget = targetItem.withSlot(fromSlot)
+            items[idxFrom] = newFrom
+            items[idxTarget] = newTarget
+
+            if (currentAutostart == fromItem.key) {
+                setAutostartKey(context, newFrom.key)
+            } else if (currentAutostart == targetItem.key) {
+                setAutostartKey(context, newTarget.key)
+            }
         } else {
             val idxFrom = items.indexOf(fromItem)
-            items[idxFrom] = fromItem.withSlot(toSlot)
+            val newFrom = fromItem.withSlot(toSlot)
+            items[idxFrom] = newFrom
+
+            if (currentAutostart == fromItem.key) {
+                setAutostartKey(context, newFrom.key)
+            }
         }
         saveItems(context, items)
     }

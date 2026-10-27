@@ -151,6 +151,9 @@ fun LauncherLeftPanel(
     val tirePressureOnlyLow = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureOnlyLow(context)
     }
+    val tirePressureOnlyTopView = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureOnlyTopView(context)
+    }
     val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureLowThreshold(context)
     }
@@ -564,7 +567,8 @@ fun LauncherLeftPanel(
                         },
                 )
             }
-            if (!carHidden && !racing) {
+            val showTireBadgesAdas = !tirePressureOnlyTopView || !showDriveView
+            if (!carHidden && !racing && showTireBadgesAdas) {
                 LauncherTireBadges(
                     state = effectiveTires,
                     // ADAS strip shows a small pressure-only pill next to the wheel.
@@ -577,6 +581,8 @@ fun LauncherLeftPanel(
                     inertiaEnabled = tirePressureInertiaEnabled,
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
+            if (!carHidden && !racing) {
                     if (!bodyRigAvailable) {
                         LauncherDoorBadges(
                             body = effectiveBody,

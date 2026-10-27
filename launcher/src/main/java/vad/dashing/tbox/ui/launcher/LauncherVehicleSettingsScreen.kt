@@ -131,7 +131,11 @@ fun LauncherVehicleSettingsScreen(
     }
     val simulate = LauncherDevVehicleState.simulateEnabled
     val effectiveBody = if (simulate) LauncherDevVehicleState.bodyState() else vehicleBody
-    val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: tiresReal
+    val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
+    val mergedTires = remember(tiresReal, wheelsPressure) {
+        mergeTireStateWithCanData(tiresReal, wheelsPressure)
+    }
+    val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: mergedTires
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)
     val steer = rememberLauncherVisualSteer(motion)
     val rig = LauncherCarRigState(
@@ -389,11 +393,14 @@ fun LauncherVehicleSettingsScreen(
                 textureSurface = true,
                 modifier = Modifier.fillMaxSize(),
             )
-            if (tirePressureAlwaysInSettings) {
+            val showBadgesInSettings = tirePressureAlwaysInSettings || effectiveTires.hasAttention(tirePressureLowThreshold)
+            val showAllInSettings = tirePressureAlwaysInSettings || !tirePressureOnlyLow
+
+            if (showBadgesInSettings) {
                 LauncherTireBadges(
                     state = effectiveTires,
                     wheelAnchorsPx = wheelAnchors,
-                    showAll = !tirePressureOnlyLow,
+                    showAll = showAllInSettings,
                     lowPressureThreshold = tirePressureLowThreshold,
                     speedKmh = motion.speedKmh,
                     isRearView = true,

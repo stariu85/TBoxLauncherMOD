@@ -71,10 +71,13 @@ data class LauncherTireState(
 
 internal fun mergeTireStateWithCanData(mbCanTires: LauncherTireState, canWheels: Wheels): LauncherTireState {
     fun mergeWheel(wheel: LauncherTireWheelState, canPressure: Float?): LauncherTireWheelState {
-        if (wheel.available && wheel.pressureBar != null) return wheel
-        if (canPressure != null) {
+        val rawBar = wheel.pressureBar
+        val convertedBar = if (rawBar != null && rawBar > 10f) rawBar / 36f else rawBar
+        val effectiveBar = canPressure ?: convertedBar
+        val isAvailable = wheel.available || effectiveBar != null
+        if (isAvailable) {
             return wheel.copy(
-                pressureBar = canPressure,
+                pressureBar = effectiveBar,
                 available = true,
             )
         }
@@ -90,7 +93,7 @@ internal fun mergeTireStateWithCanData(mbCanTires: LauncherTireState, canWheels:
 
 internal fun parseLauncherTireWheel(info: Any?): LauncherTireWheelState {
     if (info == null) return LauncherTireWheelState()
-    val pressure = runCatching {
+    val rawPressure = runCatching {
         (info.javaClass.getMethod("getPressure").invoke(info) as? Number)?.toFloat()
     }.getOrNull()
     val warning = runCatching {
@@ -99,11 +102,14 @@ internal fun parseLauncherTireWheel(info: Any?): LauncherTireWheelState {
     val temperature = runCatching {
         (info.javaClass.getMethod("getTemperature").invoke(info) as? Number)?.toInt()
     }.getOrNull()
-    val calibrating = pressure == -1f
-    val pressureValid = pressure != null && pressure.isFinite() && pressure > 0f
+    val calibrating = rawPressure == -1f
+    val pressureValid = rawPressure != null && rawPressure.isFinite() && rawPressure > 0f
+    val bar = if (pressureValid) {
+        if (rawPressure > 10f) rawPressure / 36f else rawPressure
+    } else null
     val tempValid = temperature != null && temperature != -100 && temperature in -80..150
     return LauncherTireWheelState(
-        pressureBar = pressure.takeIf { pressureValid },
+        pressureBar = bar,
         temperatureC = if (tempValid) temperature else null,
         warningSts = warning,
         calibrating = calibrating,

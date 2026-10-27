@@ -189,6 +189,7 @@ private const val KEY_CRUISE_INCREASE_INTERVAL = "cruise_increase_interval"
 private const val KEY_CRUISE_DECREASE_INTERVAL = "cruise_decrease_interval"
 private const val KEY_TIRE_PRESSURE_ON_CAR_ENABLED = "tire_pressure_on_car_enabled"
 private const val KEY_TIRE_PRESSURE_ONLY_LOW = "tire_pressure_only_low"
+private const val KEY_TIRE_PRESSURE_ONLY_TOP_VIEW = "tire_pressure_only_top_view"
 private const val KEY_TIRE_PRESSURE_LOW_THRESHOLD = "tire_pressure_low_threshold"
 private const val KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS = "tire_pressure_always_in_settings"
 private const val KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED = "tire_pressure_inertia_animation_enabled"
@@ -621,6 +622,14 @@ internal object LauncherAppConfigStore {
         tirePressureConfigRevision.value++
     }
 
+    fun tirePressureOnlyTopView(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ONLY_TOP_VIEW, false)
+
+    fun setTirePressureOnlyTopView(context: Context, onlyTopView: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ONLY_TOP_VIEW, onlyTopView).apply()
+        tirePressureConfigRevision.value++
+    }
+
     fun tirePressureLowThreshold(context: Context): Float =
         prefs(context).getFloat(KEY_TIRE_PRESSURE_LOW_THRESHOLD, TIRE_PRESSURE_LOW_THRESHOLD_DEFAULT)
             .coerceIn(TIRE_PRESSURE_LOW_THRESHOLD_MIN, TIRE_PRESSURE_LOW_THRESHOLD_MAX)
@@ -672,10 +681,14 @@ internal object LauncherAppConfigStore {
     fun loadSavedTirePressures(context: Context): LauncherTireState? {
         if (!tirePressurePersistEnabled(context)) return null
         val p = prefs(context)
-        val flP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_FL)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_FL, -1f).takeIf { it > 0f } else null
-        val frP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_FR)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_FR, -1f).takeIf { it > 0f } else null
-        val rlP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_RL)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_RL, -1f).takeIf { it > 0f } else null
-        val rrP = if (p.contains(KEY_SAVED_TIRE_PRESSURE_RR)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_RR, -1f).takeIf { it > 0f } else null
+        fun sanitizeBar(bar: Float?): Float? {
+            if (bar == null || !bar.isFinite() || bar <= 0f) return null
+            return if (bar > 10f) bar / 36f else bar
+        }
+        val flP = sanitizeBar(if (p.contains(KEY_SAVED_TIRE_PRESSURE_FL)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_FL, -1f) else null)
+        val frP = sanitizeBar(if (p.contains(KEY_SAVED_TIRE_PRESSURE_FR)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_FR, -1f) else null)
+        val rlP = sanitizeBar(if (p.contains(KEY_SAVED_TIRE_PRESSURE_RL)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_RL, -1f) else null)
+        val rrP = sanitizeBar(if (p.contains(KEY_SAVED_TIRE_PRESSURE_RR)) p.getFloat(KEY_SAVED_TIRE_PRESSURE_RR, -1f) else null)
 
         val flT = if (p.contains(KEY_SAVED_TIRE_TEMP_FL)) p.getInt(KEY_SAVED_TIRE_TEMP_FL, -100).takeIf { it != -100 } else null
         val frT = if (p.contains(KEY_SAVED_TIRE_TEMP_FR)) p.getInt(KEY_SAVED_TIRE_TEMP_FR, -100).takeIf { it != -100 } else null
