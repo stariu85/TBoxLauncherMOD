@@ -173,6 +173,7 @@ internal fun goLauncherBack(
     onCloseVehicleSettings: () -> Unit = {},
     source: String = "unknown",
 ) {
+    LauncherCar3DModelTrigger.notifyBackPressed()
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
 
     if (backDispatchInProgress.get()) {

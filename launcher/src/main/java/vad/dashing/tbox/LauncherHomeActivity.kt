@@ -144,6 +144,7 @@ class LauncherHomeActivity : ComponentActivity() {
     @Deprecated("Deprecated in Java")
     @Suppress("MissingSuperCall", "DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
+        vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.notifyBackPressed()
         if (onBackPressedDispatcher.hasEnabledCallbacks()) {
             onBackPressedDispatcher.onBackPressed()
         } else {

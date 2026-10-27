@@ -133,7 +133,7 @@ internal object LauncherAmStackShell {
             if (pkg == launcherPackage) continue
             val isFreeformMode = s.windowingMode.equals("freeform", ignoreCase = true) ||
                 s.windowingMode.equals("extend", ignoreCase = true)
-            val isFullscreenBounds = s.bounds != null && s.bounds.left == 0 && s.bounds.height() >= 1000
+            val isFullscreenBounds = s.bounds == null || s.bounds.left == 0
             val isTrulyFreeform = isFreeformMode && !isFullscreenBounds
 
             if (isTrulyFreeform) {
@@ -143,8 +143,10 @@ internal object LauncherAmStackShell {
                     Log.w(TAG, "removed freeform stack=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
                 }
             } else {
-                if (moveStackToBack(s.stackId)) {
-                    Log.w(TAG, "moved fullscreen stack to back id=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
+                if (removeStack(s.stackId)) {
+                    removed++
+                    FreeformLaunchRegistry.remove(pkg)
+                    Log.w(TAG, "removed fullscreen stack=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
                 }
             }
         }

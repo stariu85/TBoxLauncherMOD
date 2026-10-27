@@ -115,36 +115,19 @@ internal fun closeFullWidthAppsIfOpen(
     launchingPackage: String,
     targetBounds: Rect,
 ) {
-    // Only close full-width apps if the new target launch is NOT full-width (EMBEDDED or SPLIT, left != 0).
+    // Only close full-width/fullscreen apps if the new target launch is NOT full-width (EMBEDDED or SPLIT, left != 0).
     // If launching a new FULL_WIDTH app (left == 0), do NOT close previous full-width apps —
     // let the new full-width app open on top of the old one.
     if (targetBounds.left == 0) return
 
     val appCtx = context.applicationContext
     val launcherPackage = appCtx.packageName
-    val tracked = FreeformLaunchRegistry.snapshot()
+    val stacks = runCatching { LauncherAmStackShell.listStacks() }.getOrDefault(emptyList())
+
+    val stacksToRemove = mutableSetOf<Int>()
     val packagesToStop = mutableSetOf<String>()
 
-    // 1. Check packages recorded in FreeformLaunchRegistry
-    for (pkg in tracked) {
-        if (pkg == launcherPackage) continue
-        val bounds = FreeformLaunchRegistry.lastBounds(pkg)
-        if (bounds != null && bounds.left == 0) {
-            packagesToStop += pkg
-        }
-    }
-
-    // 2. Check active app in LauncherActiveAppTracker
-    val activePkg = LauncherActiveAppTracker.activeAppPackage()
-    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage) {
-        val bounds = FreeformLaunchRegistry.lastBounds(activePkg)
-        if (bounds != null && bounds.left == 0) {
-            packagesToStop += activePkg
-        }
-    }
-
-    // 3. Check system stacks via LauncherAmStackShell
-    val stacks = runCatching { LauncherAmStackShell.listStacks() }.getOrDefault(emptyList())
+    // 1. Check system stacks via LauncherAmStackShell
     for (s in stacks) {
         val pkg = s.packageName ?: continue
         if (pkg == launcherPackage) continue
@@ -156,15 +139,47 @@ internal fun closeFullWidthAppsIfOpen(
             continue
         }
 
-        val isFullWidth = s.bounds != null && s.bounds.left == 0 && s.bounds.height() >= 1000
-        if (isFullWidth) {
+        val isFullWidthOrFullscreen = s.bounds == null ||
+            s.bounds.left == 0 ||
+            s.windowingMode.equals("fullscreen", ignoreCase = true) ||
+            s.windowingMode.equals("standard", ignoreCase = true)
+
+        if (isFullWidthOrFullscreen) {
+            stacksToRemove += s.stackId
             packagesToStop += pkg
         }
     }
 
-    if (packagesToStop.isEmpty()) return
+    // 2. Check packages recorded in FreeformLaunchRegistry
+    val tracked = FreeformLaunchRegistry.snapshot()
+    for (pkg in tracked) {
+        if (pkg == launcherPackage) continue
+        val bounds = FreeformLaunchRegistry.lastBounds(pkg)
+        if (bounds != null && bounds.left == 0) {
+            packagesToStop += pkg
+        }
+    }
 
-    Log.w(TAG, "closeFullWidthAppsIfOpen: closing full-width packages=$packagesToStop launchingPkg=$launchingPackage targetLeft=${targetBounds.left}")
+    // 3. Check active app in LauncherActiveAppTracker
+    val activePkg = LauncherActiveAppTracker.activeAppPackage()
+    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage) {
+        val bounds = FreeformLaunchRegistry.lastBounds(activePkg)
+        if (bounds != null && bounds.left == 0) {
+            packagesToStop += activePkg
+        }
+    }
+
+    if (stacksToRemove.isEmpty() && packagesToStop.isEmpty()) return
+
+    Log.w(
+        TAG,
+        "closeFullWidthAppsIfOpen: closing full-width/fullscreen stackIds=$stacksToRemove packages=$packagesToStop launchingPkg=$launchingPackage targetLeft=${targetBounds.left}",
+    )
+
+    // Primary shell cleanup: remove wide/fullscreen stacks via `am stack remove <stackId>`
+    for (stackId in stacksToRemove) {
+        LauncherAmStackShell.removeStack(stackId)
+    }
 
     val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     for (pkg in packagesToStop) {
@@ -179,18 +194,12 @@ internal fun closeFullWidthAppsIfOpen(
         }
     }
 
-    // Secondary shell cleanup for full-width stacks if any remain
+    // Secondary shell cleanup for any remaining stacks for packagesToStop
     runCatching {
         for (s in LauncherAmStackShell.listStacks()) {
             val pkg = s.packageName ?: continue
             if (pkg == launcherPackage) continue
-
-            val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
-            if (recordedBounds != null && recordedBounds.left != 0) {
-                continue
-            }
-
-            if (s.bounds != null && s.bounds.left == 0 && s.bounds.height() >= 1000) {
+            if (pkg in packagesToStop) {
                 LauncherAmStackShell.removeStack(s.stackId)
                 FreeformLaunchRegistry.remove(pkg)
             }
@@ -849,12 +858,12 @@ private fun isTaskInFreeformMode(taskId: Int): Boolean {
         val taskIds = stackInfoTaskIds(info) ?: continue
         if (taskId in taskIds) {
             val bounds = stackInfoBounds(info)
-            if (bounds != null && !bounds.isEmpty && bounds.left == 0 && bounds.height() >= 1000) {
+            if (bounds != null && !bounds.isEmpty && bounds.left == 0) {
                 return false
             }
             val mode = stackInfoWindowingMode(info)
             if (mode == WINDOWING_MODE_FREEFORM || mode == WINDOWING_MODE_EXTEND) return true
-            if (bounds != null && !bounds.isEmpty && (bounds.left != 0 || bounds.height() < 1000)) return true
+            if (bounds != null && !bounds.isEmpty && bounds.left != 0) return true
         }
     }
     return false
