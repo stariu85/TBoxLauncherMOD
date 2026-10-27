@@ -186,8 +186,6 @@ fun LauncherAdasStrip(
         if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes || showAll) add("lka")
         if (adas.rearThreats.rctaLeft != LauncherRearThreatLevel.Off || showAll) add("rcta_l")
         if (adas.rearThreats.rctaRight != LauncherRearThreatLevel.Off || showAll) add("rcta_r")
-        if (adas.rearThreats.dowLeft != LauncherRearThreatLevel.Off || showAll) add("dow_l")
-        if (adas.rearThreats.dowRight != LauncherRearThreatLevel.Off || showAll) add("dow_r")
         if (adas.rearThreats.rcw != LauncherRearThreatLevel.Off || showAll) add("rcw")
     }
 
@@ -398,8 +396,6 @@ fun LauncherAdasStrip(
         }
         val hasOtherRearThreats = adas.rearThreats.rctaLeft != LauncherRearThreatLevel.Off ||
             adas.rearThreats.rctaRight != LauncherRearThreatLevel.Off ||
-            adas.rearThreats.dowLeft != LauncherRearThreatLevel.Off ||
-            adas.rearThreats.dowRight != LauncherRearThreatLevel.Off ||
             adas.rearThreats.rcw != LauncherRearThreatLevel.Off
         if (hasOtherRearThreats || showAll) {
             LauncherRearThreatChips(
@@ -451,12 +447,6 @@ private fun LauncherRearThreatChips(
     }
     if (threats.rctaRight != LauncherRearThreatLevel.Off) {
         LauncherAdasAlertChip(stringResource(R.string.launcher_adas_rcta_right), fontSizeSp, alertIconSizeDp, paddingHDp, paddingVDp, "rcta_r", activationTimes["rcta_r"] ?: 0L)
-    }
-    if (threats.dowLeft != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_dow_left), tint(threats.dowLeft), fontSizeSp, paddingHDp, paddingVDp, "dow_l", activationTimes["dow_l"] ?: 0L)
-    }
-    if (threats.dowRight != LauncherRearThreatLevel.Off) {
-        LauncherAdasChip(stringResource(R.string.launcher_adas_dow_right), tint(threats.dowRight), fontSizeSp, paddingHDp, paddingVDp, "dow_r", activationTimes["dow_r"] ?: 0L)
     }
     if (threats.rcw != LauncherRearThreatLevel.Off) {
         LauncherAdasChip(stringResource(R.string.launcher_adas_rcw), tint(threats.rcw), fontSizeSp, paddingHDp, paddingVDp, "rcw", activationTimes["rcw"] ?: 0L)

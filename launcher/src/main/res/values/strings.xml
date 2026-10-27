@@ -222,6 +222,8 @@
     <string name="launcher_car_model_scale_desc">Размер 3D-модели автомобиля на экране</string>
     <string name="launcher_sidebar_width_title">Ширина левой панели</string>
     <string name="launcher_sidebar_width_desc">Изменяет ширину панели с машиной и зону Freeform</string>
+    <string name="launcher_trunk_long_press_enabled_title">Длинный тап по багажнику открывает багажник</string>
+    <string name="launcher_trunk_long_press_enabled_desc">Открывать дверь багажного отделения при долгом нажатии на область багажника модели авто</string>
     <string name="launcher_about_app_short">О программе</string>
     <string name="launcher_update_available_short">Обновление!</string>
     <string name="launcher_camera_switch_mode_title">Режим переключения камеры 3D-модели</string>
@@ -979,6 +981,7 @@
     <string name="update_changelog">Изменения</string>
     <string name="update_published_at">Опубликовано: %1$s</string>
     <string name="update_checking">Проверка обновлений…</string>
+    <string name="update_waiting_for_server">Ожидание сервера…</string>
     <string name="update_up_to_date">Установлена актуальная версия</string>
     <string name="update_idle_hint">Нажмите «Проверить обновления» в настройках или дождитесь автоматической проверки при запуске.</string>
     <string name="update_idle_hint_manual_only">Нажмите «Проверить обновления» в настройках.</string>

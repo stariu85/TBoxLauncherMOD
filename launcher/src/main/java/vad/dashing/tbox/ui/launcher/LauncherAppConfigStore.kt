@@ -25,6 +25,7 @@ private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
 private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
+private const val KEY_TRUNK_LONG_PRESS_ENABLED = "trunk_long_press_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
 private const val KEY_EDGE_GESTURES_ENABLED = "edge_gestures_enabled"
@@ -279,6 +280,8 @@ internal object LauncherAppConfigStore {
     internal val cameraSwitchModeRevisionFlow: StateFlow<Int> = cameraSwitchModeRevision
     private val cameraAnimationRevision = MutableStateFlow(0)
     internal val cameraAnimationRevisionFlow: StateFlow<Int> = cameraAnimationRevision
+    private val trunkLongPressRevision = MutableStateFlow(0)
+    internal val trunkLongPressRevisionFlow: StateFlow<Int> = trunkLongPressRevision
     private val avmCameraActionRevision = MutableStateFlow(0)
     internal val avmCameraActionRevisionFlow: StateFlow<Int> = avmCameraActionRevision
     private val pdcVisualModeRevision = MutableStateFlow(0)
@@ -899,6 +902,14 @@ internal object LauncherAppConfigStore {
     fun setCameraAnimationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CAMERA_ANIMATION_ENABLED, enabled).apply()
         cameraAnimationRevision.value++
+    }
+
+    fun trunkLongPressEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TRUNK_LONG_PRESS_ENABLED, false)
+
+    fun setTrunkLongPressEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TRUNK_LONG_PRESS_ENABLED, enabled).apply()
+        trunkLongPressRevision.value++
     }
 
     fun avmCameraAction(context: Context): Int =

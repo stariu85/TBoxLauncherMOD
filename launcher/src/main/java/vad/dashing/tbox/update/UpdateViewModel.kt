@@ -46,6 +46,7 @@ class UpdateViewModel(
 
                 val currentState = repository.uiState.value
                 if (currentState is UpdateUiState.Available ||
+                    currentState is UpdateUiState.WaitingForServer ||
                     currentState is UpdateUiState.Downloading ||
                     currentState is UpdateUiState.Verifying ||
                     currentState is UpdateUiState.ReadyToInstall
@@ -57,6 +58,7 @@ class UpdateViewModel(
 
                 val newState = repository.uiState.value
                 if (newState is UpdateUiState.Available ||
+                    newState is UpdateUiState.WaitingForServer ||
                     newState is UpdateUiState.Downloading ||
                     newState is UpdateUiState.Verifying ||
                     newState is UpdateUiState.ReadyToInstall

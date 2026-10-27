@@ -32,7 +32,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.valueToString
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -49,6 +48,7 @@ fun LauncherTireBadges(
     enabled: Boolean = true,
     lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
     speedKmh: Float = 0f,
+    steerAngleDeg: Float = 0f,
     isRearView: Boolean = false,
     inertiaEnabled: Boolean = true,
 ) {
@@ -57,42 +57,56 @@ fun LauncherTireBadges(
     if (!showAll && !needsAttentionAny) return
 
     val currentSpeedState = rememberUpdatedState(speedKmh)
+    val currentSteerState = rememberUpdatedState(steerAngleDeg)
     val targetYAnim = remember { Animatable(0f) }
     val targetXAnim = remember { Animatable(0f) }
 
     LaunchedEffect(inertiaEnabled, isRearView) {
         if (!inertiaEnabled || !isRearView) {
-            launch { targetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
-            launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
+            launch { targetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
+            launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
             return@LaunchedEffect
         }
         var lastSpeed = currentSpeedState.value
+        var accumulatedY = 0f
+        var accumulatedX = 0f
+
         while (isActive) {
-            delay(100L) // 10 Hz calculation rate
+            delay(40L) // 25 Hz calculation rate for smooth continuous motion
             val currentSpeed = currentSpeedState.value
+            val currentSteer = currentSteerState.value
+
             val delta = currentSpeed - lastSpeed
             lastSpeed = currentSpeed
 
-            // Offset Y: +25dp on acceleration (delta > 0), -25dp on braking (delta < 0)
-            val targetY = (delta * 8f).coerceIn(-25f, 25f)
-            // Offset X: up to 10dp outwards on acceleration or braking
-            val targetX = (abs(delta) * 3.5f).coerceIn(0f, 10f)
+            // Y axis: longitudinal acceleration (back = +dp, braking = -dp)
+            val impulseY = (delta * 18f).coerceIn(-25f, 25f)
+            accumulatedY = (accumulatedY * 0.88f + impulseY * 0.12f).coerceIn(-25f, 25f)
+
+            // X axis: lateral centrifugal force from steering angle and speed
+            // Right turn (steer > 0) -> badges fly LEFT (-25dp)
+            // Left turn (steer < 0) -> badges fly RIGHT (+25dp)
+            val steerNorm = (currentSteer / 360f).coerceIn(-1f, 1f)
+            val speedFactor = (currentSpeed / 30f).coerceIn(0f, 1f)
+            val targetCentrifugalX = -steerNorm * speedFactor * 25f
+
+            accumulatedX = (accumulatedX * 0.88f + targetCentrifugalX * 0.12f).coerceIn(-25f, 25f)
 
             launch {
                 targetYAnim.animateTo(
-                    targetValue = targetY,
+                    targetValue = accumulatedY,
                     animationSpec = spring(
-                        dampingRatio = 0.65f,
-                        stiffness = 35f, // ~2 seconds spring relaxation to steady state
+                        dampingRatio = 0.38f, // Loose pendulum oscillation (bouncy)
+                        stiffness = 10f,     // Very low stiffness (loose spring / ball on thread)
                     ),
                 )
             }
             launch {
                 targetXAnim.animateTo(
-                    targetValue = targetX,
+                    targetValue = accumulatedX,
                     animationSpec = spring(
-                        dampingRatio = 0.65f,
-                        stiffness = 35f,
+                        dampingRatio = 0.38f, // Loose pendulum oscillation (bouncy)
+                        stiffness = 10f,     // Very low stiffness (loose spring / ball on thread)
                     ),
                 )
             }
@@ -126,16 +140,14 @@ fun LauncherTireBadges(
         )
 
         val yOffsetDp = targetYAnim.value
-        val xOffsetMagnitudeDp = targetXAnim.value
+        val xOffsetDp = targetXAnim.value
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             visibleCorners.forEach { corner ->
                 val anchor = wheelAnchorsPx[corner] ?: return@forEach
                 val rect = layout[corner] ?: return@forEach
 
-                val isLeftWheel = corner == LauncherWheelCorner.FL || corner == LauncherWheelCorner.RL
-                val cornerXOffsetDp = if (isLeftWheel) -xOffsetMagnitudeDp else xOffsetMagnitudeDp
-                val cornerXOffsetPx = with(density) { cornerXOffsetDp.dp.toPx() }
+                val cornerXOffsetPx = with(density) { xOffsetDp.dp.toPx() }
                 val cornerYOffsetPx = with(density) { yOffsetDp.dp.toPx() }
 
                 val shiftedLeft = rect.left + cornerXOffsetPx
@@ -158,9 +170,7 @@ fun LauncherTireBadges(
         }
         for (corner in visibleCorners) {
             val rect = layout[corner] ?: continue
-            val isLeftWheel = corner == LauncherWheelCorner.FL || corner == LauncherWheelCorner.RL
-            val cornerXOffsetDp = if (isLeftWheel) -xOffsetMagnitudeDp else xOffsetMagnitudeDp
-            val cornerXOffsetPx = with(density) { cornerXOffsetDp.dp.toPx() }
+            val cornerXOffsetPx = with(density) { xOffsetDp.dp.toPx() }
             val cornerYOffsetPx = with(density) { yOffsetDp.dp.toPx() }
 
             val shiftedLeft = rect.left + cornerXOffsetPx

@@ -4,11 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
-import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -54,11 +52,6 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LauncherHomeActivityHolder.instance = this
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                // Intercept Back button: consume Back to prevent LauncherHomeActivity from finishing
-            }
-        })
         Log.w("LauncherAppLaunch", "LauncherHomeActivity onCreate")
         // ActivityViewCapabilityProbe: construct+VD OK; startActivity on launchDisplayId still denied
         // even with MANAGE_ACTIVITY_STACKS+ACTIVITY_EMBEDDING granted. Needs INJECT_EVENTS (signature).
@@ -147,26 +140,15 @@ class LauncherHomeActivity : ComponentActivity() {
         super.onPause()
     }
 
-    @SuppressLint("RestrictedApi", "BackPressed")
-    @Suppress("BackPressed")
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        @Suppress("BackPressed")
-        @SuppressLint("BackPressed")
-        val isBack = event.keyCode == KeyEvent.KEYCODE_BACK
-        if (isBack) {
-            val foreign = findForeignAppTask(this)
-            val hasOverlays = LauncherVehicleSettingsOverlayWindow.isShowing() ||
-                LauncherVehicleSettingsActivity.isOpen() ||
-                MainActivity.isOpen() ||
-                LauncherAboutOverlayWindow.isShowing() ||
-                LauncherAppDrawerWindow.isShowing() ||
-                LauncherAppPickerOverlayWindow.isShowing()
-            if (foreign == null && !hasOverlays) {
-                Log.w(TAG, "Hardware Back on root desktop ignored (action=${event.action})")
-                return true
-            }
+    @SuppressLint("BackPressed")
+    @Deprecated("Deprecated in Java")
+    @Suppress("MissingSuperCall", "DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onBackPressed() {
+        if (onBackPressedDispatcher.hasEnabledCallbacks()) {
+            onBackPressedDispatcher.onBackPressed()
+        } else {
+            vad.dashing.tbox.ui.launcher.goLauncherBack(this, source = "activity_on_back_pressed")
         }
-        return super.dispatchKeyEvent(event)
     }
 
     override fun onNewIntent(intent: Intent) {

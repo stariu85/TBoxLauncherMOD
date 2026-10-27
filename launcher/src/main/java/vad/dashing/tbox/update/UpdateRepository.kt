@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.SystemClock
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -13,6 +14,9 @@ import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +30,7 @@ sealed interface UpdateUiState {
     data object Checking : UpdateUiState
     data object UpToDate : UpdateUiState
     data class Available(val info: UpdateReleaseInfo) : UpdateUiState
+    data class WaitingForServer(val info: UpdateReleaseInfo) : UpdateUiState
     data class Downloading(val progress: UpdateDownloadProgress) : UpdateUiState
     data object Verifying : UpdateUiState
     data class ReadyToInstall(val apkFile: File, val info: UpdateReleaseInfo) : UpdateUiState
@@ -91,15 +96,7 @@ class UpdateRepository(
                 resolveReleaseInfoSize(release, publicKey)
             }
             lastAvailableInfo = releaseWithSize
-            val cached = findCachedVerifiedApk(releaseWithSize)
-            if (cached != null) {
-                val info = releaseWithSize.withLocalApkSize(cached)
-                lastAvailableInfo = info
-                preparedApkFile = cached
-                _uiState.value = UpdateUiState.ReadyToInstall(cached, info)
-            } else {
-                _uiState.value = UpdateUiState.Available(releaseWithSize)
-            }
+            _uiState.value = UpdateUiState.Available(releaseWithSize)
         } catch (error: Exception) {
             _uiState.value = UpdateUiState.Error(
                 message = error.message ?: error.javaClass.simpleName,
@@ -116,59 +113,103 @@ class UpdateRepository(
         }
         val info = lastAvailableInfo
             ?: (_uiState.value as? UpdateUiState.Available)?.info
+            ?: (_uiState.value as? UpdateUiState.WaitingForServer)?.info
             ?: (_uiState.value as? UpdateUiState.Error)?.cachedInfo
             ?: return
-        if (!isNetworkAvailable()) {
-            _uiState.value = UpdateUiState.Error("network_unavailable", info)
-            return
-        }
+
         downloadInProgress = true
         lastAvailableInfo = info
         withContext(Dispatchers.IO) {
             prepareForDownload()
         }
-        _uiState.value = UpdateUiState.Downloading(UpdateDownloadProgress())
+
+        val totalDurationMs = 5 * 60 * 1000L // 5 minutes = 300,000 ms
+        val checkIntervalMs = 10 * 1000L     // 10 seconds = 10,000 ms
+        val startTimeMs = SystemClock.uptimeMillis()
+
         try {
             val channel = settingsManager.updateChannelFlow.first()
             val publicKey = publicKeyForChannel(channel)
             val destination = apkDestinationFile(info)
-            withContext(Dispatchers.IO) {
-                val startedAtNanos = System.nanoTime()
-                yandexDiskClient.downloadToFile(
-                    publicKey = publicKey,
-                    path = "/${info.apkFileName}",
-                    destination = destination,
-                    onProgress = { downloaded, total ->
-                        val elapsedSeconds = (System.nanoTime() - startedAtNanos) / 1_000_000_000.0
-                        val speed = if (elapsedSeconds >= 0.5) {
-                            (downloaded / elapsedSeconds).toLong().takeIf { it > 0L }
-                        } else {
-                            null
+
+            while (true) {
+                currentCoroutineContext().ensureActive()
+
+                if (!isNetworkAvailable()) {
+                    _uiState.value = UpdateUiState.WaitingForServer(info)
+                } else {
+                    try {
+                        _uiState.value = UpdateUiState.Downloading(UpdateDownloadProgress())
+                        val startedAtNanos = System.nanoTime()
+                        withContext(Dispatchers.IO) {
+                            yandexDiskClient.downloadToFile(
+                                publicKey = publicKey,
+                                path = "/${info.apkFileName}",
+                                destination = destination,
+                                onProgress = { downloaded, total ->
+                                    val elapsedSeconds = (System.nanoTime() - startedAtNanos) / 1_000_000_000.0
+                                    val speed = if (elapsedSeconds >= 0.5) {
+                                        (downloaded / elapsedSeconds).toLong().takeIf { it > 0L }
+                                    } else {
+                                        null
+                                    }
+                                    val remainingSeconds = if (total != null && total > downloaded && speed != null) {
+                                        ((total - downloaded) / speed.toDouble()).toLong().coerceAtLeast(1L)
+                                    } else {
+                                        null
+                                    }
+                                    _uiState.value = UpdateUiState.Downloading(
+                                        UpdateDownloadProgress(
+                                            downloadedBytes = downloaded,
+                                            totalBytes = total,
+                                            speedBytesPerSecond = speed,
+                                            remainingSeconds = remainingSeconds,
+                                        ),
+                                    )
+                                },
+                            )
                         }
-                        val remainingSeconds = if (total != null && total > downloaded && speed != null) {
-                            ((total - downloaded) / speed.toDouble()).toLong().coerceAtLeast(1L)
-                        } else {
-                            null
+                        _uiState.value = UpdateUiState.Verifying
+                        withContext(Dispatchers.IO) {
+                            verifyDownloadedApk(destination, info)
                         }
-                        _uiState.value = UpdateUiState.Downloading(
-                            UpdateDownloadProgress(
-                                downloadedBytes = downloaded,
-                                totalBytes = total,
-                                speedBytesPerSecond = speed,
-                                remainingSeconds = remainingSeconds,
-                            ),
-                        )
-                    },
-                )
+                        preparedApkFile = destination
+                        val infoWithSize = info.withLocalApkSize(destination)
+                        lastAvailableInfo = infoWithSize
+                        _uiState.value = UpdateUiState.ReadyToInstall(destination, infoWithSize)
+                        return
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        val message = error.message.orEmpty()
+                        if (message.contains("checksum", ignoreCase = true) ||
+                            message.contains("package name", ignoreCase = true) ||
+                            message.contains("certificate", ignoreCase = true)
+                        ) {
+                            throw error
+                        }
+                        withContext(Dispatchers.IO) {
+                            prepareForDownload()
+                        }
+                        _uiState.value = UpdateUiState.WaitingForServer(info)
+                    }
+                }
+
+                val elapsedMs = SystemClock.uptimeMillis() - startTimeMs
+                if (elapsedMs >= totalDurationMs) {
+                    _uiState.value = UpdateUiState.Error("network_unavailable", info)
+                    return
+                }
+
+                val remainingMs = totalDurationMs - elapsedMs
+                val waitMs = minOf(checkIntervalMs, remainingMs)
+                if (waitMs <= 0) {
+                    _uiState.value = UpdateUiState.Error("network_unavailable", info)
+                    return
+                }
+
+                delay(waitMs)
             }
-            _uiState.value = UpdateUiState.Verifying
-            withContext(Dispatchers.IO) {
-                verifyDownloadedApk(destination, info)
-            }
-            preparedApkFile = destination
-            val infoWithSize = info.withLocalApkSize(destination)
-            lastAvailableInfo = infoWithSize
-            _uiState.value = UpdateUiState.ReadyToInstall(destination, infoWithSize)
         } catch (error: CancellationException) {
             withContext(Dispatchers.IO) {
                 prepareForDownload()
@@ -188,7 +229,7 @@ class UpdateRepository(
     }
 
     fun cancelDownload() {
-        if (_uiState.value !is UpdateUiState.Downloading) return
+        if (_uiState.value !is UpdateUiState.Downloading && _uiState.value !is UpdateUiState.WaitingForServer) return
         val info = lastAvailableInfo
         prepareForDownload()
         _uiState.value = if (info != null) {
@@ -214,6 +255,7 @@ class UpdateRepository(
     fun peekUpdateInfo(): UpdateReleaseInfo? = lastAvailableInfo
         ?: when (val state = _uiState.value) {
             is UpdateUiState.Available -> state.info
+            is UpdateUiState.WaitingForServer -> state.info
             is UpdateUiState.ReadyToInstall -> state.info
             is UpdateUiState.Error -> state.cachedInfo
             else -> null
@@ -223,6 +265,7 @@ class UpdateRepository(
 
     fun shouldShowMenuEntry(): Boolean = when (val state = _uiState.value) {
         is UpdateUiState.Available,
+        is UpdateUiState.WaitingForServer,
         is UpdateUiState.Downloading,
         is UpdateUiState.Verifying,
         is UpdateUiState.ReadyToInstall -> true
@@ -255,15 +298,6 @@ class UpdateRepository(
         val updatesDir = File(context.cacheDir, "updates")
         updatesDir.mkdirs()
         return File(updatesDir, info.apkFileName)
-    }
-
-    private fun findCachedVerifiedApk(info: UpdateReleaseInfo): File? {
-        val file = apkDestinationFile(info)
-        if (!file.exists()) return null
-        return runCatching {
-            verifyDownloadedApk(file, info)
-            file
-        }.getOrNull()
     }
 
     private fun resolveReleaseInfoSize(release: UpdateReleaseInfo, publicKey: String): UpdateReleaseInfo {

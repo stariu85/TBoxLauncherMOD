@@ -403,6 +403,7 @@ fun LauncherVehicleSettingsScreen(
                     showAll = showAllInSettings,
                     lowPressureThreshold = tirePressureLowThreshold,
                     speedKmh = motion.speedKmh,
+                    steerAngleDeg = steer,
                     isRearView = true,
                     inertiaEnabled = tirePressureInertiaEnabled,
                     modifier = Modifier.fillMaxSize(),

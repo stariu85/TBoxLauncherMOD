@@ -55,6 +55,7 @@ internal fun goLauncherHome(
     }
     lastHomeAtMs = now
     Log.w(TAG, "goLauncherHome fromHomeIntent=$fromHomeIntent source=$source")
+    LauncherCar3DModelTrigger.notifyHomePressed()
 
     val settingsWereOpen = LauncherVehicleSettingsUiState.open ||
         LauncherVehicleSettingsOverlayWindow.isShowing() ||
@@ -324,11 +325,7 @@ internal fun isSplitActiveOnScreen(@Suppress("UNUSED_PARAMETER") context: Contex
 }
 
 internal fun findForeignAppTask(context: Context): ForeignAppTask? {
-    if (LauncherHomeActivityHolder.isResumed && LauncherRightPanelOverlayWindow.isShowing()) {
-        val activeTask = LauncherActiveAppTracker.getActiveForeignTask()
-        if (activeTask != null && LauncherWindowState.hiddenForExternalApp) {
-            return activeTask
-        }
+    if (LauncherHomeActivityHolder.isResumed && !LauncherWindowState.hiddenForExternalApp) {
         return null
     }
 

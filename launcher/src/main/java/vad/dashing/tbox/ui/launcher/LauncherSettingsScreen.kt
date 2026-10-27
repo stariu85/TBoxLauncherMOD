@@ -338,6 +338,24 @@ fun LauncherSettingsScreen(
                     )
                 }
             }
+            is UpdateUiState.WaitingForServer -> {
+                UpdateReleaseDetails(state.info)
+                CircularProgressIndicator(color = LauncherColors.AccentCyan)
+                Text(
+                    text = stringResource(R.string.update_waiting_for_server),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextPrimary,
+                )
+                Button(
+                    onClick = rememberWrappedOnClick { updateViewModel.cancelDownload() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = stringResource(R.string.update_cancel_download),
+                        style = MaterialTheme.typography.tboxButton,
+                    )
+                }
+            }
             is UpdateUiState.Downloading -> {
                 pendingUpdateInfo?.let { UpdateReleaseDetails(it) }
                 val progress = state.progress

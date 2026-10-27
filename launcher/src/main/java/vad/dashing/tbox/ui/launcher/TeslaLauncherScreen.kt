@@ -160,8 +160,13 @@ fun TeslaLauncherScreen(
                 appDrawerVisible = false
             }
         }
-        BackHandler(enabled = !settingsOpen && !appDrawerVisible && !LauncherEggRace.active) {
-            // Root desktop Back handler: consume Back to prevent LauncherHomeActivity from finishing
+        BackHandler(enabled = !appDrawerVisible && !settingsOpen && !LauncherEggRace.active) {
+            goLauncherBack(
+                context = context,
+                vehicleSettingsOpen = settingsOpen,
+                onCloseVehicleSettings = closeVehicleSettings,
+                source = "root_desktop_back_handler",
+            )
         }
 
         Box(

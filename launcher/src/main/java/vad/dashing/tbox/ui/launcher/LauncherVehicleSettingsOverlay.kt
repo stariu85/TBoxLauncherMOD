@@ -114,6 +114,7 @@ internal fun LauncherAboutUpdatesHeaderButton(
     val updateUiState by updateViewModel.uiState.collectAsStateWithLifecycle()
     val hasUpdate = when (updateUiState) {
         is UpdateUiState.Available,
+        is UpdateUiState.WaitingForServer,
         is UpdateUiState.Downloading,
         is UpdateUiState.Verifying,
         is UpdateUiState.ReadyToInstall -> true

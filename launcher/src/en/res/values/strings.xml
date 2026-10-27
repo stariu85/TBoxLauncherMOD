@@ -44,6 +44,8 @@
     <string name="launcher_camera_switch_mode_desc">Condition for switching between drive view and top view</string>
     <string name="launcher_camera_animation_title">3D camera animation</string>
     <string name="launcher_camera_animation_desc">Smooth transition between top view and rear view. If disabled, view switches instantly with a render restart</string>
+    <string name="launcher_trunk_long_press_enabled_title">Long tap on trunk opens trunk</string>
+    <string name="launcher_trunk_long_press_enabled_desc">Open tailgate when long pressing on the car model\'s trunk area</string>
     <string name="launcher_camera_switch_mode_pas">Smart (PAS &amp; Park)</string>
     <string name="launcher_camera_switch_mode_drive">D gear &amp; Park</string>
     <string name="launcher_pdc_visual_mode_title">Parking sensors visualization</string>
@@ -694,6 +696,7 @@
     <string name="update_changelog">Changes</string>
     <string name="update_published_at">Published: %1$s</string>
     <string name="update_checking">Checking for updates…</string>
+    <string name="update_waiting_for_server">Waiting for server…</string>
     <string name="update_up_to_date">You are on the latest version</string>
     <string name="update_idle_hint">Tap Check for updates in Settings or wait for the automatic check on startup.</string>
     <string name="update_idle_hint_manual_only">Tap Check for updates in Settings.</string>

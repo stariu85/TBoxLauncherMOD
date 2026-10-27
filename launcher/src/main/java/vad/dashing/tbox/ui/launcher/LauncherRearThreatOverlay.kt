@@ -13,6 +13,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+
 /**
  * Body-local marks: DOW = exclamation mark badge in ADAS area, RCTA = incoming bar, RCW = rear wash.
  * BSD is a PDC-style sonar band on the rear-side diagonals ([LauncherBsdOverlay]).
@@ -45,7 +49,9 @@ private fun DrawScope.drawRearThreats(threats: LauncherRearThreats) {
     listOf(-1f, 1f).forEach { side ->
         val dow = if (side < 0f) threats.dowLeft else threats.dowRight
         val rcta = if (side < 0f) threats.rctaLeft else threats.rctaRight
-        fillColor(dow)?.let { drawDowExclamationMark(w, h, side, it, dow) }
+        if (dow != LauncherRearThreatLevel.Off) {
+            drawDowExclamationMark(w, h, side, dow)
+        }
         if (rcta == LauncherRearThreatLevel.Alert) {
             fillColor(rcta)?.let { drawRctaBar(cx, cy, bodyHalfW, bodyHalfH, side, it) }
         }
@@ -74,46 +80,62 @@ private fun DrawScope.drawDowExclamationMark(
     w: Float,
     h: Float,
     side: Float,
-    color: Color,
     level: LauncherRearThreatLevel,
 ) {
     val edgeOffsetPx = 50.dp.toPx()
     val centerX = if (side < 0f) edgeOffsetPx else w - edgeOffsetPx
     val centerY = h * 0.50f
-    val center = Offset(centerX, centerY)
 
-    val badgeRadius = 22.dp.toPx()
+    // Оранжевый цвет внутренней заливки треугольника
+    val orangeColor = Color(0xFFFF8C00)
 
-    // 1. Внешнее свечение (аура) вокруг значка
-    val glowRadius = badgeRadius * 1.35f
-    drawCircle(
-        color = color.copy(alpha = if (level == LauncherRearThreatLevel.Alert) 0.35f else 0.22f),
-        radius = glowRadius,
-        center = center,
+    val halfWidthPx = 22.dp.toPx()
+    val halfHeightPx = 20.dp.toPx()
+
+    val trianglePath = Path().apply {
+        moveTo(centerX, centerY - halfHeightPx)
+        lineTo(centerX + halfWidthPx, centerY + halfHeightPx)
+        lineTo(centerX - halfWidthPx, centerY + halfHeightPx)
+        close()
+    }
+
+    // 1. Внешнее свечение (аура) вокруг треугольника
+    val glowScale = 1.25f
+    val glowPath = Path().apply {
+        moveTo(centerX, centerY - halfHeightPx * glowScale)
+        lineTo(centerX + halfWidthPx * glowScale, centerY + halfHeightPx * glowScale)
+        lineTo(centerX - halfWidthPx * glowScale, centerY + halfHeightPx * glowScale)
+        close()
+    }
+    drawPath(
+        path = glowPath,
+        color = orangeColor.copy(alpha = if (level == LauncherRearThreatLevel.Alert) 0.35f else 0.22f),
     )
 
-    // 2. Основной круг предупреждения
-    drawCircle(
-        color = color,
-        radius = badgeRadius,
-        center = center,
+    // 2. Основная оранжевая заливка треугольника
+    drawPath(
+        path = trianglePath,
+        color = orangeColor,
     )
 
-    // Тёмная обводка значка для контрастности
-    drawCircle(
+    // Тёмная обводка треугольника для контрастности
+    drawPath(
+        path = trianglePath,
         color = Color(0x60000000),
-        radius = badgeRadius,
-        center = center,
-        style = Stroke(width = 1.8.dp.toPx()),
+        style = Stroke(
+            width = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round,
+        ),
     )
 
-    // 3. Восклицательный знак '!'
+    // 3. Восклицательный знак '!' внутри треугольника
     val markColor = Color(0xFF111111)
 
     // Верхняя вертикальная черта
     val barWidth = 4.5.dp.toPx()
-    val barHeight = 13.dp.toPx()
-    val barTopY = centerY - 10.5.dp.toPx()
+    val barHeight = 11.dp.toPx()
+    val barTopY = centerY - 4.dp.toPx()
 
     drawRoundRect(
         color = markColor,
@@ -124,7 +146,7 @@ private fun DrawScope.drawDowExclamationMark(
 
     // Нижняя точка
     val dotRadius = 2.4.dp.toPx()
-    val dotCenterY = centerY + 7.5.dp.toPx()
+    val dotCenterY = centerY + 11.5.dp.toPx()
 
     drawCircle(
         color = markColor,

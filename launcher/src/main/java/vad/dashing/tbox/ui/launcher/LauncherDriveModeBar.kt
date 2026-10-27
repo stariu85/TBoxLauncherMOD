@@ -33,7 +33,6 @@ import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
-import vad.dashing.tbox.ui.clickableWithSound
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val ButtonHeight = 60.dp
@@ -43,7 +42,6 @@ fun LauncherDriveModeBar(
     canViewModel: CanDataViewModel,
     modifier: Modifier = Modifier,
     onModeSelected: ((String) -> Unit)? = null,
-    onReloadModel: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -120,7 +118,6 @@ fun LauncherDriveModeBar(
         GearIndicatorChip(
             activeGear = activeGear,
             currentGearNum = gearBoxCurrentGear,
-            onClick = { onReloadModel?.invoke() },
             modifier = Modifier
                 .weight(1f)
                 .height(ButtonHeight),
@@ -165,7 +162,6 @@ fun LauncherDriveModeBar(
 private fun GearIndicatorChip(
     activeGear: Char?,
     currentGearNum: Int?,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val gearText = remember(activeGear, currentGearNum) {
@@ -183,8 +179,7 @@ private fun GearIndicatorChip(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.LeftPanelCard)
-            .clickableWithSound(onClick = onClick),
+            .background(LauncherColors.LeftPanelCard),
         contentAlignment = Alignment.Center,
     ) {
         Text(

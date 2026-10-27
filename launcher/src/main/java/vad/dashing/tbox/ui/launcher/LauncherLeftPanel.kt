@@ -46,7 +46,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -282,6 +281,11 @@ fun LauncherLeftPanel(
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
         LauncherAppConfigStore.cameraAnimationEnabled(context)
     }
+    val trunkLongPressRevision by LauncherAppConfigStore.trunkLongPressRevisionFlow
+        .collectAsStateWithLifecycle()
+    val trunkLongPressEnabled = remember(context, trunkLongPressRevision) {
+        LauncherAppConfigStore.trunkLongPressEnabled(context)
+    }
     var smartDriveViewActive by remember { mutableStateOf(false) }
     var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
     val hasBodyOpen = effectiveBody.anyDoorOpen()
@@ -438,15 +442,11 @@ fun LauncherLeftPanel(
                     ),
             )
         }
-        var manualReloadRevision by remember { mutableIntStateOf(0) }
-        val effectiveModelRevision = modelRevision + manualReloadRevision
-
         val driveModeBarContent: @Composable () -> Unit = {
             if (driveModeBarVisible) {
                 LauncherDriveModeBar(
                     canViewModel = canViewModel,
                     onModeSelected = { pending -> driveModePending = pending },
-                    onReloadModel = { manualReloadRevision++ },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -540,7 +540,7 @@ fun LauncherLeftPanel(
                     steeringDeg = effectiveSteer,
                     steerPreview = steerPreview,
                     inDriveGear = showDriveView,
-                    modelRevision = effectiveModelRevision,
+                    modelRevision = modelRevision,
                     paintRevision = paintRevision,
                     paintId = paintId,
                     showRoad = false,
@@ -554,7 +554,7 @@ fun LauncherLeftPanel(
                     onClick = if (!racing) onOpenVehicleSettings else null,
                     onLongClick = null,
                     onTrunkClick = if (!racing) onOpenVehicleSettings else null,
-                    onTrunkLongClick = if (!racing) {
+                    onTrunkLongClick = if (!racing && trunkLongPressEnabled) {
                         {
                             if (activeGear == 'P') {
                                 sendOpenCloseTrunk(context)
@@ -588,6 +588,7 @@ fun LauncherLeftPanel(
                     showAll = !tirePressureOnlyLow,
                     lowPressureThreshold = tirePressureLowThreshold,
                     speedKmh = effectiveSpeed,
+                    steerAngleDeg = effectiveSteer,
                     isRearView = showDriveView,
                     inertiaEnabled = tirePressureInertiaEnabled,
                     modifier = Modifier.fillMaxSize(),

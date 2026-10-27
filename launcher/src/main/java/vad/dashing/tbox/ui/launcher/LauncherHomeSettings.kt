@@ -196,6 +196,7 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardHeightScaleSlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()
+    TrunkLongPressToggle()
     AvmCameraActionSelector()
     PdcVisualModeSelector()
     SidebarWidthSlider()
@@ -1515,5 +1516,28 @@ private fun HiddenAppsSettings() {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TrunkLongPressToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.trunkLongPressRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.trunkLongPressEnabled(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_trunk_long_press_enabled_title),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setTrunkLongPressEnabled(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_trunk_long_press_enabled_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
     }
 }
