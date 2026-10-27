@@ -20,7 +20,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -216,11 +215,7 @@ private fun LauncherTireBadge(
         ?.takeIf { wheel.available && !wheel.calibrating }
         ?.let { "$it${stringResource(R.string.unit_celsius)}" }
 
-    val badgeBg = if (LauncherThemeState.darkTheme) {
-        Color(0xF02A3444)
-    } else {
-        Color(0xE6FFFFFF)
-    }
+    val badgeBg = LauncherColors.LeftPanelCard
 
     Column(
         modifier = modifier

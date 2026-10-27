@@ -3,8 +3,10 @@ package vad.dashing.tbox.ui.launcher
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -80,6 +82,7 @@ import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.resolveDriveModeDisplayLabel
+import vad.dashing.tbox.ui.sendOpenCloseTrunk
 import kotlin.math.abs
 
 internal fun isDriveViewActive(
@@ -117,7 +120,7 @@ fun LauncherLeftPanel(
     carHidden: Boolean = false,
     settingsTransitionProgress: Float = 0f,
     settingsUserYawDeg: Float = 0f,
-    onColorPickerOpen: () -> Unit = {},
+    @Suppress("UNUSED_PARAMETER") onColorPickerOpen: () -> Unit = {},
     onColorPickerDismiss: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -378,6 +381,12 @@ fun LauncherLeftPanel(
         label = "driveModeGlowColor",
     )
 
+    val carOffsetDriveY by animateDpAsState(
+        targetValue = if (showDriveView) (-40).dp else 0.dp,
+        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+        label = "carOffsetDriveY",
+    )
+
     DisposableEffect(Unit) {
         onDispose {
             LauncherEmbeddedBoundsState.leftPanelBounds = null
@@ -427,15 +436,6 @@ fun LauncherLeftPanel(
                             ),
                         ),
                     ),
-            )
-        }
-        if (racing) {
-            // Past the bumper: draw under the 3D so a dodge continues beside/behind the body.
-            LauncherEggRaceCarsLayer(
-                cars = raceCars,
-                sprites = raceSprites,
-                minDepth = LauncherEggRace.PASS_UNDER_DEPTH,
-                modifier = Modifier.fillMaxSize(),
             )
         }
         var manualReloadRevision by remember { mutableIntStateOf(0) }
@@ -524,6 +524,7 @@ fun LauncherLeftPanel(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer { translationY = carOffsetDriveY.toPx() }
                 .padding(top = 52.dp, bottom = 60.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -551,7 +552,17 @@ fun LauncherLeftPanel(
                     customModelScale = carModelScale,
                     cameraSwitchMode = cameraSwitchMode,
                     onClick = if (!racing) onOpenVehicleSettings else null,
-                    onLongClick = if (!racing) onColorPickerOpen else null,
+                    onLongClick = null,
+                    onTrunkClick = if (!racing) onOpenVehicleSettings else null,
+                    onTrunkLongClick = if (!racing) {
+                        {
+                            if (activeGear == 'P') {
+                                sendOpenCloseTrunk(context)
+                            } else {
+                                trunkParkWarningUntilMs = SystemClock.uptimeMillis() + 3000L
+                            }
+                        }
+                    } else null,
                     onWheelAnchorsChanged = { wheelAnchors = it },
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },

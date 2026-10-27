@@ -17,10 +17,14 @@
     <string name="update_reboot_hu_unavailable">HU reboot is available on Android 9 (mbCAN).</string>
     <string name="launcher_media_card_opacity_title">Player card opacity</string>
     <string name="launcher_media_card_opacity_desc">Lower values let more of the road show through</string>
+    <string name="launcher_media_card_height_scale_title">Player height (active)</string>
+    <string name="launcher_media_card_height_scale_desc">Reduces vertical paddings and brings player elements closer</string>
     <string name="launcher_media_mini_player_title">Player widget</string>
     <string name="launcher_media_mini_player_desc">Mini player under the car on the left panel</string>
     <string name="launcher_close_player_after_playback_title">Close player after playback start</string>
     <string name="launcher_close_player_after_playback_desc">Automatically close the player application window after playback starts</string>
+    <string name="launcher_disable_media_card_cover_color_title">Do not change widget color from cover art</string>
+    <string name="launcher_disable_media_card_cover_color_desc">Use standard assist panel button color and transparency</string>
     <string name="launcher_top_bar_height_title">Top panel height</string>
     <string name="launcher_top_bar_height_desc">Automatically adjusts top boundary for freeform apps</string>
     <string name="launcher_bottom_bar_height_title">Bottom panel height</string>

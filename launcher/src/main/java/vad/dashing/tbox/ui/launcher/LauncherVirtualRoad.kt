@@ -454,7 +454,7 @@ private fun DrawScope.drawVirtualRoad(
 ) {
     val w = size.width
     val h = size.height
-    val horizonY = h * 0.24f
+    val horizonY = h * 0.24f - 40f * density
     // Keep road straight — car body no longer yaws with steering in drive mode.
     val vanishX = w / 2f
     // Cap ego lane geometry at reference panel width 240dp so the car model and lane lines stay calibrated.

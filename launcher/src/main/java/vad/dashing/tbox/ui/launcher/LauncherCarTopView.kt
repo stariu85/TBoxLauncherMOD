@@ -9,9 +9,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,8 +24,10 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -51,6 +58,7 @@ data class LauncherCarTopViewState(
 private const val DRIVE_SPEED_THRESHOLD_KMH = 3f
 private const val MAX_STEER_VISUAL_DEG = 45f
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LauncherCarTopView(
     state: LauncherCarTopViewState = LauncherCarTopViewState(),
@@ -59,6 +67,9 @@ fun LauncherCarTopView(
     strokeColor: Color = Color(0xFF6B7280),
     accentColor: Color = LauncherColors.AccentCyan,
     onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onTrunkClick: (() -> Unit)? = null,
+    onTrunkLongClick: (() -> Unit)? = null,
 ) {
     val driveTarget = if (state.speedKmh > DRIVE_SPEED_THRESHOLD_KMH) 1f else 0f
     val driveBlend by animateFloatAsState(
@@ -98,15 +109,9 @@ fun LauncherCarTopView(
         label = "pulseGlow",
     )
 
-    val clickModifier = if (onClick != null) {
-        Modifier.pointerInput(onClick) {
-            detectTapGestures(onTap = { onClick() })
-        }
-    } else {
-        Modifier
-    }
+    val hasSeparateTrunkZone = (onTrunkClick != null || onTrunkLongClick != null) && driveBlend < 0.5f
 
-    Box(modifier = modifier.then(clickModifier)) {
+    Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (driveBlend > 0.02f) {
                 drawDrivingBackground(
@@ -139,6 +144,38 @@ fun LauncherCarTopView(
                     steerDeg = state.steerAngleDeg.coerceIn(-MAX_STEER_VISUAL_DEG, MAX_STEER_VISUAL_DEG),
                 )
             }
+        }
+
+        if (onClick != null || onLongClick != null) {
+            val settingsModifier = Modifier.combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onClick?.invoke() },
+                onLongClick = { onLongClick?.invoke() },
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(if (hasSeparateTrunkZone) 0.65f else 1.0f)
+                    .align(Alignment.TopCenter)
+                    .then(settingsModifier),
+            )
+        }
+
+        if (hasSeparateTrunkZone) {
+            val trunkModifier = Modifier.combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onTrunkClick?.invoke() },
+                onLongClick = { onTrunkLongClick?.invoke() },
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.35f)
+                    .align(Alignment.BottomCenter)
+                    .then(trunkModifier),
+            )
         }
     }
 }

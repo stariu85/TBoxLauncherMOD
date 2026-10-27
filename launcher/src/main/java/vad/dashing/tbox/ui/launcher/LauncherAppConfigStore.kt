@@ -13,8 +13,10 @@ private const val KEY_DOCK = "dock_packages"
 private const val KEY_CAR_PAINT = "car_paint_id"
 private const val KEY_DEFAULT_MEDIA = "default_media_package"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
+private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_CLOSE_PLAYER_AFTER_PLAYBACK = "close_player_after_playback"
+private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
@@ -121,6 +123,9 @@ enum class WallpaperScaleMode(val code: Int) {
 internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
+internal const val MEDIA_CARD_HEIGHT_SCALE_DEFAULT = 1.00f
+internal const val MEDIA_CARD_HEIGHT_SCALE_MIN = 0.50f
+internal const val MEDIA_CARD_HEIGHT_SCALE_MAX = 1.00f
 internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
 internal const val DOCK_ICON_SCALE_MIN = 1.00f
 internal const val DOCK_ICON_SCALE_MAX = 2.00f
@@ -246,10 +251,14 @@ internal object LauncherAppConfigStore {
 
     private val mediaCardAlphaRevision = MutableStateFlow(0)
     internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
+    private val mediaCardHeightScaleRevision = MutableStateFlow(0)
+    internal val mediaCardHeightScaleRevisionFlow: StateFlow<Int> = mediaCardHeightScaleRevision
     private val mediaMiniPlayerRevision = MutableStateFlow(0)
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
     private val closePlayerAfterPlaybackRevision = MutableStateFlow(0)
     internal val closePlayerAfterPlaybackRevisionFlow: StateFlow<Int> = closePlayerAfterPlaybackRevision
+    private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
+    internal val disableMediaCardCoverColorRevisionFlow: StateFlow<Int> = disableMediaCardCoverColorRevision
     private val dockIconScaleRevision = MutableStateFlow(0)
     internal val dockIconScaleRevisionFlow: StateFlow<Int> = dockIconScaleRevision
     private val topBarHeightRevision = MutableStateFlow(0)
@@ -400,6 +409,16 @@ internal object LauncherAppConfigStore {
         mediaCardAlphaRevision.value++
     }
 
+    fun mediaCardHeightScale(context: Context): Float =
+        prefs(context).getFloat(KEY_MEDIA_CARD_HEIGHT_SCALE, MEDIA_CARD_HEIGHT_SCALE_DEFAULT)
+            .coerceIn(MEDIA_CARD_HEIGHT_SCALE_MIN, MEDIA_CARD_HEIGHT_SCALE_MAX)
+
+    fun setMediaCardHeightScale(context: Context, scale: Float) {
+        val next = scale.coerceIn(MEDIA_CARD_HEIGHT_SCALE_MIN, MEDIA_CARD_HEIGHT_SCALE_MAX)
+        prefs(context).edit().putFloat(KEY_MEDIA_CARD_HEIGHT_SCALE, next).apply()
+        mediaCardHeightScaleRevision.value++
+    }
+
     fun mediaMiniPlayerVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_MEDIA_MINI_PLAYER_VISIBLE, true)
 
@@ -414,6 +433,14 @@ internal object LauncherAppConfigStore {
     fun setClosePlayerAfterPlayback(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CLOSE_PLAYER_AFTER_PLAYBACK, enabled).apply()
         closePlayerAfterPlaybackRevision.value++
+    }
+
+    fun disableMediaCardCoverColor(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DISABLE_MEDIA_CARD_COVER_COLOR, false)
+
+    fun setDisableMediaCardCoverColor(context: Context, disabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DISABLE_MEDIA_CARD_COVER_COLOR, disabled).apply()
+        disableMediaCardCoverColorRevision.value++
     }
 
     fun dockIconScale(context: Context): Float =

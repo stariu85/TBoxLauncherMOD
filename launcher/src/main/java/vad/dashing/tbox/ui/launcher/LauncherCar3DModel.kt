@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
@@ -88,6 +89,8 @@ fun LauncherCar3DModel(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onTrunkClick: (() -> Unit)? = null,
+    onTrunkLongClick: (() -> Unit)? = null,
     modelRevision: Int = 0,
     paintRevision: Int = 0,
     paintId: String = LauncherCarPaint.defaultId,
@@ -129,6 +132,8 @@ fun LauncherCar3DModel(
             modifier = Modifier.fillMaxSize(),
             onClick = onClick,
             onLongClick = onLongClick,
+            onTrunkClick = onTrunkClick,
+            onTrunkLongClick = onTrunkLongClick,
             modelRevision = modelRevision,
             paintId = paintId,
             rigState = rigState,
@@ -162,6 +167,8 @@ private fun LauncherCarFilamentModel(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onTrunkClick: (() -> Unit)? = null,
+    onTrunkLongClick: (() -> Unit)? = null,
     modelRevision: Int,
     paintId: String,
     rigState: LauncherCarRigState,
@@ -204,6 +211,8 @@ private fun LauncherCarFilamentModel(
                 modifier = Modifier.fillMaxSize(),
                 onClick = onClick,
                 onLongClick = onLongClick,
+                onTrunkClick = onTrunkClick,
+                onTrunkLongClick = onTrunkLongClick,
                 paintId = paintId,
                 rigState = rigState,
                 speedKmh = speedKmh,
@@ -237,6 +246,8 @@ private fun LauncherCarFilamentContent(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onTrunkClick: (() -> Unit)? = null,
+    onTrunkLongClick: (() -> Unit)? = null,
     paintId: String,
     rigState: LauncherCarRigState,
     speedKmh: Float,
@@ -847,9 +858,9 @@ private fun LauncherCarFilamentContent(
             } else {
                 currentDriveBlend.coerceIn(0f, 1f)
             }
-            val tapWidth = lerp(200.dp, 170.dp, tapDriveBlend)
-            val tapHeight = lerp(260.dp, 210.dp, tapDriveBlend)
-            val tapOffsetY = 115.dp * tapDriveBlend
+            val tapWidth = lerp(180.dp, 170.dp, tapDriveBlend)
+            val tapHeight = lerp(180.dp, 210.dp, tapDriveBlend)
+            val tapOffsetY = lerp((-35).dp, 115.dp, tapDriveBlend)
 
             Box(
                 modifier = Modifier
@@ -860,6 +871,34 @@ private fun LauncherCarFilamentContent(
                     }
                     .then(interactionModifier),
             )
+        }
+        if (onTrunkClick != null || onTrunkLongClick != null) {
+            val tapDriveBlend = if (cameraAnimEnabled) {
+                FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
+            } else {
+                currentDriveBlend.coerceIn(0f, 1f)
+            }
+            if (tapDriveBlend < 0.5f) {
+                val trunkWidth = 160.dp
+                val trunkHeight = 90.dp
+                val trunkOffsetY = 95.dp
+                val trunkInteractionModifier = Modifier.combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onTrunkClick?.invoke() },
+                    onLongClick = { onTrunkLongClick?.invoke() },
+                )
+
+                Box(
+                    modifier = Modifier
+                        .size(width = trunkWidth, height = trunkHeight)
+                        .align(Alignment.Center)
+                        .graphicsLayer {
+                            translationY = trunkOffsetY.toPx()
+                        }
+                        .then(trunkInteractionModifier),
+                )
+            }
         }
     }
 }

@@ -175,7 +175,25 @@ internal fun LauncherHomeSettingsContent() {
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
+    val disableCoverColorRevision by LauncherAppConfigStore.disableMediaCardCoverColorRevisionFlow
+        .collectAsStateWithLifecycle()
+    val disableCoverColor = remember(context, disableCoverColorRevision) {
+        LauncherAppConfigStore.disableMediaCardCoverColor(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_disable_media_card_cover_color_title),
+        active = disableCoverColor,
+        onClick = {
+            LauncherAppConfigStore.setDisableMediaCardCoverColor(context, !disableCoverColor)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_disable_media_card_cover_color_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
     MediaCardOpacitySlider()
+    MediaCardHeightScaleSlider()
     CarModelScaleSlider()
     CameraSwitchModeSelector()
     AvmCameraActionSelector()
@@ -234,6 +252,50 @@ private fun MediaCardOpacitySlider() {
                 LauncherAppConfigStore.setMediaCardAlpha(context, next)
             },
             valueRange = MEDIA_CARD_ALPHA_MIN..MEDIA_CARD_ALPHA_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun MediaCardHeightScaleSlider() {
+    val context = LocalContext.current
+    var scale by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.mediaCardHeightScale(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_media_card_height_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${(scale * 100f).roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_media_card_height_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scale,
+            onValueChange = { next ->
+                scale = next
+                LauncherAppConfigStore.setMediaCardHeightScale(context, next)
+            },
+            valueRange = MEDIA_CARD_HEIGHT_SCALE_MIN..MEDIA_CARD_HEIGHT_SCALE_MAX,
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,

@@ -80,6 +80,16 @@ fun LauncherMediaMiniPlayer(
     val mediaCardAlpha = remember(context, mediaAlphaRevision) {
         LauncherAppConfigStore.mediaCardAlpha(context)
     }
+    val mediaHeightScaleRevision by LauncherAppConfigStore.mediaCardHeightScaleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val mediaHeightScale = remember(context, mediaHeightScaleRevision) {
+        LauncherAppConfigStore.mediaCardHeightScale(context)
+    }
+    val disableCoverColorRevision by LauncherAppConfigStore.disableMediaCardCoverColorRevisionFlow
+        .collectAsStateWithLifecycle()
+    val disableCoverColor = remember(context, disableCoverColorRevision) {
+        LauncherAppConfigStore.disableMediaCardCoverColor(context)
+    }
 
     val isDark = LauncherThemeState.darkTheme
 
@@ -167,8 +177,9 @@ fun LauncherMediaMiniPlayer(
     }
 
     // Tint the card towards the album art's accent so the widget follows the music.
-    val mediaCardTarget = remember(albumArtBitmap, isDark) {
+    val mediaCardTarget = remember(albumArtBitmap, isDark, disableCoverColor) {
         val baseCardColor = LauncherColors.LeftPanelCard
+        if (disableCoverColor) return@remember baseCardColor
         val bitmap = albumArtBitmap ?: return@remember baseCardColor
         runCatching {
             val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
@@ -182,7 +193,7 @@ fun LauncherMediaMiniPlayer(
         }.getOrNull() ?: baseCardColor
     }
     val mediaCardColor by animateColorAsState(
-        targetValue = mediaCardTarget.copy(alpha = mediaCardAlpha),
+        targetValue = mediaCardTarget.copy(alpha = mediaCardTarget.alpha * mediaCardAlpha),
         label = "mediaCardTint",
     )
 
@@ -227,6 +238,8 @@ fun LauncherMediaMiniPlayer(
     }
 
     val expanded = title.isNotBlank() || isPlaying || albumArtBitmap != null
+    val expandedVerticalPadding = if (expanded) (12.dp * mediaHeightScale).coerceAtLeast(2.dp) else 4.dp
+    val expandedItemSpacing = if (expanded) (10.dp * ((mediaHeightScale - 0.5f) / 0.5f)).coerceAtLeast(0.dp) else 0.dp
 
     Column(
         modifier = modifier
@@ -236,9 +249,9 @@ fun LauncherMediaMiniPlayer(
             .animateContentSize()
             .padding(
                 horizontal = 10.dp,
-                vertical = if (expanded) 12.dp else 4.dp,
+                vertical = expandedVerticalPadding,
             ),
-        verticalArrangement = Arrangement.spacedBy(if (expanded) 10.dp else 0.dp),
+        verticalArrangement = Arrangement.spacedBy(expandedItemSpacing),
     ) {
         if (expanded) {
             Row(

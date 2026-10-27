@@ -206,10 +206,14 @@
     <string name="launcher_media_bind_player">Привязать плеер</string>
     <string name="launcher_media_card_opacity_title">Непрозрачность плеера</string>
     <string name="launcher_media_card_opacity_desc">Чем ниже, тем сильнее просвечивает дорога</string>
+    <string name="launcher_media_card_height_scale_title">Высота плеера (активного)</string>
+    <string name="launcher_media_card_height_scale_desc">Уменьшает вертикальные отступы и сближает элементы плеера</string>
     <string name="launcher_media_mini_player_title">Виджет плеера</string>
     <string name="launcher_media_mini_player_desc">Мини-плеер под машиной на левой панели</string>
     <string name="launcher_close_player_after_playback_title">Закрывать плеер после начала воспроизведения</string>
     <string name="launcher_close_player_after_playback_desc">Автоматически закрывать окно приложения плеера после запуска воспроизведения</string>
+    <string name="launcher_disable_media_card_cover_color_title">Не менять цвет виджета от обложки</string>
+    <string name="launcher_disable_media_card_cover_color_desc">Использовать стандартный цвет и прозрачность как у кнопок панели ассистентов</string>
     <string name="launcher_top_bar_height_title">Высота верхней панели</string>
     <string name="launcher_top_bar_height_desc">Автоматически подстраивает верхнюю границу Freeform</string>
     <string name="launcher_bottom_bar_height_title">Высота нижней панели</string>
