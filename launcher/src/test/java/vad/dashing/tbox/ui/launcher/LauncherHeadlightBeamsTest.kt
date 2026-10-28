@@ -75,17 +75,17 @@ class LauncherHeadlightBeamsTest {
     }
 
     @Test
-    fun autoModeUsesBcmLowBeam() {
+    fun autoModeDoesNotLightRoad() {
         val autoOnBeams = resolveHeadlightBeams(
             simulateEnabled = false,
             simLowBeam = false,
             simHighBeam = false,
             lightControlRaw = LIGHT_CONTROL_AUTO,
             headlightsSwitch = 0,
-            bcmLowBeam = true,
+            bcmLowBeam = true, // BCM incorrectly reports low beam when DRL is active
             bcmHighBeam = false,
         )
-        assertTrue(autoOnBeams.lowBeam)
+        assertFalse(autoOnBeams.lowBeam)
 
         val autoOffBeams = resolveHeadlightBeams(
             simulateEnabled = false,

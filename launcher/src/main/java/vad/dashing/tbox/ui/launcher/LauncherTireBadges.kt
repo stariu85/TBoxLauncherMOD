@@ -5,12 +5,15 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +27,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +55,7 @@ fun LauncherTireBadges(
     steerAngleDeg: Float = 0f,
     isRearView: Boolean = false,
     inertiaEnabled: Boolean = true,
+    badgeShape: LauncherTireBadgeShape = LauncherTireBadgeShape.RECTANGLE,
 ) {
     if (!enabled) return
     val needsAttentionAny = state.hasAttention(lowPressureThreshold)
@@ -80,17 +85,17 @@ fun LauncherTireBadges(
             lastSpeed = currentSpeed
 
             // Y axis: longitudinal acceleration (back = +dp, braking = -dp)
-            val impulseY = (delta * 18f).coerceIn(-25f, 25f)
-            accumulatedY = (accumulatedY * 0.88f + impulseY * 0.12f).coerceIn(-25f, 25f)
+            val impulseY = (delta * 45f).coerceIn(-40f, 40f)
+            accumulatedY = (accumulatedY * 0.30f + impulseY * 0.70f).coerceIn(-40f, 40f)
 
             // X axis: lateral centrifugal force from steering angle and speed
-            // Right turn (steer > 0) -> badges fly LEFT (-25dp)
-            // Left turn (steer < 0) -> badges fly RIGHT (+25dp)
+            // Right turn (steer > 0) -> badges fly LEFT (-40dp)
+            // Left turn (steer < 0) -> badges fly RIGHT (+40dp)
             val steerNorm = (currentSteer / 360f).coerceIn(-1f, 1f)
-            val speedFactor = (currentSpeed / 30f).coerceIn(0f, 1f)
-            val targetCentrifugalX = -steerNorm * speedFactor * 25f
+            val speedFactor = (currentSpeed / 15f).coerceIn(0f, 1f)
+            val targetCentrifugalX = -steerNorm * speedFactor * 50f
 
-            accumulatedX = (accumulatedX * 0.88f + targetCentrifugalX * 0.12f).coerceIn(-25f, 25f)
+            accumulatedX = (accumulatedX * 0.30f + targetCentrifugalX * 0.70f).coerceIn(-40f, 40f)
 
             launch {
                 targetYAnim.animateTo(
@@ -117,8 +122,12 @@ fun LauncherTireBadges(
         val density = LocalDensity.current
         val boxWidthPx = with(density) { maxWidth.toPx() }
         val boxHeightPx = with(density) { maxHeight.toPx() }
-        val badgeWidth = if (compact) 62.dp else 98.dp
-        val badgeHeight = if (compact) 28.dp else 68.dp
+        val badgeHeight = if (compact) 40.dp else 68.dp
+        val badgeWidth = if (badgeShape == LauncherTireBadgeShape.ROUND) {
+            badgeHeight
+        } else {
+            if (compact) 62.dp else 98.dp
+        }
         val badgeWidthPx = with(density) { badgeWidth.toPx() }
         val badgeHeightPx = with(density) { badgeHeight.toPx() }
         val visibleCorners = LauncherWheelCorner.entries.filter { corner ->
@@ -181,6 +190,8 @@ fun LauncherTireBadges(
                 wheel = state.wheel(corner),
                 compact = compact,
                 lowPressureThreshold = lowPressureThreshold,
+                badgeShape = badgeShape,
+                badgeHeight = badgeHeight,
                 modifier = Modifier
                     .offset { IntOffset(shiftedLeft.roundToInt(), shiftedTop.roundToInt()) }
                     .width(badgeWidth),
@@ -196,7 +207,12 @@ private fun LauncherTireBadge(
     compact: Boolean,
     modifier: Modifier = Modifier,
     lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
+    badgeShape: LauncherTireBadgeShape = LauncherTireBadgeShape.RECTANGLE,
+    badgeHeight: Dp = if (compact) 40.dp else 68.dp,
 ) {
+    val isRound = badgeShape == LauncherTireBadgeShape.ROUND
+    val shape = if (isRound) CircleShape else RoundedCornerShape(8.dp)
+
     val label = stringResource(
         when (corner) {
             LauncherWheelCorner.FL -> R.string.launcher_vs_wheel_fl
@@ -217,7 +233,6 @@ private fun LauncherTireBadge(
     val pressureText = when {
         !wheel.available || wheel.calibrating || wheel.pressureBar == null ->
             stringResource(R.string.launcher_tire_invalid)
-        // Compact pill is too narrow for the unit — value alone stays on one line.
         compact -> valueToString(wheel.pressureBar, 1)
         else -> "${valueToString(wheel.pressureBar, 1)} ${stringResource(R.string.unit_bar)}"
     }
@@ -229,25 +244,28 @@ private fun LauncherTireBadge(
 
     Column(
         modifier = modifier
-            .background(badgeBg, RoundedCornerShape(8.dp))
+            .height(badgeHeight)
+            .background(badgeBg, shape)
             .padding(
-                horizontal = if (compact) 6.dp else 8.dp,
-                vertical = if (compact) 3.dp else 5.dp,
-            ),
+                horizontal = if (isRound) 2.dp else (if (compact) 6.dp else 8.dp),
+                vertical = if (compact) 2.dp else 4.dp,
+            )
+            .then(if (isRound) Modifier.offset(y = (-5).dp) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         if (!compact) {
             Text(
                 text = label,
                 color = tint.copy(alpha = 0.85f),
-                fontSize = 11.5.sp,
+                fontSize = if (isRound) 10.5.sp else 11.5.sp,
                 fontWeight = FontWeight.Medium,
             )
         }
         Text(
             text = pressureText,
             color = tint,
-            fontSize = if (compact) 13.8.sp else 15.sp,
+            fontSize = if (compact) (if (isRound) 13.5.sp else 15.sp) else (if (isRound) 13.5.sp else 15.sp),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
@@ -255,7 +273,7 @@ private fun LauncherTireBadge(
             Text(
                 text = tempText,
                 color = tint.copy(alpha = 0.9f),
-                fontSize = 12.7.sp,
+                fontSize = if (isRound) 11.sp else 12.7.sp,
             )
         }
     }

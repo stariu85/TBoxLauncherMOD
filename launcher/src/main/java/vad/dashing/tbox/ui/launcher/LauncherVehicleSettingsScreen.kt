@@ -129,6 +129,9 @@ fun LauncherVehicleSettingsScreen(
     val tirePressureInertiaEnabled = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureInertiaAnimationEnabled(context)
     }
+    val tirePressureBadgeShape = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureBadgeShape(context)
+    }
     val simulate = LauncherDevVehicleState.simulateEnabled
     val effectiveBody = if (simulate) LauncherDevVehicleState.bodyState() else vehicleBody
     val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
@@ -406,6 +409,7 @@ fun LauncherVehicleSettingsScreen(
                     steerAngleDeg = steer,
                     isRearView = true,
                     inertiaEnabled = tirePressureInertiaEnabled,
+                    badgeShape = tirePressureBadgeShape,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

@@ -162,6 +162,9 @@ fun LauncherLeftPanel(
     val tirePressureInertiaEnabled = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureInertiaAnimationEnabled(context)
     }
+    val tirePressureBadgeShape = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureBadgeShape(context)
+    }
 
     LaunchedEffect(context) {
         LauncherTireRepository.init(context)
@@ -591,6 +594,7 @@ fun LauncherLeftPanel(
                     steerAngleDeg = effectiveSteer,
                     isRearView = showDriveView,
                     inertiaEnabled = tirePressureInertiaEnabled,
+                    badgeShape = tirePressureBadgeShape,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

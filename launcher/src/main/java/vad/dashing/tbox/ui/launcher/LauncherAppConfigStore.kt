@@ -121,6 +121,18 @@ enum class WallpaperScaleMode(val code: Int) {
         }
     }
 }
+
+enum class LauncherTireBadgeShape(val code: String) {
+    RECTANGLE("rectangle"),
+    ROUND("round");
+
+    companion object {
+        fun fromCode(code: String?): LauncherTireBadgeShape = when (code) {
+            ROUND.code -> ROUND
+            else -> RECTANGLE
+        }
+    }
+}
 internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
@@ -199,6 +211,7 @@ private const val KEY_TIRE_PRESSURE_ONLY_TOP_VIEW = "tire_pressure_only_top_view
 private const val KEY_TIRE_PRESSURE_LOW_THRESHOLD = "tire_pressure_low_threshold"
 private const val KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS = "tire_pressure_always_in_settings"
 private const val KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED = "tire_pressure_inertia_animation_enabled"
+private const val KEY_TIRE_PRESSURE_BADGE_SHAPE = "tire_pressure_badge_shape"
 private const val KEY_TIRE_PRESSURE_PERSIST_ENABLED = "tire_pressure_persist_enabled"
 private const val KEY_SAVED_TIRE_PRESSURE_FL = "saved_tire_pressure_fl"
 private const val KEY_SAVED_TIRE_PRESSURE_FR = "saved_tire_pressure_fr"
@@ -683,6 +696,14 @@ internal object LauncherAppConfigStore {
 
     fun setTirePressureInertiaAnimationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED, enabled).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureBadgeShape(context: Context): LauncherTireBadgeShape =
+        LauncherTireBadgeShape.fromCode(prefs(context).getString(KEY_TIRE_PRESSURE_BADGE_SHAPE, null))
+
+    fun setTirePressureBadgeShape(context: Context, shape: LauncherTireBadgeShape) {
+        prefs(context).edit().putString(KEY_TIRE_PRESSURE_BADGE_SHAPE, shape.code).apply()
         tirePressureConfigRevision.value++
     }
 

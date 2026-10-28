@@ -474,7 +474,7 @@ private fun CarModelScaleSlider() {
 }
 
 @Composable
-private fun LauncherSettingsOptionButton(
+internal fun LauncherSettingsOptionButton(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,

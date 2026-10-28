@@ -319,6 +319,9 @@ internal fun LauncherVehicleSettingsContent(
     var tirePressureInertiaEnabled by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressureInertiaAnimationEnabled(context))
     }
+    var tirePressureBadgeShape by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureBadgeShape(context))
+    }
     var tirePressurePersistEnabled by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressurePersistEnabled(context))
     }
@@ -430,6 +433,38 @@ internal fun LauncherVehicleSettingsContent(
                     LauncherAppConfigStore.setTirePressureInertiaAnimationEnabled(context, next)
                 },
             )
+
+            Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)) {
+                Text(
+                    text = stringResource(R.string.launcher_vs_tire_pressure_badge_shape),
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LauncherSettingsOptionButton(
+                        text = stringResource(R.string.launcher_vs_tire_pressure_shape_rectangle),
+                        selected = tirePressureBadgeShape == LauncherTireBadgeShape.RECTANGLE,
+                        onClick = {
+                            tirePressureBadgeShape = LauncherTireBadgeShape.RECTANGLE
+                            LauncherAppConfigStore.setTirePressureBadgeShape(context, LauncherTireBadgeShape.RECTANGLE)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    LauncherSettingsOptionButton(
+                        text = stringResource(R.string.launcher_vs_tire_pressure_shape_round),
+                        selected = tirePressureBadgeShape == LauncherTireBadgeShape.ROUND,
+                        onClick = {
+                            tirePressureBadgeShape = LauncherTireBadgeShape.ROUND
+                            LauncherAppConfigStore.setTirePressureBadgeShape(context, LauncherTireBadgeShape.ROUND)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
 
             Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)) {
                 Row(

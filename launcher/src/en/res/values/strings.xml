@@ -1306,6 +1306,9 @@
     <string name="launcher_vs_tire_pressure_threshold">Low pressure threshold</string>
     <string name="launcher_vs_tire_pressure_always_in_settings">Show on model in settings</string>
     <string name="launcher_vs_tire_pressure_inertia_animation">Inertial tire badge animation</string>
+    <string name="launcher_vs_tire_pressure_badge_shape">Tire badge shape</string>
+    <string name="launcher_vs_tire_pressure_shape_rectangle">Rectangular</string>
+    <string name="launcher_vs_tire_pressure_shape_round">Round</string>
     <string name="launcher_vs_tire_pressure_persist">Remember tire pressure from last trip</string>
     <string name="launcher_vs_sim_acc">ACC Cruise Active</string>
     <string name="launcher_vs_sim_adas_header">ADAS / Assists</string>

@@ -10,10 +10,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
-import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
-import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
 
 data class LauncherHeadlightBeams(
     val lowBeam: Boolean = false,
@@ -74,15 +71,7 @@ internal fun resolveHeadlightBeams(
         return LauncherHeadlightBeams(lowBeam = simLowBeam, highBeam = simHighBeam)
     }
     val high = headlightsSwitch == 3 || bcmHighBeam == true
-    val low = when {
-        high -> true
-        lightControlRaw == LIGHT_CONTROL_OFF -> false
-        lightControlRaw == LIGHT_CONTROL_POSITION -> false
-        lightControlRaw == LIGHT_CONTROL_LOW_BEAM -> true
-        lightControlRaw == LIGHT_CONTROL_AUTO -> bcmLowBeam == true
-        bcmLowBeam != null -> bcmLowBeam
-        else -> false
-    }
+    val low = high || lightControlRaw == LIGHT_CONTROL_LOW_BEAM
     return LauncherHeadlightBeams(lowBeam = low, highBeam = high)
 }
 

@@ -351,6 +351,9 @@
     <string name="launcher_vs_tire_pressure_threshold">Порог низкого давления</string>
     <string name="launcher_vs_tire_pressure_always_in_settings">Показ на модели в настройках</string>
     <string name="launcher_vs_tire_pressure_inertia_animation">Инерция плашек при движении</string>
+    <string name="launcher_vs_tire_pressure_badge_shape">Форма плашек шин</string>
+    <string name="launcher_vs_tire_pressure_shape_rectangle">Прямоугольные</string>
+    <string name="launcher_vs_tire_pressure_shape_round">Круглые</string>
     <string name="launcher_vs_tire_pressure_persist">Запоминать давление с последней поездки</string>
     <string name="launcher_vs_section_body">Кузов</string>
     <string name="launcher_vs_section_body_sub">Двери и багажник</string>
