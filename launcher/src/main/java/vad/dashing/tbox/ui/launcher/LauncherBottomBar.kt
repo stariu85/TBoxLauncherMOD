@@ -246,6 +246,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("undo_nav", "Предыдущее приложение", R.drawable.ic_undo_app),
     LauncherDockButtonDescriptor("close_apps", "Закрыть приложения", R.drawable.close_apps_24),
     LauncherDockButtonDescriptor("dcl_log", "Запись лога (5 мин)", R.drawable.menu_icon_log),
+    LauncherDockButtonDescriptor("car_dialer", "Телефон", R.drawable.ic_widget_phone),
 )
 
 @Composable
@@ -1317,6 +1318,18 @@ private fun LauncherBottomDockButtonContent(
                     modifier = Modifier.size(dockDp(28f)),
                 )
             }
+        }
+        "car_dialer", "car_phone", "dialer" -> LauncherDockIcon(
+            onClick = {
+                launchLauncherApp(context, "com.autopai.car.dialer")
+            },
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_widget_phone),
+                contentDescription = "Телефон",
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(28f)),
+            )
         }
         "temp_driver" -> LauncherTempStepper(
             tempText = formatHvacSetTempAnnotated(driverTemp),

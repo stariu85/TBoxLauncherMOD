@@ -120,6 +120,13 @@
     <string name="launcher_vehicle_subtitle">TBox Monitor</string>
     <string name="launcher_metric_range">Запас хода</string>
     <string name="launcher_metric_cabin">Салон</string>
+    <string name="launcher_metric_trip_distance">Пробег за поездку</string>
+    <string name="launcher_metric_free_tank">Место в баке</string>
+    <string name="launcher_metric_total_distance">Общий пробег</string>
+    <string name="launcher_metric_outside">Снаружи</string>
+    <string name="launcher_vehicle_status_settings">Настройки</string>
+    <string name="launcher_settings_car_btn">Машина</string>
+    <string name="launcher_settings_system_btn">Система</string>
     <string name="launcher_media_no_track">Нет воспроизведения</string>
     <string name="launcher_footer_apps">Приложения</string>
     <string name="launcher_donate_title">Поддержать проект</string>
@@ -1140,7 +1147,7 @@
     <string name="data_title_car_speed">Скорость автомобиля</string>
     <string name="data_title_car_speed_accurate">Точная скорость автомобиля</string>
     <string name="data_title_cruise_set_speed">Скорость круиз-контроля</string>
-    <string name="data_title_odometer">Одометр</string>
+    <string name="data_title_odometer">Общий пробег</string>
     <string name="data_title_distance_to_next_maintenance">Пробег до следующего ТО</string>
     <string name="data_title_distance_to_fuel_empty">Пробег на остатке топлива</string>
     <string name="data_title_fuel_level_percentage">Уровень топлива</string>

@@ -1161,6 +1161,13 @@
     <string name="launcher_media_no_track">Not Playing</string>
     <string name="launcher_metric_cabin">Cabin</string>
     <string name="launcher_metric_range">Range</string>
+    <string name="launcher_metric_trip_distance">Trip distance</string>
+    <string name="launcher_metric_free_tank">Free in tank</string>
+    <string name="launcher_metric_total_distance">Total distance</string>
+    <string name="launcher_metric_outside">Outside</string>
+    <string name="launcher_vehicle_status_settings">Settings</string>
+    <string name="launcher_settings_car_btn">Car</string>
+    <string name="launcher_settings_system_btn">System</string>
     <string name="launcher_motion_preview_off">Steer preview: OFF</string>
     <string name="launcher_motion_preview_on">Steer preview: ON</string>
     <string name="launcher_oem_fullscreen_blocked">"%1$s" cannot be opened in fullscreen from TBox. Launch via stock launcher.</string>

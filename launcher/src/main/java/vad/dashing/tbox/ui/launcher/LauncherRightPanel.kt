@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -146,6 +148,19 @@ fun LauncherRightPanel(
     val scope = rememberCoroutineScope()
     val tbmRepository = remember(context) { TbmRepositoryProvider.get(context) }
     val tbmAutomations by tbmRepository.automations.collectAsStateWithLifecycle()
+    val activeTripDistanceKm by tbmRepository.activeTripDistanceKm.collectAsStateWithLifecycle()
+    val fuelLiters by tbmRepository.fuelLiters.collectAsStateWithLifecycle()
+    val fuelLevelCalibratedLitersActual by canViewModel.fuelLevelCalibratedLitersActual.collectAsStateWithLifecycle()
+    val fuelLevelCalibratedLiters by canViewModel.fuelLevelCalibratedLiters.collectAsStateWithLifecycle()
+    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
+
+    val usedFuelLiters = fuelLiters
+        ?: fuelLevelCalibratedLitersActual
+        ?: fuelLevelCalibratedLiters
+        ?: (fuelPctFiltered ?: fuelPctRaw)?.let { 57.0f * (it.toFloat() / 100.0f) }
+
+    val freeTankLiters = usedFuelLiters?.let { (57.0f - it).coerceIn(0.0f, 57.0f) }
 
     var addMenuVisible by remember { mutableStateOf(false) }
     var appPickerVisible by remember { mutableStateOf(false) }
@@ -205,8 +220,6 @@ fun LauncherRightPanel(
     LaunchedEffect(anyLocalDialog) {
         LauncherOverlayElevator.setHoldSource("right_panel_dialog", anyLocalDialog)
     }
-
-    val cabinTemp = insideTemp ?: outsideTemp
 
     var pickerSlotIndex by remember { mutableIntStateOf(-1) }
 
@@ -948,19 +961,19 @@ fun LauncherRightPanel(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    LauncherMetricCard(
-                        label = stringResource(R.string.data_title_odometer),
-                        value = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                    LauncherOdometerMetricCard(
+                        odometerValue = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                        tripValue = activeTripDistanceKm?.let { "${valueToString(it, 1)} ${stringResource(R.string.unit_km)}" } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
-                    LauncherMetricCard(
-                        label = stringResource(R.string.launcher_metric_range),
-                        value = distanceToFuelEmpty?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                    LauncherRangeMetricCard(
+                        rangeValue = distanceToFuelEmpty?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                        freeTankValue = freeTankLiters?.let { "${valueToString(it, 1)} ${stringResource(R.string.unit_liter)}" } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
-                    LauncherMetricCard(
-                        label = stringResource(R.string.launcher_metric_cabin),
-                        value = cabinTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
+                    LauncherTempMetricCard(
+                        cabinTemp = insideTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
+                        outsideTemp = outsideTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
                     LauncherVehicleStatusCard(
@@ -2077,6 +2090,256 @@ internal fun LauncherMiniIcon(app: LaunchableAppEntry?, fallback: String, iconSc
 }
 
 @Composable
+private fun LauncherOdometerMetricCard(
+    odometerValue: String,
+    tripValue: String,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+    val labelColor = LauncherColors.LeftTextSecondary
+    val valueColor = LauncherColors.LeftTextPrimary
+
+    Row(
+        modifier = modifier
+            .height(60.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(cardBg)
+            .border(
+                width = 1.dp,
+                color = cardBorder,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_metric_total_distance),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = odometerValue,
+                color = valueColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_metric_trip_distance),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+            Text(
+                text = tripValue,
+                color = valueColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherRangeMetricCard(
+    rangeValue: String,
+    freeTankValue: String,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+    val labelColor = LauncherColors.LeftTextSecondary
+    val valueColor = LauncherColors.LeftTextPrimary
+
+    Row(
+        modifier = modifier
+            .height(60.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(cardBg)
+            .border(
+                width = 1.dp,
+                color = cardBorder,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_metric_range),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = rangeValue,
+                color = valueColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_metric_free_tank),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+            Text(
+                text = freeTankValue,
+                color = valueColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherTempMetricCard(
+    cabinTemp: String,
+    outsideTemp: String,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
+    val labelColor = LauncherColors.LeftTextSecondary
+    val valueColor = LauncherColors.LeftTextPrimary
+
+    Row(
+        modifier = modifier
+            .height(60.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(cardBg)
+            .border(
+                width = 1.dp,
+                color = cardBorder,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_metric_cabin),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = cabinTemp,
+                color = valueColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_metric_outside),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+            Text(
+                text = outsideTemp,
+                color = valueColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+            )
+        }
+    }
+}
+
+@Suppress("UNUSED")
+@Composable
 private fun LauncherMetricCard(
     label: String,
     value: String,
@@ -2095,6 +2358,8 @@ private fun LauncherMetricCard(
     }
     val labelColor = LauncherColors.LeftTextSecondary
     val valueColor = LauncherColors.LeftTextPrimary
+    val stoppedToast = stringResource(R.string.launcher_dcl_logs_stopped_toast)
+    val startedToast = stringResource(R.string.launcher_dcl_logs_started_toast)
 
     Column(
         modifier = modifier
@@ -2316,6 +2581,7 @@ private fun LauncherVehicleStatusCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val status = rememberVehicleHealthStatus()
     val isDark = LauncherThemeState.darkTheme
     val cardBg = if (isDark) {
@@ -2329,8 +2595,9 @@ private fun LauncherVehicleStatusCard(
         Color.Black.copy(alpha = 0.15f)
     }
     val labelColor = LauncherColors.LeftTextSecondary
+    val valueColor = LauncherColors.LeftTextPrimary
 
-    Column(
+    Row(
         modifier = modifier
             .height(60.dp)
             .clip(RoundedCornerShape(12.dp))
@@ -2340,66 +2607,171 @@ private fun LauncherVehicleStatusCard(
                 color = cardBorder,
                 shape = RoundedCornerShape(12.dp),
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = stringResource(R.string.launcher_vehicle_status_label),
-            style = MaterialTheme.typography.tboxCaption,
-            color = labelColor,
-            fontSize = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Left side: Vehicle status label and status indicator
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start,
         ) {
+            Text(
+                text = stringResource(R.string.launcher_vehicle_status_label),
+                style = MaterialTheme.typography.tboxCaption,
+                color = labelColor,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
             when (status) {
                 LauncherVehicleHealthStatus.Ok -> {
-                    Text(
-                        text = stringResource(R.string.launcher_vehicle_status_ok),
-                        color = Color(0xFF22C55E),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF22C55E)),
+                        )
+                        Text(
+                            text = stringResource(R.string.launcher_vehicle_status_ok),
+                            color = Color(0xFF22C55E),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 LauncherVehicleHealthStatus.Warning -> {
-                    Icon(
-                        imageVector = Icons.Filled.Warning,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = Color(0xFFF59E0B),
-                    )
-                    Text(
-                        text = stringResource(R.string.launcher_vehicle_status_warning),
-                        color = Color(0xFFF59E0B),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = null,
+                            modifier = Modifier.size(11.dp),
+                            tint = Color(0xFFF59E0B),
+                        )
+                        Text(
+                            text = stringResource(R.string.launcher_vehicle_status_warning),
+                            color = Color(0xFFF59E0B),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 LauncherVehicleHealthStatus.Error -> {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .border(width = 1.2.dp, color = Color(0xFFEF4444), shape = RoundedCornerShape(4.dp))
+                            .border(width = 1.dp, color = Color(0xFFEF4444), shape = RoundedCornerShape(4.dp))
                             .background(Color(0xFFEF4444).copy(alpha = 0.16f))
-                            .padding(horizontal = 5.dp, vertical = 1.dp),
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = "Warning!",
                             color = Color(0xFFEF4444),
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // Right side: 3 circular buttons (Car, System, DCL -> Launcher settings)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxHeight(),
+        ) {
+            val btnBg = if (isDark) {
+                LauncherColors.CardDarkElevated.copy(alpha = 0.70f)
+            } else {
+                Color.White.copy(alpha = 0.90f)
+            }
+            val btnBorder = if (isDark) {
+                LauncherColors.TextMuted.copy(alpha = 0.35f)
+            } else {
+                Color.Black.copy(alpha = 0.20f)
+            }
+
+            // Button 1: Car settings (icon)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(btnBg)
+                    .border(1.dp, btnBorder, CircleShape)
+                    .clickable {
+                        launchLauncherAppEmbedded(context, "com.mengbo.carsettings")
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_settings_car),
+                    contentDescription = stringResource(R.string.launcher_settings_car_btn),
+                    modifier = Modifier.size(20.dp),
+                    colorFilter = ColorFilter.tint(valueColor),
+                )
+            }
+
+            // Button 2: System settings (icon)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(btnBg)
+                    .border(1.dp, btnBorder, CircleShape)
+                    .clickable {
+                        launchLauncherAppEmbedded(context, "com.mengbo.systemsettings")
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_settings_system),
+                    contentDescription = stringResource(R.string.launcher_settings_system_btn),
+                    modifier = Modifier.size(20.dp),
+                    colorFilter = ColorFilter.tint(valueColor),
+                )
+            }
+
+            // Button 3: Launcher settings (DCL)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(btnBg)
+                    .border(1.dp, btnBorder, CircleShape)
+                    .clickable {
+                        launchVehicleSettingsWindow(context)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "DCL",
+                    color = valueColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }
