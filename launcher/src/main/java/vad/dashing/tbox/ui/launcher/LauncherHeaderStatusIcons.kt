@@ -74,6 +74,28 @@ import vad.dashing.tbox.tbm.TbmConnectionState
 import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
+import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
+import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
+import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
+import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
+import vad.dashing.tbox.ui.sendOpenCloseTrunk
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -81,6 +103,7 @@ import java.util.Locale
 
 private val StatusIconTint = LauncherColors.TextSecondary
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LauncherTopHeaderBar(
     canViewModel: CanDataViewModel,
@@ -109,6 +132,32 @@ internal fun LauncherTopHeaderBar(
     val topBarLeftIndicatorsVisible = remember(context, topBarLeftIndicatorsRevision) {
         LauncherAppConfigStore.topBarLeftIndicatorsVisible(context)
     }
+
+    val topBarHeightRevision by LauncherAppConfigStore.topBarHeightRevisionFlow
+        .collectAsStateWithLifecycle()
+    val topBarHeightDp = remember(context, topBarHeightRevision) {
+        LauncherAppConfigStore.topBarHeightDp(context)
+    }
+
+    val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
+    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
+    val satInfo = rememberSatelliteInfo(
+        tboxConnected = tboxConnected,
+        locValues = locValues,
+    )
+
+    val topBarItemsRevision by LauncherAppConfigStore.topBarItemsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val topBarItems = remember(context, topBarItemsRevision) {
+        LauncherAppConfigStore.topBarItems(context)
+    }
+
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+    val headlightsRaw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF
+
+    val buttonDiameterDp = (topBarHeightDp - 16).coerceAtLeast(16)
+    val indicatorFontSizeSp = (buttonDiameterDp / 2f).sp
+    val indicatorIconSizeDp = (buttonDiameterDp * 0.65f).dp
 
     var fuelShowsRange by remember {
         mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
@@ -146,7 +195,7 @@ internal fun LauncherTopHeaderBar(
         SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(clockNowMs))
     }
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight()
@@ -154,108 +203,231 @@ internal fun LauncherTopHeaderBar(
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.topHeaderBottomPx = rect.bottom.toInt()
             },
-        contentAlignment = Alignment.Center,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left side: ADAS assist zone (if in top bar) + Info items (Temp, Fuel, Voltage, CPU, RAM)
+        // 1. Left side: ADAS assist zone + Custom Info/Button items
         Row(
             modifier = Modifier
-                .align(Alignment.CenterStart)
                 .padding(start = 10.dp)
                 .fillMaxHeight(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (!adasAlertsInLeftPanel) {
                 LauncherAdasStrip(canViewModel = canViewModel)
-            }
-            if (topBarLeftIndicatorsVisible) {
-                Text(
-                    text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = LauncherColors.TextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            val next = !fuelShowsRange
-                            fuelShowsRange = next
-                            LauncherAppConfigStore.setFuelShowsRange(context, next)
-                        },
-                    ),
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_launcher_fuel),
-                        contentDescription = stringResource(R.string.launcher_vs_fuel),
-                        modifier = Modifier.size(16.dp),
-                        colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
-                    )
+                if (topBarLeftIndicatorsVisible && topBarItems.isNotEmpty()) {
                     Text(
-                        text = fuelText,
+                        text = "·",
                         style = MaterialTheme.typography.tboxCaption,
-                        color = LauncherColors.TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
+                        color = StatusIconTint.copy(alpha = 0.5f),
+                        fontSize = indicatorFontSizeSp,
+                        modifier = Modifier.padding(start = 5.dp, end = 5.dp),
                     )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    if (voltageLow) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_launcher_battery),
-                            contentDescription = stringResource(R.string.data_title_voltage),
-                            modifier = Modifier.size(14.dp),
-                            colorFilter = ColorFilter.tint(LauncherColors.WarningRed),
+            }
+
+            if (topBarLeftIndicatorsVisible) {
+                topBarItems.forEachIndexed { index, itemId ->
+                    if (index > 0) {
+                        Text(
+                            text = "·",
+                            style = MaterialTheme.typography.tboxCaption,
+                            color = StatusIconTint.copy(alpha = 0.5f),
+                            fontSize = indicatorFontSizeSp,
+                            modifier = Modifier.padding(start = 5.dp, end = 5.dp),
                         )
                     }
-                    Text(
-                        text = voltageText,
-                        style = MaterialTheme.typography.tboxCaption,
-                        color = voltageColor,
-                        fontSize = 15.sp,
-                        fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
-                    )
+
+                    LauncherDraggableTopBarItem(
+                        itemId = itemId,
+                        index = index,
+                        totalCount = topBarItems.size,
+                        onReorder = { fromIdx, toIdx ->
+                            LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx)
+                        },
+                        onRemove = {
+                            LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                        },
+                    ) {
+                        when (itemId) {
+                            "temp" -> {
+                                Text(
+                                    text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = LauncherColors.TextPrimary,
+                                    fontSize = indicatorFontSizeSp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                            "fuel" -> {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {
+                                            val next = !fuelShowsRange
+                                            fuelShowsRange = next
+                                            LauncherAppConfigStore.setFuelShowsRange(context, next)
+                                        },
+                                    ),
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_launcher_fuel),
+                                        contentDescription = stringResource(R.string.launcher_vs_fuel),
+                                        modifier = Modifier.size(indicatorIconSizeDp),
+                                        colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+                                    )
+                                    Text(
+                                        text = fuelText,
+                                        style = MaterialTheme.typography.tboxCaption,
+                                        color = LauncherColors.TextPrimary,
+                                        fontSize = indicatorFontSizeSp,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+                            "voltage" -> {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    if (voltageLow) {
+                                        Image(
+                                            painter = painterResource(R.drawable.ic_launcher_battery),
+                                            contentDescription = stringResource(R.string.data_title_voltage),
+                                            modifier = Modifier.size(indicatorIconSizeDp),
+                                            colorFilter = ColorFilter.tint(LauncherColors.WarningRed),
+                                        )
+                                    }
+                                    Text(
+                                        text = voltageText,
+                                        style = MaterialTheme.typography.tboxCaption,
+                                        color = voltageColor,
+                                        fontSize = indicatorFontSizeSp,
+                                        fontWeight = if (voltageLow) FontWeight.SemiBold else FontWeight.Medium,
+                                    )
+                                }
+                            }
+                            "cpu" -> {
+                                Text(
+                                    text = "CPU $cpuUsage%",
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = StatusIconTint,
+                                    fontSize = indicatorFontSizeSp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            "ram" -> {
+                                Text(
+                                    text = "RAM $ramUsage%",
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = StatusIconTint,
+                                    fontSize = indicatorFontSizeSp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            "gps" -> {
+                                val satColor = when {
+                                    satInfo.isInertial -> Color(0xFF3B82F6)
+                                    satInfo.hasFix -> Color(0xFF22C55E)
+                                    else -> Color(0xFFF97316)
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_launcher_satellite),
+                                        contentDescription = stringResource(R.string.location_visible_satellites),
+                                        modifier = Modifier.size(indicatorIconSizeDp),
+                                        colorFilter = ColorFilter.tint(satColor),
+                                    )
+                                    Text(
+                                        text = "${satInfo.visibleSatellites}/${satInfo.usingSatellites}",
+                                        style = MaterialTheme.typography.tboxCaption,
+                                        color = LauncherColors.TextPrimary,
+                                        fontSize = indicatorFontSizeSp,
+                                        fontWeight = FontWeight.Light,
+                                    )
+                                }
+                            }
+                            "headlights" -> {
+                                val isDark = LauncherThemeState.darkTheme
+                                val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
+                                val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
+                                Box(
+                                    modifier = Modifier
+                                        .size(buttonDiameterDp.dp)
+                                        .clip(CircleShape)
+                                        .background(buttonCircleBg)
+                                        .border(1.dp, buttonCircleBorder, CircleShape)
+                                        .clickable { sendCycleHeadlightsSwitch(context, headlightsRaw) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    LauncherTopBarHeadlightsIcon(
+                                        raw = headlightsRaw,
+                                        iconSizeDp = (buttonDiameterDp * 0.55f).dp,
+                                    )
+                                }
+                            }
+                            "trunk" -> {
+                                val isDark = LauncherThemeState.darkTheme
+                                val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
+                                val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
+                                Box(
+                                    modifier = Modifier
+                                        .size(buttonDiameterDp.dp)
+                                        .clip(CircleShape)
+                                        .background(buttonCircleBg)
+                                        .border(1.dp, buttonCircleBorder, CircleShape)
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onDoubleTap = { sendOpenCloseTrunk(context) },
+                                            )
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Image(
+                                        painter = painterResource(R.drawable.ic_launcher_trunk),
+                                        contentDescription = "Багажник",
+                                        modifier = Modifier.size((buttonDiameterDp * 0.55f).dp),
+                                        colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-                Text(
-                    text = "·",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = StatusIconTint.copy(alpha = 0.5f),
-                    fontSize = 15.sp,
-                )
-                Text(
-                    text = "CPU $cpuUsage%",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = StatusIconTint,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = "·",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = StatusIconTint.copy(alpha = 0.5f),
-                    fontSize = 15.sp,
-                )
-                Text(
-                    text = "RAM $ramUsage%",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = StatusIconTint,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                )
             }
         }
 
-        // Right side: Status icons + Time/Date
+        // 2. Middle: EMPTY SPACE (long press here triggers the addition menu)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .pointerInput(topBarHeightDp) {
+                    detectTapGestures(
+                        onLongPress = {
+                            LauncherTopBarPickerOverlayWindow.show(
+                                context = context,
+                                topBarHeightDp = topBarHeightDp,
+                                onSelectItem = { itemId ->
+                                    LauncherAppConfigStore.addTopBarItem(context, itemId)
+                                },
+                                onDismiss = {},
+                            )
+                        },
+                    )
+                },
+        )
+
+        // 3. Right side: Status icons + Time/Date
         Row(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
+                .padding(end = 10.dp)
                 .fillMaxHeight(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -275,6 +447,112 @@ internal fun LauncherTopHeaderBar(
 }
 
 @Composable
+private fun LauncherDraggableTopBarItem(
+    itemId: String,
+    index: Int,
+    totalCount: Int,
+    onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
+    onRemove: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+    var itemWidthPx by remember { mutableFloatStateOf(0f) }
+
+    val density = LocalDensity.current
+    val removeThresholdPx = remember(density) { with(density) { 20.dp.toPx() } }
+    val isRemoving = isDragging && offsetY > removeThresholdPx
+
+    Box(
+        modifier = Modifier
+            .zIndex(if (isDragging) 100f else 0f)
+            .onGloballyPositioned { coordinates ->
+                itemWidthPx = coordinates.size.width.toFloat()
+            }
+            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .graphicsLayer {
+                alpha = if (isRemoving) 0.30f else if (isDragging) 0.80f else 1.0f
+                scaleX = if (isDragging) 1.10f else 1.0f
+                scaleY = if (isDragging) 1.10f else 1.0f
+            }
+            .pointerInput(itemId, index, totalCount) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        isDragging = true
+                        offsetX = 0f
+                        offsetY = 0f
+                    },
+                    onDragEnd = {
+                        val shouldRemove = offsetY > removeThresholdPx
+                        if (shouldRemove) {
+                            onRemove()
+                        } else if (abs(offsetX) > itemWidthPx * 0.4f && itemWidthPx > 0f) {
+                            val targetIndex = if (offsetX > 0f) {
+                                (index + 1).coerceAtMost(totalCount - 1)
+                            } else {
+                                (index - 1).coerceAtLeast(0)
+                            }
+                            if (targetIndex != index) {
+                                onReorder(index, targetIndex)
+                            }
+                        }
+                        isDragging = false
+                        offsetX = 0f
+                        offsetY = 0f
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        offsetX = 0f
+                        offsetY = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        offsetX += dragAmount.x
+                        offsetY += dragAmount.y
+                    },
+                )
+            },
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun LauncherTopBarHeadlightsIcon(
+    raw: Int,
+    iconSizeDp: Dp,
+) {
+    val active = raw != LIGHT_CONTROL_OFF
+    val (iconRes, mode) = when (raw) {
+        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to "A"
+        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to "Б"
+        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_low_beam to "Г"
+        else -> R.drawable.ic_headlights_low_beam to "0"
+    }
+    val hvacOnColor = Color(0xFF38BDF8)
+    val hvacOffColor = LauncherColors.TextMuted
+    Box(modifier = Modifier.size(iconSizeDp), contentAlignment = Alignment.Center) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = stringResource(R.string.launcher_vs_headlights),
+            modifier = Modifier.size(iconSizeDp),
+            colorFilter = ColorFilter.tint(if (active) hvacOnColor else hvacOffColor),
+        )
+        Text(
+            text = mode,
+            color = if (active) LauncherColors.CanvasDark else LauncherColors.TextPrimary,
+            fontSize = (iconSizeDp.value * 0.3f).sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .clip(RoundedCornerShape(3.dp))
+                .background(if (active) hvacOnColor else LauncherColors.CardDarkElevated),
+        )
+    }
+}
+
+@Composable
 internal fun LauncherHeaderStatusIcons(
     tboxViewModel: TboxViewModel,
     modifier: Modifier = Modifier,
@@ -282,16 +560,10 @@ internal fun LauncherHeaderStatusIcons(
 ) {
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val netState by tboxViewModel.netState.collectAsStateWithLifecycle()
-    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
     val wifiConnected = rememberWifiConnected()
     val wifiLevel = rememberWifiLevel(wifiConnected)
     val bluetoothConnected = rememberBluetoothConnected()
     val networkType = mobileNetworkTypeLabel(netState.netStatus)
-
-    val satInfo = rememberSatelliteInfo(
-        tboxConnected = tboxConnected,
-        locValues = locValues,
-    )
 
     Row(
         modifier = modifier,
@@ -300,28 +572,6 @@ internal fun LauncherHeaderStatusIcons(
     ) {
         if (showVehicleAlerts) {
             LauncherVehicleAlertsStrip()
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val satColor = when {
-                satInfo.isInertial -> Color(0xFF3B82F6) // Blue for Inertial Navigation System
-                satInfo.hasFix -> Color(0xFF22C55E)     // Green for GPS Fix
-                else -> Color(0xFFF97316)              // Orange for No Fix
-            }
-            Image(
-                painter = painterResource(R.drawable.ic_launcher_satellite),
-                contentDescription = stringResource(R.string.location_visible_satellites),
-                modifier = Modifier.size(22.dp),
-                colorFilter = ColorFilter.tint(satColor),
-            )
-            Text(
-                text = "${satInfo.visibleSatellites}/${satInfo.usingSatellites}",
-                color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Light,
-            )
         }
         Box(
             modifier = Modifier

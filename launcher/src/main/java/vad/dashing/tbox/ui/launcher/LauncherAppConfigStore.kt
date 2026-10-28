@@ -20,6 +20,8 @@ private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
+private const val KEY_TOP_BAR_ITEMS = "top_bar_items"
+private val DEFAULT_TOP_BAR_ITEMS = listOf("temp", "fuel", "voltage", "cpu", "ram")
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
@@ -279,6 +281,8 @@ internal object LauncherAppConfigStore {
     internal val topBarHeightRevisionFlow: StateFlow<Int> = topBarHeightRevision
     private val topBarLeftIndicatorsRevision = MutableStateFlow(0)
     internal val topBarLeftIndicatorsRevisionFlow: StateFlow<Int> = topBarLeftIndicatorsRevision
+    private val topBarItemsRevision = MutableStateFlow(0)
+    internal val topBarItemsRevisionFlow: StateFlow<Int> = topBarItemsRevision
     private val bottomBarHeightRevision = MutableStateFlow(0)
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
     private val floatingHomeSizeRevision = MutableStateFlow(0)
@@ -485,6 +489,41 @@ internal object LauncherAppConfigStore {
     fun setTopBarLeftIndicatorsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE, visible).apply()
         topBarLeftIndicatorsRevision.value++
+    }
+
+    fun topBarItems(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_TOP_BAR_ITEMS, null) ?: return DEFAULT_TOP_BAR_ITEMS
+        if (raw.isBlank()) return emptyList()
+        return raw.split('|').filter { it.isNotBlank() }
+    }
+
+    fun setTopBarItems(context: Context, items: List<String>) {
+        val encoded = items.joinToString("|")
+        prefs(context).edit().putString(KEY_TOP_BAR_ITEMS, encoded).apply()
+        topBarItemsRevision.value++
+    }
+
+    fun addTopBarItem(context: Context, itemId: String) {
+        val current = topBarItems(context).toMutableList()
+        if (!current.contains(itemId)) {
+            current.add(itemId)
+            setTopBarItems(context, current)
+        }
+    }
+
+    fun removeTopBarItem(context: Context, itemId: String) {
+        val current = topBarItems(context).toMutableList()
+        if (current.remove(itemId)) {
+            setTopBarItems(context, current)
+        }
+    }
+
+    fun reorderTopBarItem(context: Context, fromIndex: Int, toIndex: Int) {
+        val current = topBarItems(context).toMutableList()
+        if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
+        val item = current.removeAt(fromIndex)
+        current.add(toIndex, item)
+        setTopBarItems(context, current)
     }
 
     fun bottomBarHeightDp(context: Context): Int =
