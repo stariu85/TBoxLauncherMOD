@@ -106,22 +106,14 @@ fun LauncherAdasStrip(
     modifier: Modifier = Modifier,
     isVertical: Boolean = false,
 ) {
-    val context = LocalContext.current
-    val topBarRevision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
-    val topBarHeightDp = remember(context, topBarRevision) {
-        LauncherAppConfigStore.topBarHeightDp(context)
-    }
-
-    val scale = (topBarHeightDp / 40f).coerceIn(0.5f, 2.0f)
-    val sizeMultiplier = if (isVertical) 1.25f else 1.0f
-    val iconBoxSizeDp = ((28 * scale) * sizeMultiplier).roundToInt().coerceIn(14, 70)
-    val innerIconSizeDp = ((18 * scale) * sizeMultiplier).roundToInt().coerceIn(9, 45)
-    val speedFontSizeSp = ((11 * scale) * sizeMultiplier).roundToInt().coerceIn(7, 28)
-    val chipFontSizeSp = ((10 * scale) * sizeMultiplier).roundToInt().coerceIn(7, 25)
-    val alertIconSizeDp = ((12 * scale) * sizeMultiplier).roundToInt().coerceIn(8, 30)
-    val paddingHDp = ((8 * scale) * sizeMultiplier).roundToInt().coerceIn(3, 20)
-    val paddingVDp = ((4 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 12)
-    val spacingDp = ((6 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 15)
+    val iconBoxSizeDp = 30
+    val innerIconSizeDp = 19
+    val speedFontSizeSp = 12
+    val chipFontSizeSp = 11
+    val alertIconSizeDp = 13
+    val paddingHDp = 8
+    val paddingVDp = 4
+    val spacingDp = 6
 
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
@@ -138,8 +130,8 @@ fun LauncherAdasStrip(
 
     val showLowBeam = isLowBeamBurning && !isAutoMode
     val showAutoMode = isAutoMode
-    val showHmaMode = isHmaOn
-    val showManualHighBeam = !isHmaOn && isHighBeamBurning
+    val showHmaMode = isHmaOn && isAutoMode
+    val showManualHighBeam = !isAutoMode && isHighBeamBurning
     val showHeadlights = showLowBeam || showAutoMode || showHmaMode || showManualHighBeam || showAll
 
     val rawWiperStatus = if (LauncherDevVehicleState.simulateEnabled) {
@@ -215,7 +207,7 @@ fun LauncherAdasStrip(
         if (showAutoMode || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_vs_headlights_auto),
-                tint = if (isLowBeamBurning) LauncherColors.AccentBlue else LauncherColors.AccentCyan,
+                tint = if (isLowBeamBurning) LauncherColors.AccentBlue else Color(0xFF22C55E),
                 iconRes = R.drawable.ic_headlights_auto,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,
@@ -235,9 +227,14 @@ fun LauncherAdasStrip(
             )
         }
         if (showHmaMode || showAll) {
+            val hmaTint = when {
+                isHighBeamBurning -> LauncherColors.AccentBlue
+                adas.hma == LauncherAdasAssistIcon.Active -> Color(0xFF22C55E)
+                else -> LauncherColors.TextMuted
+            }
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_hma),
-                tint = if (isHighBeamBurning) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                tint = hmaTint,
                 iconRes = R.drawable.ic_high_beam_auto,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,
@@ -248,7 +245,7 @@ fun LauncherAdasStrip(
         if (showManualHighBeam || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_vs_headlights),
-                tint = LauncherColors.AccentCyan,
+                tint = LauncherColors.AccentBlue,
                 iconRes = R.drawable.ic_high_beam,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,

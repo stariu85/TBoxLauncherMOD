@@ -137,6 +137,13 @@ class CanDataViewModel : ViewModel() {
             initialValue = null
         )
 
+    val averageFuelConsumption: StateFlow<Float?> = CanDataRepository.averageFuelConsumption
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     val cruiseSetSpeed: StateFlow<UInt?> = CanDataRepository.cruiseSetSpeed
         .stateIn(
             scope = viewModelScope,

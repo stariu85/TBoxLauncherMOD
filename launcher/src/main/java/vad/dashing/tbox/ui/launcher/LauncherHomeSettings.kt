@@ -202,7 +202,6 @@ internal fun LauncherHomeSettingsContent() {
     SidebarWidthSlider()
     AdasPanelToggle()
     AdasDistanceTextSizeSlider()
-    AdasAlertsPlacementToggle()
     NavButtonsToggle()
     FloatingHomeToggle()
     FloatingHomeSizeSlider()
@@ -1187,29 +1186,7 @@ private fun AdasDistanceTextSizeSlider() {
     }
 }
 
-@Composable
-private fun AdasAlertsPlacementToggle() {
-    val context = LocalContext.current
-    val revision by LauncherAppConfigStore.adasAlertsPlacementRevisionFlow
-        .collectAsStateWithLifecycle()
-    val inLeftPanel = remember(context, revision) {
-        LauncherAppConfigStore.adasAlertsInLeftPanel(context)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_adas_alerts_placement_title),
-            active = inLeftPanel,
-            onClick = {
-                LauncherAppConfigStore.setAdasAlertsInLeftPanel(context, !inLeftPanel)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_adas_alerts_placement_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-    }
-}
+
 
 @Composable
 private fun AdasPanelToggle() {

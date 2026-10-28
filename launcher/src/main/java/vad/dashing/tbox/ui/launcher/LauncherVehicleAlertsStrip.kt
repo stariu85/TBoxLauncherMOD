@@ -28,7 +28,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -49,18 +48,10 @@ fun LauncherVehicleAlertsStrip(
     modifier: Modifier = Modifier,
     isVertical: Boolean = false,
 ) {
-    val context = LocalContext.current
-    val topBarRevision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
-    val topBarHeightDp = remember(context, topBarRevision) {
-        LauncherAppConfigStore.topBarHeightDp(context)
-    }
-
-    val scale = (topBarHeightDp / 40f).coerceIn(0.5f, 2.0f)
-    val sizeMultiplier = if (isVertical) 1.25f else 1.0f
-    val iconSizeDp = ((18 * scale) * sizeMultiplier).roundToInt().coerceIn(9, 45)
-    val paddingDp = ((5 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 15)
-    val cornerRadiusDp = ((8 * scale) * sizeMultiplier).roundToInt().coerceIn(4, 20)
-    val spacingDp = ((6 * scale) * sizeMultiplier).roundToInt().coerceIn(2, 15)
+    val iconSizeDp = 19
+    val paddingDp = 5
+    val cornerRadiusDp = 8
+    val spacingDp = 6
 
     val state by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val showAll = LauncherDevVehicleState.showAllIndicators

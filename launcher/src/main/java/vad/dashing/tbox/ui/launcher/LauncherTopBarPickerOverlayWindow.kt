@@ -31,16 +31,25 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -63,17 +72,26 @@ internal data class LauncherTopBarItemDescriptor(
 
 internal object LauncherTopBarDescriptors {
     val ALL_INDICATORS = listOf(
-        LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false),
+        LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_up),
+        LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
         LauncherTopBarItemDescriptor("fuel", "Бензин / Запас хода", isButton = false, iconRes = R.drawable.ic_launcher_fuel),
+        LauncherTopBarItemDescriptor("avg_fuel", "Средний расход", isButton = false, iconRes = R.drawable.ic_launcher_fuel),
         LauncherTopBarItemDescriptor("voltage", "Вольтаж АКБ", isButton = false, iconRes = R.drawable.ic_launcher_battery),
-        LauncherTopBarItemDescriptor("cpu", "Нагрузка на ЦП", isButton = false),
-        LauncherTopBarItemDescriptor("ram", "Оперативная память", isButton = false),
+        LauncherTopBarItemDescriptor("cpu", "Нагрузка на ЦП", isButton = false, iconRes = R.drawable.ic_launcher_cpu),
+        LauncherTopBarItemDescriptor("ram", "Оперативная память", isButton = false, iconRes = R.drawable.ic_launcher_ram),
         LauncherTopBarItemDescriptor("gps", "Спутники / Геопозиция", isButton = false, iconRes = R.drawable.ic_launcher_satellite),
     )
 
     val ALL_BUTTONS = listOf(
         LauncherTopBarItemDescriptor("headlights", "Переключатель фар", isButton = true, iconRes = R.drawable.ic_widget_headlights),
         LauncherTopBarItemDescriptor("trunk", "Багажник (двойной тап)", isButton = true, iconRes = R.drawable.ic_launcher_trunk),
+        LauncherTopBarItemDescriptor("theme", "Тема (День/Ночь)", isButton = true, iconRes = R.drawable.ic_theme_sun),
+        LauncherTopBarItemDescriptor("mirrors", "Складывание зеркал", isButton = true, iconRes = R.drawable.ic_launcher_mirror),
+        LauncherTopBarItemDescriptor("autohold", "Auto Hold", isButton = true),
+        LauncherTopBarItemDescriptor("pdc", "Парктроники", isButton = true, iconRes = R.drawable.ic_widget_parking_radar),
+        LauncherTopBarItemDescriptor("rear_fog", "Задняя ПТФ", isButton = true, iconRes = R.drawable.ic_launcher_rear_fog),
+        LauncherTopBarItemDescriptor("avm", "Камеры 360", isButton = true, iconRes = R.drawable.ic_launcher_avm),
+        LauncherTopBarItemDescriptor("spacer", "Разделитель", isButton = true),
     )
 }
 
@@ -82,6 +100,8 @@ internal object LauncherTopBarDescriptors {
  */
 internal object LauncherTopBarPickerOverlayWindow {
     private const val TAG = "LauncherTopBarPickerOverlay"
+
+    val isShowingState = androidx.compose.runtime.mutableStateOf(false)
 
     @Volatile
     private var composeView: ComposeView? = null
@@ -187,10 +207,12 @@ internal object LauncherTopBarPickerOverlayWindow {
             composeView = view
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
+            isShowingState.value = true
             Log.w(TAG, "top bar picker overlay shown")
             true
         }.onFailure {
             Log.e(TAG, "Unable to add top bar picker overlay", it)
+            isShowingState.value = false
             lifecycleOwner = null
             windowManager = null
             dismissCallback = null
@@ -200,8 +222,10 @@ internal object LauncherTopBarPickerOverlayWindow {
     }
 
     fun hide() {
-        val view = composeView ?: return
+        val view = composeView
         composeView = null
+        isShowingState.value = false
+        if (view == null) return
         val cb = dismissCallback
         dismissCallback = null
         runCatching { windowManager?.removeViewImmediate(view) }
@@ -231,7 +255,9 @@ internal fun LauncherTopBarPickerContent(
     val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
     val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
 
-    val availableButtons = LauncherTopBarDescriptors.ALL_BUTTONS.filter { !activeItems.contains(it.id) }
+    val availableButtons = LauncherTopBarDescriptors.ALL_BUTTONS.filter { desc ->
+        desc.id == "spacer" || !activeItems.contains(desc.id)
+    }
     val availableIndicators = LauncherTopBarDescriptors.ALL_INDICATORS.filter { !activeItems.contains(it.id) }
 
     Surface(
@@ -264,6 +290,42 @@ internal fun LauncherTopBarPickerContent(
                 IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
                     Icon(Icons.Filled.Close, contentDescription = "Закрыть", tint = LauncherColors.TextMuted)
                 }
+            }
+
+            // Toggle for indicators border
+            val context = LocalContext.current
+            var borderEnabled by remember {
+                mutableStateOf(LauncherAppConfigStore.topBarIndicatorsBorderEnabled(context))
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(cardBg)
+                    .clickable {
+                        val next = !borderEnabled
+                        borderEnabled = next
+                        LauncherAppConfigStore.setTopBarIndicatorsBorderEnabled(context, next)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Обводка показателей",
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Switch(
+                    checked = borderEnabled,
+                    onCheckedChange = { checked ->
+                        borderEnabled = checked
+                        LauncherAppConfigStore.setTopBarIndicatorsBorderEnabled(context, checked)
+                    },
+                    colors = launcherSwitchColors(),
+                )
             }
 
             // Section 1: Кнопки
@@ -305,12 +367,25 @@ internal fun LauncherTopBarPickerContent(
                                     .border(1.dp, buttonCircleBorder, CircleShape),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                desc.iconRes?.let { res ->
+                                if (desc.iconRes != null) {
                                     Image(
-                                        painter = painterResource(res),
+                                        painter = painterResource(desc.iconRes),
                                         contentDescription = desc.title,
                                         modifier = Modifier.size(18.dp),
                                         colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+                                    )
+                                } else if (desc.id == "autohold") {
+                                    Text(
+                                        text = "HOLD",
+                                        color = LauncherColors.TextPrimary,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        style = TextStyle(
+                                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                        ),
                                     )
                                 }
                             }

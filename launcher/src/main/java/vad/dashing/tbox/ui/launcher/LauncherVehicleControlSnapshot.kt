@@ -32,6 +32,7 @@ data class LauncherVehicleControlSnapshot(
     val bcmWiperStatus: Int? = null,
     val hmaOn: Boolean? = null,
     val rearFogLight: Boolean? = null,
+    val parkingRadar: Boolean? = null,
     val homelightDelay: Int? = null,
     val lasSensitivity: Int? = null,
     // Experimental — polled only when [includeExperimental] is true.
@@ -139,6 +140,7 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         bcmWiperStatus = bcmWiper,
         hmaOn = null,
         rearFogLight = onOff12(get(MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)),
+        parkingRadar = onOff12(get(MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH)),
         homelightDelay = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_HOMELIGHT_DELAY)?.takeIf { it in 0..3 },
         lasSensitivity = get(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL)?.takeIf { it in 1..3 },
     )

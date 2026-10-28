@@ -250,7 +250,7 @@ private fun LauncherTireBadge(
                 horizontal = if (isRound) 2.dp else (if (compact) 6.dp else 8.dp),
                 vertical = if (compact) 2.dp else 4.dp,
             )
-            .then(if (isRound) Modifier.offset(y = (-5).dp) else Modifier),
+            .then(if (isRound) Modifier.offset(y = (-2).dp) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

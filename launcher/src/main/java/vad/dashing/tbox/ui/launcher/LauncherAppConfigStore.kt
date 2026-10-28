@@ -283,6 +283,8 @@ internal object LauncherAppConfigStore {
     internal val topBarLeftIndicatorsRevisionFlow: StateFlow<Int> = topBarLeftIndicatorsRevision
     private val topBarItemsRevision = MutableStateFlow(0)
     internal val topBarItemsRevisionFlow: StateFlow<Int> = topBarItemsRevision
+    private val topBarIndicatorsBorderRevision = MutableStateFlow(0)
+    internal val topBarIndicatorsBorderRevisionFlow: StateFlow<Int> = topBarIndicatorsBorderRevision
     private val bottomBarHeightRevision = MutableStateFlow(0)
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
     private val floatingHomeSizeRevision = MutableStateFlow(0)
@@ -491,6 +493,14 @@ internal object LauncherAppConfigStore {
         topBarLeftIndicatorsRevision.value++
     }
 
+    fun topBarIndicatorsBorderEnabled(context: Context): Boolean =
+        prefs(context).getBoolean("top_bar_indicators_border_enabled", true)
+
+    fun setTopBarIndicatorsBorderEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean("top_bar_indicators_border_enabled", enabled).apply()
+        topBarIndicatorsBorderRevision.value++
+    }
+
     fun topBarItems(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_TOP_BAR_ITEMS, null) ?: return DEFAULT_TOP_BAR_ITEMS
         if (raw.isBlank()) return emptyList()
@@ -505,10 +515,14 @@ internal object LauncherAppConfigStore {
 
     fun addTopBarItem(context: Context, itemId: String) {
         val current = topBarItems(context).toMutableList()
-        if (!current.contains(itemId)) {
-            current.add(itemId)
-            setTopBarItems(context, current)
+        val finalId = if (itemId == "spacer" || itemId.startsWith("spacer")) {
+            "spacer_${System.currentTimeMillis()}"
+        } else {
+            if (current.contains(itemId)) return
+            itemId
         }
+        current.add(finalId)
+        setTopBarItems(context, current)
     }
 
     fun removeTopBarItem(context: Context, itemId: String) {
@@ -672,11 +686,10 @@ internal object LauncherAppConfigStore {
         adasPanelVisibleRevision.value++
     }
 
-    fun adasAlertsInLeftPanel(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, true)
+    fun adasAlertsInLeftPanel(context: Context): Boolean = true
 
     fun setAdasAlertsInLeftPanel(context: Context, inLeftPanel: Boolean) {
-        prefs(context).edit().putBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, inLeftPanel).apply()
+        prefs(context).edit().putBoolean(KEY_ADAS_ALERTS_IN_LEFT_PANEL, true).apply()
         adasAlertsPlacementRevision.value++
     }
 

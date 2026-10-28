@@ -46,6 +46,7 @@ enum class MbCanSignal(val subscribeDataTypes: Set<String>) {
     HvacAutoState(setOf("eMBCAN_CFG_VEHICLE")),
     HvacSync(setOf("eMBCAN_CFG_VEHICLE")),
     HvacDefrosterFront(setOf("eMBCAN_CFG_VEHICLE")),
+    HvacPm25(setOf("eMBCAN_CFG_VEHICLE", "eMBCAN_PM25INFO")),
     WirelessChargingSwitch(setOf("eMBCAN_CFG_VEHICLE")),
     TjaIca(setOf("eMBCAN_CFG_VEHICLE")),
     /** Vehicle cfg params shown on [vad.dashing.tbox.ui.CarSettingsTab] (poll + push). */
@@ -131,6 +132,8 @@ object MbCanRepository {
         WidgetSignalBinding("hvacAcWidget", MbCanSignal.HvacAcPower),
         WidgetSignalBinding("hvacAutoWidget", MbCanSignal.HvacAutoState),
         WidgetSignalBinding("hvacDefrosterFrontWidget", MbCanSignal.HvacDefrosterFront),
+        WidgetSignalBinding("hvac_pm25", MbCanSignal.HvacPm25),
+        WidgetSignalBinding("hvacPm25Widget", MbCanSignal.HvacPm25),
         WidgetSignalBinding(DRIVE_MODE_WIDGET_DATA_KEY, MbCanSignal.CarSettingsVehicleParams),
         WidgetSignalBinding("frontLeftSeatHeatVentWidget", MbCanSignal.FrontLeftSeatMode),
         WidgetSignalBinding("frontRightSeatHeatVentWidget", MbCanSignal.FrontRightSeatMode),
@@ -832,6 +835,7 @@ object MbCanRepository {
             MbCanSignal.HvacAutoState -> refreshHvacAutoState()
             MbCanSignal.HvacSync -> refreshHvacSyncState()
             MbCanSignal.HvacDefrosterFront -> refreshHvacDefrosterFront()
+            MbCanSignal.HvacPm25 -> refreshHvacPm25()
             MbCanSignal.WirelessChargingSwitch -> refreshWirelessCharging()
             MbCanSignal.TjaIca -> refreshTjaIca()
             MbCanSignal.CarSettingsVehicleParams -> refreshCarSettingsVehicleParams()
@@ -1174,6 +1178,20 @@ object MbCanRepository {
                 "DEBUG",
                 "refreshHvacDefrosterFront raw=$raw state=${_hvacDefrosterFrontState.value}"
             )
+        }
+    }
+
+    private suspend fun refreshHvacPm25() {
+        withContext(stateApplyDispatcher) {
+            if (!MbCanEngineFacade.isInitialized()) {
+                _availability.value = MbCanEngineFacade.probeAvailability()
+                _hvacPm25State.value = MbCanBinaryState.Unknown
+                return@withContext
+            }
+            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+            val decoded = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
+            _hvacPm25State.value = decoded
+            MbCanDiagnostics.log("DEBUG", "refreshHvacPm25 raw=$raw state=$decoded")
         }
     }
 

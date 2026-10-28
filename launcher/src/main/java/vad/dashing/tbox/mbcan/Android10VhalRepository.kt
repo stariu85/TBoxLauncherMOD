@@ -667,6 +667,7 @@ object Android10VhalRepository {
                 "hvacAcWidget" -> MbCanSignal.HvacAcPower
                 "hvacAutoWidget" -> MbCanSignal.HvacAutoState
                 "hvacDefrosterFrontWidget" -> MbCanSignal.HvacDefrosterFront
+                "hvac_pm25", "hvacPm25Widget" -> MbCanSignal.HvacPm25
                 DRIVE_MODE_WIDGET_DATA_KEY -> MbCanSignal.CarSettingsVehicleParams
                 "frontLeftSeatHeatVentWidget" -> MbCanSignal.FrontLeftSeatMode
                 "frontRightSeatHeatVentWidget" -> MbCanSignal.FrontRightSeatMode
@@ -769,6 +770,7 @@ object Android10VhalRepository {
             MbCanSignal.HvacAutoState -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE))
             MbCanSignal.HvacSync -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH))
             MbCanSignal.HvacDefrosterFront -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION))
+            MbCanSignal.HvacPm25 -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING))
             MbCanSignal.AudioVolume -> setOf(resolved(MbCanKnownAudioPropertyId.VOLUME))
             MbCanSignal.AudioVolumeSpeed -> setOf(resolved(MbCanKnownAudioPropertyId.VOLUME_SPEED))
             MbCanSignal.CarSettingsVehicleParams -> setOf(
@@ -841,6 +843,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
         MbCanKnownVehiclePropertyId.TJA_ICA -> true
         else -> false
     }
@@ -857,6 +860,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
         MbCanKnownVehiclePropertyId.TJA_ICA ->
             decodeVhalBinaryTwoIsOn(raw)
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION ->
@@ -876,6 +880,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
         MbCanKnownVehiclePropertyId.TJA_ICA ->
             if (targetOn) 2 else 1
         // Recirculation: 1=inside(recirc on), 2=outside(recirc off).
@@ -895,6 +900,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER -> _hvacAcPowerState.value
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE -> _hvacAutoState.value
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH -> _hvacSyncState.value
+        MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> _hvacPm25State.value
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION -> _hvacDefrosterFrontState.value
         MbCanKnownVehiclePropertyId.TJA_ICA -> _tjaIcaState.value
         else -> MbCanBinaryState.Unknown
@@ -1083,6 +1089,7 @@ object Android10VhalRepository {
                 MbCanSignal.HvacAutoState -> stateEngine.applyHvacAutoStateCandidate(MbCanBinaryState.Unavailable(deniedReason))
                 MbCanSignal.HvacSync -> stateEngine.applyHvacSyncCandidate(MbCanBinaryState.Unavailable(deniedReason))
                 MbCanSignal.HvacDefrosterFront -> stateEngine.applyHvacDefrosterFrontCandidate(MbCanBinaryState.Unavailable(deniedReason))
+                MbCanSignal.HvacPm25 -> _hvacPm25State.value = MbCanBinaryState.Unavailable(deniedReason)
                 MbCanSignal.AudioVolumeSpeed -> {
                     _audioVolumeSpeedModeState.value = null
                     stateEngine.applyVolumeSpeedCandidate(MbCanBinaryState.Unavailable(deniedReason))
@@ -1123,6 +1130,7 @@ object Android10VhalRepository {
                 MbCanSignal.HvacAutoState -> stateEngine.applyHvacAutoStateCandidate(MbCanBinaryState.Unavailable(reason))
                 MbCanSignal.HvacSync -> stateEngine.applyHvacSyncCandidate(MbCanBinaryState.Unavailable(reason))
                 MbCanSignal.HvacDefrosterFront -> stateEngine.applyHvacDefrosterFrontCandidate(MbCanBinaryState.Unavailable(reason))
+                MbCanSignal.HvacPm25 -> _hvacPm25State.value = MbCanBinaryState.Unavailable(reason)
                 MbCanSignal.AudioVolumeSpeed -> {
                     _audioVolumeSpeedModeState.value = null
                     stateEngine.applyVolumeSpeedCandidate(MbCanBinaryState.Unavailable(reason))
@@ -1240,6 +1248,14 @@ object Android10VhalRepository {
                 stateEngine.applyHvacDefrosterFrontCandidate(
                     raw?.let(MbCanSignalStateEngine::decodeHvacFrontDefrostVhalRaw) ?: MbCanBinaryState.Unknown
                 )
+            }
+            MbCanSignal.HvacPm25 -> {
+                val propertyId = FirmwareVehicleJsonMapper
+                    .resolveReadPropertyId(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+                    ?: MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING
+                val raw = bridge?.getIntProperty(propertyId)
+                val decoded = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
+                _hvacPm25State.value = decoded
             }
             MbCanSignal.TjaIca -> {
                 val propertyId = FirmwareVehicleJsonMapper

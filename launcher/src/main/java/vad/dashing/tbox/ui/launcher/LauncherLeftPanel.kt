@@ -129,11 +129,6 @@ fun LauncherLeftPanel(
     val carModelScale = remember(context, modelScaleRevision) {
         LauncherAppConfigStore.carModelScale(context)
     }
-    val adasAlertsPlacementRevision by LauncherAppConfigStore.adasAlertsPlacementRevisionFlow
-        .collectAsStateWithLifecycle()
-    val adasAlertsInLeftPanel = remember(context, adasAlertsPlacementRevision) {
-        LauncherAppConfigStore.adasAlertsInLeftPanel(context)
-    }
     val speedLimitPositionRevision by LauncherAppConfigStore.speedLimitPositionRevisionFlow
         .collectAsStateWithLifecycle()
     var speedLimitXRatio by remember(context, speedLimitPositionRevision) {
@@ -413,7 +408,7 @@ fun LauncherLeftPanel(
                     rect.bottom.toInt(),
                 )
                 LauncherEmbeddedBoundsState.leftPanelBounds = boundsRect
-                vad.dashing.tbox.DclLogRecorder.log("LeftPanel", "onGloballyPositioned leftPanelBounds=$boundsRect carModelScale=$carModelScale adasAlertsInLeftPanel=$adasAlertsInLeftPanel")
+                vad.dashing.tbox.DclLogRecorder.log("LeftPanel", "onGloballyPositioned leftPanelBounds=$boundsRect carModelScale=$carModelScale")
                 onCarBoundsChanged(rect)
             }
             .background(LauncherColors.LeftPanelBg),
@@ -667,31 +662,29 @@ fun LauncherLeftPanel(
                             .zIndex(160f),
                     )
 
-                    if (adasAlertsInLeftPanel) {
-                        val alertsTopOffset = maxHeight * 0.24f
+                    val alertsTopOffset = maxHeight * 0.24f
 
-                        // Left vertical section: Telltale alerts (Индикаторы предупреждений)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(start = 8.dp, top = alertsTopOffset)
-                                .zIndex(150f),
-                        ) {
-                            LauncherVehicleAlertsStrip(isVertical = true)
-                        }
+                    // Left vertical section: Telltale alerts (Индикаторы предупреждений)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 8.dp, top = alertsTopOffset)
+                            .zIndex(150f),
+                    ) {
+                        LauncherVehicleAlertsStrip(isVertical = true)
+                    }
 
-                        // Right vertical section: ADAS (Системы помощи водителю и безопасности)
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(end = 8.dp, top = alertsTopOffset)
-                                .zIndex(150f),
-                        ) {
-                            LauncherAdasStrip(
-                                canViewModel = canViewModel,
-                                isVertical = true,
-                            )
-                        }
+                    // Right vertical section: ADAS (Системы помощи водителю и безопасности)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 8.dp, top = alertsTopOffset)
+                            .zIndex(150f),
+                    ) {
+                        LauncherAdasStrip(
+                            canViewModel = canViewModel,
+                            isVertical = true,
+                        )
                     }
                 }
 

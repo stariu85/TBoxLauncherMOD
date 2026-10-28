@@ -132,6 +132,9 @@ object CanDataRepository {
     private val _currentFuelConsumption = MutableStateFlow<Float?>(null)
     val currentFuelConsumption: StateFlow<Float?> = _currentFuelConsumption.asStateFlow()
 
+    private val _averageFuelConsumption = MutableStateFlow<Float?>(null)
+    val averageFuelConsumption: StateFlow<Float?> = _averageFuelConsumption.asStateFlow()
+
     private val _gearBoxMode = MutableStateFlow("")
     val gearBoxMode: StateFlow<String> = _gearBoxMode.asStateFlow()
 
@@ -256,6 +259,10 @@ object CanDataRepository {
 
     fun updateCurrentFuelConsumption(newValue: Float?) {
         _currentFuelConsumption.setIfChanged(newValue)
+    }
+
+    fun updateAverageFuelConsumption(newValue: Float?) {
+        _averageFuelConsumption.setIfChanged(newValue)
     }
 
     fun updateCruiseSetSpeed(newValue: UInt) {

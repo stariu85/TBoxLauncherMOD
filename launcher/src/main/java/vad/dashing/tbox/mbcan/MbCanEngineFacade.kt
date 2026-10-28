@@ -4,6 +4,7 @@ import android.util.Log
 import vad.dashing.tbox.mbcan.MbCanEngineFacade.canGetVehicleParam
 import vad.dashing.tbox.mbcan.MbCanEngineFacade.ensureInitialized
 import vad.dashing.tbox.mbcan.MbCanEngineFacade.syncVehicleCfgCmdListener
+import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.ui.launcher.LauncherTireRepository
 import vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository
 import java.lang.reflect.InvocationHandler
@@ -38,7 +39,10 @@ object MbCanEngineFacade {
     private var unSubscribeMethod: Method? = null
     private var registerCarSettingsListenerMethod: Method? = null
     private var unregisterCarSettingsListenerMethod: Method? = null
+    private var registAirPurgeListenerMethod: Method? = null
+    private var unregistAirPurgeListenerMethod: Method? = null
     private var settingsTelemetryProxy: Any? = null
+    private var airPurgeListenerProxy: Any? = null
     private var registCmdListenerMethod: Method? = null
     private var unRegistCmdListenerMethod: Method? = null
     private var cfgVehicleDataType: Any? = null
@@ -108,6 +112,12 @@ object MbCanEngineFacade {
             registerCarSettingsListenerMethod =
                 engineClass.getMethod("registIMBCarSettingsListener", Class.forName("com.mengbo.mbCan.interfaces.IMBCanSettingsCallback"))
             unregisterCarSettingsListenerMethod = engineClass.getMethod("unregistIMBCarSettingsListener")
+            registAirPurgeListenerMethod = runCatching {
+                engineClass.getMethod("registIMBAirPurgeListener", Class.forName("com.mengbo.mbCan.interfaces.IMBAirPurgeListener"))
+            }.getOrNull()
+            unregistAirPurgeListenerMethod = runCatching {
+                engineClass.getMethod("unRegistIMBAirPurgeListener")
+            }.getOrNull()
             registCmdListenerMethod = engineClass.getMethod(
                 "registCMDListener",
                 Class.forName(DATA_TYPE_CLASS),
@@ -387,6 +397,16 @@ object MbCanEngineFacade {
                 "onVehicleIcmFaultInfoChange" -> {
                     LauncherVehicleAlertsRepository.applyIcmFaultInfo(args?.getOrNull(0))
                 }
+                "onVehicleConsumptionChange" -> {
+                    val consumptionObj = args?.getOrNull(0)
+                    val avgVal = runCatching {
+                        val getter = consumptionObj?.javaClass?.getMethod("getfAvgFuCns")
+                        (getter?.invoke(consumptionObj) as? Number)?.toFloat()
+                    }.getOrNull()
+                    if (avgVal != null && avgVal > 0f) {
+                        CanDataRepository.updateAverageFuelConsumption(avgVal)
+                    }
+                }
             }
             null
         }
@@ -397,10 +417,12 @@ object MbCanEngineFacade {
         } catch (_: Throwable) {
             settingsTelemetryProxy = null
         }
+        registerAirPurgeBridge()
     }
 
     @Synchronized
     fun unregisterSettingsTelemetryBridge() {
+        unregisterAirPurgeBridge()
         val inst = engineInstance
         if (inst != null && settingsTelemetryProxy != null) {
             try {
@@ -410,6 +432,58 @@ object MbCanEngineFacade {
         }
         settingsTelemetryProxy = null
         LauncherTireRepository.clear()
+    }
+
+    @Synchronized
+    fun registerAirPurgeBridge() {
+        if (airPurgeListenerProxy != null) return
+        if (ensureInitialized() !is MbCanAvailability.Available) return
+        val inst = engineInstance ?: return
+        val iface = try {
+            Class.forName("com.mengbo.mbCan.interfaces.IMBAirPurgeListener")
+        } catch (_: Throwable) {
+            return
+        }
+        val loader = iface.classLoader ?: return
+        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            if (method.name == "onPMChanged" && args != null && args.isNotEmpty()) {
+                val pm25Obj = args[0]
+                if (pm25Obj != null) {
+                    val sts = runCatching {
+                        val getter = pm25Obj.javaClass.getMethod("getPM25Sts")
+                        (getter.invoke(pm25Obj) as? Number)?.toInt()
+                    }.getOrNull()
+                    val state = when (sts) {
+                        2 -> MbCanBinaryState.On
+                        1 -> MbCanBinaryState.Off
+                        else -> MbCanBinaryState.Unknown
+                    }
+                    MbCanRepository.updateHvacPm25StateFromCan(state)
+                }
+            }
+            null
+        }
+        val proxy = Proxy.newProxyInstance(loader, arrayOf(iface), handler)
+        airPurgeListenerProxy = proxy
+        try {
+            registAirPurgeListenerMethod?.invoke(inst, proxy)
+            Log.i(LOG_TAG, "registerAirPurgeBridge: registered IMBAirPurgeListener")
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "registerAirPurgeBridge failed", t)
+            airPurgeListenerProxy = null
+        }
+    }
+
+    @Synchronized
+    fun unregisterAirPurgeBridge() {
+        val inst = engineInstance
+        if (inst != null && airPurgeListenerProxy != null) {
+            try {
+                unregistAirPurgeListenerMethod?.invoke(inst)
+            } catch (_: Throwable) {
+            }
+        }
+        airPurgeListenerProxy = null
     }
 
     /**
