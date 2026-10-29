@@ -212,6 +212,7 @@ internal object LauncherTopBarPickerOverlayWindow {
             composeView = view
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
+            LauncherEdgeGestureOverlay.bringToFront()
             LauncherOverlayElevator.setHoldSource("top_bar_picker", true)
             isShowingState.value = true
             Log.w(TAG, "top bar picker overlay shown")

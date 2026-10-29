@@ -161,7 +161,7 @@ class LauncherHomeActivity : ComponentActivity() {
             Log.w(TAG, "onNewIntent HOME")
             LauncherAppDrawerWindow.hide()
             LauncherForegroundHandoff.restoreLauncherWindow()
-            goLauncherHome(this, fromHomeIntent = true)
+            goLauncherHome(this, fromHomeIntent = true, source = "onNewIntent")
         }
     }
 

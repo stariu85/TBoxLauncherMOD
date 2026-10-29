@@ -215,6 +215,7 @@ internal object LauncherAppDrawerWindow {
             composeView = view
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
+            LauncherEdgeGestureOverlay.bringToFront()
             true
         }.onFailure {
             Log.e(TAG, "Unable to add app drawer overlay", it)

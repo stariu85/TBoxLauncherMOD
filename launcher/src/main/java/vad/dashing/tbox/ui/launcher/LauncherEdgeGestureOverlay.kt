@@ -231,6 +231,32 @@ internal object LauncherEdgeGestureOverlay {
         bottomOwner = null
     }
 
+    fun bringToFront() {
+        val wm = windowManager ?: return
+        leftView?.let { view ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@let
+            runCatching {
+                wm.removeViewImmediate(view)
+                wm.addView(view, p)
+            }
+        }
+        rightView?.let { view ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@let
+            runCatching {
+                wm.removeViewImmediate(view)
+                wm.addView(view, p)
+            }
+        }
+        bottomView?.let { view ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@let
+            runCatching {
+                wm.removeViewImmediate(view)
+                wm.addView(view, p)
+            }
+        }
+        Log.w(TAG, "Edge gesture overlays brought to front above settings/overlays")
+    }
+
     fun hide() {
         removeLeftStrip()
         removeRightStrip()

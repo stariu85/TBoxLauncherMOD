@@ -50,6 +50,25 @@ internal object LauncherActiveAppTracker {
         Log.w(TAG, "onAppLaunched pkg=$packageName taskId=$taskId topClass=$topActivityClass")
     }
 
+    fun recordAppLaunchedAndResolveTaskId(
+        context: android.content.Context,
+        packageName: String,
+        topActivityClass: String? = null,
+    ) {
+        onAppLaunched(packageName, topActivityClass = topActivityClass)
+        val appCtx = context.applicationContext
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            runCatching {
+                val am = appCtx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val taskId = findTaskIdForPackage(am, packageName)
+                if (taskId != null && taskId > 0) {
+                    onAppLaunched(packageName, taskId = taskId, topActivityClass = topActivityClass)
+                    Log.w(TAG, "Resolved taskId=$taskId post-launch for pkg=$packageName")
+                }
+            }
+        }, 250L)
+    }
+
     fun onHomePressed() {
         val activePkg = currentAppPackage
         if (!activePkg.isNullOrBlank()) {

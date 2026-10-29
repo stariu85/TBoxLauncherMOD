@@ -310,6 +310,7 @@ internal fun tryLaunchIntentInBounds(
         LastAppTracker.recordLaunch(context, packageName)
         LauncherActiveAppTracker.onAppLaunched(
             packageName = packageName,
+            taskId = existingTaskId,
             topActivityClass = launchIntent.component?.className,
         )
         FreeformLaunchRegistry.record(packageName, targetBounds)
@@ -332,7 +333,8 @@ internal fun tryLaunchIntentInBounds(
         (activity ?: context).startActivity(launchIntent, options.toBundle())
     }.onSuccess {
         LastAppTracker.recordLaunch(context, packageName)
-        LauncherActiveAppTracker.onAppLaunched(
+        LauncherActiveAppTracker.recordAppLaunchedAndResolveTaskId(
+            context = context,
             packageName = packageName,
             topActivityClass = launchIntent.component?.className,
         )
@@ -543,7 +545,7 @@ internal fun resizeRunningTaskToBounds(
 ) = forceFreeformBounds(context, packageName, bounds)
 
 @Suppress("DEPRECATION")
-private fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int? {
+internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int? {
     // Prefer visible freeform stack via hidden getAllStackInfos (works for HOME on this HU).
     findTaskIdFromStackInfos(packageName)?.let { return it }
 
@@ -684,6 +686,20 @@ internal fun minimizeForeignFreeformTasks(
                 stateBefore = stateBefore,
                 decision = "Minimizing foreign taskIds=[${taskIdsToMinimize.joinToString()}], trackedPkgs=[${tracked.joinToString()}]",
             )
+
+            if (taskIdsToMinimize.isEmpty()) {
+                Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks: no foreign taskIds found, skipping shell fallback")
+                LauncherNavLogger.logNavAction(
+                    action = "MINIMIZE_APPS",
+                    source = source,
+                    stateBefore = stateBefore,
+                    result = "Removed taskIds count=0, skipped shell fallback (no tasks)",
+                )
+                withContext(Dispatchers.Main) {
+                    onComplete()
+                }
+                return@launch
+            }
 
             for (taskId in taskIdsToMinimize) {
                 runCatching {

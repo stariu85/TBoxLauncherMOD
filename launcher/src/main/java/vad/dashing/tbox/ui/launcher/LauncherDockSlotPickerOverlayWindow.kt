@@ -138,6 +138,7 @@ internal object LauncherDockSlotPickerOverlayWindow {
             composeView = view
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
+            LauncherEdgeGestureOverlay.bringToFront()
             Log.w(TAG, "dock slot picker overlay shown for slot=$slotIndex")
             true
         }.onFailure {
