@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -121,13 +122,17 @@ internal object LauncherTopBarPickerOverlayWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
+            Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
+            return false
+        }
 
         val owner = MyLifecycleOwner().also {
             it.setCurrentState(Lifecycle.State.CREATED)
             it.setCurrentState(Lifecycle.State.STARTED)
             it.setCurrentState(Lifecycle.State.RESUMED)
         }
-        val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val wm = (context.applicationContext ?: activity).getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -207,11 +212,13 @@ internal object LauncherTopBarPickerOverlayWindow {
             composeView = view
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
+            LauncherOverlayElevator.setHoldSource("top_bar_picker", true)
             isShowingState.value = true
             Log.w(TAG, "top bar picker overlay shown")
             true
         }.onFailure {
             Log.e(TAG, "Unable to add top bar picker overlay", it)
+            LauncherOverlayElevator.setHoldSource("top_bar_picker", false)
             isShowingState.value = false
             lifecycleOwner = null
             windowManager = null
@@ -225,6 +232,7 @@ internal object LauncherTopBarPickerOverlayWindow {
         val view = composeView
         composeView = null
         isShowingState.value = false
+        LauncherOverlayElevator.setHoldSource("top_bar_picker", false)
         if (view == null) return
         val cb = dismissCallback
         dismissCallback = null
