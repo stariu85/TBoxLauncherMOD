@@ -227,6 +227,8 @@ object MbCanKnownVehiclePropertyId {
     const val DOOR_IGNOFF_UNLOCK = 2
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_MIRROR_AUTOFOLD_SW] — 1 off, 2 on. */
     const val MIRROR_AUTOFOLD = 4
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_MIRROR_FOLD_SWITCH] — 1 fold, 2 unfold. */
+    const val MIRROR_FOLD_SWITCH = 230
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_MIRROR_REVERSE_TURN] — 1 off, 2 on. */
     const val MIRROR_REVERSE_TURN = 5
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_HEADLIGHTS_HOMELIGHT_DELAY] — 0/1/2/3. */
@@ -599,6 +601,10 @@ object MbCanCommandRegistry {
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.MIRROR_AUTOFOLD,
             policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MIRROR_FOLD_SWITCH,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2)),
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.MIRROR_REVERSE_TURN,

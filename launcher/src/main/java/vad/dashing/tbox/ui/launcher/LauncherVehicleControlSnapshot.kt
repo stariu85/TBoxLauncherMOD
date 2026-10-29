@@ -108,14 +108,17 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
             return null
         }
 
-        val low = readProp(lightSts, "nLowBeamSts") ?: readProp(lightSts, "lowBeamSts") ?: 0
-        val high = readProp(lightSts, "nHighBeamSts") ?: readProp(lightSts, "highBeamSts") ?: 0
+        val low = readProp(lightSts, "lowBeamSts") ?: readProp(lightSts, "nLowBeamSts") ?: 0
+        val high = readProp(lightSts, "highBeamSts") ?: readProp(lightSts, "nHighBeamSts") ?: 0
         // mbCAN: 2 or 1 means ON (0 = OFF)
         (low > 0) to (high > 0)
     }.getOrNull()
 
-    val actualLowBeam = bcmLights?.first
-    val actualHighBeam = bcmLights?.second
+    val pushLowBeam = vad.dashing.tbox.mbcan.UniversalCanRepository.bcmLowBeamState.value
+    val pushHighBeam = vad.dashing.tbox.mbcan.UniversalCanRepository.bcmHighBeamState.value
+
+    val actualLowBeam = pushLowBeam ?: bcmLights?.first
+    val actualHighBeam = pushHighBeam ?: bcmLights?.second
 
     val bcmWiper = runCatching {
         val bcmCls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleBcmStatus")

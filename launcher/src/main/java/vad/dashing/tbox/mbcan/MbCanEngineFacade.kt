@@ -397,14 +397,41 @@ object MbCanEngineFacade {
                 "onVehicleIcmFaultInfoChange" -> {
                     LauncherVehicleAlertsRepository.applyIcmFaultInfo(args?.getOrNull(0))
                 }
+                "onVehicleBcmStatusChange" -> {
+                    val bcm = args?.getOrNull(0)
+                    if (bcm != null) {
+                        val lightSts = runCatching {
+                            bcm.javaClass.getMethod("getLightStatus").invoke(bcm)
+                        }.getOrNull()
+                        val low = runCatching {
+                            (lightSts?.javaClass?.getMethod("getLowBeamSts")?.invoke(lightSts) as? Number)?.toInt()
+                        }.getOrNull() ?: 0
+                        val high = runCatching {
+                            (lightSts?.javaClass?.getMethod("getHighBeamSts")?.invoke(lightSts) as? Number)?.toInt()
+                        }.getOrNull() ?: 0
+                        val hmaVal = runCatching {
+                            (bcm.javaClass.getMethod("getHMA_Status").invoke(bcm) as? Number)?.toInt()
+                        }.getOrNull() ?: 0
+                        MbCanRepository.scheduleBcmLightPush(
+                            lowBeam = low > 0,
+                            highBeam = high > 0,
+                            hmaOn = hmaVal > 0,
+                        )
+                    }
+                }
                 "onVehicleConsumptionChange" -> {
                     val consumptionObj = args?.getOrNull(0)
-                    val avgVal = runCatching {
+                    var avgVal = runCatching {
                         val getter = consumptionObj?.javaClass?.getMethod("getfAvgFuCns")
                         (getter?.invoke(consumptionObj) as? Number)?.toFloat()
                     }.getOrNull()
-                    if (avgVal != null && avgVal > 0f) {
-                        CanDataRepository.updateAverageFuelConsumption(avgVal)
+                    if (avgVal != null) {
+                        if (avgVal > 35f) {
+                            avgVal /= 10f
+                        }
+                        if (avgVal > 0f) {
+                            CanDataRepository.updateAverageFuelConsumption(avgVal)
+                        }
                     }
                 }
             }
@@ -459,6 +486,22 @@ object MbCanEngineFacade {
                         else -> MbCanBinaryState.Unknown
                     }
                     MbCanRepository.updateHvacPm25StateFromCan(state)
+
+                    val inside = runCatching {
+                        val getter = pm25Obj.javaClass.getMethod("getPM25Indensity")
+                        (getter.invoke(pm25Obj) as? Number)?.toInt()?.toUInt()
+                    }.getOrNull()
+                    val outside = runCatching {
+                        val getter = pm25Obj.javaClass.getMethod("getPM25outdensity")
+                        (getter.invoke(pm25Obj) as? Number)?.toInt()?.toUInt()
+                    }.getOrNull()
+
+                    if (inside != null && inside > 0u && inside < 65535u) {
+                        CanDataRepository.updateInsideAirQuality(inside)
+                    }
+                    if (outside != null && outside > 0u && outside < 65535u) {
+                        CanDataRepository.updateOutsideAirQuality(outside)
+                    }
                 }
             }
             null

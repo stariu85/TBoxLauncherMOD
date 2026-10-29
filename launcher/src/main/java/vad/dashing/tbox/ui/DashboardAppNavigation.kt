@@ -12,6 +12,7 @@ import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.LastAppTracker
 import vad.dashing.tbox.MainActivityIntentHelper
+import vad.dashing.tbox.MirrorFoldLastCommandStore
 import vad.dashing.tbox.mbcan.Android10VhalRepository
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanCommand
@@ -118,21 +119,10 @@ internal fun sendToggleFloatingPanelsEnabled(
 internal fun sendToggleMbCanProperty(context: Context, propertyId: Int) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
-            val got = MbCanEngineFacade.canGetVehicleParam(propertyId)
-            val nextRaw = if (got == 2) 1 else 2
-            val written = MbCanEngineFacade.canSetVehicleParam(propertyId, nextRaw)
-            if (written == null) {
-                sendSetMbCanProperty(context, propertyId, nextRaw)
-            }
-            if (propertyId == MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) {
-                val state = if (nextRaw == 2) MbCanBinaryState.On else MbCanBinaryState.Off
-                MbCanRepository.updateHvacPm25StateFromCan(state)
-                Android10VhalRepository.updateHvacPm25StateFromCan(state)
-            }
-            UniversalCanRepository.execute(
+            val result = UniversalCanRepository.execute(
                 MbCanCommand.ToggleProperty(propertyId)
             )
-            Log.w("DashboardAppNav", "sendToggleMbCanProperty propertyId=$propertyId got=$got next=$nextRaw written=$written")
+            Log.w("DashboardAppNav", "sendToggleMbCanProperty propertyId=$propertyId result=$result")
         } catch (e: Exception) {
             Log.e("DashboardAppNav", "sendToggleMbCanProperty failed propertyId=$propertyId", e)
         }
@@ -678,6 +668,12 @@ internal fun sendToggleDoorIgnOffUnlock(context: Context) =
 
 internal fun sendToggleMirrorAutofold(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_AUTOFOLD)
+
+internal fun sendToggleMirrorFold(context: Context) {
+    val nextValue = MirrorFoldLastCommandStore.nextSingleTapValue()
+    MirrorFoldLastCommandStore.rememberSent(nextValue)
+    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_FOLD_SWITCH, nextValue)
+}
 
 internal fun sendAdjustAudioVolume(context: Context, delta: Int) {
     val audioManager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager

@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <!-- Position Lights / Габариты (headlight_r34xc9hxnnqm.svg) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 37.15,85.92 C 27.47,85.92 22.15,78.13 22.15,64 C 22.15,49.87 27.47,42.08 37.15,42.08 C 48,42.08 61,51.86 61,64 C 61,76.14 48,85.92 37.15,85.92 Z M 37.15,46.08 C 28.06,46.08 26.15,55.83 26.15,64 C 26.15,72.17 28.06,81.92 37.15,81.92 C 46.08,81.92 57,73.65 57,64 C 57,54.35 46.08,46.08 37.15,46.08 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 15,66 H 3 A 2,2 0 0,1 3,62 H 15 A 2,2 0 0,1 15,66 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 17.32,48.88 L 6.32,44.88 A 2,2 0 1,1 7.68,41.12 L 18.68,45.12 A 2,2 0 0,1 17.32,48.88 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 5.12,85.68 A 2,2 0 0,1 6.32,83.12 L 17.32,79.12 A 2,2 0 0,1 18.68,82.88 L 7.68,86.88 A 2,2 0 0,1 5.12,85.68 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 90.85,85.92 C 80.05,85.92 67,76.14 67,64 C 67,51.86 80.05,42.08 90.85,42.08 C 100.53,42.08 105.85,49.87 105.85,64 C 105.85,78.13 100.53,85.92 90.85,85.92 Z M 90.85,46.08 C 81.92,46.08 71,54.35 71,64 C 71,73.65 81.92,81.92 90.85,81.92 C 99.94,81.92 101.85,72.17 101.85,64 C 101.85,55.83 99.94,46.08 90.85,46.08 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 125,66 H 113 A 2,2 0 0,1 113,62 H 125 A 2,2 0 0,1 125,66 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 120.32,86.88 L 109.32,82.88 A 2,2 0 1,1 110.68,79.12 L 121.68,83.12 A 2,2 0 0,1 120.32,86.88 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 108.12,47.68 A 2,2 0 0,1 109.32,45.12 L 120.32,41.12 A 2,2 0 1,1 121.68,44.88 L 110.68,48.88 A 2,2 0 0,1 108.12,47.68 Z" />
+</vector>

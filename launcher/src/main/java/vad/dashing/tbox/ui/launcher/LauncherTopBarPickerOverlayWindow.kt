@@ -75,8 +75,10 @@ internal object LauncherTopBarDescriptors {
     val ALL_INDICATORS = listOf(
         LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_up),
         LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
+        LauncherTopBarItemDescriptor("combined_temp", "Температура внутри / снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_combined),
         LauncherTopBarItemDescriptor("fuel", "Бензин / Запас хода", isButton = false, iconRes = R.drawable.ic_launcher_fuel),
         LauncherTopBarItemDescriptor("avg_fuel", "Средний расход", isButton = false, iconRes = R.drawable.ic_launcher_fuel),
+        LauncherTopBarItemDescriptor("air_quality", "Качество воздуха (PM 2.5)", isButton = false, iconRes = R.drawable.ic_launcher_leaf),
         LauncherTopBarItemDescriptor("voltage", "Вольтаж АКБ", isButton = false, iconRes = R.drawable.ic_launcher_battery),
         LauncherTopBarItemDescriptor("cpu", "Нагрузка на ЦП", isButton = false, iconRes = R.drawable.ic_launcher_cpu),
         LauncherTopBarItemDescriptor("ram", "Оперативная память", isButton = false, iconRes = R.drawable.ic_launcher_ram),

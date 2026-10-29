@@ -1805,30 +1805,18 @@ private fun LauncherBinaryTintIcon(
 
 @Composable
 private fun LauncherHeadlightsModeIcon(raw: Int) {
-    val active = raw != LIGHT_CONTROL_OFF
-    val (iconRes, mode) = when (raw) {
-        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to "A"
-        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to "Б"
-        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_low_beam to "Г"
-        else -> R.drawable.ic_headlights_low_beam to "0"
+    val (iconRes, tintColor) = when (raw) {
+        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to Color(0xFF22C55E)
+        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to Color(0xFF38BDF8)
+        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_position to Color(0xFF38BDF8)
+        else -> R.drawable.ic_headlights_off to Color(0xFF6B7280)
     }
     Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(iconRes),
             contentDescription = stringResource(R.string.launcher_vs_headlights),
             modifier = Modifier.size(dockDp(27f)),
-            colorFilter = ColorFilter.tint(if (active) HvacOnColor else HvacOffColor),
-        )
-        Text(
-            text = mode,
-            color = if (active) LauncherColors.CanvasDark else LauncherColors.TextPrimary,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .clip(RoundedCornerShape(5.dp))
-                .background(if (active) HvacOnColor else LauncherColors.CardDarkElevated)
-                .padding(horizontal = 3.dp),
+            colorFilter = ColorFilter.tint(tintColor),
         )
     }
 }

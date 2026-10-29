@@ -268,6 +268,7 @@ private fun LauncherTireBadge(
             fontSize = if (compact) (if (isRound) 13.5.sp else 15.sp) else (if (isRound) 13.5.sp else 15.sp),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+            modifier = if (compact && !isRound) Modifier.offset(y = (-3).dp) else Modifier,
         )
         if (!compact && tempText != null) {
             Text(

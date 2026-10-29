@@ -106,6 +106,26 @@ object UniversalCanRepository {
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
+    val bcmLowBeamState: StateFlow<Boolean?> = mode
+        .flatMapLatest { activeMode ->
+            if (activeMode == HeadUnitCanMode.Android9MbCan) {
+                MbCanRepository.bcmLowBeamState
+            } else {
+                Android10VhalRepository.bcmLowBeamState
+            }
+        }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
+    val bcmHighBeamState: StateFlow<Boolean?> = mode
+        .flatMapLatest { activeMode ->
+            if (activeMode == HeadUnitCanMode.Android9MbCan) {
+                MbCanRepository.bcmHighBeamState
+            } else {
+                Android10VhalRepository.bcmHighBeamState
+            }
+        }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     val hvacDefrosterState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
             if (activeMode == HeadUnitCanMode.Android9MbCan) {

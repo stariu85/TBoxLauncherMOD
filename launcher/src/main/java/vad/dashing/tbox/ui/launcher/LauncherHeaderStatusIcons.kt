@@ -97,12 +97,14 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
+import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
+import vad.dashing.tbox.MirrorFoldLastCommandStore
 import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
 import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
 import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
 import vad.dashing.tbox.ui.sendToggleAvh
-import vad.dashing.tbox.ui.sendToggleMirrorAutofold
+import vad.dashing.tbox.ui.sendToggleMirrorFold
 import vad.dashing.tbox.ui.sendToggleParkingRadar
 import vad.dashing.tbox.ui.sendToggleRearFogLight
 import java.io.File
@@ -118,7 +120,7 @@ private val IndicatorIconTint: Color
 private fun isSpacer(itemId: String): Boolean = itemId == "spacer" || itemId.startsWith("spacer")
 
 private fun isIndicator(itemId: String): Boolean = itemId in setOf(
-    "temp", "inside_temp", "fuel", "avg_fuel", "voltage", "cpu", "ram", "gps"
+    "temp", "inside_temp", "combined_temp", "fuel", "avg_fuel", "air_quality", "voltage", "cpu", "ram", "gps"
 )
 
 private data class TopBarGroup(
@@ -162,10 +164,12 @@ internal fun LauncherTopHeaderBar(
 
     val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
     val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
+    val insideAirQuality by canViewModel.insideAirQuality.collectAsStateWithLifecycle()
+    val outsideAirQuality by canViewModel.outsideAirQuality.collectAsStateWithLifecycle()
     val avgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
     val tbmAvgFuel by tbmRepo.activeTripAvgFuelL100km.collectAsStateWithLifecycle()
-    val displayedAvgFuel = avgFuel ?: tbmAvgFuel
+    val displayedAvgFuel = tbmAvgFuel ?: avgFuel
     val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
     val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
     val fuelPct = fuelPctFiltered ?: fuelPctRaw
@@ -319,6 +323,8 @@ internal fun LauncherTopHeaderBar(
                                             itemId = itemId,
                                             outsideTemp = outsideTemp,
                                             insideTemp = insideTemp,
+                                            insideAirQuality = insideAirQuality,
+                                            outsideAirQuality = outsideAirQuality,
                                             displayedAvgFuel = displayedAvgFuel,
                                             fuelText = fuelText,
                                             fuelShowsRange = fuelShowsRange,
@@ -364,6 +370,8 @@ internal fun LauncherTopHeaderBar(
                                     itemId = itemId,
                                     outsideTemp = outsideTemp,
                                     insideTemp = insideTemp,
+                                    insideAirQuality = insideAirQuality,
+                                    outsideAirQuality = outsideAirQuality,
                                     displayedAvgFuel = displayedAvgFuel,
                                     fuelText = fuelText,
                                     fuelShowsRange = fuelShowsRange,
@@ -459,6 +467,8 @@ private fun RenderTopBarItemContent(
     itemId: String,
     outsideTemp: Float?,
     insideTemp: Float?,
+    insideAirQuality: UInt? = null,
+    outsideAirQuality: UInt? = null,
     displayedAvgFuel: Float?,
     fuelText: String,
     fuelShowsRange: Boolean,
@@ -531,6 +541,50 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = insideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "combined_temp" -> {
+            val insideStr = insideTemp?.let { valueToString(it, 0) } ?: "—"
+            val outsideStr = outsideTemp?.let { valueToString(it, 0) } ?: "—"
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_temp_combined),
+                    contentDescription = "Температура в салоне и снаружи",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                Text(
+                    text = "$insideStr/$outsideStr°",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "air_quality" -> {
+            val insideStr = insideAirQuality?.toString() ?: "—"
+            val outsideStr = outsideAirQuality?.toString() ?: "—"
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_leaf),
+                    contentDescription = "Качество воздуха PM 2.5",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                Text(
+                    text = "$insideStr/$outsideStr",
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary,
                     fontSize = indicatorFontSizeSp,
@@ -736,7 +790,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "mirrors" -> {
-            val mirrorsFolded = vehicleControls.mirrorAutofold == true
+            val mirrorsFolded = MirrorFoldLastCommandStore.readLastValue() == MIRROR_FOLD_SWITCH_VALUE_FOLD
             val buttonCircleBg = if (mirrorsFolded) {
                 if (isDark) Color(0xFF0369A1) else Color(0xFF38BDF8)
             } else {
@@ -750,7 +804,7 @@ private fun RenderTopBarItemContent(
                     .background(buttonCircleBg)
                     .border(1.dp, buttonCircleBorder, CircleShape)
                     .clickable {
-                        sendToggleMirrorAutofold(context)
+                        sendToggleMirrorFold(context)
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -961,31 +1015,18 @@ private fun LauncherTopBarHeadlightsIcon(
     raw: Int,
     iconSizeDp: Dp,
 ) {
-    val active = raw != LIGHT_CONTROL_OFF
-    val (iconRes, mode) = when (raw) {
-        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to "A"
-        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to "Б"
-        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_low_beam to "Г"
-        else -> R.drawable.ic_headlights_low_beam to "0"
+    val (iconRes, tintColor) = when (raw) {
+        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to Color(0xFF22C55E)
+        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to Color(0xFF38BDF8)
+        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_position to Color(0xFF38BDF8)
+        else -> R.drawable.ic_headlights_off to Color(0xFF6B7280)
     }
-    val hvacOnColor = Color(0xFF38BDF8)
-    val hvacOffColor = LauncherColors.TextMuted
     Box(modifier = Modifier.size(iconSizeDp), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(iconRes),
             contentDescription = stringResource(R.string.launcher_vs_headlights),
             modifier = Modifier.size(iconSizeDp),
-            colorFilter = ColorFilter.tint(if (active) hvacOnColor else hvacOffColor),
-        )
-        Text(
-            text = mode,
-            color = if (active) LauncherColors.CanvasDark else LauncherColors.TextPrimary,
-            fontSize = (iconSizeDp.value * 0.3f).sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .clip(RoundedCornerShape(3.dp))
-                .background(if (active) hvacOnColor else LauncherColors.CardDarkElevated),
+            colorFilter = ColorFilter.tint(tintColor),
         )
     }
 }

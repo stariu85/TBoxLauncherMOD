@@ -429,6 +429,12 @@ object Android10VhalRepository {
     private val _lasModeRaw = MutableStateFlow<Int?>(null)
     val lasModeRaw: StateFlow<Int?> = _lasModeRaw.asStateFlow()
 
+    private val _bcmLowBeamState = MutableStateFlow<Boolean?>(null)
+    val bcmLowBeamState: StateFlow<Boolean?> = _bcmLowBeamState.asStateFlow()
+
+    private val _bcmHighBeamState = MutableStateFlow<Boolean?>(null)
+    val bcmHighBeamState: StateFlow<Boolean?> = _bcmHighBeamState.asStateFlow()
+
     fun updateLasModeRaw(raw: Int?) {
         val valid = raw?.takeIf { it in 1..3 }
         if (valid != null) {
@@ -1411,7 +1417,14 @@ object Android10VhalRepository {
                 }
                 val ok = bridge?.setIntProperty(effectivePropertyId, target) == true
                 logDebug("ToggleProperty result=$ok propertyId=$effectivePropertyId target=$target")
-                if (ok) requestBurstPolling()
+                if (ok) {
+                    if (command.propertyId == MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) {
+                        val state = if (target == 2) MbCanBinaryState.On else MbCanBinaryState.Off
+                        _hvacPm25State.value = state
+                        MbCanRepository.updateHvacPm25StateFromCan(state)
+                    }
+                    requestBurstPolling()
+                }
                 spec.refreshSignal?.let { refreshSignal(it) }
                 MbCanCommandResult(ok, if (ok) "Set ok" else "Set failed")
             }
@@ -1449,6 +1462,11 @@ object Android10VhalRepository {
                     when (command.propertyId) {
                         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = command.value
                         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = command.value
+                        MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> {
+                            val state = if (command.value == 2) MbCanBinaryState.On else MbCanBinaryState.Off
+                            _hvacPm25State.value = state
+                            MbCanRepository.updateHvacPm25StateFromCan(state)
+                        }
                     }
                     requestBurstPolling()
                 }

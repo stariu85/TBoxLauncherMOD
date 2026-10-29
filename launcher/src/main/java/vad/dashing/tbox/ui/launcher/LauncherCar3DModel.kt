@@ -95,7 +95,7 @@ private val DRIVE_CAMERA_TARGET = Float3(0f, 0.20f, -2.2f)
 private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
-private const val BASE_MODEL_SCALE = 0.42f
+private const val BASE_MODEL_SCALE = 0.378f
 private const val DYNAMIC_FRAME_INTERVAL_NS = 42_000_000L // 20 FPS target (3 VSYNC ticks at 60Hz = 50ms with 42ms hysteresis tolerance margin)
 private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS in statics (~1000ms)
 private const val DYNAMIC_GRACE_PERIOD_NS = 2_000_000_000L // 2 seconds grace period

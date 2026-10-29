@@ -1035,7 +1035,7 @@ private fun DrawScope.drawFrontObject(
     val leadCarBottomY = cy
     val egoCarFrontY = yAt(0.49f) // Exact top windshield boundary of 3D car model on screen
     val targetLabelCy = leadCarBottomY + 8.dp.toPx() + halfPillHeight
-    val maxAllowedCy = egoCarFrontY - halfPillHeight + 14.dp.toPx() // lowered by 16dp at min distance
+    val maxAllowedCy = egoCarFrontY - halfPillHeight + 10.dp.toPx()
 
     val labelCx = cx
     val labelCy = minOf(targetLabelCy, maxAllowedCy)

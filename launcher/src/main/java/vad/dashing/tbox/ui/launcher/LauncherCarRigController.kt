@@ -441,8 +441,8 @@ class LauncherCarRigController private constructor(
         val rightShort = fan(rightOx, rightOz, lengthM = 1.5f * lengthScale, halfAngleDeg = 16f)
         val leftLow = fan(leftOx, leftOz, lengthM = 3.1f * lengthScale, halfAngleDeg = 22f)
         val rightLow = fan(rightOx, rightOz, lengthM = 3.1f * lengthScale, halfAngleDeg = 22f)
-        val leftHigh = fan(leftOx, leftOz, lengthM = 10.0f * lengthScale, halfAngleDeg = 22f)
-        val rightHigh = fan(rightOx, rightOz, lengthM = 10.0f * lengthScale, halfAngleDeg = 22f)
+        val leftHigh = fan(leftOx, leftOz, lengthM = 5.2f * lengthScale, halfAngleDeg = 22f)
+        val rightHigh = fan(rightOx, rightOz, lengthM = 5.2f * lengthScale, halfAngleDeg = 22f)
         if (leftLow.size < 2 || rightLow.size < 2) {
             return null
         }

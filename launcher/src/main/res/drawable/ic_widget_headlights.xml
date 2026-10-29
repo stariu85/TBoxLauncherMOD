@@ -1,10 +1,22 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="960"
-    android:viewportHeight="960">
-    <!-- Standard low-beam lamp silhouette. Mode is shown by the UI badge. -->
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <!-- Widget Headlights Icon (default low beam shape) -->
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M150,260L350,260Q400,260 435,295Q470,330 470,380L470,580Q470,630 435,665Q400,700 350,700L150,700L150,260ZM230,340L230,620L350,620Q367,620 378.5,608.5Q390,597 390,580L390,380Q390,363 378.5,351.5Q367,340 350,340L230,340ZM540,300L860,220L875,285L555,365L540,300ZM550,430L880,390L888,458L558,498L550,430ZM558,565L888,605L880,673L550,633L558,565Z" />
+        android:pathData="M 3.999,19.5 A 1,1 0 0,1 3.7256,17.5386 L 24.7256,11.5386 A 1,1 0 1,1 25.2744,13.4614 L 4.2744,19.4614 A 0.9915,0.9915 0 0,1 3.999,19.5 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 3.999,31.5 A 1,1 0 0,1 3.7256,29.5386 L 24.7256,23.5386 A 1,1 0 1,1 25.2744,25.4614 L 4.2744,31.4614 A 0.9915,0.9915 0 0,1 3.999,31.5 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 3.999,43.4292 A 1,1 0 0,1 3.7256,41.4673 L 24.7256,35.4673 A 1,1 0 1,1 25.2744,37.3901 L 4.2744,43.3901 A 0.9915,0.9915 0 0,1 3.999,43.4292 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 3.999,53.2456 A 1,1 0 0,1 3.7256,51.2837 L 24.7256,45.2837 A 1,1 0 1,1 25.2744,47.2065 L 4.2744,53.2065 A 0.9915,0.9915 0 0,1 3.999,53.2456 Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M 36.958,57 H 31.6729 C 30.7686,57 28.0156,57 28.0156,32.5 C 28.0156,26.3115 28.2529,20.5381 28.6846,16.2437 C 29.375,9.3789 30.34,8 31.6729,8 H 39.1729 C 51.2,8 60.9844,18.9907 60.9844,32.5 C 60.9844,45.396 52.0186,56.1362 40.5723,56.9507 A 1,1 0 0,1 40.4297,54.9556 C 50.834,54.2156 58.9844,44.3516 58.9844,32.5 C 58.9844,20.0933 50.0967,10 39.1729,10 H 31.915 C 29.3496,13.52 29.3496,51.4805 31.915,55 H 35.0859 C 32.8389,48.1025 32.834,22.4258 34.4082,12.8379 A 1,1 0 1,1 36.3809,13.1621 C 34.4199,25.1069 35.332,52.5181 37.2309,55.0376 A 1,1 0 0,1 36.958,57 Z" />
 </vector>

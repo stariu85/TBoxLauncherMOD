@@ -218,7 +218,7 @@ fun LauncherAdasStrip(
         if (showLowBeam || showAll) {
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_vs_headlights_low),
-                tint = LauncherColors.AccentBlue,
+                tint = Color(0xFF22C55E),
                 iconRes = R.drawable.ic_headlights_low_beam,
                 iconBoxSizeDp = iconBoxSizeDp,
                 innerIconSizeDp = innerIconSizeDp,

@@ -243,12 +243,45 @@ object MbCanRepository {
             _lasModeRaw.value = valid
         }
     }
+
+    private fun latestBinaryState(propertyId: Int): MbCanBinaryState = when (propertyId) {
+        MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH -> _steeringWheelHeatState.value
+        MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH -> _wiperMaintenanceState.value
+        MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH -> _parkingRadarState.value
+        MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH -> _frontWindscreenHeatState.value
+        MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH -> _hvacDefrosterState.value
+        MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION -> _hvacAirRecirculationState.value
+        MbCanKnownVehiclePropertyId.HVAC_POWER -> _hvacAcPowerState.value
+        MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE -> _hvacAutoState.value
+        MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH -> _hvacSyncState.value
+        MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> _hvacPm25State.value
+        MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION -> _hvacDefrosterFrontState.value
+        MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH -> _wirelessChargingState.value
+        MbCanKnownVehiclePropertyId.TJA_ICA -> _tjaIcaState.value
+        else -> MbCanBinaryState.Unknown
+    }
     private val _engineRpmState = MutableStateFlow<Float?>(null)
     val engineRpmState: StateFlow<Float?> = _engineRpmState.asStateFlow()
     private val _engineTemperatureState = MutableStateFlow<Float?>(null)
     val engineTemperatureState: StateFlow<Float?> = _engineTemperatureState.asStateFlow()
     private val _carSpeedState = MutableStateFlow<Float?>(null)
     val carSpeedState: StateFlow<Float?> = _carSpeedState.asStateFlow()
+
+    private val _bcmLowBeamState = MutableStateFlow<Boolean?>(null)
+    val bcmLowBeamState: StateFlow<Boolean?> = _bcmLowBeamState.asStateFlow()
+
+    private val _bcmHighBeamState = MutableStateFlow<Boolean?>(null)
+    val bcmHighBeamState: StateFlow<Boolean?> = _bcmHighBeamState.asStateFlow()
+
+    private val _bcmHmaOnState = MutableStateFlow<Boolean?>(null)
+    val bcmHmaOnState: StateFlow<Boolean?> = _bcmHmaOnState.asStateFlow()
+
+    fun scheduleBcmLightPush(lowBeam: Boolean, highBeam: Boolean, hmaOn: Boolean) {
+        _bcmLowBeamState.value = lowBeam
+        _bcmHighBeamState.value = highBeam
+        _bcmHmaOnState.value = hmaOn
+        recordPushDebugEvent("telemetry/bcm_lights", "low=$lowBeam high=$highBeam hma=$hmaOn")
+    }
 
     private val _carSettingsEpsMode = MutableStateFlow<Int?>(null)
     val carSettingsEpsMode: StateFlow<Int?> = _carSettingsEpsMode.asStateFlow()
@@ -701,14 +734,16 @@ object MbCanRepository {
             }
             is MbCanCommandPolicy.ToggleBinary -> {
                 val current = MbCanEngineFacade.canGetVehicleParam(propertyId)
-                    ?: return MbCanCommandResult(false, "Pre-read failed")
-                        .also {
-                            MbCanDiagnostics.log("ERROR", "toggle pre-read failed propertyId=$propertyId")
-                        }
                 when (current) {
                     policy.onValue -> policy.offValue
                     policy.offValue -> policy.onValue
-                    else -> policy.unknownFallbackValue
+                    else -> {
+                        when (latestBinaryState(propertyId)) {
+                            MbCanBinaryState.On -> policy.offValue
+                            MbCanBinaryState.Off -> policy.onValue
+                            else -> policy.unknownFallbackValue
+                        }
+                    }
                 }
             }
             else -> return MbCanCommandResult(false, "Toggle unsupported by policy for propertyId=$propertyId")
@@ -761,6 +796,11 @@ object MbCanRepository {
                 MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = targetValue
                 MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = targetValue
                 MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION -> updateLasModeRaw(targetValue)
+                MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> {
+                    val state = if (targetValue == 2) MbCanBinaryState.On else MbCanBinaryState.Off
+                    _hvacPm25State.value = state
+                    Android10VhalRepository.updateHvacPm25StateFromCan(state)
+                }
             }
             spec.refreshSignal?.let { MbCanJobManager.requestBurst(it) }
             delay(POST_COMMAND_VERIFY_DELAY_MS)

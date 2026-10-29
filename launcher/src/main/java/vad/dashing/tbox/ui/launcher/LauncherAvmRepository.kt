@@ -73,19 +73,18 @@ object LauncherAvmRepository {
                         }
                         AVM_CAMERA_ACTION_CLOSE_APPS -> {
                             val isHomeActive = LauncherHomeActivityHolder.isResumed
-                            val lastFromHome = LauncherHistoryTracker.wasLastLaunchFromHome()
                             val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
 
                             val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
                                 isCameraPackage(LauncherHistoryTracker.lastActivePackage())
 
-                            if (isHomeActive || (activePkgIsCamera && lastFromHome)) {
+                            if (isHomeActive || foreign == null || activePkgIsCamera) {
                                 targetBeforeAvm = null
                             } else {
                                 val history = LauncherHistoryTracker.getHistory(appCtx)
                                 targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
                             }
-                            Log.w(TAG, "AVM turned ON: cameraAction=CLOSE_APPS -> closing foreign tasks & going Home")
+                            Log.w(TAG, "AVM turned ON: cameraAction=CLOSE_APPS -> targetBeforeAvm=$targetBeforeAvm, closing foreign tasks & going Home")
                             dismissForeignFreeformTasks(appCtx)
                             goLauncherHome(appCtx)
                         }
