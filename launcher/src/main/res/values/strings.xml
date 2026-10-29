@@ -1013,7 +1013,16 @@
     <string name="update_error_verify_signature">Подпись файла обновления не совпадает с текущим приложением</string>
     <string name="update_error_generic">Ошибка обновления: %1$s</string>
     <string name="settings_backup_title">Резервная копия</string>
-    <string name="settings_backup_desc">Экспорт и импорт всех настроек приложения, поездок и заправок (моторные часы, список поездок, избранное, журнал заправок) в один JSON-файл. Пути к папкам обоев главного экрана и выбранные файлы сохраняются в JSON; сами изображения не копируются. Пути к фоновым картинкам плиток и привязки пользовательских иконок ярлыков (по имени пакета) хранятся в JSON без встраивания файлов, чтобы не раздувать файл. При импорте файлы иконок и фонов плиток в папке приложения не удаляются: если файл уже есть на диске по пути из настроек, он подхватывается автоматически. Виджеты сторонних приложений: идентификаторы импортируются; если провайдер недоступен, на плитке показывается заглушка до повторного выбора.</string>
+    <string name="settings_backup_desc">Экспорт и импорт настроек приложения в папку Downloads/DCLbackups.</string>
+    <string name="settings_backup_create_button">Сохранить бэкап</string>
+    <string name="settings_backup_restore_button">Восстановить настройки из файла</string>
+    <string name="settings_backup_created_success">Бэкап сохранён: DCLbackups/%1$s</string>
+    <string name="settings_backup_restore_title">Восстановление настроек</string>
+    <string name="settings_backup_restore_subtitle">Выберите файл бэкапа из папки Downloads/DCLbackups или откройте системный выбор файла:</string>
+    <string name="settings_backup_restore_no_files">В папке DCLbackups бэкапы не найдены</string>
+    <string name="settings_backup_restore_system_picker">Системный выбор файла...</string>
+    <string name="settings_backup_restored_title">Настройки восстановлены</string>
+    <string name="settings_backup_restored_message">Настройки лаунчера успешно восстановлены из бэкапа.\n\nДля полного применения всех изменений рекомендуется перезагрузить ГУ.</string>
     <string name="settings_backup_export">Экспорт JSON</string>
     <string name="settings_backup_export_without_trips">Экспорт JSON без поездок и заправок</string>
     <string name="settings_backup_import">Импорт JSON</string>

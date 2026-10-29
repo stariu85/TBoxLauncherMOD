@@ -177,7 +177,19 @@ fun LauncherSettingsScreen(
                 .background(LauncherColors.SettingsBorder),
         )
 
-        TbmApiSettingsSection(settingsManager = settingsManager)
+        var showRestoredRebootDialog by remember { mutableStateOf(false) }
+
+        LauncherBackupSection(
+            onRestoreSuccess = {
+                showRestoredRebootDialog = true
+            },
+        )
+
+        if (showRestoredRebootDialog) {
+            RestoredRebootDialog(
+                onDismiss = { showRestoredRebootDialog = false },
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -554,24 +566,4 @@ private fun resolveUpdateErrorMessage(raw: String): String = when {
     else -> stringResource(R.string.update_error_generic, raw)
 }
 
-@Composable
-private fun TbmApiSettingsSection(
-    settingsManager: SettingsManager,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text = stringResource(R.string.settings_tbm_api_section_title),
-            style = MaterialTheme.typography.tboxHeadline,
-            color = LauncherColors.TextPrimary,
-        )
-        Text(
-            text = stringResource(R.string.settings_tbm_api_desc),
-            style = MaterialTheme.typography.tboxBody,
-            color = LauncherColors.TextMuted,
-        )
-        TbmApiSettingsContent(settingsManager = settingsManager)
-    }
-}
+
