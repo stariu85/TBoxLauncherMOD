@@ -28,6 +28,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import vad.dashing.tbox.valueToString
+import kotlin.math.roundToInt
+import kotlin.math.roundToInt
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -1348,6 +1351,9 @@ private fun CruisePresetsSettings() {
     val decInterval = remember(context, revision) {
         LauncherAppConfigStore.cruiseDecreaseIntervalMs(context)
     }
+    val fuelPrice = remember(context, revision) {
+        LauncherAppConfigStore.fuelPriceRub(context)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = stringResource(R.string.launcher_cruise_presets_title),
@@ -1380,6 +1386,13 @@ private fun CruisePresetsSettings() {
             valueMs = decInterval,
             onChange = { next ->
                 LauncherAppConfigStore.setCruiseDecreaseIntervalMs(context, next)
+            },
+        )
+        FuelPriceSliderRow(
+            title = stringResource(R.string.launcher_fuel_price_title),
+            price = fuelPrice,
+            onChange = { next ->
+                LauncherAppConfigStore.setFuelPriceRub(context, next)
             },
         )
     }
@@ -1420,6 +1433,46 @@ private fun CruiseIntervalSliderRow(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,
                 inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun FuelPriceSliderRow(
+    title: String,
+    price: Float,
+    onChange: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${valueToString(price, 1)} ${stringResource(R.string.unit_ruble)}",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Slider(
+            value = price,
+            onValueChange = { raw ->
+                val rounded = (raw * 10f).roundToInt() / 10f
+                onChange(rounded.coerceIn(FUEL_PRICE_MIN, FUEL_PRICE_MAX))
+            },
+            valueRange = FUEL_PRICE_MIN..FUEL_PRICE_MAX,
+            steps = ((FUEL_PRICE_MAX - FUEL_PRICE_MIN) / 0.1f).roundToInt() - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.3f),
             ),
         )
     }

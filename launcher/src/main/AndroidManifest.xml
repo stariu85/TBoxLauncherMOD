@@ -172,6 +172,17 @@
             android:theme="@style/Theme.TBox.Launcher"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
 
+        <activity
+            android:name="vad.dashing.tbox.ui.launcher.LauncherAvmBlankActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:noHistory="false"
+            android:screenOrientation="landscape"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+
         <service
             android:name="vad.dashing.tbox.BackgroundService"
             android:enabled="true"

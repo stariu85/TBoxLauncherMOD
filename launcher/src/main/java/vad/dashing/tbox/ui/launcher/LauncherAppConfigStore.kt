@@ -207,6 +207,11 @@ private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 private const val KEY_CRUISE_INCREASE_INTERVAL = "cruise_increase_interval"
 private const val KEY_CRUISE_DECREASE_INTERVAL = "cruise_decrease_interval"
+private const val KEY_FUEL_PRICE = "fuel_price_rub"
+internal const val FUEL_PRICE_DEFAULT = 75.0f
+internal const val FUEL_PRICE_MIN = 60.0f
+internal const val FUEL_PRICE_MAX = 150.0f
+internal const val FUEL_PRICE_STEP = 0.1f
 private const val KEY_TIRE_PRESSURE_ON_CAR_ENABLED = "tire_pressure_on_car_enabled"
 private const val KEY_TIRE_PRESSURE_ONLY_LOW = "tire_pressure_only_low"
 private const val KEY_TIRE_PRESSURE_ONLY_TOP_VIEW = "tire_pressure_only_top_view"
@@ -1191,6 +1196,16 @@ internal object LauncherAppConfigStore {
     fun setCruiseDecreaseIntervalMs(context: Context, intervalMs: Long) {
         val valid = intervalMs.coerceIn(50L, 1500L)
         prefs(context).edit().putLong(KEY_CRUISE_DECREASE_INTERVAL, valid).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun fuelPriceRub(context: Context): Float =
+        prefs(context).getFloat(KEY_FUEL_PRICE, FUEL_PRICE_DEFAULT).coerceIn(FUEL_PRICE_MIN, FUEL_PRICE_MAX)
+
+    fun setFuelPriceRub(context: Context, price: Float) {
+        val rounded = kotlin.math.round(price * 10f) / 10f
+        val clamped = rounded.coerceIn(FUEL_PRICE_MIN, FUEL_PRICE_MAX)
+        prefs(context).edit().putFloat(KEY_FUEL_PRICE, clamped).apply()
         cruisePresetsRevision.value++
     }
 

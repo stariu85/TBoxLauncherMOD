@@ -60,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
@@ -149,6 +150,8 @@ fun LauncherRightPanel(
     val tbmRepository = remember(context) { TbmRepositoryProvider.get(context) }
     val tbmAutomations by tbmRepository.automations.collectAsStateWithLifecycle()
     val activeTripDistanceKm by tbmRepository.activeTripDistanceKm.collectAsStateWithLifecycle()
+    val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
+    val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
     val fuelLiters by tbmRepository.fuelLiters.collectAsStateWithLifecycle()
     val fuelLevelCalibratedLitersActual by canViewModel.fuelLevelCalibratedLitersActual.collectAsStateWithLifecycle()
     val fuelLevelCalibratedLiters by canViewModel.fuelLevelCalibratedLiters.collectAsStateWithLifecycle()
@@ -963,7 +966,7 @@ fun LauncherRightPanel(
                 ) {
                     LauncherOdometerMetricCard(
                         odometerValue = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
-                        tripValue = activeTripDistanceKm?.let { "${valueToString(it, 1)} ${stringResource(R.string.unit_km)}" } ?: "—",
+                        tripValue = displayTripDistanceKm?.let { "${valueToString(it, 1)} ${stringResource(R.string.unit_km)}" } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
                     LauncherRangeMetricCard(
@@ -2094,6 +2097,7 @@ private fun LauncherOdometerMetricCard(
     odometerValue: String,
     tripValue: String,
     modifier: Modifier = Modifier,
+    onResetTrip: () -> Unit = { CanDataRepository.resetLocalTripDistance() },
 ) {
     val isDark = LauncherThemeState.darkTheme
     val cardBg = if (isDark) {
@@ -2119,6 +2123,13 @@ private fun LauncherOdometerMetricCard(
                 color = cardBorder,
                 shape = RoundedCornerShape(12.dp),
             )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        onResetTrip()
+                    }
+                )
+            }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

@@ -54,6 +54,9 @@
     <string name="unit_liter">л</string>
     <string name="unit_meter">м</string>
     <string name="unit_ruble">руб.</string>
+    <string name="unit_ruble_short">р</string>
+    <string name="launcher_fuel_price_title">Цена топлива</string>
+    <string name="launcher_fuel_price_desc">Цена за 1 литр для расчета стоимости поездки</string>
     <string name="unit_bar_celsius">бар / °C</string>
     <string name="title_with_unit">%1$s, %2$s</string>
 

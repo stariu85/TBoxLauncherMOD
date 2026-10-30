@@ -18,6 +18,13 @@ class CanDataViewModel : ViewModel() {
             initialValue = null
         )
 
+    val localTripDistanceKm: StateFlow<Float?> = CanDataRepository.localTripDistanceKm
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     val distanceToNextMaintenance: StateFlow<UInt?> = CanDataRepository.distanceToNextMaintenance
         .stateIn(
             scope = viewModelScope,

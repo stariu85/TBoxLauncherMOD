@@ -77,6 +77,7 @@ import vad.dashing.tbox.LocValues
 import vad.dashing.tbox.R
 import vad.dashing.tbox.TboxViewModel
 import vad.dashing.tbox.tbm.TbmConnectionState
+import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
@@ -120,7 +121,7 @@ private val IndicatorIconTint: Color
 private fun isSpacer(itemId: String): Boolean = itemId == "spacer" || itemId.startsWith("spacer")
 
 private fun isIndicator(itemId: String): Boolean = itemId in setOf(
-    "temp", "inside_temp", "combined_temp", "fuel", "avg_fuel", "air_quality", "voltage", "cpu", "ram", "gps"
+    "temp", "inside_temp", "combined_temp", "fuel", "avg_fuel", "trip_cost", "air_quality", "voltage", "cpu", "ram", "gps"
 )
 
 private data class TopBarGroup(
@@ -170,6 +171,19 @@ internal fun LauncherTopHeaderBar(
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
     val tbmAvgFuel by tbmRepo.activeTripAvgFuelL100km.collectAsStateWithLifecycle()
     val displayedAvgFuel = tbmAvgFuel ?: avgFuel
+    val activeTripDistanceKm by tbmRepo.activeTripDistanceKm.collectAsStateWithLifecycle()
+    val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
+    val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
+    val cruisePresetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val fuelPrice = remember(context, cruisePresetsRevision) {
+        LauncherAppConfigStore.fuelPriceRub(context)
+    }
+    val tripCost = remember(displayedAvgFuel, displayTripDistanceKm, fuelPrice) {
+        val avg = displayedAvgFuel ?: 0f
+        val dist = displayTripDistanceKm ?: 0f
+        (avg / 100f) * dist * fuelPrice
+    }
     val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
     val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
     val fuelPct = fuelPctFiltered ?: fuelPctRaw
@@ -326,6 +340,7 @@ internal fun LauncherTopHeaderBar(
                                             insideAirQuality = insideAirQuality,
                                             outsideAirQuality = outsideAirQuality,
                                             displayedAvgFuel = displayedAvgFuel,
+                                            tripCost = tripCost,
                                             fuelText = fuelText,
                                             fuelShowsRange = fuelShowsRange,
                                             onFuelShowsRangeToggle = {
@@ -373,6 +388,7 @@ internal fun LauncherTopHeaderBar(
                                     insideAirQuality = insideAirQuality,
                                     outsideAirQuality = outsideAirQuality,
                                     displayedAvgFuel = displayedAvgFuel,
+                                    tripCost = tripCost,
                                     fuelText = fuelText,
                                     fuelShowsRange = fuelShowsRange,
                                     onFuelShowsRangeToggle = {
@@ -470,6 +486,7 @@ private fun RenderTopBarItemContent(
     insideAirQuality: UInt? = null,
     outsideAirQuality: UInt? = null,
     displayedAvgFuel: Float?,
+    tripCost: Float? = null,
     fuelText: String,
     fuelShowsRange: Boolean,
     onFuelShowsRangeToggle: () -> Unit,
@@ -594,13 +611,62 @@ private fun RenderTopBarItemContent(
         }
         itemId == "avg_fuel" -> {
             val avgNum = displayedAvgFuel?.let { valueToString(it, 1) } ?: "—"
-            val unitStr = stringResource(R.string.unit_l_100km)
+            val unitStr = stringResource(R.string.unit_liter)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            CanDataRepository.resetLocalTripDistance()
+                        }
+                    )
+                },
             ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_fuel_drop),
+                    contentDescription = "Средний расход",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
                 Text(
                     text = avgNum,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Light,
+                )
+                Text(
+                    text = unitStr,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
+                    fontSize = (indicatorFontSizeSp / 2f),
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "trip_cost" -> {
+            val costStr = valueToString(tripCost, 1)
+            val unitStr = stringResource(R.string.unit_ruble_short)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            CanDataRepository.resetLocalTripDistance()
+                        }
+                    )
+                },
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_trip_cost),
+                    contentDescription = "Стоимость поездки",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                Text(
+                    text = costStr,
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary,
                     fontSize = indicatorFontSizeSp,

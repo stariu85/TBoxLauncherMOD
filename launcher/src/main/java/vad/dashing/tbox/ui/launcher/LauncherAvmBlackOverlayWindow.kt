@@ -62,13 +62,15 @@ object LauncherAvmBlackOverlayWindow {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.OPAQUE,
             )
 
             val view = View(appCtx).apply {
                 setBackgroundColor(Color.BLACK)
+                isFocusable = true
+                isFocusableInTouchMode = true
+                requestFocus()
             }
 
             runCatching {
