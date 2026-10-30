@@ -76,14 +76,17 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_up),
         LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
         LauncherTopBarItemDescriptor("combined_temp", "Температура внутри / снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_combined),
+        LauncherTopBarItemDescriptor("engine_temp", "Температура двигателя", isButton = false, iconRes = R.drawable.ic_launcher_engine_temp),
         LauncherTopBarItemDescriptor("fuel", "Бензин / Запас хода", isButton = false, iconRes = R.drawable.ic_launcher_fuel),
         LauncherTopBarItemDescriptor("avg_fuel", "Средний расход", isButton = false, iconRes = R.drawable.ic_launcher_fuel_drop),
         LauncherTopBarItemDescriptor("trip_cost", "Стоимость поездки", isButton = false, iconRes = R.drawable.ic_launcher_trip_cost),
+        LauncherTopBarItemDescriptor("trip_duration", "Время поездки", isButton = false, iconRes = R.drawable.ic_launcher_trip_duration),
         LauncherTopBarItemDescriptor("air_quality", "Качество воздуха (PM 2.5)", isButton = false, iconRes = R.drawable.ic_launcher_leaf),
         LauncherTopBarItemDescriptor("voltage", "Вольтаж АКБ", isButton = false, iconRes = R.drawable.ic_launcher_battery),
         LauncherTopBarItemDescriptor("cpu", "Нагрузка на ЦП", isButton = false, iconRes = R.drawable.ic_launcher_cpu),
         LauncherTopBarItemDescriptor("ram", "Оперативная память", isButton = false, iconRes = R.drawable.ic_launcher_ram),
         LauncherTopBarItemDescriptor("gps", "Спутники / Геопозиция", isButton = false, iconRes = R.drawable.ic_launcher_satellite),
+        LauncherTopBarItemDescriptor("maintenance", "Пробег до ТО", isButton = false, iconRes = R.drawable.ic_launcher_maintenance),
     )
 
     val ALL_BUTTONS = listOf(
@@ -214,21 +217,21 @@ internal object LauncherTopBarPickerOverlayWindow {
             wm.addView(view, params)
             composeView = view
             view.requestFocus()
-            LauncherOverlayBar.bringToFront()
-            LauncherEdgeGestureOverlay.bringToFront()
-            LauncherOverlayElevator.setHoldSource("top_bar_picker", true)
+            runCatching { LauncherOverlayBar.bringToFront() }
+            runCatching { LauncherEdgeGestureOverlay.bringToFront() }
+            runCatching { LauncherOverlayElevator.setHoldSource("top_bar_picker", true) }
             isShowingState.value = true
             Log.w(TAG, "top bar picker overlay shown")
             true
         }.onFailure {
             Log.e(TAG, "Unable to add top bar picker overlay", it)
-            LauncherOverlayElevator.setHoldSource("top_bar_picker", false)
+            runCatching { LauncherOverlayElevator.setHoldSource("top_bar_picker", false) }
             isShowingState.value = false
             lifecycleOwner = null
             windowManager = null
             dismissCallback = null
-            owner.setCurrentState(Lifecycle.State.DESTROYED)
-            owner.clear()
+            runCatching { owner.setCurrentState(Lifecycle.State.DESTROYED) }
+            runCatching { owner.clear() }
         }.getOrDefault(false)
     }
 

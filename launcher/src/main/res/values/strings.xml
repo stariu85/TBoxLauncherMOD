@@ -44,6 +44,7 @@
     <string name="unit_kmh">км/ч</string>
     <string name="unit_l_100km">л/100км</string>
     <string name="unit_hours">ч</string>
+    <string name="unit_minutes">м</string>
     <string name="unit_volt">В</string>
     <string name="unit_celsius">°C</string>
     <string name="unit_bar">бар</string>
@@ -168,7 +169,7 @@
     <string name="launcher_adas_object_chip">%1$s · %2$d м</string>
     <string name="launcher_adas_fcw">Держи\nдистанцию!</string>
     <string name="launcher_adas_aeb">Торможение</string>
-    <string name="launcher_adas_takeover">ТОРМОЗИ!</string>
+    <string name="launcher_adas_takeover">Руки на руль!</string>
     <string name="launcher_adas_lka">Удержание полосы</string>
     <string name="launcher_adas_obj_car">Авто</string>
     <string name="launcher_adas_obj_truck">Грузовик</string>
@@ -228,8 +229,10 @@
     <string name="launcher_top_bar_height_desc">Автоматически подстраивает верхнюю границу Freeform</string>
     <string name="launcher_bottom_bar_height_title">Высота нижней панели</string>
     <string name="launcher_bottom_bar_height_desc">Автоматически подстраивает нижнюю границу Freeform</string>
-    <string name="launcher_car_model_scale_title">Масштаб 3D-модели</string>
-    <string name="launcher_car_model_scale_desc">Размер 3D-модели автомобиля на экране</string>
+    <string name="launcher_car_model_scale_title">Масштаб 3D-модели (вид сверху)</string>
+    <string name="launcher_car_model_scale_desc">Размер 3D-модели автомобиля на экране при виде сверху</string>
+    <string name="launcher_car_model_drive_scale_title">Масштаб 3D-модели (вид сзади)</string>
+    <string name="launcher_car_model_drive_scale_desc">Размер 3D-модели автомобиля на экране в режиме движения</string>
     <string name="launcher_sidebar_width_title">Ширина левой панели</string>
     <string name="launcher_sidebar_width_desc">Изменяет ширину панели с машиной и зону Freeform</string>
     <string name="launcher_trunk_long_press_enabled_title">Длинный тап по багажнику открывает багажник</string>

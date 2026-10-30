@@ -52,7 +52,7 @@ object LauncherAvmRepository {
         val appCtx = context.applicationContext
         val resolver = appCtx.contentResolver
 
-        fun update() {
+        fun update(isInitial: Boolean = false) {
             val raw = runCatching {
                 Settings.Global.getString(resolver, AVM_STATE_SETTING)
             }.getOrNull()
@@ -60,7 +60,12 @@ object LauncherAvmRepository {
             val previous = _isAvmActive.value
             if (previous != active) {
                 _isAvmActive.value = active
-                DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active")
+                DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active isInitial=$isInitial")
+
+                if (isInitial) {
+                    // On initial cold startup check, record baseline state without triggering overlay/blank activity actions
+                    return
+                }
 
                 if (active) {
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
@@ -91,13 +96,17 @@ object LauncherAvmRepository {
                         AVM_CAMERA_ACTION_MINIMIZE_APPS -> {
                             Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> starting blank activity & showing black overlay")
                             targetBeforeAvm = null
-                            LauncherAvmBlankActivity.show(appCtx)
-                            LauncherAvmBlackOverlayWindow.show(appCtx)
+                            runCatching {
+                                LauncherAvmBlankActivity.show(appCtx)
+                                LauncherAvmBlackOverlayWindow.show(appCtx)
+                            }
                         }
                     }
                 } else {
-                    LauncherAvmBlackOverlayWindow.hide()
-                    LauncherAvmBlankActivity.hide()
+                    runCatching {
+                        LauncherAvmBlackOverlayWindow.hide()
+                        LauncherAvmBlankActivity.hide()
+                    }
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null
@@ -111,7 +120,7 @@ object LauncherAvmRepository {
             }
         }
 
-        update()
+        update(isInitial = true)
 
         if (observerRegistered) return
         observerRegistered = true
@@ -123,7 +132,7 @@ object LauncherAvmRepository {
                 false,
                 object : ContentObserver(Handler(Looper.getMainLooper())) {
                     override fun onChange(selfChange: Boolean) {
-                        update()
+                        update(isInitial = false)
                     }
                 },
             )

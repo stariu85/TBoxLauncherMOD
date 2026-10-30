@@ -198,6 +198,7 @@ internal fun LauncherHomeSettingsContent() {
     MediaCardOpacitySlider()
     MediaCardHeightScaleSlider()
     CarModelScaleSlider()
+    CarModelDriveScaleSlider()
     CameraSwitchModeSelector()
     TrunkLongPressToggle()
     AvmCameraActionSelector()
@@ -434,7 +435,8 @@ private fun BottomBarHeightSlider() {
 @Composable
 private fun CarModelScaleSlider() {
     val context = LocalContext.current
-    var scale by remember {
+    val scaleRevision by LauncherAppConfigStore.carModelScaleRevisionFlow.collectAsStateWithLifecycle()
+    var scale by remember(context, scaleRevision) {
         mutableFloatStateOf(LauncherAppConfigStore.carModelScale(context))
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -466,6 +468,53 @@ private fun CarModelScaleSlider() {
                 LauncherAppConfigStore.setCarModelScale(context, next)
             },
             valueRange = CAR_MODEL_SCALE_MIN..CAR_MODEL_SCALE_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun CarModelDriveScaleSlider() {
+    val context = LocalContext.current
+    val driveScaleRevision by LauncherAppConfigStore.carModelDriveScaleRevisionFlow.collectAsStateWithLifecycle()
+    var scale by remember(context, driveScaleRevision) {
+        mutableFloatStateOf(LauncherAppConfigStore.carModelDriveScale(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_car_model_drive_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${(scale * 100f).roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_car_model_drive_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scale,
+            onValueChange = { next ->
+                val rounded = (next * 100f).roundToInt() / 100f
+                scale = rounded
+                LauncherAppConfigStore.setCarModelDriveScale(context, rounded)
+            },
+            valueRange = CAR_MODEL_DRIVE_SCALE_MIN..CAR_MODEL_DRIVE_SCALE_MAX,
+            steps = 59,
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,

@@ -137,6 +137,7 @@ fun LauncherCar3DModel(
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
     customModelScale: Float = 1f,
+    customModelDriveScale: Float = 1f,
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     projectPdcRings: Boolean = false,
     projectHeadlights: Boolean = false,
@@ -171,6 +172,7 @@ fun LauncherCar3DModel(
             settingsUserYawDeg = settingsUserYawDeg,
             settingsUserScale = settingsUserScale,
             customModelScale = customModelScale,
+            customModelDriveScale = customModelDriveScale,
             cameraSwitchMode = cameraSwitchMode,
             settingsOrbit = settingsOrbit,
             onWheelAnchorsChanged = onWheelAnchorsChanged,
@@ -206,6 +208,7 @@ private fun LauncherCarFilamentModel(
     settingsUserYawDeg: Float,
     settingsUserScale: Float,
     customModelScale: Float = 1f,
+    customModelDriveScale: Float = 1f,
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     settingsOrbit: LauncherSettingsOrbitState?,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
@@ -249,6 +252,7 @@ private fun LauncherCarFilamentModel(
                 settingsUserYawDeg = settingsUserYawDeg,
                 settingsUserScale = settingsUserScale,
                 customModelScale = customModelScale,
+                customModelDriveScale = customModelDriveScale,
                 cameraSwitchMode = cameraSwitchMode,
                 settingsOrbit = settingsOrbit,
                 onWheelAnchorsChanged = onWheelAnchorsChanged,
@@ -284,6 +288,7 @@ private fun LauncherCarFilamentContent(
     settingsUserYawDeg: Float,
     settingsUserScale: Float,
     customModelScale: Float = 1f,
+    customModelDriveScale: Float = 1f,
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     settingsOrbit: LauncherSettingsOrbitState?,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
@@ -628,7 +633,8 @@ private fun LauncherCarFilamentContent(
                         } else {
                             currentDriveBlend.coerceIn(0f, 1f)
                         }
-                        val driveScale = lerp(1f, 1.21f, driveBlend)
+                        val safeCustomDriveScale = customModelDriveScale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
+                        val driveScale = lerp(1f, 1.21f * safeCustomDriveScale, driveBlend)
                         val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
 
                         val topCamPos = Float3(
@@ -844,12 +850,13 @@ private fun LauncherCarFilamentContent(
             ) {
                 val initialTransition = settingsProgress.coerceIn(0f, 1f)
                 val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+                val safeCustomDriveScale = customModelDriveScale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
                 val initialDriveBlend = if (cameraAnimEnabled) {
                     FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
                 } else {
                     currentDriveBlend.coerceIn(0f, 1f)
                 }
-                val initialDriveScale = lerp(1f, 1.21f, initialDriveBlend)
+                val initialDriveScale = lerp(1f, 1.21f * safeCustomDriveScale, initialDriveBlend)
                 val initialHomeScale = BASE_MODEL_SCALE * initialDriveScale
                 val initialSettingsScale = SETTINGS_MODEL_SCALE * safeCustomScale
                 val initialBaseScale = lerp(initialHomeScale, initialSettingsScale, initialTransition)

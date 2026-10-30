@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,6 +25,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 
 /**
+ * Helper to determine if any System Overlay Window (TYPE_APPLICATION_OVERLAY) is currently showing.
+ * Standard Android Dialog windows (Layer 1000) drawn by Activity are rendered underneath Layer 2038.
+ */
+private fun isOverlayMode(): Boolean {
+    return LauncherAboutOverlayWindow.isShowing() ||
+            LauncherVehicleSettingsOverlayWindow.isShowing() ||
+            LauncherAppPickerOverlayWindow.isShowing() ||
+            LauncherDockSlotPickerOverlayWindow.isShowing() ||
+            LauncherAppDrawerWindow.isShowing() ||
+            LauncherTopBarPickerOverlayWindow.isShowing() ||
+            LauncherBsdAlertOverlayWindow.isShowing() ||
+            LauncherRightPanelOverlayWindow.isShowing()
+}
+
+/**
  * AlertDialog styled for the dark right-panel / dock UI.
  *
  * When rendered inside a System Overlay Window (TYPE_APPLICATION_OVERLAY),
@@ -41,7 +57,11 @@ internal fun LauncherDarkAlertDialog(
     text: @Composable (() -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
 ) {
-    if (LauncherRightPanelOverlayWindow.isShowing()) {
+    if (isOverlayMode()) {
+        if (properties.dismissOnBackPress) {
+            BackHandler(onBack = onDismissRequest)
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -49,6 +69,7 @@ internal fun LauncherDarkAlertDialog(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
+                    enabled = properties.dismissOnClickOutside,
                     onClick = onDismissRequest,
                 ),
             contentAlignment = Alignment.Center,
@@ -56,7 +77,12 @@ internal fun LauncherDarkAlertDialog(
             Surface(
                 modifier = modifier
                     .widthIn(min = 280.dp, max = 520.dp)
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}, // Consume click inside dialog card
+                    ),
                 shape = RoundedCornerShape(24.dp),
                 color = LauncherColors.CardDark,
                 shadowElevation = 12.dp,
@@ -111,3 +137,4 @@ internal fun LauncherDarkAlertDialog(
         )
     }
 }
+

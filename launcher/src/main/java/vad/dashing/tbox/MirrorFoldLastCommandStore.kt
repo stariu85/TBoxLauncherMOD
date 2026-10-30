@@ -1,5 +1,7 @@
 package vad.dashing.tbox
 
+import android.content.Context
+
 /** Stock [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_MIRROR_FOLD_SWITCH]: fold. */
 const val MIRROR_FOLD_SWITCH_VALUE_FOLD = 1
 
@@ -7,21 +9,45 @@ const val MIRROR_FOLD_SWITCH_VALUE_FOLD = 1
 const val MIRROR_FOLD_SWITCH_VALUE_UNFOLD = 2
 
 /**
- * Remembers the last mirror fold/unfold command we sent **in this process only**.
+ * Remembers the last mirror fold/unfold command we sent.
  * Actual mirror position is not readable over mbCAN/VHAL, so single-tap toggle
- * alternates relative to this value. On a fresh process start mirrors are assumed
- * unfolded (car unfolds them on ignition), so the first single tap sends fold.
+ * alternates relative to this value.
  */
 object MirrorFoldLastCommandStore {
     const val DEFAULT_LAST_VALUE = MIRROR_FOLD_SWITCH_VALUE_UNFOLD
+    private const val PREFS_NAME = "tbox_mirror_fold_store"
+    private const val KEY_LAST_FOLD_VALUE = "last_fold_value"
 
     @Volatile
     private var lastValue: Int = DEFAULT_LAST_VALUE
 
-    fun readLastValue(): Int = MirrorFoldToggleLogic.normalizeStoredValue(lastValue)
+    @Volatile
+    private var isLoaded = false
+
+    fun readLastValue(): Int {
+        if (!isLoaded) {
+            val context = AppContextHolder.appContextOrNull
+            if (context != null) {
+                runCatching {
+                    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    lastValue = prefs.getInt(KEY_LAST_FOLD_VALUE, DEFAULT_LAST_VALUE)
+                    isLoaded = true
+                }
+            }
+        }
+        return MirrorFoldToggleLogic.normalizeStoredValue(lastValue)
+    }
 
     fun rememberSent(value: Int) {
-        lastValue = MirrorFoldToggleLogic.normalizeStoredValue(value)
+        val normalized = MirrorFoldToggleLogic.normalizeStoredValue(value)
+        lastValue = normalized
+        val context = AppContextHolder.appContextOrNull ?: return
+        runCatching {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putInt(KEY_LAST_FOLD_VALUE, normalized)
+                .apply()
+        }
     }
 
     /** Opposite of the last sent command — value for the next single tap. */
@@ -30,6 +56,7 @@ object MirrorFoldLastCommandStore {
     /** Test helper: restore default (unfolded) session state. */
     internal fun resetForTests() {
         lastValue = DEFAULT_LAST_VALUE
+        isLoaded = true
     }
 }
 

@@ -21,9 +21,10 @@ private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
 private const val KEY_TOP_BAR_ITEMS = "top_bar_items"
-private val DEFAULT_TOP_BAR_ITEMS = listOf("temp", "fuel", "voltage", "cpu", "ram")
+private val DEFAULT_TOP_BAR_ITEMS = listOf("temp", "fuel", "voltage", "cpu", "ram", "maintenance")
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
+private const val KEY_CAR_MODEL_DRIVE_SCALE = "car_model_drive_scale"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
 private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
@@ -156,6 +157,9 @@ internal const val FLOATING_HOME_SIZE_MAX = 150
 internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
 internal const val CAR_MODEL_SCALE_MIN = 1.00f
 internal const val CAR_MODEL_SCALE_MAX = 2.50f
+internal const val CAR_MODEL_DRIVE_SCALE_DEFAULT = 1.00f
+internal const val CAR_MODEL_DRIVE_SCALE_MIN = 0.70f
+internal const val CAR_MODEL_DRIVE_SCALE_MAX = 1.30f
 internal const val SIDEBAR_WIDTH_DEFAULT = 300
 internal const val SIDEBAR_WIDTH_MIN = 240
 internal const val SIDEBAR_WIDTH_MAX = 400
@@ -298,6 +302,8 @@ internal object LauncherAppConfigStore {
     internal val floatingHomeVisibleRevisionFlow: StateFlow<Int> = floatingHomeVisibleRevision
     private val carModelScaleRevision = MutableStateFlow(0)
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
+    private val carModelDriveScaleRevision = MutableStateFlow(0)
+    internal val carModelDriveScaleRevisionFlow: StateFlow<Int> = carModelDriveScaleRevision
     private val sidebarWidthRevision = MutableStateFlow(0)
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
     private val cameraSwitchModeRevision = MutableStateFlow(0)
@@ -635,6 +641,16 @@ internal object LauncherAppConfigStore {
         val next = scale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
         prefs(context).edit().putFloat(KEY_CAR_MODEL_SCALE, next).apply()
         carModelScaleRevision.value++
+    }
+
+    fun carModelDriveScale(context: Context): Float =
+        prefs(context).getFloat(KEY_CAR_MODEL_DRIVE_SCALE, CAR_MODEL_DRIVE_SCALE_DEFAULT)
+            .coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
+
+    fun setCarModelDriveScale(context: Context, scale: Float) {
+        val next = scale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
+        prefs(context).edit().putFloat(KEY_CAR_MODEL_DRIVE_SCALE, next).apply()
+        carModelDriveScaleRevision.value++
     }
 
     fun navButtonsVisible(context: Context): Boolean =
@@ -1347,6 +1363,59 @@ internal object LauncherAppConfigStore {
             used.add(entry.packageName)
         }
         return result.take(GRID_SLOT_COUNT)
+    }
+
+    fun notifyAllRevisionsChanged() {
+        wallpaperRevision.value++
+        mediaCardAlphaRevision.value++
+        mediaCardHeightScaleRevision.value++
+        mediaMiniPlayerRevision.value++
+        closePlayerAfterPlaybackRevision.value++
+        disableMediaCardCoverColorRevision.value++
+        dockIconScaleRevision.value++
+        topBarHeightRevision.value++
+        topBarLeftIndicatorsRevision.value++
+        topBarItemsRevision.value++
+        topBarIndicatorsBorderRevision.value++
+        bottomBarHeightRevision.value++
+        floatingHomeSizeRevision.value++
+        floatingHomeVisibleRevision.value++
+        carModelScaleRevision.value++
+        carModelDriveScaleRevision.value++
+        sidebarWidthRevision.value++
+        cameraSwitchModeRevision.value++
+        cameraAnimationRevision.value++
+        trunkLongPressRevision.value++
+        avmCameraActionRevision.value++
+        pdcVisualModeRevision.value++
+        navButtonsRevision.value++
+        adasDistanceTextSizeRevision.value++
+        adasDistanceLabelOffsetRevision.value++
+        adasPanelVisibleRevision.value++
+        adasAlertsPlacementRevision.value++
+        adasBsdAlertOverlayRevision.value++
+        speedLimitPositionRevision.value++
+        climateControlsRevision.value++
+        climateCardBgRevision.value++
+        bottomSlotsRevision.value++
+        tirePressureConfigRevision.value++
+        cruisePresetsRevision.value++
+        cruisePanelRevision.value++
+        cruisePanelPositionRevision.value++
+        swapTopBottomPanelsRevision.value++
+        driveModeBarRevision.value++
+        assistPanelRevision.value++
+        bodyControlsPanelRevision.value++
+        assistPresetsTabRevision.value++
+        adasPanelsRevision.value++
+        driveModeGlowRevision.value++
+        headlightBeamsRevision.value++
+        ngpRevision.value++
+        gridColumnsRevision.value++
+        gridRowsRevision.value++
+        gridRowSpacingRevision.value++
+        homeIconScaleRevision.value++
+        edgeGesturesRevision.value++
     }
 
     private fun decodeSlots(raw: String?, count: Int): List<String> {

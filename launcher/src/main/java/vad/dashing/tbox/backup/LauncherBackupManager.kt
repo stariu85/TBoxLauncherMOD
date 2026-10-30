@@ -208,7 +208,7 @@ object LauncherBackupManager {
                     while (itemKeys.hasNext()) {
                         val key = itemKeys.next()
                         val item = fileJson.get(key)
-                        deserializeAndApplySharedPref(editor, key, item)
+                        deserializeAndApplySharedPref(editor, prefName, key, item)
                     }
                     editor.commit()
                 }
@@ -230,6 +230,9 @@ object LauncherBackupManager {
 
             // 3. Restore Wallpapers if available
             restoreWallpapersIfNeeded(context, rootJson, backupFile)
+
+            // 4. Invalidate all in-memory config revisions so UI reloads from restored SharedPreferences
+            LauncherAppConfigStore.notifyAllRevisionsChanged()
         }
     }
 
@@ -346,56 +349,197 @@ object LauncherBackupManager {
         }
     }
 
-    private fun deserializeAndApplySharedPref(editor: SharedPreferences.Editor, key: String, item: Any) {
+    private fun deserializeAndApplySharedPref(
+        editor: SharedPreferences.Editor,
+        prefName: String,
+        key: String,
+        item: Any,
+    ) {
+        // First check explicitly tagged format { "t": ..., "v": ... }
         if (item is JSONObject && item.has("t") && item.has("v")) {
-            val type = item.getString("t")
-            when (type) {
-                "b" -> editor.putBoolean(key, item.getBoolean("v"))
-                "i" -> editor.putInt(key, item.getInt("v"))
-                "l" -> editor.putLong(key, item.getLong("v"))
-                "f" -> editor.putFloat(key, item.getDouble("v").toFloat())
-                "s" -> editor.putString(key, item.getString("v"))
+            val typeTag = item.getString("t")
+            val rawVal = item.get("v")
+            when (typeTag) {
+                "b" -> {
+                    val b = when (rawVal) {
+                        is Boolean -> rawVal
+                        is Number -> rawVal.toInt() != 0
+                        else -> rawVal.toString().toBoolean()
+                    }
+                    editor.putBoolean(key, b)
+                }
+                "i" -> {
+                    val num = when (rawVal) {
+                        is Number -> rawVal.toInt()
+                        else -> rawVal.toString().toDoubleOrNull()?.toInt() ?: 0
+                    }
+                    editor.putInt(key, num)
+                }
+                "l" -> {
+                    val num = when (rawVal) {
+                        is Number -> rawVal.toLong()
+                        else -> rawVal.toString().toDoubleOrNull()?.toLong() ?: 0L
+                    }
+                    editor.putLong(key, num)
+                }
+                "f" -> {
+                    val num = when (rawVal) {
+                        is Number -> rawVal.toFloat()
+                        else -> rawVal.toString().toFloatOrNull() ?: 0f
+                    }
+                    editor.putFloat(key, num)
+                }
+                "s" -> {
+                    val str = when (rawVal) {
+                        is JSONArray -> rawVal.toString()
+                        is JSONObject -> rawVal.toString()
+                        else -> rawVal.toString()
+                    }
+                    editor.putString(key, str)
+                }
                 "ss" -> {
-                    val array = item.getJSONArray("v")
                     val set = mutableSetOf<String>()
-                    for (i in 0 until array.length()) {
-                        set.add(array.getString(i))
+                    if (rawVal is JSONArray) {
+                        for (i in 0 until rawVal.length()) {
+                            set.add(rawVal.optString(i))
+                        }
+                    } else if (rawVal is String) {
+                        rawVal.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { set.add(it) }
                     }
                     editor.putStringSet(key, set)
                 }
             }
-        } else {
-            when (item) {
-                is Boolean -> editor.putBoolean(key, item)
-                is Int -> editor.putInt(key, item)
-                is Long -> editor.putLong(key, item)
-                is Double -> editor.putFloat(key, item.toFloat())
-                is String -> editor.putString(key, item)
-                is JSONArray -> {
-                    val set = mutableSetOf<String>()
+            return
+        }
+
+        // Untagged raw values (fallback) — enforce correct preference type for known keys
+        val targetType = getKnownPrefType(prefName, key, item)
+        when (targetType) {
+            PrefType.BOOLEAN -> {
+                val b = when (item) {
+                    is Boolean -> item
+                    is Number -> item.toInt() != 0
+                    else -> item.toString().toBoolean()
+                }
+                editor.putBoolean(key, b)
+            }
+            PrefType.INT -> {
+                val num = when (item) {
+                    is Number -> item.toInt()
+                    else -> item.toString().toDoubleOrNull()?.toInt() ?: 0
+                }
+                editor.putInt(key, num)
+            }
+            PrefType.LONG -> {
+                val num = when (item) {
+                    is Number -> item.toLong()
+                    else -> item.toString().toDoubleOrNull()?.toLong() ?: 0L
+                }
+                editor.putLong(key, num)
+            }
+            PrefType.FLOAT -> {
+                val num = when (item) {
+                    is Number -> item.toFloat()
+                    else -> item.toString().toFloatOrNull() ?: 0f
+                }
+                editor.putFloat(key, num)
+            }
+            PrefType.STRING -> {
+                val str = when (item) {
+                    is JSONArray -> item.toString()
+                    is JSONObject -> item.toString()
+                    else -> item.toString()
+                }
+                editor.putString(key, str)
+            }
+            PrefType.STRING_SET -> {
+                val set = mutableSetOf<String>()
+                if (item is JSONArray) {
                     for (i in 0 until item.length()) {
-                        set.add(item.getString(i))
+                        set.add(item.optString(i))
                     }
-                    editor.putStringSet(key, set)
+                } else if (item is Collection<*>) {
+                    item.forEach { set.add(it.toString()) }
+                } else if (item is String) {
+                    item.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { set.add(it) }
+                }
+                editor.putStringSet(key, set)
+            }
+        }
+    }
+
+    private enum class PrefType { BOOLEAN, INT, LONG, FLOAT, STRING, STRING_SET }
+
+    private fun getKnownPrefType(prefName: String, key: String, value: Any): PrefType {
+        if (prefName == "tbox_launcher_app_config") {
+            return when (key) {
+                "hidden_packages", "fullscreen_packages", "full_width_packages" -> PrefType.STRING_SET
+                "grid_packages", "dock_packages", "home_items_json", "autostart_item_key",
+                "top_bar_items", "bottom_slots_unified", "cruise_presets", "cruise_panel_position",
+                "assist_presets_active_tab", "tire_pressure_badge_shape", "wallpaper_dark_uri",
+                "wallpaper_light_uri", "car_paint_id", "default_media_package",
+                "edge_gesture_action_left", "edge_gesture_action_right", "edge_gesture_action_bottom" -> PrefType.STRING
+
+                "home_grid_columns", "home_grid_rows", "home_grid_row_spacing", "top_bar_height_dp",
+                "bottom_bar_height_dp", "floating_home_size_dp", "sidebar_width_dp", "camera_switch_mode",
+                "avm_camera_action", "pdc_visual_mode", "edge_gestures_width_dp", "adas_distance_text_size",
+                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode" -> PrefType.INT
+
+                "cruise_increase_interval", "cruise_decrease_interval" -> PrefType.LONG
+
+                "media_card_alpha", "media_card_height_scale", "dock_icon_scale", "car_model_scale",
+                "car_model_drive_scale", "climate_controls_scale", "home_icon_scale",
+                "adas_distance_label_offset", "speed_limit_x_ratio", "speed_limit_y_ratio",
+                "tire_pressure_low_threshold", "fuel_price" -> PrefType.FLOAT
+
+                "top_bar_left_indicators_visible", "top_bar_indicators_border_enabled",
+                "media_mini_player_visible", "close_player_after_playback", "disable_media_card_cover_color",
+                "floating_home_visible", "camera_animation_enabled", "trunk_long_press_enabled",
+                "edge_gestures_enabled", "nav_buttons_visible", "climate_controls_visible",
+                "climate_card_bg_visible", "adas_panel_visible", "adas_alerts_in_left_panel",
+                "adas_bsd_alert_overlay_enabled", "tire_pressure_on_car_enabled",
+                "tire_pressure_only_low", "tire_pressure_only_top_view", "tire_pressure_always_in_settings",
+                "tire_pressure_inertia_animation_enabled", "tire_pressure_persist_enabled",
+                "fuel_shows_range", "cruise_panel_visible", "swap_top_bottom_panels",
+                "drive_mode_bar_visible", "assist_panel_visible", "body_controls_panel_visible",
+                "drive_mode_glow_visible", "headlight_beams_visible", "ngp_enabled" -> PrefType.BOOLEAN
+
+                else -> {
+                    if (key.startsWith("bottom_slots_preset_")) PrefType.STRING
+                    else inferTypeFromValue(value)
                 }
             }
+        }
+        return inferTypeFromValue(value)
+    }
+
+    private fun inferTypeFromValue(value: Any): PrefType {
+        return when (value) {
+            is Boolean -> PrefType.BOOLEAN
+            is Int -> PrefType.INT
+            is Long -> PrefType.LONG
+            is Float, is Double -> PrefType.FLOAT
+            is JSONArray -> PrefType.STRING_SET
+            else -> PrefType.STRING
         }
     }
 
     private fun deserializeAndApplyDataStore(dsPrefs: MutablePreferences, keyName: String, item: Any) {
         if (item is JSONObject && item.has("t") && item.has("v")) {
-            val type = item.getString("t")
-            when (type) {
-                "b" -> dsPrefs[booleanPreferencesKey(keyName)] = item.getBoolean("v")
-                "i" -> dsPrefs[intPreferencesKey(keyName)] = item.getInt("v")
-                "l" -> dsPrefs[longPreferencesKey(keyName)] = item.getLong("v")
-                "f" -> dsPrefs[floatPreferencesKey(keyName)] = item.getDouble("v").toFloat()
-                "s" -> dsPrefs[stringPreferencesKey(keyName)] = item.getString("v")
+            val typeTag = item.getString("t")
+            val rawVal = item.get("v")
+            when (typeTag) {
+                "b" -> dsPrefs[booleanPreferencesKey(keyName)] = (rawVal as? Boolean) ?: rawVal.toString().toBoolean()
+                "i" -> dsPrefs[intPreferencesKey(keyName)] = (rawVal as? Number)?.toInt() ?: rawVal.toString().toIntOrNull() ?: 0
+                "l" -> dsPrefs[longPreferencesKey(keyName)] = (rawVal as? Number)?.toLong() ?: rawVal.toString().toLongOrNull() ?: 0L
+                "f" -> dsPrefs[floatPreferencesKey(keyName)] = (rawVal as? Number)?.toFloat() ?: rawVal.toString().toFloatOrNull() ?: 0f
+                "s" -> dsPrefs[stringPreferencesKey(keyName)] = rawVal.toString()
                 "ss" -> {
-                    val array = item.getJSONArray("v")
                     val set = mutableSetOf<String>()
-                    for (i in 0 until array.length()) {
-                        set.add(array.getString(i))
+                    if (rawVal is JSONArray) {
+                        for (i in 0 until rawVal.length()) {
+                            set.add(rawVal.optString(i))
+                        }
                     }
                     dsPrefs[stringSetPreferencesKey(keyName)] = set
                 }
@@ -407,6 +551,13 @@ object LauncherBackupManager {
                 is Long -> dsPrefs[longPreferencesKey(keyName)] = item
                 is Double -> dsPrefs[floatPreferencesKey(keyName)] = item.toFloat()
                 is String -> dsPrefs[stringPreferencesKey(keyName)] = item
+                is JSONArray -> {
+                    val set = mutableSetOf<String>()
+                    for (i in 0 until item.length()) {
+                        set.add(item.optString(i))
+                    }
+                    dsPrefs[stringSetPreferencesKey(keyName)] = set
+                }
             }
         }
     }

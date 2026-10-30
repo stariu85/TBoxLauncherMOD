@@ -29,8 +29,10 @@
     <string name="launcher_top_bar_height_desc">Automatically adjusts top boundary for freeform apps</string>
     <string name="launcher_bottom_bar_height_title">Bottom panel height</string>
     <string name="launcher_bottom_bar_height_desc">Automatically adjusts bottom boundary for freeform apps</string>
-    <string name="launcher_car_model_scale_title">3D Model scale</string>
-    <string name="launcher_car_model_scale_desc">Size of the 3D car model on screen</string>
+    <string name="launcher_car_model_scale_title">3D Model scale (top view)</string>
+    <string name="launcher_car_model_scale_desc">Size of the 3D car model on screen in top view</string>
+    <string name="launcher_car_model_drive_scale_title">3D Model scale (rear view)</string>
+    <string name="launcher_car_model_drive_scale_desc">Size of the 3D car model on screen in drive mode</string>
     <string name="launcher_sidebar_width_title">Left panel width</string>
     <string name="launcher_sidebar_width_desc">Changes the width of the car panel and Freeform zone</string>
     <string name="launcher_about_app_short">About</string>
@@ -252,6 +254,7 @@
     <string name="unit_kmh">km/h</string>
     <string name="unit_l_100km">l/100km</string>
     <string name="unit_hours">h</string>
+    <string name="unit_minutes">m</string>
     <string name="unit_volt">V</string>
     <string name="unit_celsius">°C</string>
     <string name="unit_bar">bar</string>
@@ -1095,7 +1098,7 @@
     <string name="launcher_adas_object_chip">%1$s · %2$d m</string>
     <string name="launcher_adas_pas_off">Parking Sensors OFF</string>
     <string name="launcher_adas_pas_on">Parking Sensors ON</string>
-    <string name="launcher_adas_takeover">BRAKE!</string>
+    <string name="launcher_adas_takeover">Hands on wheel!</string>
     <string name="launcher_adas_time_gap">Gap %1$d</string>
     <string name="launcher_adas_title">Driver Assists</string>
     <string name="launcher_vs_bsd_alert_overlay">BSD Alert screen overlay</string>

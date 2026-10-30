@@ -91,6 +91,12 @@ internal object LauncherAmStackShell {
         return out != null
     }
 
+    fun focusTask(taskId: Int): Boolean {
+        val out = runAm("stack", "focus-task", taskId.toString())
+        Log.w(TAG, "am stack focus-task $taskId out=${out?.take(120)}")
+        return out != null
+    }
+
     /**
      * Move foreign stacks (freeform, split, embedded, fullscreen) to the back of the stack hierarchy
      * WITHOUT killing or removing them.

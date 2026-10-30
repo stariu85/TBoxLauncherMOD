@@ -1,10 +1,66 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.app.ActivityManager
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import vad.dashing.tbox.ui.launcher.LauncherThemeState.darkTheme
+
+private val YANDEX_NAVIGATION_PACKAGES = setOf(
+    "ru.yandex.yandexnavi",
+    "ru.yandex.yandexmaps",
+    "ru.yandex.mobile.navigator",
+    "ru.yandex.yandexnavi.sandbox"
+)
+
+private fun isYandexPackage(pkg: String): Boolean {
+    return pkg in YANDEX_NAVIGATION_PACKAGES ||
+            pkg.startsWith("ru.yandex.yandexnavi") ||
+            pkg.startsWith("ru.yandex.yandexmaps")
+}
+
+internal fun refocusYandexAppIfActive(context: Context) {
+    val appCtx = context.applicationContext
+    Handler(Looper.getMainLooper()).postDelayed({
+        runCatching {
+            val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+
+            // 1. Check currently tracked active app first
+            val activePkg = LauncherActiveAppTracker.activeAppPackage()
+            var targetPkg: String? = if (!activePkg.isNullOrBlank() && isYandexPackage(activePkg)) {
+                activePkg
+            } else null
+
+            // 2. If activePkg is not Yandex, search running stacks/tasks for Yandex Navigation/Maps
+            if (targetPkg == null) {
+                targetPkg = YANDEX_NAVIGATION_PACKAGES.firstOrNull { pkg ->
+                    findTaskIdForPackage(am, pkg) != null
+                }
+            }
+
+            if (targetPkg != null) {
+                var taskId: Int? = if (targetPkg == activePkg) {
+                    LauncherActiveAppTracker.activeTaskId()?.takeIf { it > 0 }
+                } else null
+
+                if (taskId == null) {
+                    taskId = findTaskIdForPackage(am, targetPkg)
+                }
+
+                if (taskId != null && taskId > 0) {
+                    Log.w("LauncherThemeState", "Refocusing Yandex task=$taskId pkg=$targetPkg on theme change")
+                    moveTaskToFrontId(appCtx, taskId)
+                    LauncherAmStackShell.focusTask(taskId)
+                }
+            }
+        }.onFailure {
+            Log.w("LauncherThemeState", "Failed to refocus Yandex on theme change", it)
+        }
+    }, 400L)
+}
 
 /**
  * Runtime light/dark theme for the launcher UI. Persisted in prefs;
@@ -66,12 +122,14 @@ object LauncherThemeState {
     fun setDarkTheme(context: Context, enabled: Boolean) {
         if (darkTheme == enabled) {
             HeadUnitDayNightRepository.setSystemDark(context, enabled)
+            refocusYandexAppIfActive(context)
             return
         }
         darkTheme = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, enabled).apply()
         HeadUnitDayNightRepository.setSystemDark(context, enabled)
+        refocusYandexAppIfActive(context)
     }
 
     /**
@@ -83,6 +141,7 @@ object LauncherThemeState {
         darkTheme = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, enabled).apply()
+        refocusYandexAppIfActive(context)
     }
 
     fun setThemeButtonVisible(context: Context, visible: Boolean) {

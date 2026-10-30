@@ -29,6 +29,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -121,7 +123,7 @@ private val IndicatorIconTint: Color
 private fun isSpacer(itemId: String): Boolean = itemId == "spacer" || itemId.startsWith("spacer")
 
 private fun isIndicator(itemId: String): Boolean = itemId in setOf(
-    "temp", "inside_temp", "combined_temp", "fuel", "avg_fuel", "trip_cost", "air_quality", "voltage", "cpu", "ram", "gps"
+    "temp", "inside_temp", "combined_temp", "engine_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance"
 )
 
 private data class TopBarGroup(
@@ -165,6 +167,7 @@ internal fun LauncherTopHeaderBar(
 
     val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
     val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
+    val engineTemp by canViewModel.engineTemperature.collectAsStateWithLifecycle()
     val insideAirQuality by canViewModel.insideAirQuality.collectAsStateWithLifecycle()
     val outsideAirQuality by canViewModel.outsideAirQuality.collectAsStateWithLifecycle()
     val avgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
@@ -174,6 +177,19 @@ internal fun LauncherTopHeaderBar(
     val activeTripDistanceKm by tbmRepo.activeTripDistanceKm.collectAsStateWithLifecycle()
     val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
     val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
+
+    val activeTripDurationSeconds by tbmRepo.activeTripDurationSeconds.collectAsStateWithLifecycle()
+    val localTripDurationSeconds by canViewModel.localTripDurationSeconds.collectAsStateWithLifecycle()
+    val displayTripDurationSec = activeTripDurationSeconds ?: localTripDurationSeconds
+
+    var durationTick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(1000L)
+            CanDataRepository.updateTripDuration()
+            durationTick++
+        }
+    }
     val cruisePresetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
         .collectAsStateWithLifecycle()
     val fuelPrice = remember(context, cruisePresetsRevision) {
@@ -189,6 +205,7 @@ internal fun LauncherTopHeaderBar(
     val fuelPct = fuelPctFiltered ?: fuelPctRaw
     val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
     val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
+    val maintenanceDistance by canViewModel.distanceToNextMaintenance.collectAsStateWithLifecycle()
 
     val cpuUsage = rememberCpuUsagePercentage()
     val ramUsage = rememberRamUsagePercentage()
@@ -337,10 +354,12 @@ internal fun LauncherTopHeaderBar(
                                             itemId = itemId,
                                             outsideTemp = outsideTemp,
                                             insideTemp = insideTemp,
+                                            engineTemp = engineTemp,
                                             insideAirQuality = insideAirQuality,
                                             outsideAirQuality = outsideAirQuality,
                                             displayedAvgFuel = displayedAvgFuel,
                                             tripCost = tripCost,
+                                            displayTripDurationSec = displayTripDurationSec,
                                             fuelText = fuelText,
                                             fuelShowsRange = fuelShowsRange,
                                             onFuelShowsRangeToggle = {
@@ -353,6 +372,7 @@ internal fun LauncherTopHeaderBar(
                                             cpuUsage = cpuUsage,
                                             ramUsage = ramUsage,
                                             satInfo = satInfo,
+                                            maintenanceDistance = maintenanceDistance,
                                             headlightsRaw = headlightsRaw,
                                             vehicleControls = vehicleControls,
                                             buttonDiameterDp = buttonDiameterDp,
@@ -385,10 +405,12 @@ internal fun LauncherTopHeaderBar(
                                     itemId = itemId,
                                     outsideTemp = outsideTemp,
                                     insideTemp = insideTemp,
+                                    engineTemp = engineTemp,
                                     insideAirQuality = insideAirQuality,
                                     outsideAirQuality = outsideAirQuality,
                                     displayedAvgFuel = displayedAvgFuel,
                                     tripCost = tripCost,
+                                    displayTripDurationSec = displayTripDurationSec,
                                     fuelText = fuelText,
                                     fuelShowsRange = fuelShowsRange,
                                     onFuelShowsRangeToggle = {
@@ -483,10 +505,12 @@ private fun RenderTopBarItemContent(
     itemId: String,
     outsideTemp: Float?,
     insideTemp: Float?,
+    engineTemp: Float? = null,
     insideAirQuality: UInt? = null,
     outsideAirQuality: UInt? = null,
     displayedAvgFuel: Float?,
     tripCost: Float? = null,
+    displayTripDurationSec: Long? = null,
     fuelText: String,
     fuelShowsRange: Boolean,
     onFuelShowsRangeToggle: () -> Unit,
@@ -495,6 +519,7 @@ private fun RenderTopBarItemContent(
     cpuUsage: Int,
     ramUsage: Int,
     satInfo: SatelliteInfo,
+    maintenanceDistance: UInt? = null,
     headlightsRaw: Int,
     vehicleControls: LauncherVehicleControlSnapshot,
     buttonDiameterDp: Int,
@@ -574,12 +599,12 @@ private fun RenderTopBarItemContent(
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_temp_combined),
-                    contentDescription = "Температура в салоне и снаружи",
+                    contentDescription = "Температура снаружи и в салоне",
                     modifier = Modifier.size(indicatorIconSizeDp),
                     colorFilter = ColorFilter.tint(IndicatorIconTint),
                 )
                 Text(
-                    text = "$insideStr/$outsideStr°",
+                    text = "$outsideStr/$insideStr°",
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary,
                     fontSize = indicatorFontSizeSp,
@@ -601,7 +626,7 @@ private fun RenderTopBarItemContent(
                     colorFilter = ColorFilter.tint(IndicatorIconTint),
                 )
                 Text(
-                    text = "$insideStr/$outsideStr",
+                    text = "$outsideStr/$insideStr",
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary,
                     fontSize = indicatorFontSizeSp,
@@ -674,6 +699,83 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = unitStr,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
+                    fontSize = (indicatorFontSizeSp / 2f),
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "engine_temp" -> {
+            val engineTempStr = engineTemp?.let { "${valueToString(it, 0)}°" } ?: "—°"
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_engine_temp),
+                    contentDescription = "Температура двигателя",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                Text(
+                    text = engineTempStr,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "trip_duration" -> {
+            val totalSec = displayTripDurationSec ?: 0L
+            val hours = totalSec / 3600L
+            val mins = (totalSec % 3600L) / 60L
+            val unitHours = stringResource(R.string.unit_hours)
+            val unitMins = stringResource(R.string.unit_minutes)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            CanDataRepository.resetLocalTripDistance()
+                        }
+                    )
+                },
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_trip_duration),
+                    contentDescription = "Время поездки",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                if (hours > 0L) {
+                    Text(
+                        text = "$hours",
+                        style = MaterialTheme.typography.tboxCaption,
+                        color = LauncherColors.TextPrimary,
+                        fontSize = indicatorFontSizeSp,
+                        fontWeight = FontWeight.Light,
+                    )
+                    Text(
+                        text = unitHours,
+                        style = MaterialTheme.typography.tboxCaption,
+                        color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
+                        fontSize = (indicatorFontSizeSp / 2f),
+                        fontWeight = FontWeight.Light,
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                }
+                Text(
+                    text = "$mins",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Light,
+                )
+                Text(
+                    text = unitMins,
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
                     fontSize = (indicatorFontSizeSp / 2f),
@@ -791,6 +893,35 @@ private fun RenderTopBarItemContent(
                 )
             }
         }
+        itemId == "maintenance" -> {
+            val distStr = maintenanceDistance?.let { valueToString(it, 0) } ?: "—"
+            val unitStr = stringResource(R.string.unit_km)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_maintenance),
+                    contentDescription = "Пробег до ТО",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                Text(
+                    text = distStr,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Light,
+                )
+                Text(
+                    text = unitStr,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
+                    fontSize = (indicatorFontSizeSp / 2f),
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
         itemId == "headlights" -> {
             val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
             val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
@@ -805,7 +936,7 @@ private fun RenderTopBarItemContent(
             ) {
                 LauncherTopBarHeadlightsIcon(
                     raw = headlightsRaw,
-                    iconSizeDp = (buttonDiameterDp * 0.55f).dp,
+                    iconSizeDp = (buttonDiameterDp * 0.605f).dp,
                 )
             }
         }

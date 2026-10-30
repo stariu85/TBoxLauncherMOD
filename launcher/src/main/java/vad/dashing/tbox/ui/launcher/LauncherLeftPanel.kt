@@ -129,6 +129,10 @@ fun LauncherLeftPanel(
     val carModelScale = remember(context, modelScaleRevision) {
         LauncherAppConfigStore.carModelScale(context)
     }
+    val modelDriveScaleRevision by LauncherAppConfigStore.carModelDriveScaleRevisionFlow.collectAsStateWithLifecycle()
+    val carModelDriveScale = remember(context, modelDriveScaleRevision) {
+        LauncherAppConfigStore.carModelDriveScale(context)
+    }
     val speedLimitPositionRevision by LauncherAppConfigStore.speedLimitPositionRevisionFlow
         .collectAsStateWithLifecycle()
     var speedLimitXRatio by remember(context, speedLimitPositionRevision) {
@@ -548,6 +552,7 @@ fun LauncherLeftPanel(
                     settingsProgress = settingsProgress,
                     settingsUserYawDeg = settingsUserYawDeg,
                     customModelScale = carModelScale,
+                    customModelDriveScale = carModelDriveScale,
                     cameraSwitchMode = cameraSwitchMode,
                     onClick = if (!racing) onOpenVehicleSettings else null,
                     onLongClick = null,

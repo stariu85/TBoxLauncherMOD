@@ -98,6 +98,9 @@ object CanDataRepository {
     private val _localTripDistanceKm = MutableStateFlow<Float?>(null)
     val localTripDistanceKm: StateFlow<Float?> = _localTripDistanceKm.asStateFlow()
 
+    private val _localTripDurationSeconds = MutableStateFlow<Long?>(null)
+    val localTripDurationSeconds: StateFlow<Long?> = _localTripDurationSeconds.asStateFlow()
+
     @Volatile
     private var lastOdometer: UInt? = null
     @Volatile
@@ -106,12 +109,15 @@ object CanDataRepository {
     private var initialFuelLiters: Float? = null
     @Volatile
     private var previousAvgConsumption: Float? = null
+    @Volatile
+    private var tripStartTimeMs: Long = System.currentTimeMillis()
 
     private const val PREFS_PERSISTENCE = "tbox_can_data_persistence"
     private const val KEY_AVG_FUEL = "saved_avg_fuel_consumption"
     private const val KEY_TRIP_DIST = "saved_local_trip_distance"
     private const val KEY_INIT_FUEL = "saved_initial_fuel_liters"
     private const val KEY_LAST_ODO = "saved_last_odometer"
+    private const val KEY_TRIP_START_TIME = "saved_trip_start_time"
 
     @Volatile
     private var isPersistedStateLoaded = false
@@ -125,47 +131,61 @@ object CanDataRepository {
         synchronized(this) {
             if (isPersistedStateLoaded) return
             val context = AppContextHolder.appContextOrNull ?: return
-            val prefs = context.getSharedPreferences(PREFS_PERSISTENCE, Context.MODE_PRIVATE)
+            runCatching {
+                val prefs = context.getSharedPreferences(PREFS_PERSISTENCE, Context.MODE_PRIVATE)
 
-            if (prefs.contains(KEY_AVG_FUEL)) {
-                val savedAvg = prefs.getFloat(KEY_AVG_FUEL, -1f)
-                if (savedAvg > 0f) {
-                    previousAvgConsumption = savedAvg
-                    _averageFuelConsumption.value = savedAvg
+                if (prefs.contains(KEY_AVG_FUEL)) {
+                    val savedAvg = prefs.getFloat(KEY_AVG_FUEL, -1f)
+                    if (savedAvg > 0f) {
+                        previousAvgConsumption = savedAvg
+                        _averageFuelConsumption.value = savedAvg
+                    }
                 }
-            }
-            if (prefs.contains(KEY_TRIP_DIST)) {
-                val savedDist = prefs.getFloat(KEY_TRIP_DIST, -1f)
-                if (savedDist >= 0f) {
-                    accumulatedTripDistanceKm = savedDist
-                    _localTripDistanceKm.value = savedDist
+                if (prefs.contains(KEY_TRIP_DIST)) {
+                    val savedDist = prefs.getFloat(KEY_TRIP_DIST, -1f)
+                    if (savedDist >= 0f) {
+                        accumulatedTripDistanceKm = savedDist
+                        _localTripDistanceKm.value = savedDist
+                    }
                 }
-            }
-            if (prefs.contains(KEY_INIT_FUEL)) {
-                val savedFuel = prefs.getFloat(KEY_INIT_FUEL, -1f)
-                if (savedFuel >= 0f) {
-                    initialFuelLiters = savedFuel
+                if (prefs.contains(KEY_INIT_FUEL)) {
+                    val savedFuel = prefs.getFloat(KEY_INIT_FUEL, -1f)
+                    if (savedFuel >= 0f) {
+                        initialFuelLiters = savedFuel
+                    }
                 }
-            }
-            if (prefs.contains(KEY_LAST_ODO)) {
-                val savedOdo = prefs.getLong(KEY_LAST_ODO, -1L)
-                if (savedOdo >= 0) {
-                    lastOdometer = savedOdo.toUInt()
+                if (prefs.contains(KEY_LAST_ODO)) {
+                    val savedOdo = prefs.getLong(KEY_LAST_ODO, -1L)
+                    if (savedOdo >= 0) {
+                        lastOdometer = savedOdo.toUInt()
+                    }
                 }
+                if (prefs.contains(KEY_TRIP_START_TIME)) {
+                    val savedStartTime = prefs.getLong(KEY_TRIP_START_TIME, -1L)
+                    if (savedStartTime > 0L) {
+                        tripStartTimeMs = savedStartTime
+                    }
+                } else {
+                    tripStartTimeMs = System.currentTimeMillis()
+                }
+                updateTripDuration()
+                isPersistedStateLoaded = true
             }
-            isPersistedStateLoaded = true
         }
     }
 
     private fun savePersistedState() {
         val context = AppContextHolder.appContextOrNull ?: return
-        val prefs = context.getSharedPreferences(PREFS_PERSISTENCE, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        previousAvgConsumption?.let { editor.putFloat(KEY_AVG_FUEL, it) } ?: editor.remove(KEY_AVG_FUEL)
-        editor.putFloat(KEY_TRIP_DIST, accumulatedTripDistanceKm)
-        initialFuelLiters?.let { editor.putFloat(KEY_INIT_FUEL, it) } ?: editor.remove(KEY_INIT_FUEL)
-        lastOdometer?.let { editor.putLong(KEY_LAST_ODO, it.toLong()) } ?: editor.remove(KEY_LAST_ODO)
-        editor.apply()
+        runCatching {
+            val prefs = context.getSharedPreferences(PREFS_PERSISTENCE, Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            previousAvgConsumption?.let { editor.putFloat(KEY_AVG_FUEL, it) } ?: editor.remove(KEY_AVG_FUEL)
+            editor.putFloat(KEY_TRIP_DIST, accumulatedTripDistanceKm)
+            initialFuelLiters?.let { editor.putFloat(KEY_INIT_FUEL, it) } ?: editor.remove(KEY_INIT_FUEL)
+            lastOdometer?.let { editor.putLong(KEY_LAST_ODO, it.toLong()) } ?: editor.remove(KEY_LAST_ODO)
+            editor.putLong(KEY_TRIP_START_TIME, tripStartTimeMs)
+            editor.apply()
+        }
     }
 
     private val _distanceToNextMaintenance = MutableStateFlow<UInt?>(null)
@@ -298,6 +318,7 @@ object CanDataRepository {
 
     fun updateOdometer(newValue: UInt) {
         loadPersistedStateIfNeeded()
+        updateTripDuration()
         _odometer.setIfChanged(newValue)
         val prevOdo = lastOdometer
         if (prevOdo != null) {
@@ -331,7 +352,14 @@ object CanDataRepository {
         val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
         initialFuelLiters = currentPercent?.let { it * 0.57f }
         _averageFuelConsumption.value = null
+        tripStartTimeMs = System.currentTimeMillis()
+        updateTripDuration()
         savePersistedState()
+    }
+
+    fun updateTripDuration() {
+        val durationSec = ((System.currentTimeMillis() - tripStartTimeMs) / 1000L).coerceAtLeast(0L)
+        _localTripDurationSeconds.value = durationSec
     }
 
     private fun recalculateLocalAverageFuelConsumption() {
