@@ -94,19 +94,13 @@ object LauncherAvmRepository {
                             goLauncherHome(appCtx)
                         }
                         AVM_CAMERA_ACTION_MINIMIZE_APPS -> {
-                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> starting blank activity & showing black overlay")
+                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> starting blank activity to pause foreign apps")
                             targetBeforeAvm = null
-                            runCatching {
-                                LauncherAvmBlankActivity.show(appCtx)
-                                LauncherAvmBlackOverlayWindow.show(appCtx)
-                            }
+                            LauncherAvmBlankActivity.show(appCtx)
                         }
                     }
                 } else {
-                    runCatching {
-                        LauncherAvmBlackOverlayWindow.hide()
-                        LauncherAvmBlankActivity.hide()
-                    }
+                    LauncherAvmBlankActivity.hide()
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null

@@ -66,8 +66,9 @@ object LauncherAvmBlackOverlayWindow {
                 PixelFormat.OPAQUE,
             )
 
+            val bgColor = LauncherAvmBlankActivity.getThemeBackgroundColor(appCtx)
             val view = View(appCtx).apply {
-                setBackgroundColor(Color.BLACK)
+                setBackgroundColor(bgColor)
                 isFocusable = true
                 isFocusableInTouchMode = true
                 requestFocus()

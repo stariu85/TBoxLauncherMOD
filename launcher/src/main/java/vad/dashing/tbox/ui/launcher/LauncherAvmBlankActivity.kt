@@ -30,10 +30,11 @@ class LauncherAvmBlankActivity : Activity() {
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
         )
 
-        val blackView = View(this).apply {
-            setBackgroundColor(Color.BLACK)
+        val bgColor = getThemeBackgroundColor(this)
+        val bgView = View(this).apply {
+            setBackgroundColor(bgColor)
         }
-        setContentView(blackView)
+        setContentView(bgView)
         Log.i(TAG, "LauncherAvmBlankActivity created and active (background apps paused)")
     }
 
@@ -62,6 +63,20 @@ class LauncherAvmBlankActivity : Activity() {
 
     companion object {
         private const val TAG = "LauncherAvmBlankAct"
+
+        internal fun getThemeBackgroundColor(context: Context): Int {
+            val isDark = runCatching {
+                val config = context.resources.configuration
+                val systemDark = (config.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                if (LauncherThemeState.autoThemeSystemEnabled) systemDark else LauncherThemeState.darkTheme
+            }.getOrDefault(LauncherThemeState.darkTheme)
+
+            return if (isDark) {
+                Color.parseColor("#1A1D24")
+            } else {
+                Color.parseColor("#E5E7EB")
+            }
+        }
 
         @Volatile
         private var instance: LauncherAvmBlankActivity? = null
