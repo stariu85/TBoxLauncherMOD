@@ -8,6 +8,10 @@ import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
@@ -80,6 +84,11 @@ class LauncherHomeActivity : ComponentActivity() {
         if (!autostartFired) {
             autostartFired = true
             window.decorView.postDelayed({ launchAutostartShortcut(appCtx) }, 1600L)
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            delay(2000L)
+            vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
         }
 
         setContent {

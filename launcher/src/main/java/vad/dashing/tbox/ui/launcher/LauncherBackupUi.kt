@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,8 +38,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
+import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.backup.LauncherBackupManager
 import vad.dashing.tbox.ui.rememberWrappedOnClick
 import vad.dashing.tbox.ui.requestHeadUnitReboot
@@ -52,6 +55,7 @@ import java.util.Locale
 
 @Composable
 fun LauncherBackupSection(
+    settingsManager: SettingsManager,
     onRestoreSuccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -60,6 +64,8 @@ fun LauncherBackupSection(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
+
+    val autoBackupEnabled by settingsManager.autoBackupEnabledFlow.collectAsStateWithLifecycle(initialValue = false)
 
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -75,6 +81,44 @@ fun LauncherBackupSection(
             style = MaterialTheme.typography.tboxBody,
             color = LauncherColors.TextMuted,
         )
+
+        // Automatic backup toggle switch
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(LauncherColors.CardDark)
+                .clickable {
+                    scope.launch {
+                        settingsManager.saveAutoBackupEnabled(!autoBackupEnabled)
+                    }
+                }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.settings_backup_auto_title),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextPrimary,
+                )
+                Text(
+                    text = stringResource(R.string.settings_backup_auto_desc),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+            }
+            Switch(
+                checked = autoBackupEnabled,
+                onCheckedChange = { checked ->
+                    scope.launch {
+                        settingsManager.saveAutoBackupEnabled(checked)
+                    }
+                },
+            )
+        }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -64,11 +64,16 @@ class SettingsManager(private val context: Context) {
         private val KEY_TBM_API_TOKEN = stringPreferencesKey("tbm_api_token")
         private val KEY_TBM_API_PORT = intPreferencesKey("tbm_api_port")
         private val KEY_UI_CLICK_SOUNDS = booleanPreferencesKey("ui_click_sounds_enabled")
+        private val KEY_AUTO_BACKUP_ENABLED = booleanPreferencesKey("auto_backup_enabled")
         private const val MAX_ICON_EDGE_PX = 512
     }
 
     private val _iconRevision = MutableStateFlow(0)
     val launcherAppIconRevisionFlow: Flow<Int> = _iconRevision.asStateFlow()
+
+    val autoBackupEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_AUTO_BACKUP_ENABLED] ?: false
+    }
 
     val uiClickSoundsEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[KEY_UI_CLICK_SOUNDS] ?: true
@@ -149,6 +154,10 @@ class SettingsManager(private val context: Context) {
 
     suspend fun saveUiClickSoundsEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { it[KEY_UI_CLICK_SOUNDS] = enabled }
+    }
+
+    suspend fun saveAutoBackupEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_AUTO_BACKUP_ENABLED] = enabled }
     }
 
     suspend fun getTbmApiToken(): String? = tbmApiTokenFlow.first()

@@ -722,6 +722,8 @@
     <string name="update_error_generic">Update error: %1$s</string>
     <string name="settings_backup_title">Backup &amp; Restore</string>
     <string name="settings_backup_desc">Export and import app settings in the Downloads/DCLbackups folder.</string>
+    <string name="settings_backup_auto_title">Automatic backup</string>
+    <string name="settings_backup_auto_desc">Automatically save backup when app loads (keeps up to 5 AUTO_... files)</string>
     <string name="settings_backup_create_button">Save backup</string>
     <string name="settings_backup_restore_button">Restore settings from file</string>
     <string name="settings_backup_created_success">Backup saved: DCLbackups/%1$s</string>

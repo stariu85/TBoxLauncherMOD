@@ -1020,6 +1020,8 @@
     <string name="update_error_generic">Ошибка обновления: %1$s</string>
     <string name="settings_backup_title">Резервная копия</string>
     <string name="settings_backup_desc">Экспорт и импорт настроек приложения в папку Downloads/DCLbackups.</string>
+    <string name="settings_backup_auto_title">Автоматический бэкап</string>
+    <string name="settings_backup_auto_desc">Создавать бэкап при каждом запуске программы (хранится до 5 файлов AUTO_...)</string>
     <string name="settings_backup_create_button">Сохранить бэкап</string>
     <string name="settings_backup_restore_button">Восстановить настройки из файла</string>
     <string name="settings_backup_created_success">Бэкап сохранён: DCLbackups/%1$s</string>

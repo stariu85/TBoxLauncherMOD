@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.settingsDataStore
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import java.io.File
@@ -67,15 +68,52 @@ object LauncherBackupManager {
     }
 
     /**
+     * Performs an automatic backup if enabled in settings, keeping max 5 AUTO_... backups.
+     */
+    suspend fun performAutoBackupIfEnabled(context: Context) {
+        runCatching {
+            val settingsManager = SettingsManager(context.applicationContext)
+            val enabled = settingsManager.autoBackupEnabledFlow.first()
+            if (!enabled) return@runCatching
+            createBackup(context, isAuto = true).getOrThrow()
+            pruneAutoBackups()
+        }.onFailure { err ->
+            android.util.Log.e("LauncherBackupManager", "Auto backup failed", err)
+        }
+    }
+
+    /**
+     * Prunes old automatic backups starting with AUTO, keeping at most 5 newest files.
+     */
+    fun pruneAutoBackups() {
+        val dir = getBackupsDir()
+        if (!dir.exists() || !dir.isDirectory) return
+        val autoJsonFiles = dir.listFiles { file ->
+            file.isFile && file.name.startsWith("AUTO", ignoreCase = true) && file.name.endsWith(".json", ignoreCase = true)
+        }?.sortedByDescending { it.lastModified() }.orEmpty()
+
+        if (autoJsonFiles.size > 5) {
+            val toDelete = autoJsonFiles.drop(5)
+            for (file in toDelete) {
+                val baseName = file.name.removeSuffix(".json")
+                file.delete()
+                File(dir, "${baseName}_wallpaper_dark.jpg").delete()
+                File(dir, "${baseName}_wallpaper_light.jpg").delete()
+            }
+        }
+    }
+
+    /**
      * Creates a backup file in Downloads/DCLbackups containing all SharedPreferences, DataStore entries,
      * and copying custom wallpaper background files (if modified).
      */
-    suspend fun createBackup(context: Context): Result<File> = withContext(Dispatchers.IO) {
+    suspend fun createBackup(context: Context, isAuto: Boolean = false): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
             val dir = getBackupsDir()
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-            val backupFile = File(dir, "dcl_backup_$timeStamp.json")
+            val filePrefix = if (isAuto) "AUTO_dcl_backup_" else "dcl_backup_"
+            val backupFile = File(dir, "$filePrefix$timeStamp.json")
 
             val rootJson = JSONObject().apply {
                 put("version", 1)
@@ -137,7 +175,7 @@ object LauncherBackupManager {
                 val darkUriStr = LauncherAppConfigStore.wallpaperDarkUri(context)
                 val darkSourceFile = findWallpaperSourceFile(context, darkUriStr, isDark = true)
                 if (darkSourceFile != null && darkSourceFile.exists() && darkSourceFile.length() > 0) {
-                    val darkTargetName = "dcl_backup_${timeStamp}_wallpaper_dark.jpg"
+                    val darkTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_dark.jpg"
                     darkSourceFile.copyTo(File(dir, darkTargetName), overwrite = true)
                     darkSourceFile.copyTo(File(dir, "dcl_wallpaper_dark.jpg"), overwrite = true)
                     wallpapersJson.put("dark", darkTargetName)
@@ -146,7 +184,7 @@ object LauncherBackupManager {
                 val lightUriStr = LauncherAppConfigStore.wallpaperLightUri(context)
                 val lightSourceFile = findWallpaperSourceFile(context, lightUriStr, isDark = false)
                 if (lightSourceFile != null && lightSourceFile.exists() && lightSourceFile.length() > 0) {
-                    val lightTargetName = "dcl_backup_${timeStamp}_wallpaper_light.jpg"
+                    val lightTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_light.jpg"
                     lightSourceFile.copyTo(File(dir, lightTargetName), overwrite = true)
                     lightSourceFile.copyTo(File(dir, "dcl_wallpaper_light.jpg"), overwrite = true)
                     wallpapersJson.put("light", lightTargetName)

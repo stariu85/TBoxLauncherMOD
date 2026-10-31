@@ -180,6 +180,7 @@ fun LauncherSettingsScreen(
         var showRestoredRebootDialog by remember { mutableStateOf(false) }
 
         LauncherBackupSection(
+            settingsManager = settingsManager,
             onRestoreSuccess = {
                 showRestoredRebootDialog = true
             },
