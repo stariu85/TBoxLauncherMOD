@@ -17,6 +17,7 @@ private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_CLOSE_PLAYER_AFTER_PLAYBACK = "close_player_after_playback"
 private const val KEY_OPEN_PLAYER_IN_ADAS_WINDOW = "open_player_in_adas_window"
+private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
@@ -109,6 +110,19 @@ enum class LauncherAppLaunchMode(val code: String) {
             FULLSCREEN.code -> FULLSCREEN
             else -> EMBEDDED
         }
+    }
+}
+
+enum class ExperimentalPlayerLaunchMode(val code: String) {
+    DISABLED("disabled"),
+    MICRO_WINDOW("micro_window"),
+    MEDIA_BROWSER_SERVICE("media_browser_service"),
+    MEDIA_BUTTON_BROADCAST("media_button_broadcast"),
+    NO_ANIMATION_RAPID_CLOSE("no_animation_rapid_close");
+
+    companion object {
+        fun fromCode(code: String?): ExperimentalPlayerLaunchMode =
+            values().firstOrNull { it.code == code } ?: DISABLED
     }
 }
 
@@ -295,6 +309,8 @@ internal object LauncherAppConfigStore {
     internal val closePlayerAfterPlaybackRevisionFlow: StateFlow<Int> = closePlayerAfterPlaybackRevision
     private val openPlayerInAdasWindowRevision = MutableStateFlow(0)
     internal val openPlayerInAdasWindowRevisionFlow: StateFlow<Int> = openPlayerInAdasWindowRevision
+    private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
+    internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
     internal val disableMediaCardCoverColorRevisionFlow: StateFlow<Int> = disableMediaCardCoverColorRevision
     private val dockIconScaleRevision = MutableStateFlow(0)
@@ -482,11 +498,19 @@ internal object LauncherAppConfigStore {
     }
 
     fun openPlayerInAdasWindow(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, false)
+        prefs(context).getBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, true)
 
     fun setOpenPlayerInAdasWindow(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, enabled).apply()
         openPlayerInAdasWindowRevision.value++
+    }
+
+    fun experimentalPlayerLaunchMode(context: Context): ExperimentalPlayerLaunchMode =
+        ExperimentalPlayerLaunchMode.fromCode(prefs(context).getString(KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE, null))
+
+    fun setExperimentalPlayerLaunchMode(context: Context, mode: ExperimentalPlayerLaunchMode) {
+        prefs(context).edit().putString(KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE, mode.code).apply()
+        experimentalPlayerLaunchModeRevision.value++
     }
 
     fun disableMediaCardCoverColor(context: Context): Boolean =
@@ -1420,6 +1444,7 @@ internal object LauncherAppConfigStore {
         mediaMiniPlayerRevision.value++
         closePlayerAfterPlaybackRevision.value++
         openPlayerInAdasWindowRevision.value++
+        experimentalPlayerLaunchModeRevision.value++
         disableMediaCardCoverColorRevision.value++
         dockIconScaleRevision.value++
         topBarHeightRevision.value++

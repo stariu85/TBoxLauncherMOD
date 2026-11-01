@@ -77,10 +77,15 @@ fun rememberLauncherVehicleMotion(
         }
     }
 
-    val steer = sanitizeLauncherSteering(tboxSteer)
+    val rawSteer = sanitizeLauncherSteering(tboxSteer)
+    var smoothedSteer by remember { mutableFloatStateOf(rawSteer) }
+    if (kotlin.math.abs(smoothedSteer - rawSteer) >= 0.5f || (rawSteer == 0f && smoothedSteer != 0f)) {
+        smoothedSteer = rawSteer
+    }
+
     return LauncherVehicleMotion(
         speedKmh = smoothedSpeed,
-        steerAngleDeg = steer,
+        steerAngleDeg = smoothedSteer,
         speedFromTbox = tboxConnected && tboxSpeed != null,
         steerFromTbox = tboxSteer != null,
     )

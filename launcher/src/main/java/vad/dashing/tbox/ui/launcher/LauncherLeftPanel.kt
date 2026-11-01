@@ -208,7 +208,7 @@ fun LauncherLeftPanel(
         doorRrOpen = effectiveBody.doorRrOpen,
         tailgateOpen = effectiveBody.tailgateOpen,
         speedKmh = effectiveSpeed,
-        steeringDeg = effectiveSteer,
+        steeringDeg = 0f,
     )
     var bodyRigAvailable by remember { mutableStateOf(false) }
     var wheelAnchors by remember {
@@ -407,6 +407,12 @@ fun LauncherLeftPanel(
         label = "carOffsetDriveY",
     )
 
+    val alertsDriveViewOffsetY by animateDpAsState(
+        targetValue = if (showDriveView) 20.dp else 0.dp,
+        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+        label = "alertsDriveViewOffsetY",
+    )
+
     DisposableEffect(Unit) {
         onDispose {
             LauncherEmbeddedBoundsState.leftPanelBounds = null
@@ -434,7 +440,7 @@ fun LauncherLeftPanel(
         if (roadVisible) {
             LauncherVirtualRoad(
                 speedKmh = if (racing) effectiveSpeed * 0.45f else effectiveSpeed,
-                steerAngleDeg = effectiveSteer,
+                steerAngleDeg = 0f,
                 adas = if (racing) LauncherAdasState() else adas,
                 steerPreview = steerPreview,
                 inDriveGear = showDriveView,
@@ -559,7 +565,7 @@ fun LauncherLeftPanel(
                 LauncherCar3DModel(
                     rigState = rigState,
                     speedKmh = effectiveSpeed,
-                    steeringDeg = effectiveSteer,
+                    steeringDeg = 0f,
                     steerPreview = steerPreview,
                     inDriveGear = showDriveView,
                     modelRevision = modelRevision,
@@ -687,7 +693,7 @@ fun LauncherLeftPanel(
                             .zIndex(160f),
                     )
 
-                    val alertsTopOffset = maxHeight * 0.24f
+                    val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY
 
                     // Left vertical section: Telltale alerts (Индикаторы предупреждений)
                     Box(

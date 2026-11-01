@@ -1050,6 +1050,43 @@ internal fun LauncherVehicleSettingsContent(
                 fontSize = 12.sp,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.launcher_vs_exp_player_launch_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.launcher_vs_exp_player_launch_desc),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            val expPlayerModeRevision by LauncherAppConfigStore.experimentalPlayerLaunchModeRevisionFlow
+                .collectAsStateWithLifecycle()
+            val currentExpPlayerMode = remember(context, expPlayerModeRevision) {
+                LauncherAppConfigStore.experimentalPlayerLaunchMode(context)
+            }
+            ExperimentalPlayerLaunchMode.entries.forEach { mode ->
+                val label = when (mode) {
+                    ExperimentalPlayerLaunchMode.DISABLED -> stringResource(R.string.launcher_exp_player_mode_disabled)
+                    ExperimentalPlayerLaunchMode.MICRO_WINDOW -> stringResource(R.string.launcher_exp_player_mode_micro_window)
+                    ExperimentalPlayerLaunchMode.MEDIA_BROWSER_SERVICE -> stringResource(R.string.launcher_exp_player_mode_media_browser_service)
+                    ExperimentalPlayerLaunchMode.MEDIA_BUTTON_BROADCAST -> stringResource(R.string.launcher_exp_player_mode_media_button_broadcast)
+                    ExperimentalPlayerLaunchMode.NO_ANIMATION_RAPID_CLOSE -> stringResource(R.string.launcher_exp_player_mode_no_animation_rapid_close)
+                }
+                LauncherSettingsToggleRow(
+                    label = label,
+                    active = currentExpPlayerMode == mode,
+                    onClick = {
+                        val nextMode = if (currentExpPlayerMode == mode) ExperimentalPlayerLaunchMode.DISABLED else mode
+                        LauncherAppConfigStore.setExperimentalPlayerLaunchMode(context, nextMode)
+                    },
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_exp_welcome_lamp),
                 active = vehicleControls.welcomeLamp == true,

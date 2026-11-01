@@ -492,6 +492,13 @@
     <string name="launcher_vs_section_experimental">Экспериментальные</string>
     <string name="launcher_vs_section_experimental_sub">Свет при замке, welcome и редкие OEM-переключатели</string>
     <string name="launcher_vs_exp_note">Часть пунктов есть не на всех комплектациях. Если переключатель не реагирует — свойство недоступно на этой ГУ.</string>
+    <string name="launcher_vs_exp_player_launch_title">Экспериментальный запуск плеера (холодный старт)</string>
+    <string name="launcher_vs_exp_player_launch_desc">Тестовые способы скрытого запуска аудиопотока плеера на ГУ</string>
+    <string name="launcher_exp_player_mode_disabled">Выключено (использовать настройки лаунчера)</string>
+    <string name="launcher_exp_player_mode_micro_window">1. Микро-окно за экраном (1x1px)</string>
+    <string name="launcher_exp_player_mode_media_browser_service">2. Подключение к MediaBrowserService</string>
+    <string name="launcher_exp_player_mode_media_button_broadcast">3. Прямой MediaButton бродкаст</string>
+    <string name="launcher_exp_player_mode_no_animation_rapid_close">4. Без анимации + закрытие через 300мс</string>
     <string name="launcher_vs_exp_welcome_lamp">Подсветка встречи / прощания</string>
     <string name="launcher_vs_exp_breathing_unlock">Дыхание при отпирании</string>
     <string name="launcher_vs_exp_breathing_lock">Дыхание при запирании</string>

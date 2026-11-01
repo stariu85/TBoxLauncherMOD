@@ -532,7 +532,10 @@ object CanDataRepository {
     }
 
     fun updateSteerAngle(newValue: Float?) {
-        _steerAngle.setIfChanged(newValue)
+        val current = _steerAngle.value
+        if (current == null || newValue == null || kotlin.math.abs(current - newValue) >= 0.5f) {
+            _steerAngle.value = newValue
+        }
     }
 
     fun updateSteerSpeed(newValue: Int) {

@@ -516,7 +516,8 @@ object LauncherBackupManager {
                 "top_bar_items", "bottom_slots_unified", "cruise_presets", "cruise_panel_position",
                 "assist_presets_active_tab", "tire_pressure_badge_shape", "wallpaper_dark_uri",
                 "wallpaper_light_uri", "car_paint_id", "default_media_package",
-                "edge_gesture_action_left", "edge_gesture_action_right", "edge_gesture_action_bottom" -> PrefType.STRING
+                "edge_gesture_action_left", "edge_gesture_action_right", "edge_gesture_action_bottom",
+                "exp_player_launch_mode" -> PrefType.STRING
 
                 "home_grid_columns", "home_grid_rows", "home_grid_row_spacing", "top_bar_height_dp",
                 "bottom_bar_height_dp", "floating_home_size_dp", "sidebar_width_dp", "camera_switch_mode",

@@ -19,7 +19,6 @@ class SatelliteInfoResolutionTest {
             tbmSpeedSource = "gps",
             isTboxLocFresh = false,
             locValues = LocValues(),
-            systemSatInfo = SatelliteInfo(),
         )
 
         assertTrue(satInfo.hasFix)
@@ -33,19 +32,18 @@ class SatelliteInfoResolutionTest {
         val satInfo = resolveSatelliteInfo(
             isTbmGeoAvailable = true,
             tbmSatVisible = 10,
-            tbmSatUsed = 8, // Stale numbers retained in TBM
+            tbmSatUsed = 8,
             tbmFixValid = true,
             tbmLocateStatus = true,
             tbmSpeedSource = "retention",
             isTboxLocFresh = false,
             locValues = LocValues(),
-            systemSatInfo = SatelliteInfo(),
         )
 
         assertFalse(satInfo.hasFix)
         assertTrue(satInfo.isInertial)
-        assertEquals(0, satInfo.visibleSatellites)
-        assertEquals(0, satInfo.usingSatellites)
+        assertEquals(10, satInfo.visibleSatellites)
+        assertEquals(8, satInfo.usingSatellites)
     }
 
     @Test
@@ -59,17 +57,16 @@ class SatelliteInfoResolutionTest {
             tbmSpeedSource = "can",
             isTboxLocFresh = false,
             locValues = LocValues(),
-            systemSatInfo = SatelliteInfo(),
         )
 
         assertFalse(satInfo.hasFix)
         assertTrue(satInfo.isInertial)
-        assertEquals(0, satInfo.visibleSatellites)
+        assertEquals(5, satInfo.visibleSatellites)
         assertEquals(0, satInfo.usingSatellites)
     }
 
     @Test
-    fun tbmInertialWithZeroSatellitesUsedAndFixValidReturnsBlueAndZeroCount() {
+    fun tbmFixWithZeroSatellitesUsedReturnsFixAndZeroSatellites() {
         val satInfo = resolveSatelliteInfo(
             isTbmGeoAvailable = true,
             tbmSatVisible = 0,
@@ -79,17 +76,16 @@ class SatelliteInfoResolutionTest {
             tbmSpeedSource = null,
             isTboxLocFresh = false,
             locValues = LocValues(),
-            systemSatInfo = SatelliteInfo(),
         )
 
-        assertFalse(satInfo.hasFix)
-        assertTrue(satInfo.isInertial)
+        assertTrue(satInfo.hasFix)
+        assertFalse(satInfo.isInertial)
         assertEquals(0, satInfo.visibleSatellites)
         assertEquals(0, satInfo.usingSatellites)
     }
 
     @Test
-    fun tbmNoFixAndNoInertialReturnsOrangeWithVisibleSatellites() {
+    fun tbmNoFixAndNoInertialReturnsNoFixWithVisibleSatellites() {
         val satInfo = resolveSatelliteInfo(
             isTbmGeoAvailable = true,
             tbmSatVisible = 4,
@@ -99,7 +95,6 @@ class SatelliteInfoResolutionTest {
             tbmSpeedSource = null,
             isTboxLocFresh = false,
             locValues = LocValues(),
-            systemSatInfo = SatelliteInfo(),
         )
 
         assertFalse(satInfo.hasFix)
@@ -109,7 +104,7 @@ class SatelliteInfoResolutionTest {
     }
 
     @Test
-    fun tboxUdpInertialReturnsBlueAndZeroCount() {
+    fun tboxUdpDirectReturnsFixAndSatelliteCount() {
         val satInfo = resolveSatelliteInfo(
             isTbmGeoAvailable = false,
             tbmSatVisible = null,
@@ -123,11 +118,29 @@ class SatelliteInfoResolutionTest {
                 visibleSatellites = 10,
                 usingSatellites = 0,
             ),
-            systemSatInfo = SatelliteInfo(),
+        )
+
+        assertTrue(satInfo.hasFix)
+        assertFalse(satInfo.isInertial)
+        assertEquals(10, satInfo.visibleSatellites)
+        assertEquals(0, satInfo.usingSatellites)
+    }
+
+    @Test
+    fun noTbmAndNoTboxReturnsNoFixAndZeroSatellites() {
+        val satInfo = resolveSatelliteInfo(
+            isTbmGeoAvailable = false,
+            tbmSatVisible = null,
+            tbmSatUsed = null,
+            tbmFixValid = null,
+            tbmLocateStatus = null,
+            tbmSpeedSource = null,
+            isTboxLocFresh = false,
+            locValues = LocValues(),
         )
 
         assertFalse(satInfo.hasFix)
-        assertTrue(satInfo.isInertial)
+        assertFalse(satInfo.isInertial)
         assertEquals(0, satInfo.visibleSatellites)
         assertEquals(0, satInfo.usingSatellites)
     }

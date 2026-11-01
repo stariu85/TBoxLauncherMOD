@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.ui.launcher.ExperimentalPlayerLaunchMode
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import vad.dashing.tbox.ui.launcher.removeAppTaskWindow
 import java.util.LinkedHashSet
@@ -434,7 +435,6 @@ object SharedMediaControlService {
                 }
                 if (!needsRetry) return@launch
                 sendMediaPlayKeyEvent(appContext, targetPackage)
-                launchPlayerApp(appContext, targetPackage, scheduleColdStartPlayRetry = false)
             } catch (e: Exception) {
                 TboxRepository.addLog("ERROR", "MediaControl", "Cold start retry failed: ${e.message}")
             }
@@ -927,6 +927,57 @@ private fun sendMediaPlayKeyEvent(context: Context, packageName: String) {
     }
 }
 
+private fun tryConnectMediaBrowserService(context: Context, packageName: String) {
+    try {
+        val pm = context.packageManager
+        val browseIntent = Intent("android.media.browse.MediaBrowserService").apply { setPackage(packageName) }
+        val services = pm.queryIntentServices(browseIntent, 0)
+        val serviceInfo = services.firstOrNull()?.serviceInfo
+        if (serviceInfo != null) {
+            val component = ComponentName(serviceInfo.packageName, serviceInfo.name)
+            var browser: android.media.browse.MediaBrowser? = null
+            browser = android.media.browse.MediaBrowser(
+                context,
+                component,
+                object : android.media.browse.MediaBrowser.ConnectionCallback() {
+                    override fun onConnected() {
+                        try {
+                            val token = browser?.sessionToken
+                            if (token != null) {
+                                val controller = MediaController(context, token)
+                                controller.transportControls.play()
+                            }
+                        } catch (e: Exception) {
+                            TboxRepository.addLog("ERROR", "MediaControl", "MediaBrowser play failed: ${e.message}")
+                        }
+                    }
+                },
+                null
+            )
+            browser.connect()
+        }
+    } catch (e: Exception) {
+        TboxRepository.addLog("ERROR", "MediaControl", "tryConnectMediaBrowserService failed: ${e.message}")
+    }
+}
+
+private fun sendDirectMediaButtonBroadcast(context: Context, packageName: String) {
+    try {
+        val down = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            setPackage(packageName)
+            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+        }
+        val up = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            setPackage(packageName)
+            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+        }
+        context.sendOrderedBroadcast(down, null)
+        context.sendOrderedBroadcast(up, null)
+    } catch (e: Exception) {
+        TboxRepository.addLog("ERROR", "MediaControl", "sendDirectMediaButtonBroadcast failed: ${e.message}")
+    }
+}
+
 private fun launchPlayerApp(
     context: Context,
     packageName: String,
@@ -934,6 +985,52 @@ private fun launchPlayerApp(
     keepPlayerForeground: Boolean = false, // anymani: флаг для контроля возврата лаунчера
     scheduleLateSessionPlayRetry: Boolean = false
 ) {
+    val expMode = LauncherAppConfigStore.experimentalPlayerLaunchMode(context)
+    if (expMode != ExperimentalPlayerLaunchMode.DISABLED) {
+        DiagFileLog.i("MediaLaunch", "launchPlayerApp expMode=$expMode pkg=$packageName")
+        when (expMode) {
+            ExperimentalPlayerLaunchMode.MICRO_WINDOW -> {
+                val intent = vad.dashing.tbox.ui.launcher.resolveLaunchIntent(context, packageName)
+                if (intent != null) {
+                    vad.dashing.tbox.ui.launcher.tryLaunchIntentInBounds(
+                        context,
+                        packageName,
+                        intent,
+                        android.graphics.Rect(-1000, -1000, -999, -999)
+                    )
+                }
+                SharedMediaControlService.scheduleLateSessionPlayRetryIfNeeded(context.applicationContext, packageName)
+            }
+            ExperimentalPlayerLaunchMode.MEDIA_BROWSER_SERVICE -> {
+                tryConnectMediaBrowserService(context, packageName)
+                sendMediaPlayKeyEvent(context.applicationContext, packageName)
+            }
+            ExperimentalPlayerLaunchMode.MEDIA_BUTTON_BROADCAST -> {
+                sendDirectMediaButtonBroadcast(context, packageName)
+            }
+            ExperimentalPlayerLaunchMode.NO_ANIMATION_RAPID_CLOSE -> {
+                val intent = vad.dashing.tbox.ui.launcher.resolveLaunchIntent(context, packageName)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                }
+                if (intent != null) {
+                    vad.dashing.tbox.ui.launcher.tryLaunchIntentInBounds(
+                        context,
+                        packageName,
+                        intent,
+                        android.graphics.Rect(-500, -500, -400, -400)
+                    )
+                    sendMediaPlayKeyEvent(context.applicationContext, packageName)
+                    CoroutineScope(Dispatchers.Default).launch {
+                        delay(300L)
+                        removeAppTaskWindow(context.applicationContext, packageName)
+                    }
+                }
+            }
+            ExperimentalPlayerLaunchMode.DISABLED -> Unit
+        }
+        return
+    }
+
     val openInAdas = LauncherAppConfigStore.openPlayerInAdasWindow(context)
     val launched = runCatching {
         if (openInAdas) {

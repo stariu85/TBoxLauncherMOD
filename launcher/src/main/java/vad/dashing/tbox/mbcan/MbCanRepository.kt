@@ -622,9 +622,24 @@ object MbCanRepository {
         scope.launch(stateApplyDispatcher) {
             snapshot.forEach { (signal, value) ->
                 when (signal) {
-                    MbCanSignal.EngineRpm -> _engineRpmState.value = value
-                    MbCanSignal.EngineTemperature -> _engineTemperatureState.value = value
-                    MbCanSignal.CarSpeed -> _carSpeedState.value = value
+                    MbCanSignal.EngineRpm -> {
+                        val current = _engineRpmState.value
+                        if (current == null || value == null || kotlin.math.abs(current - value) >= 15f) {
+                            _engineRpmState.value = value
+                        }
+                    }
+                    MbCanSignal.EngineTemperature -> {
+                        val current = _engineTemperatureState.value
+                        if (current == null || value == null || kotlin.math.abs(current - value) >= 0.5f) {
+                            _engineTemperatureState.value = value
+                        }
+                    }
+                    MbCanSignal.CarSpeed -> {
+                        val current = _carSpeedState.value
+                        if (current == null || value == null || kotlin.math.abs(current - value) >= 0.5f) {
+                            _carSpeedState.value = value
+                        }
+                    }
                     else -> Unit
                 }
             }
@@ -1409,7 +1424,11 @@ object MbCanRepository {
                 _carSpeedState.value = null
                 return@withContext
             }
-            _carSpeedState.value = MbCanEngineFacade.readVehicleSpeed()?.coerceAtLeast(0f)
+            val newSpeed = MbCanEngineFacade.readVehicleSpeed()?.coerceAtLeast(0f)
+            val current = _carSpeedState.value
+            if (current == null || newSpeed == null || kotlin.math.abs(current - newSpeed) >= 0.5f) {
+                _carSpeedState.value = newSpeed
+            }
         }
     }
 

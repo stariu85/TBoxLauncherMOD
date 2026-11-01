@@ -127,6 +127,8 @@ internal fun launchLauncherAppFullscreen(
     launchWithTarget(context, packageName, activityName, embedded = false, fullscreen = true)
 }
 
+
+
 /** Launch using per-app preference: freeform embed, full width, or fullscreen. */
 internal fun launchLauncherApp(
     context: Context,
@@ -244,22 +246,8 @@ internal fun launchMediaPlayer(context: Context, preferredPackage: String? = nul
     val defaultPackage = preferredPackage
         ?: LauncherAppConfigStore.defaultMediaPackage(context)
     if (!defaultPackage.isNullOrBlank() && isPackageInstalled(context, defaultPackage)) {
-        MEDIA_EXPLICIT_ACTIVITIES
-            .firstOrNull { it.first == defaultPackage }
-            ?.let { (_, activity) ->
-                val intent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    setClassName(defaultPackage, activity)
-                }
-                if (intent.resolveActivity(context.packageManager) != null) {
-                    startResolved(context, defaultPackage, intent)
-                    return
-                }
-            }
-        resolveLaunchIntent(context, defaultPackage)?.let { intent ->
-            startResolved(context, defaultPackage, intent)
-            return
-        }
+        launchLauncherApp(context, defaultPackage)
+        return
     }
     val candidates = discoverInstalledMediaPackages(context, defaultPackage)
     launchFirstResolvableApp(

@@ -1,5 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -545,13 +547,41 @@ object LauncherAdasRepository {
         publish()
     }
 
-    private fun publish() {
+    private const val ADAS_PUBLISH_THROTTLE_MS = 33L // Max 30 Hz updates to Compose UI
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val publishLock = Any()
+    @Volatile private var publishScheduled = false
+
+    private val publishRunnable = Runnable {
+        synchronized(publishLock) {
+            publishScheduled = false
+            doPublish()
+        }
+    }
+
+    private fun publish(immediate: Boolean = false) {
+        if (immediate) {
+            synchronized(publishLock) {
+                mainHandler.removeCallbacks(publishRunnable)
+                publishScheduled = false
+                doPublish()
+            }
+            return
+        }
+        synchronized(publishLock) {
+            if (publishScheduled) return
+            publishScheduled = true
+            mainHandler.postDelayed(publishRunnable, ADAS_PUBLISH_THROTTLE_MS)
+        }
+    }
+
+    private fun doPublish() {
         val lasMode = if (MbCanEngineFacade.isInitialized()) {
             MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ?: -1
         } else {
             -1
         }
-        _state.value = buildLauncherAdasState(
+        val newState = buildLauncherAdasState(
             accModeRaw = frmAccMode,
             vSetDisRaw = frmVSetDis,
             objValidRaw = frmObjValid,
@@ -579,16 +609,19 @@ object LauncherAdasRepository {
             tjaRaw = lkaTja,
             srrSystemRaw = srrSystemState,
         )
+        if (newState != _state.value) {
+            _state.value = newState
+        }
     }
 
     fun triggerTimeGapFlash(ms: Long = 3000L) {
         timeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
-        publish()
+        publish(immediate = true)
     }
 
     fun clearTimeGapFlash() {
         timeGapFlashUntilMs = 0L
-        publish()
+        publish(immediate = true)
     }
 
     private fun clearSnapshots() {

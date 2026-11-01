@@ -872,7 +872,7 @@ private fun RenderTopBarItemContent(
             val satColor = when {
                 satInfo.isInertial -> Color(0xFF3B82F6)
                 satInfo.hasFix -> Color(0xFF22C55E)
-                else -> Color(0xFFF97316)
+                else -> Color(0xFFEF4444)
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -884,13 +884,15 @@ private fun RenderTopBarItemContent(
                     modifier = Modifier.size(indicatorIconSizeDp),
                     colorFilter = ColorFilter.tint(satColor),
                 )
-                Text(
-                    text = "${satInfo.visibleSatellites}/${satInfo.usingSatellites}",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
-                )
+                if (satInfo.hasFix || satInfo.isInertial) {
+                    Text(
+                        text = "${satInfo.visibleSatellites}/${satInfo.usingSatellites}",
+                        style = MaterialTheme.typography.tboxCaption,
+                        color = LauncherColors.TextPrimary,
+                        fontSize = indicatorFontSizeSp,
+                        fontWeight = FontWeight.Light,
+                    )
+                }
             }
         }
         itemId == "maintenance" -> {
@@ -1318,23 +1320,21 @@ internal fun resolveSatelliteInfo(
     tbmSpeedSource: String?,
     isTboxLocFresh: Boolean,
     locValues: LocValues,
-    systemSatInfo: SatelliteInfo,
 ): SatelliteInfo {
     return when {
         isTbmGeoAvailable -> {
             val visible = tbmSatVisible ?: tbmSatUsed ?: 0
             val used = tbmSatUsed ?: 0
-            val hasLocFix = tbmFixValid == true || tbmLocateStatus == true
+            val hasLocFix = tbmFixValid == true || tbmLocateStatus == true || used > 0
             val speedSourceLower = tbmSpeedSource?.lowercase()
             val isInertialSpeedSource = speedSourceLower in setOf(
                 "retention", "can", "dr", "dead_reckoning", "inertial", "extrapolated", "sensor"
             )
-            val isInertial = isInertialSpeedSource || (hasLocFix && used == 0)
 
-            if (isInertial) {
+            if (isInertialSpeedSource) {
                 SatelliteInfo(
-                    visibleSatellites = 0,
-                    usingSatellites = 0,
+                    visibleSatellites = maxOf(visible, used),
+                    usingSatellites = used,
                     hasFix = false,
                     isInertial = true,
                 )
@@ -1342,7 +1342,7 @@ internal fun resolveSatelliteInfo(
                 SatelliteInfo(
                     visibleSatellites = maxOf(visible, used),
                     usingSatellites = used,
-                    hasFix = hasLocFix && used > 0,
+                    hasFix = hasLocFix,
                     isInertial = false,
                 )
             }
@@ -1350,26 +1350,21 @@ internal fun resolveSatelliteInfo(
         isTboxLocFresh -> {
             val visible = locValues.visibleSatellites
             val used = locValues.usingSatellites
-            val isTboxInertial = locValues.locateStatus && used == 0
 
-            if (isTboxInertial) {
-                SatelliteInfo(
-                    visibleSatellites = 0,
-                    usingSatellites = 0,
-                    hasFix = false,
-                    isInertial = true,
-                )
-            } else {
-                SatelliteInfo(
-                    visibleSatellites = visible,
-                    usingSatellites = used,
-                    hasFix = locValues.hasGpsFix && used > 0,
-                    isInertial = false,
-                )
-            }
+            SatelliteInfo(
+                visibleSatellites = visible,
+                usingSatellites = used,
+                hasFix = locValues.hasGpsFix,
+                isInertial = false,
+            )
         }
         else -> {
-            systemSatInfo
+            SatelliteInfo(
+                visibleSatellites = 0,
+                usingSatellites = 0,
+                hasFix = false,
+                isInertial = false,
+            )
         }
     }
 }
@@ -1396,135 +1391,6 @@ private fun rememberSatelliteInfo(
             locValues.updateTime != null &&
             (now - locValues.updateTime.time <= 15_000L)
 
-    var systemSatInfo by remember { mutableStateOf(SatelliteInfo()) }
-
-    val useSystemFallback = !isTbmGeoAvailable && !isTboxLocFresh
-
-    DisposableEffect(useSystemFallback, context) {
-        if (!useSystemFallback) {
-            onDispose { }
-        } else {
-            val hasPermission = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-
-            if (!hasPermission) {
-                systemSatInfo = SatelliteInfo()
-                onDispose { }
-            } else {
-                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                val mainHandler = Handler(Looper.getMainLooper())
-
-                var hardwareGnssActive = false
-                var lastLocationFix = false
-
-                fun extractSatellitesFromLocation(location: Location): Pair<Int, Int> {
-                    val extras = location.extras ?: return 0 to 0
-                    val visible = extras.getInt("satellites_in_view", 0).takeIf { it > 0 }
-                        ?: extras.getInt("satellites_visible", 0).takeIf { it > 0 }
-                        ?: extras.getInt("visible_satellites", 0).takeIf { it > 0 }
-                        ?: extras.getInt("satellites", 0)
-
-                    val used = extras.getInt("satellites_used", 0).takeIf { it > 0 }
-                        ?: extras.getInt("satellites_used_in_fix", 0).takeIf { it > 0 }
-                        ?: extras.getInt("used_satellites", 0).takeIf { it > 0 }
-                        ?: extras.getInt("satellites", 0)
-
-                    val finalVisible = maxOf(visible, used)
-                    return finalVisible to used
-                }
-
-                fun processLocation(location: Location) {
-                    lastLocationFix = true
-                    val (visible, used) = extractSatellitesFromLocation(location)
-                    @Suppress("DEPRECATION")
-                    val isMock = location.isFromMockProvider
-                    if (!hardwareGnssActive || isMock) {
-                        systemSatInfo = SatelliteInfo(
-                            visibleSatellites = visible,
-                            usingSatellites = used,
-                            hasFix = true,
-                        )
-                    }
-                }
-
-                val locationListener = object : LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        processLocation(location)
-                    }
-                    override fun onProviderEnabled(provider: String) {}
-                    override fun onProviderDisabled(provider: String) {
-                        if (provider == LocationManager.GPS_PROVIDER) {
-                            lastLocationFix = false
-                        }
-                    }
-                }
-
-                val gnssCallback = object : GnssStatus.Callback() {
-                    override fun onSatelliteStatusChanged(status: GnssStatus) {
-                        hardwareGnssActive = true
-                        val total = status.satelliteCount
-                        var used = 0
-                        for (i in 0 until total) {
-                            if (status.usedInFix(i)) {
-                                used++
-                            }
-                        }
-                        val fix = used > 0 || lastLocationFix
-                        systemSatInfo = SatelliteInfo(
-                            visibleSatellites = total,
-                            usingSatellites = used,
-                            hasFix = fix
-                        )
-                    }
-                }
-
-                try {
-                    lm?.registerGnssStatusCallback(gnssCallback, mainHandler)
-
-                    val providers = listOfNotNull(
-                        LocationManager.GPS_PROVIDER,
-                        LocationManager.PASSIVE_PROVIDER,
-                        LocationManager.NETWORK_PROVIDER.takeIf { lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true }
-                    )
-
-                    for (provider in providers) {
-                        try {
-                            lm?.requestLocationUpdates(
-                                provider,
-                                2000L,
-                                0f,
-                                locationListener,
-                                Looper.getMainLooper()
-                            )
-                        } catch (_: Exception) {}
-                    }
-
-                    val initialLoc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                        ?: lm?.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-
-                    if (initialLoc != null) {
-                        processLocation(initialLoc)
-                    }
-                } catch (_: SecurityException) {
-                    systemSatInfo = SatelliteInfo()
-                } catch (_: Exception) {
-                    // Ignored
-                }
-
-                onDispose {
-                    try {
-                        lm?.unregisterGnssStatusCallback(gnssCallback)
-                        lm?.removeUpdates(locationListener)
-                    } catch (_: Exception) {
-                        // Ignored
-                    }
-                }
-            }
-        }
-    }
-
     return resolveSatelliteInfo(
         isTbmGeoAvailable = isTbmGeoAvailable,
         tbmSatVisible = tbmSatVisible,
@@ -1534,7 +1400,6 @@ private fun rememberSatelliteInfo(
         tbmSpeedSource = tbmSpeedSource,
         isTboxLocFresh = isTboxLocFresh,
         locValues = locValues,
-        systemSatInfo = systemSatInfo,
     )
 }
 

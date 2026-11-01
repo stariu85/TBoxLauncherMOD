@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -79,12 +80,17 @@ fun LauncherCarTopView(
     )
 
     var roadPhase by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(state.speedKmh) {
+    val isMoving = state.speedKmh > 0.5f
+    LaunchedEffect(isMoving) {
+        if (!isMoving) return@LaunchedEffect
+        var lastNs = 0L
         while (true) {
-            withFrameMillis {
-                if (state.speedKmh > 0.5f) {
-                    roadPhase += state.speedKmh * 0.035f
+            withFrameNanos { frameNs ->
+                if (lastNs > 0L) {
+                    val dtSec = ((frameNs - lastNs) / 1_000_000_000f).coerceAtMost(0.05f)
+                    roadPhase += state.speedKmh * 2.1f * dtSec
                 }
+                lastNs = frameNs
             }
         }
     }
@@ -117,7 +123,7 @@ fun LauncherCarTopView(
                 drawDrivingBackground(
                     blend = driveBlend,
                     roadPhase = roadPhase,
-                    steerDeg = state.steerAngleDeg.coerceIn(-MAX_STEER_VISUAL_DEG, MAX_STEER_VISUAL_DEG),
+                    steerDeg = 0f,
                     speedKmh = state.speedKmh,
                 )
             }
@@ -141,7 +147,7 @@ fun LauncherCarTopView(
                     bodyColor = bodyColor,
                     strokeColor = strokeColor,
                     accentColor = accentColor,
-                    steerDeg = state.steerAngleDeg.coerceIn(-MAX_STEER_VISUAL_DEG, MAX_STEER_VISUAL_DEG),
+                    steerDeg = 0f,
                 )
             }
         }

@@ -71,7 +71,6 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 private const val DASH_SPACING = 72f
-private const val ROAD_FRAME_INTERVAL_NS = 28_000_000L // 30 FPS target with hysteresis / VSYNC tolerance margin (~28ms)
 
 @Composable
 fun LauncherVirtualRoad(
@@ -136,11 +135,7 @@ fun LauncherVirtualRoad(
                 }
 
                 val deltaNs = frameNs - lastRoadFrameNs
-                if (deltaNs < ROAD_FRAME_INTERVAL_NS) { // Capped to 30 FPS target with hysteresis / VSYNC tolerance margin (~28ms)
-                    return@withFrameNanos
-                }
-
-                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.1f)
+                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.05f)
                 lastRoadFrameNs = frameNs
 
                 val spd = currentSpeedKmh

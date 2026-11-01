@@ -1318,6 +1318,13 @@
     <string name="launcher_vs_section_comfort_sub">Heaters and Seats</string>
     <string name="launcher_vs_section_experimental">Experimental</string>
     <string name="launcher_vs_section_experimental_sub">Welcome lights, lock animations, and rare OEM switches</string>
+    <string name="launcher_vs_exp_player_launch_title">Experimental player launch (cold start)</string>
+    <string name="launcher_vs_exp_player_launch_desc">Test background launch methods for player audio stream</string>
+    <string name="launcher_exp_player_mode_disabled">Disabled (use launcher settings)</string>
+    <string name="launcher_exp_player_mode_micro_window">1. Micro window off-screen (1x1px)</string>
+    <string name="launcher_exp_player_mode_media_browser_service">2. MediaBrowserService connection</string>
+    <string name="launcher_exp_player_mode_media_button_broadcast">3. Direct MediaButton broadcast</string>
+    <string name="launcher_exp_player_mode_no_animation_rapid_close">4. No animation + close after 300ms</string>
     <string name="launcher_vs_section_lights">Lights</string>
     <string name="launcher_vs_section_lights_sub">Headlights and path illumination</string>
     <string name="launcher_vs_section_model">3D Model</string>

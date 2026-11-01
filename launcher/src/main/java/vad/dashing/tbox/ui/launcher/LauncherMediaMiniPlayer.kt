@@ -9,6 +9,13 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,10 +25,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -44,9 +54,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +68,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.core.graphics.withRotation
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
 import vad.dashing.tbox.MediaControlNotificationListenerService
@@ -165,14 +180,7 @@ fun LauncherMediaMiniPlayer(
     }
     val activePkg = preferredPackage.ifBlank { mediaPackages.firstOrNull().orEmpty() }
     val openActivePlayer: () -> Unit = {
-        activePkg.takeIf { it.isNotBlank() }?.let { pkg ->
-            if (LauncherAppConfigStore.openPlayerInAdasWindow(context)) {
-                launchLauncherAppInAdas(context, pkg)
-                SharedMediaControlService.scheduleLateSessionPlayRetryIfNeeded(context.applicationContext, pkg)
-            } else {
-                launchLauncherApp(context, pkg)
-            }
-        }
+        activePkg.takeIf { it.isNotBlank() }?.let { pkg -> launchLauncherApp(context, pkg) }
     }
     val title = mediaState.track
     val artist = mediaState.artist
@@ -244,23 +252,35 @@ fun LauncherMediaMiniPlayer(
         )
     }
 
-    val expanded = title.isNotBlank() || isPlaying || albumArtBitmap != null
-    val expandedVerticalPadding = if (expanded) (12.dp * mediaHeightScale).coerceAtLeast(2.dp) else 4.dp
-    val expandedItemSpacing = if (expanded) (10.dp * ((mediaHeightScale - 0.5f) / 0.5f)).coerceAtLeast(0.dp) else 0.dp
+    val fallbackLabel = stringResource(R.string.launcher_media_bind_player)
+    val activePkgLabel = remember(context, activePkg, mediaPickerApps, fallbackLabel) {
+        mediaPickerApps.firstOrNull { it.packageName == activePkg }?.label
+            ?: runCatching {
+                val pm = context.packageManager
+                val info = pm.getApplicationInfo(activePkg, 0)
+                pm.getApplicationLabel(info).toString()
+            }.getOrNull()
+            ?: fallbackLabel
+    }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(mediaCardColor)
-            .animateContentSize()
-            .padding(
-                horizontal = 10.dp,
-                vertical = expandedVerticalPadding,
-            ),
-        verticalArrangement = Arrangement.spacedBy(expandedItemSpacing),
-    ) {
-        if (expanded) {
+    val expanded = title.isNotBlank() || isPlaying || albumArtBitmap != null
+    val expandedVerticalPadding = (12.dp * mediaHeightScale).coerceAtLeast(2.dp)
+    val expandedItemSpacing = (10.dp * ((mediaHeightScale - 0.5f) / 0.5f)).coerceAtLeast(0.dp)
+    val activePlayerHeight = expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 44.dp
+
+    if (expanded) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(mediaCardColor)
+                .animateContentSize()
+                .padding(
+                    horizontal = 10.dp,
+                    vertical = expandedVerticalPadding,
+                ),
+            verticalArrangement = Arrangement.spacedBy(expandedItemSpacing),
+        ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -350,18 +370,29 @@ fun LauncherMediaMiniPlayer(
                     )
                 },
             )
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                LauncherMediaIconButton(
-                    iconRes = R.drawable.play,
-                    iconSize = 24.dp,
-                    buttonSize = 40.dp,
-                    enabled = true,
-                    onClick = {
+        }
+    } else {
+        val playButtonSize = activePlayerHeight * 0.6f
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(activePlayerHeight)
+                .clip(RoundedCornerShape(16.dp))
+                .background(mediaCardColor),
+            contentAlignment = Alignment.Center,
+        ) {
+            RotatingPlayerNameText(
+                text = activePkgLabel,
+                playButtonSize = playButtonSize,
+                textColor = secondaryTextColor,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .size(playButtonSize)
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0x33FFFFFF) else Color(0x1A000000))
+                    .clickable {
                         if (activePkg.isBlank()) {
                             pickerVisible = true
                         } else {
@@ -374,7 +405,21 @@ fun LauncherMediaMiniPlayer(
                             )
                         }
                     },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.play),
+                    contentDescription = null,
+                    tint = primaryTextColor,
+                    modifier = Modifier.size(playButtonSize * 0.45f),
                 )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 4.dp, end = 4.dp),
+                contentAlignment = Alignment.TopEnd,
+            ) {
                 LauncherMediaMenuButton(onClick = { pickerVisible = true })
             }
         }
@@ -525,4 +570,66 @@ private fun LauncherMediaIconButton(
 
 private fun openNotificationListenerSettings(context: Context) {
     launchSystemSettingsInFreeform(context, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+}
+
+@Composable
+private fun RotatingPlayerNameText(
+    text: String,
+    playButtonSize: Dp,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val fontSizePx = with(density) { 8.dp.toPx() }
+    val playButtonRadiusPx = with(density) { playButtonSize.toPx() / 2f }
+    val pathRadiusPx = playButtonRadiusPx + with(density) { 9.dp.toPx() }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "playerTextRotation")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 18000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "rotationAngle",
+    )
+
+    val paint = remember(textColor, fontSizePx) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textSize = fontSizePx
+            color = textColor.toArgb()
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+    }
+
+    val formattedText = remember(text, pathRadiusPx, fontSizePx, paint) {
+        if (text.isBlank()) ""
+        else {
+            val singleUnit = "$text   •   "
+            val unitWidth = paint.measureText(singleUnit)
+            if (unitWidth <= 0f) text
+            else {
+                val circumference = (2 * Math.PI * pathRadiusPx).toFloat()
+                val repeats = (circumference / unitWidth).toInt().coerceAtLeast(1)
+                singleUnit.repeat(repeats)
+            }
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        if (formattedText.isNotBlank()) {
+            val centerX = size.width / 2f
+            val centerY = size.height / 2f
+            val path = android.graphics.Path().apply {
+                addCircle(centerX, centerY, pathRadiusPx, android.graphics.Path.Direction.CW)
+            }
+            drawIntoCanvas { canvas ->
+                canvas.nativeCanvas.withRotation(rotationAngle, centerX, centerY) {
+                    drawTextOnPath(formattedText, path, 0f, 0f, paint)
+                }
+            }
+        }
+    }
 }
