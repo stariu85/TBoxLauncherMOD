@@ -178,6 +178,23 @@ internal fun LauncherHomeSettingsContent() {
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
+    val openPlayerInAdasWindowRevision by LauncherAppConfigStore.openPlayerInAdasWindowRevisionFlow
+        .collectAsStateWithLifecycle()
+    val openPlayerInAdasWindow = remember(context, openPlayerInAdasWindowRevision) {
+        LauncherAppConfigStore.openPlayerInAdasWindow(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_open_player_in_adas_window_title),
+        active = openPlayerInAdasWindow,
+        onClick = {
+            LauncherAppConfigStore.setOpenPlayerInAdasWindow(context, !openPlayerInAdasWindow)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_open_player_in_adas_window_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
     val disableCoverColorRevision by LauncherAppConfigStore.disableMediaCardCoverColorRevisionFlow
         .collectAsStateWithLifecycle()
     val disableCoverColor = remember(context, disableCoverColorRevision) {
@@ -1366,15 +1383,22 @@ fun CruiseControlSettingsContent() {
 
         val headlightBeamsRevision by LauncherAppConfigStore.headlightBeamsRevisionFlow
             .collectAsStateWithLifecycle()
-        val headlightBeamsVisible = remember(context, headlightBeamsRevision) {
-            LauncherAppConfigStore.headlightBeamsVisible(context)
+        val headlightBeamsMode = remember(context, headlightBeamsRevision) {
+            LauncherAppConfigStore.headlightBeamsMode(context)
+        }
+        val modeLabel = when (headlightBeamsMode) {
+            HEADLIGHT_BEAMS_OFF -> stringResource(R.string.launcher_headlight_beams_mode_off)
+            HEADLIGHT_BEAMS_DARK_THEME -> stringResource(R.string.launcher_headlight_beams_mode_dark_theme)
+            HEADLIGHT_BEAMS_NIGHT_ONLY -> stringResource(R.string.launcher_headlight_beams_mode_night_only)
+            else -> stringResource(R.string.launcher_headlight_beams_mode_off)
         }
 
-        LauncherSettingsToggleRow(
+        LauncherSettingsValueRow(
             label = stringResource(R.string.launcher_headlight_beams_visible_title),
-            active = headlightBeamsVisible,
+            value = modeLabel,
             onClick = {
-                LauncherAppConfigStore.setHeadlightBeamsVisible(context, !headlightBeamsVisible)
+                val nextMode = (headlightBeamsMode + 1) % 3
+                LauncherAppConfigStore.setHeadlightBeamsMode(context, nextMode)
             },
         )
         Text(
@@ -1402,6 +1426,9 @@ private fun CruisePresetsSettings() {
     }
     val fuelPrice = remember(context, revision) {
         LauncherAppConfigStore.fuelPriceRub(context)
+    }
+    val fuelTankCapacity = remember(context, revision) {
+        LauncherAppConfigStore.fuelTankCapacityLiters(context)
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
@@ -1442,6 +1469,13 @@ private fun CruisePresetsSettings() {
             price = fuelPrice,
             onChange = { next ->
                 LauncherAppConfigStore.setFuelPriceRub(context, next)
+            },
+        )
+        FuelTankCapacitySliderRow(
+            title = stringResource(R.string.launcher_fuel_tank_capacity_title),
+            capacity = fuelTankCapacity,
+            onChange = { next ->
+                LauncherAppConfigStore.setFuelTankCapacityLiters(context, next)
             },
         )
     }
@@ -1518,6 +1552,46 @@ private fun FuelPriceSliderRow(
             },
             valueRange = FUEL_PRICE_MIN..FUEL_PRICE_MAX,
             steps = ((FUEL_PRICE_MAX - FUEL_PRICE_MIN) / 0.1f).roundToInt() - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.3f),
+            ),
+        )
+    }
+}
+
+@Composable
+private fun FuelTankCapacitySliderRow(
+    title: String,
+    capacity: Float,
+    onChange: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${capacity.roundToInt()} ${stringResource(R.string.unit_liter)}",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Slider(
+            value = capacity,
+            onValueChange = { raw ->
+                val rounded = raw.roundToInt().toFloat()
+                onChange(rounded.coerceIn(FUEL_TANK_CAPACITY_MIN, FUEL_TANK_CAPACITY_MAX))
+            },
+            valueRange = FUEL_TANK_CAPACITY_MIN..FUEL_TANK_CAPACITY_MAX,
+            steps = (FUEL_TANK_CAPACITY_MAX - FUEL_TANK_CAPACITY_MIN).toInt() - 1,
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,

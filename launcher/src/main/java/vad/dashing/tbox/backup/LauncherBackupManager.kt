@@ -531,7 +531,7 @@ object LauncherBackupManager {
                 "tire_pressure_low_threshold", "fuel_price" -> PrefType.FLOAT
 
                 "top_bar_left_indicators_visible", "top_bar_indicators_border_enabled",
-                "media_mini_player_visible", "close_player_after_playback", "disable_media_card_cover_color",
+                "media_mini_player_visible", "close_player_after_playback", "open_player_in_adas_window", "disable_media_card_cover_color",
                 "floating_home_visible", "camera_animation_enabled", "trunk_long_press_enabled",
                 "edge_gestures_enabled", "nav_buttons_visible", "climate_controls_visible",
                 "climate_card_bg_visible", "adas_panel_visible", "adas_alerts_in_left_panel",

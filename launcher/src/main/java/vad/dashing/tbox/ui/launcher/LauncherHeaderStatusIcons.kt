@@ -643,7 +643,7 @@ private fun RenderTopBarItemContent(
                 modifier = Modifier.pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = {
-                            CanDataRepository.resetLocalTripDistance()
+                            CanDataRepository.resetOverallAverageFuelConsumption()
                         }
                     )
                 },
@@ -1302,12 +1302,77 @@ internal fun LauncherHeaderStatusIcons(
     }
 }
 
-private data class SatelliteInfo(
+internal data class SatelliteInfo(
     val visibleSatellites: Int = 0,
     val usingSatellites: Int = 0,
     val hasFix: Boolean = false,
     val isInertial: Boolean = false,
 )
+
+internal fun resolveSatelliteInfo(
+    isTbmGeoAvailable: Boolean,
+    tbmSatVisible: Int?,
+    tbmSatUsed: Int?,
+    tbmFixValid: Boolean?,
+    tbmLocateStatus: Boolean?,
+    tbmSpeedSource: String?,
+    isTboxLocFresh: Boolean,
+    locValues: LocValues,
+    systemSatInfo: SatelliteInfo,
+): SatelliteInfo {
+    return when {
+        isTbmGeoAvailable -> {
+            val visible = tbmSatVisible ?: tbmSatUsed ?: 0
+            val used = tbmSatUsed ?: 0
+            val hasLocFix = tbmFixValid == true || tbmLocateStatus == true
+            val speedSourceLower = tbmSpeedSource?.lowercase()
+            val isInertialSpeedSource = speedSourceLower in setOf(
+                "retention", "can", "dr", "dead_reckoning", "inertial", "extrapolated", "sensor"
+            )
+            val isInertial = isInertialSpeedSource || (hasLocFix && used == 0)
+
+            if (isInertial) {
+                SatelliteInfo(
+                    visibleSatellites = 0,
+                    usingSatellites = 0,
+                    hasFix = false,
+                    isInertial = true,
+                )
+            } else {
+                SatelliteInfo(
+                    visibleSatellites = maxOf(visible, used),
+                    usingSatellites = used,
+                    hasFix = hasLocFix && used > 0,
+                    isInertial = false,
+                )
+            }
+        }
+        isTboxLocFresh -> {
+            val visible = locValues.visibleSatellites
+            val used = locValues.usingSatellites
+            val isTboxInertial = locValues.locateStatus && used == 0
+
+            if (isTboxInertial) {
+                SatelliteInfo(
+                    visibleSatellites = 0,
+                    usingSatellites = 0,
+                    hasFix = false,
+                    isInertial = true,
+                )
+            } else {
+                SatelliteInfo(
+                    visibleSatellites = visible,
+                    usingSatellites = used,
+                    hasFix = locValues.hasGpsFix && used > 0,
+                    isInertial = false,
+                )
+            }
+        }
+        else -> {
+            systemSatInfo
+        }
+    }
+}
 
 @Composable
 private fun rememberSatelliteInfo(
@@ -1460,31 +1525,17 @@ private fun rememberSatelliteInfo(
         }
     }
 
-    return when {
-        isTbmGeoAvailable -> {
-            val visible = tbmSatVisible ?: tbmSatUsed ?: 0
-            val used = tbmSatUsed ?: 0
-            val fix = tbmFixValid == true || tbmLocateStatus == true
-            val inertial = (tbmSpeedSource == "retention" || tbmSpeedSource == "can") && !fix
-            SatelliteInfo(
-                visibleSatellites = maxOf(visible, used),
-                usingSatellites = used,
-                hasFix = fix,
-                isInertial = inertial,
-            )
-        }
-        isTboxLocFresh -> {
-            SatelliteInfo(
-                visibleSatellites = locValues.visibleSatellites,
-                usingSatellites = locValues.usingSatellites,
-                hasFix = locValues.hasGpsFix,
-                isInertial = false,
-            )
-        }
-        else -> {
-            systemSatInfo
-        }
-    }
+    return resolveSatelliteInfo(
+        isTbmGeoAvailable = isTbmGeoAvailable,
+        tbmSatVisible = tbmSatVisible,
+        tbmSatUsed = tbmSatUsed,
+        tbmFixValid = tbmFixValid,
+        tbmLocateStatus = tbmLocateStatus,
+        tbmSpeedSource = tbmSpeedSource,
+        isTboxLocFresh = isTboxLocFresh,
+        locValues = locValues,
+        systemSatInfo = systemSatInfo,
+    )
 }
 
 @Composable

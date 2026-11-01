@@ -165,7 +165,14 @@ fun LauncherMediaMiniPlayer(
     }
     val activePkg = preferredPackage.ifBlank { mediaPackages.firstOrNull().orEmpty() }
     val openActivePlayer: () -> Unit = {
-        activePkg.takeIf { it.isNotBlank() }?.let { launchLauncherApp(context, it) }
+        activePkg.takeIf { it.isNotBlank() }?.let { pkg ->
+            if (LauncherAppConfigStore.openPlayerInAdasWindow(context)) {
+                launchLauncherAppInAdas(context, pkg)
+                SharedMediaControlService.scheduleLateSessionPlayRetryIfNeeded(context.applicationContext, pkg)
+            } else {
+                launchLauncherApp(context, pkg)
+            }
+        }
     }
     val title = mediaState.track
     val artist = mediaState.artist

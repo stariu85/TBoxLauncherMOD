@@ -16,6 +16,7 @@ private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_CLOSE_PLAYER_AFTER_PLAYBACK = "close_player_after_playback"
+private const val KEY_OPEN_PLAYER_IN_ADAS_WINDOW = "open_player_in_adas_window"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
@@ -206,7 +207,12 @@ private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
 private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
+const val HEADLIGHT_BEAMS_OFF = 0
+const val HEADLIGHT_BEAMS_DARK_THEME = 1
+const val HEADLIGHT_BEAMS_NIGHT_ONLY = 2
+
 private const val KEY_HEADLIGHT_BEAMS_VISIBLE = "headlight_beams_visible"
+private const val KEY_HEADLIGHT_BEAMS_MODE = "headlight_beams_mode"
 private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 private const val KEY_CRUISE_INCREASE_INTERVAL = "cruise_increase_interval"
@@ -216,6 +222,11 @@ internal const val FUEL_PRICE_DEFAULT = 75.0f
 internal const val FUEL_PRICE_MIN = 60.0f
 internal const val FUEL_PRICE_MAX = 150.0f
 internal const val FUEL_PRICE_STEP = 0.1f
+private const val KEY_FUEL_TANK_CAPACITY = "fuel_tank_capacity_liters"
+internal const val FUEL_TANK_CAPACITY_DEFAULT = 57.0f
+internal const val FUEL_TANK_CAPACITY_MIN = 40.0f
+internal const val FUEL_TANK_CAPACITY_MAX = 70.0f
+internal const val FUEL_TANK_CAPACITY_STEP = 1.0f
 private const val KEY_TIRE_PRESSURE_ON_CAR_ENABLED = "tire_pressure_on_car_enabled"
 private const val KEY_TIRE_PRESSURE_ONLY_LOW = "tire_pressure_only_low"
 private const val KEY_TIRE_PRESSURE_ONLY_TOP_VIEW = "tire_pressure_only_top_view"
@@ -282,6 +293,8 @@ internal object LauncherAppConfigStore {
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
     private val closePlayerAfterPlaybackRevision = MutableStateFlow(0)
     internal val closePlayerAfterPlaybackRevisionFlow: StateFlow<Int> = closePlayerAfterPlaybackRevision
+    private val openPlayerInAdasWindowRevision = MutableStateFlow(0)
+    internal val openPlayerInAdasWindowRevisionFlow: StateFlow<Int> = openPlayerInAdasWindowRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
     internal val disableMediaCardCoverColorRevisionFlow: StateFlow<Int> = disableMediaCardCoverColorRevision
     private val dockIconScaleRevision = MutableStateFlow(0)
@@ -466,6 +479,14 @@ internal object LauncherAppConfigStore {
     fun setClosePlayerAfterPlayback(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CLOSE_PLAYER_AFTER_PLAYBACK, enabled).apply()
         closePlayerAfterPlaybackRevision.value++
+    }
+
+    fun openPlayerInAdasWindow(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, false)
+
+    fun setOpenPlayerInAdasWindow(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, enabled).apply()
+        openPlayerInAdasWindowRevision.value++
     }
 
     fun disableMediaCardCoverColor(context: Context): Boolean =
@@ -1136,10 +1157,13 @@ internal object LauncherAppConfigStore {
         val list = if (raw != null) {
             raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
         } else {
-            listOf("assist", "body_controls")
+            listOf("media_player", "assist", "body_controls")
         }
         val mapped = list.map { if (it == "presets") "assist" else it }.distinct().toMutableList()
         val top = adasTopPanels(context)
+        if (mediaMiniPlayerVisible(context) && "media_player" !in top && "media_player" !in mapped) {
+            mapped.add(0, "media_player")
+        }
         if (bodyControlsPanelVisible(context) && "body_controls" !in top && "body_controls" !in mapped) {
             mapped.add("body_controls")
         }
@@ -1173,11 +1197,25 @@ internal object LauncherAppConfigStore {
     }
 
     fun headlightBeamsVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_HEADLIGHT_BEAMS_VISIBLE, true)
+        headlightBeamsMode(context) != HEADLIGHT_BEAMS_OFF
+
+    fun headlightBeamsMode(context: Context): Int {
+        val prefs = prefs(context)
+        if (prefs.contains(KEY_HEADLIGHT_BEAMS_MODE)) {
+            return prefs.getInt(KEY_HEADLIGHT_BEAMS_MODE, HEADLIGHT_BEAMS_DARK_THEME).coerceIn(0, 2)
+        }
+        val legacy = prefs.getBoolean(KEY_HEADLIGHT_BEAMS_VISIBLE, true)
+        return if (legacy) HEADLIGHT_BEAMS_DARK_THEME else HEADLIGHT_BEAMS_OFF
+    }
+
+    fun setHeadlightBeamsMode(context: Context, mode: Int) {
+        val valid = mode.coerceIn(0, 2)
+        prefs(context).edit().putInt(KEY_HEADLIGHT_BEAMS_MODE, valid).apply()
+        headlightBeamsRevision.value++
+    }
 
     fun setHeadlightBeamsVisible(context: Context, visible: Boolean) {
-        prefs(context).edit().putBoolean(KEY_HEADLIGHT_BEAMS_VISIBLE, visible).apply()
-        headlightBeamsRevision.value++
+        setHeadlightBeamsMode(context, if (visible) HEADLIGHT_BEAMS_DARK_THEME else HEADLIGHT_BEAMS_OFF)
     }
 
     fun ngpEnabled(context: Context): Boolean =
@@ -1222,6 +1260,16 @@ internal object LauncherAppConfigStore {
         val rounded = kotlin.math.round(price * 10f) / 10f
         val clamped = rounded.coerceIn(FUEL_PRICE_MIN, FUEL_PRICE_MAX)
         prefs(context).edit().putFloat(KEY_FUEL_PRICE, clamped).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun fuelTankCapacityLiters(context: Context): Float =
+        prefs(context).getFloat(KEY_FUEL_TANK_CAPACITY, FUEL_TANK_CAPACITY_DEFAULT).coerceIn(FUEL_TANK_CAPACITY_MIN, FUEL_TANK_CAPACITY_MAX)
+
+    fun setFuelTankCapacityLiters(context: Context, capacity: Float) {
+        val rounded = kotlin.math.round(capacity)
+        val clamped = rounded.coerceIn(FUEL_TANK_CAPACITY_MIN, FUEL_TANK_CAPACITY_MAX)
+        prefs(context).edit().putFloat(KEY_FUEL_TANK_CAPACITY, clamped).apply()
         cruisePresetsRevision.value++
     }
 
@@ -1371,6 +1419,7 @@ internal object LauncherAppConfigStore {
         mediaCardHeightScaleRevision.value++
         mediaMiniPlayerRevision.value++
         closePlayerAfterPlaybackRevision.value++
+        openPlayerInAdasWindowRevision.value++
         disableMediaCardCoverColorRevision.value++
         dockIconScaleRevision.value++
         topBarHeightRevision.value++

@@ -51,6 +51,8 @@ class SettingsManager(private val context: Context) {
         private val KEY_ICON_REVISION = intPreferencesKey("launcher_app_icon_revision")
         private val KEY_UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         private val KEY_UPDATE_CHECK_ENABLED = booleanPreferencesKey("update_check_enabled")
+        private val KEY_LAST_CLEARED_CACHE_VERSION =
+            longPreferencesKey("last_cleared_cache_version")
         private val KEY_HU_REBOOT_LAST_SEEN_VERSION =
             longPreferencesKey("hu_reboot_last_seen_version")
         private val KEY_HU_REBOOT_PENDING_VERSION =
@@ -139,6 +141,28 @@ class SettingsManager(private val context: Context) {
 
     suspend fun saveUpdateCheckEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { it[KEY_UPDATE_CHECK_ENABLED] = enabled }
+    }
+
+    suspend fun clearCacheOnAppUpdate(currentVersionCode: Long) {
+        withContext(Dispatchers.IO) {
+            val prefs = context.settingsDataStore.data.first()
+            val lastClearedVersion = prefs[KEY_LAST_CLEARED_CACHE_VERSION] ?: 0L
+            if (lastClearedVersion < currentVersionCode) {
+                var filesDeletedCount = 0
+                runCatching {
+                    context.cacheDir?.listFiles()?.forEach { file ->
+                        if (file.deleteRecursively()) filesDeletedCount++
+                    }
+                    context.externalCacheDir?.listFiles()?.forEach { file ->
+                        if (file.deleteRecursively()) filesDeletedCount++
+                    }
+                }
+                android.util.Log.i("SettingsManager", "App cache cleared on update (from $lastClearedVersion to $currentVersionCode, deleted $filesDeletedCount items)")
+                context.settingsDataStore.edit { mutablePrefs ->
+                    mutablePrefs[KEY_LAST_CLEARED_CACHE_VERSION] = currentVersionCode
+                }
+            }
+        }
     }
 
     suspend fun saveTbmApiToken(token: String?) {

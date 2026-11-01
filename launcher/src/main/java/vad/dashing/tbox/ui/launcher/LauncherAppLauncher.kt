@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Rect
 import android.os.Process
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import vad.dashing.tbox.BackgroundService
@@ -78,6 +79,33 @@ internal fun launchLauncherAppFullWidth(
         packageName = packageName,
         intent = intent,
         bounds = bounds ?: Rect(0, 51, 1920, 998),
+    )
+}
+
+/** Launch app in the small square window covering the ADAS zone. */
+internal fun launchLauncherAppInAdas(
+    context: Context,
+    packageName: String,
+    activityName: String? = null,
+) {
+    if (packageName.isBlank()) return
+    val intent = activityName?.takeIf { it.isNotBlank() }?.let { activity ->
+        Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            setClassName(packageName, activity)
+        }
+    } ?: resolveLaunchIntent(context, packageName)
+    if (intent == null) {
+        Toast.makeText(context, "Не удалось найти запуск для $packageName", Toast.LENGTH_SHORT).show()
+        return
+    }
+    LauncherRightPanelOverlayWindow.hide()
+    val bounds = LauncherEmbeddedBoundsState.adasSquareBounds(context)
+    tryLaunchIntentInBounds(
+        context = context,
+        packageName = packageName,
+        intent = intent,
+        bounds = bounds,
     )
 }
 
@@ -169,6 +197,22 @@ internal fun launchTBoxSettings(context: Context) {
     }
     val intent = MainActivityIntentHelper.createBringToFrontIntent(context)
     startResolved(context, context.packageName, intent)
+}
+
+internal fun launchAndroidSettings(context: Context) {
+    val pkg = "com.android.settings"
+    if (isPackageInstalled(context, pkg) && resolveLaunchIntent(context, pkg) != null) {
+        launchLauncherAppEmbedded(context, pkg)
+    } else {
+        val intent = Intent(Settings.ACTION_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching {
+            context.startActivity(intent)
+        }.onFailure {
+            Toast.makeText(context, "Не удалось открыть настройки Android", Toast.LENGTH_SHORT).show()
+        }
+    }
 }
 
 internal fun launchFirstResolvableApp(

@@ -140,6 +140,7 @@ object MbCanEngineFacade {
 
     fun canGetVehicleParam(propertyId: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanRx()
         return try {
             withNativeLock {
                 (canGetVehicleParamMethod?.invoke(engineInstance, propertyId) as? Int)
@@ -152,6 +153,7 @@ object MbCanEngineFacade {
     /** [com.mengbo.mbCan.MBCanEngine.canGetAudioParam] — [com.mengbo.mbCan.defines.MBAudioProperty] ordinal ids. */
     fun canGetAudioParam(propertyId: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanRx()
         return try {
             withNativeLock {
                 (canGetAudioParamMethod?.invoke(engineInstance, propertyId) as? Int)
@@ -164,6 +166,7 @@ object MbCanEngineFacade {
     /** [com.mengbo.mbCan.MBCanEngine.canSetAudioParam] — [com.mengbo.mbCan.defines.MBAudioProperty] value ids. */
     fun canSetAudioParam(propertyId: Int, value: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanTx()
         return try {
             withNativeLock {
                 (canSetAudioParamMethod?.invoke(engineInstance, propertyId, value) as? Int)
@@ -175,6 +178,7 @@ object MbCanEngineFacade {
 
     fun canSetVehicleParam(propertyId: Int, value: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanTx()
         return try {
             withNativeLock {
                 (canSetVehicleParamMethod?.invoke(engineInstance, propertyId, value) as? Int)
@@ -186,6 +190,7 @@ object MbCanEngineFacade {
 
     fun canSetAirCondition(airCondition: com.mengbo.mbCan.entity.MBAirCondition): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanTx()
         return try {
             withNativeLock {
                 (canSetAirConditionMethod?.invoke(engineInstance, airCondition) as? Int)
@@ -198,6 +203,7 @@ object MbCanEngineFacade {
     /** [com.mengbo.mbCan.MBCanEngine.canGetVehicleParamString] — MBVehicleProperty string ids (62/63/116...). */
     fun canGetVehicleParamString(propertyId: Int): String? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanRx()
         return try {
             withNativeLock {
                 (canGetVehicleParamStringMethod?.invoke(engineInstance, propertyId) as? String)
@@ -214,6 +220,7 @@ object MbCanEngineFacade {
      */
     fun getMbCanData(dataType: Int, dataClass: Class<*>): Any? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        vad.dashing.tbox.DclLogRecorder.recordCanRx()
         val inst = engineInstance ?: return null
         return runCatching {
             withNativeLock {
@@ -363,6 +370,7 @@ object MbCanEngineFacade {
         }
         val loader = iface.classLoader ?: return
         val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            vad.dashing.tbox.DclLogRecorder.recordCanRx()
             when (method.name) {
                 "onCanVehicleSpeed" -> {
                     val fromArgs = runCatching {
@@ -550,6 +558,7 @@ object MbCanEngineFacade {
         }
         val loader = iface.classLoader ?: return
         val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            vad.dashing.tbox.DclLogRecorder.recordCanRx()
             if (method.name == "onCmdChanged" && args != null && args.size >= 4) {
                 val modular = (args[0] as Number).toInt() and 0xFF
                 val rev = (args[1] as Number).toInt() and 0xFF
@@ -606,6 +615,7 @@ object MbCanEngineFacade {
         }
         val loader = iface.classLoader ?: return
         val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            vad.dashing.tbox.DclLogRecorder.recordCanRx()
             if (method.name == "onCmdChanged" && args != null && args.size >= 4) {
                 val modular = (args[0] as Number).toInt() and 0xFF
                 val rev = (args[1] as Number).toInt() and 0xFF

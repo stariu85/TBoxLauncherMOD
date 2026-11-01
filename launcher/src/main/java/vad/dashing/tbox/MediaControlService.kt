@@ -444,9 +444,12 @@ object SharedMediaControlService {
     internal fun scheduleLateSessionPlayRetryIfNeeded(appContext: Context, targetPackage: String) {
         launchPlayerVerifyScope.launch {
             try {
-                val deadline = SystemClock.elapsedRealtime() + LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS
+                val openInAdas = LauncherAppConfigStore.openPlayerInAdasWindow(appContext)
+                val timeoutMs = if (openInAdas) 10_000L else LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS
+                val deadline = SystemClock.elapsedRealtime() + timeoutMs
                 var shouldSendFallbackKey = false
                 var sessionFound = false
+                var closedEarly = false
                 while (SystemClock.elapsedRealtime() < deadline) {
                     var shouldExit = false
                     synchronized(this@SharedMediaControlService) {
@@ -479,6 +482,14 @@ object SharedMediaControlService {
                 }
                 if (sessionFound && LauncherAppConfigStore.closePlayerAfterPlayback(appContext)) {
                     delay(500L)
+                    removeAppTaskWindow(appContext, targetPackage)
+                    closedEarly = true
+                }
+                if (openInAdas && !closedEarly) {
+                    val remainingMs = deadline - SystemClock.elapsedRealtime()
+                    if (remainingMs > 0) {
+                        delay(remainingMs)
+                    }
                     removeAppTaskWindow(appContext, targetPackage)
                 }
             } catch (e: Exception) {
@@ -923,20 +934,24 @@ private fun launchPlayerApp(
     keepPlayerForeground: Boolean = false, // anymani: флаг для контроля возврата лаунчера
     scheduleLateSessionPlayRetry: Boolean = false
 ) {
-    // Same freeform/embedded window as dock / app drawer — never raw fullscreen startActivity.
+    val openInAdas = LauncherAppConfigStore.openPlayerInAdasWindow(context)
     val launched = runCatching {
-        vad.dashing.tbox.ui.launcher.launchLauncherApp(context, packageName)
+        if (openInAdas) {
+            vad.dashing.tbox.ui.launcher.launchLauncherAppInAdas(context, packageName)
+        } else {
+            vad.dashing.tbox.ui.launcher.launchLauncherApp(context, packageName)
+        }
     }.isSuccess
     DiagFileLog.i(
         "MediaLaunch",
-        "launchPlayerApp pkg=$packageName ok=$launched keepFg=$keepPlayerForeground",
+        "launchPlayerApp pkg=$packageName ok=$launched keepFg=$keepPlayerForeground openInAdas=$openInAdas",
     )
     if (!launched) return
 
     if (scheduleColdStartPlayRetry) {
         SharedMediaControlService.scheduleColdStartPlayRetryIfNeeded(context.applicationContext, packageName)
     }
-    if (scheduleLateSessionPlayRetry) {
+    if (scheduleLateSessionPlayRetry || openInAdas) {
         SharedMediaControlService.scheduleLateSessionPlayRetryIfNeeded(context.applicationContext, packageName)
     }
 }

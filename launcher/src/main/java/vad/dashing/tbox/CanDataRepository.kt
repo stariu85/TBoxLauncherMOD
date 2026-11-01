@@ -112,12 +112,24 @@ object CanDataRepository {
     @Volatile
     private var tripStartTimeMs: Long = System.currentTimeMillis()
 
+    @Volatile
+    private var overallAccumulatedDistanceKm: Float = 0f
+    @Volatile
+    private var overallAccumulatedFuelLiters: Float = 0f
+    @Volatile
+    private var currentSegmentDistKm: Float = 0f
+    @Volatile
+    private var lastKnownFuelLiters: Float? = null
+
     private const val PREFS_PERSISTENCE = "tbox_can_data_persistence"
     private const val KEY_AVG_FUEL = "saved_avg_fuel_consumption"
     private const val KEY_TRIP_DIST = "saved_local_trip_distance"
     private const val KEY_INIT_FUEL = "saved_initial_fuel_liters"
     private const val KEY_LAST_ODO = "saved_last_odometer"
     private const val KEY_TRIP_START_TIME = "saved_trip_start_time"
+    private const val KEY_OVERALL_DIST = "saved_overall_distance_km"
+    private const val KEY_OVERALL_FUEL = "saved_overall_fuel_liters"
+    private const val KEY_SEGMENT_DIST = "saved_segment_distance_km"
 
     @Volatile
     private var isPersistedStateLoaded = false
@@ -168,6 +180,23 @@ object CanDataRepository {
                 } else {
                     tripStartTimeMs = System.currentTimeMillis()
                 }
+                if (prefs.contains(KEY_OVERALL_DIST)) {
+                    overallAccumulatedDistanceKm = prefs.getFloat(KEY_OVERALL_DIST, 0f)
+                }
+                if (prefs.contains(KEY_OVERALL_FUEL)) {
+                    overallAccumulatedFuelLiters = prefs.getFloat(KEY_OVERALL_FUEL, 0f)
+                }
+                if (prefs.contains(KEY_SEGMENT_DIST)) {
+                    currentSegmentDistKm = prefs.getFloat(KEY_SEGMENT_DIST, 0f)
+                }
+                val totalDist = overallAccumulatedDistanceKm + currentSegmentDistKm
+                if (totalDist > 0f && overallAccumulatedFuelLiters > 0f) {
+                    val calculated = (overallAccumulatedFuelLiters / totalDist) * 100f
+                    if (calculated > 0f && calculated < 50f) {
+                        _averageFuelConsumption.value = calculated
+                        previousAvgConsumption = calculated
+                    }
+                }
                 updateTripDuration()
                 isPersistedStateLoaded = true
             }
@@ -184,6 +213,9 @@ object CanDataRepository {
             initialFuelLiters?.let { editor.putFloat(KEY_INIT_FUEL, it) } ?: editor.remove(KEY_INIT_FUEL)
             lastOdometer?.let { editor.putLong(KEY_LAST_ODO, it.toLong()) } ?: editor.remove(KEY_LAST_ODO)
             editor.putLong(KEY_TRIP_START_TIME, tripStartTimeMs)
+            editor.putFloat(KEY_OVERALL_DIST, overallAccumulatedDistanceKm)
+            editor.putFloat(KEY_OVERALL_FUEL, overallAccumulatedFuelLiters)
+            editor.putFloat(KEY_SEGMENT_DIST, currentSegmentDistKm)
             editor.apply()
         }
     }
@@ -326,6 +358,7 @@ object CanDataRepository {
                 val deltaKm = (newValue - prevOdo).toFloat()
                 if (deltaKm > 0f && deltaKm < 1000f) {
                     accumulatedTripDistanceKm += deltaKm
+                    currentSegmentDistKm += deltaKm
                     _localTripDistanceKm.value = accumulatedTripDistanceKm
                 }
             } else {
@@ -343,17 +376,33 @@ object CanDataRepository {
         savePersistedState()
     }
 
+    private fun getTankCapacityLiters(): Float {
+        val context = AppContextHolder.appContextOrNull ?: return 57.0f
+        return vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.fuelTankCapacityLiters(context)
+    }
+
     fun resetLocalTripDistance() {
         loadPersistedStateIfNeeded()
         accumulatedTripDistanceKm = 0f
         _localTripDistanceKm.value = 0f
         lastOdometer = _odometer.value
-        previousAvgConsumption = null
         val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
-        initialFuelLiters = currentPercent?.let { it * 0.57f }
-        _averageFuelConsumption.value = null
+        initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
         tripStartTimeMs = System.currentTimeMillis()
         updateTripDuration()
+        savePersistedState()
+    }
+
+    fun resetOverallAverageFuelConsumption() {
+        loadPersistedStateIfNeeded()
+        overallAccumulatedDistanceKm = 0f
+        overallAccumulatedFuelLiters = 0f
+        currentSegmentDistKm = 0f
+        val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
+        initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
+        lastKnownFuelLiters = initialFuelLiters
+        previousAvgConsumption = null
+        _averageFuelConsumption.value = null
         savePersistedState()
     }
 
@@ -365,29 +414,38 @@ object CanDataRepository {
     private fun recalculateLocalAverageFuelConsumption() {
         loadPersistedStateIfNeeded()
         val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat() ?: return
-        val currentFuelLiters = currentPercent * 0.57f
+        val currentFuelLiters = currentPercent * (getTankCapacityLiters() / 100f)
 
         var initFuel = initialFuelLiters
         if (initFuel == null) {
             initFuel = currentFuelLiters
             initialFuelLiters = initFuel
         } else if (currentFuelLiters > initFuel + 2.0f) {
-            // Refuel detected
+            // Refuel detected: commit segment fuel and distance to overall totals
+            val segUsed = (initFuel - (lastKnownFuelLiters ?: initFuel)).coerceAtLeast(0f)
+            overallAccumulatedFuelLiters += segUsed
+            overallAccumulatedDistanceKm += currentSegmentDistKm
+            currentSegmentDistKm = 0f
             initFuel = currentFuelLiters
             initialFuelLiters = initFuel
-            previousAvgConsumption = null
         }
 
-        val usedLiters = (initFuel - currentFuelLiters).coerceAtLeast(0f)
-        val distanceKm = _localTripDistanceKm.value ?: 0f
+        lastKnownFuelLiters = currentFuelLiters
+        val segUsedLiters = (initFuel - currentFuelLiters).coerceAtLeast(0f)
+        val combinedTotalDist = overallAccumulatedDistanceKm + currentSegmentDistKm
+        val combinedTotalFuel = overallAccumulatedFuelLiters + segUsedLiters
 
-        if (distanceKm >= 0.1f) {
-            val currentSample = (usedLiters / distanceKm) * 100f
-            val prevAvg = previousAvgConsumption
-            val newAvg = if (prevAvg == null) currentSample else (prevAvg + currentSample) / 2f
-            previousAvgConsumption = newAvg
-            _averageFuelConsumption.value = newAvg
-            savePersistedState()
+        if (combinedTotalDist >= 0.1f) {
+            val overallAvg = if (combinedTotalFuel > 0f) {
+                (combinedTotalFuel / combinedTotalDist) * 100f
+            } else {
+                previousAvgConsumption ?: 0f
+            }
+            if (overallAvg > 0f) {
+                previousAvgConsumption = overallAvg
+                _averageFuelConsumption.value = overallAvg
+                savePersistedState()
+            }
         }
     }
 

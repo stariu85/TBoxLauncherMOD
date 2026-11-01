@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlin.math.roundToInt
@@ -902,7 +903,7 @@ internal fun LauncherVehicleSettingsContent(
         LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_cruise),
             subtitle = stringResource(R.string.launcher_vs_section_cruise_sub),
-            icon = VehicleSettingsSectionIcons.Cruise,
+            iconPainter = painterResource(R.drawable.ic_vs_section_adas),
             expanded = expandedSection == VehicleSettingsSection.Cruise,
             onToggle = { onSectionToggle(VehicleSettingsSection.Cruise) },
         ) {

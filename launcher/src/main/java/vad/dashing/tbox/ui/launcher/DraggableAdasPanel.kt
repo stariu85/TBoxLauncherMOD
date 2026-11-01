@@ -25,7 +25,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
-private const val LONG_PRESS_TIMEOUT_MS = 3000L
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -120,7 +119,15 @@ internal fun DraggableAdasPanel(
                         val elapsed = SystemClock.uptimeMillis() - downTime
 
                         if (!dragActive) {
-                            if (elapsed >= LONG_PRESS_TIMEOUT_MS) {
+                            val totalDeltaY = kotlin.math.abs(pointer.position.y - down.position.y)
+                            val totalDeltaX = kotlin.math.abs(pointer.position.x - down.position.x)
+                            if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
+                                dragActive = true
+                                isDragging = true
+                                accumulativeDragY = pointer.position.y - down.position.y
+                                dragOffsetY = accumulativeDragY
+                                pointer.consume()
+                            } else if (elapsed >= 350L) {
                                 dragActive = true
                                 isDragging = true
                                 accumulativeDragY = 0f
@@ -151,18 +158,20 @@ private fun calculateNewPanelLayout(
     val newBottom = currentBottom.filter { it != draggedPanelId }.toMutableList()
 
     val midPoint = if (containerHeightPx > 0f) containerHeightPx / 2f else 300f
+    val wasInTop = draggedPanelId in currentTop
 
     if (releasedCenterY < midPoint) {
         // Drop into TOP section
         if (newTop.isEmpty()) {
             newTop.add(draggedPanelId)
-        } else if (newTop.size == 1) {
-            if (releasedCenterY < midPoint * 0.5f) {
-                newTop.add(0, draggedPanelId)
-            } else {
-                newTop.add(draggedPanelId)
-            }
+        } else if (releasedCenterY < 80f) {
+            // Dragged to very top of screen -> insert at index 0 (top of top section)
+            newTop.add(0, draggedPanelId)
+        } else if (!wasInTop) {
+            // Dragged UP from bottom section -> snap/attach directly below existing top panels
+            newTop.add(draggedPanelId)
         } else {
+            // Reordering within top section
             val step = midPoint / newTop.size
             var insertIndex = newTop.size
             for (i in newTop.indices) {
@@ -177,13 +186,14 @@ private fun calculateNewPanelLayout(
         // Drop into BOTTOM section
         if (newBottom.isEmpty()) {
             newBottom.add(draggedPanelId)
-        } else if (newBottom.size == 1) {
-            if (releasedCenterY < midPoint + (midPoint * 0.5f)) {
-                newBottom.add(0, draggedPanelId)
-            } else {
-                newBottom.add(draggedPanelId)
-            }
+        } else if (containerHeightPx > 0f && releasedCenterY > containerHeightPx - 80f) {
+            // Dragged to very bottom of screen -> attach at bottom of bottom section
+            newBottom.add(draggedPanelId)
+        } else if (wasInTop) {
+            // Dragged DOWN from top section -> snap/attach directly above existing bottom panels
+            newBottom.add(0, draggedPanelId)
         } else {
+            // Reordering within bottom section
             val bottomHeight = containerHeightPx - midPoint
             val step = bottomHeight / newBottom.size
             var insertIndex = newBottom.size

@@ -23,6 +23,8 @@
     <string name="launcher_media_mini_player_desc">Mini player under the car on the left panel</string>
     <string name="launcher_close_player_after_playback_title">Close player after playback start</string>
     <string name="launcher_close_player_after_playback_desc">Automatically close the player application window after playback starts</string>
+    <string name="launcher_open_player_in_adas_window_title">Open player in ADAS window</string>
+    <string name="launcher_open_player_in_adas_window_desc">On cold start from widget, launch player in ADAS square window and close after 10 seconds</string>
     <string name="launcher_disable_media_card_cover_color_title">Do not change widget color from cover art</string>
     <string name="launcher_disable_media_card_cover_color_desc">Use standard assist panel button color and transparency</string>
     <string name="launcher_top_bar_height_title">Top panel height</string>
@@ -174,8 +176,8 @@
     <string name="launcher_vs_theme_button_visible_desc">Show the round quick theme toggle button in the bottom-left corner</string>
     <string name="launcher_vs_ui_click_sounds">UI click sound</string>
     <string name="launcher_vs_ui_click_sounds_desc">Play system click sound when tapping UI elements</string>
-    <string name="launcher_vs_section_cruise">Cruise Control</string>
-    <string name="launcher_vs_section_cruise_sub">Panel visibility and speed presets</string>
+    <string name="launcher_vs_section_cruise">ADAS Zone</string>
+    <string name="launcher_vs_section_cruise_sub">Left zone, visualization, and cruise control settings</string>
     <string name="launcher_cruise_panel_visible_title">ACC speed presets panel</string>
     <string name="launcher_cruise_panel_visible_desc">Show ACC speed preset buttons in the left panel</string>
     <string name="launcher_drive_mode_bar_visible_title">Drive mode panel</string>
@@ -268,6 +270,8 @@
     <string name="unit_ruble_short">r</string>
     <string name="launcher_fuel_price_title">Fuel price</string>
     <string name="launcher_fuel_price_desc">Price per 1 liter for trip cost calculation</string>
+    <string name="launcher_fuel_tank_capacity_title">Fuel tank capacity</string>
+    <string name="launcher_fuel_tank_capacity_desc">Fuel tank capacity in liters</string>
     <string name="unit_bar_celsius">bar / °C</string>
     <string name="title_with_unit">%1$s, %2$s</string>
 
@@ -1185,6 +1189,7 @@
     <string name="launcher_vehicle_status_settings">Settings</string>
     <string name="launcher_settings_car_btn">Car</string>
     <string name="launcher_settings_system_btn">System</string>
+    <string name="launcher_settings_android_btn">Android Settings</string>
     <string name="launcher_motion_preview_off">Steer preview: OFF</string>
     <string name="launcher_motion_preview_on">Steer preview: ON</string>
     <string name="launcher_oem_fullscreen_blocked">"%1$s" cannot be opened in fullscreen from TBox. Launch via stock launcher.</string>

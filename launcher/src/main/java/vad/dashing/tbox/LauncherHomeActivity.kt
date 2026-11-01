@@ -127,6 +127,7 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         LauncherHomeActivityHolder.isResumed = true
+        DclLogRecorder.attachWindow(window)
         LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
         val foreign = findForeignAppTask(this)
         val inAppView = foreign != null && !LauncherRightPanelOverlayWindow.isShowing()
@@ -146,6 +147,7 @@ class LauncherHomeActivity : ComponentActivity() {
 
     override fun onPause() {
         LauncherHomeActivityHolder.isResumed = false
+        DclLogRecorder.detachWindow(window)
         super.onPause()
     }
 

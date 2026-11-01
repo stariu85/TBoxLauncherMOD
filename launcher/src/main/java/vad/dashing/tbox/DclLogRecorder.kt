@@ -1,24 +1,32 @@
 package vad.dashing.tbox
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.os.Debug
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.view.FrameMetrics
+import android.view.Window
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.lang.ref.WeakReference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Recording system for 3D model coordinates, ADAS window, and render parameters.
@@ -34,6 +42,7 @@ object DclLogRecorder {
     private const val DIR_NAME = "DCLlogs"
     private const val MAX_LOG_FILES = 5
     private const val SESSION_DURATION_MS = 300_000L // 5 minutes
+    private const val SAMPLE_INTERVAL_MS = 2000L // 2 seconds
 
     private val lock = Any()
     private val executor = Executors.newSingleThreadExecutor { r ->
@@ -57,8 +66,109 @@ object DclLogRecorder {
     @Volatile
     private var isSessionActive: Boolean = false
 
+    private val canRxCounter = AtomicInteger(0)
+    private val canTxCounter = AtomicInteger(0)
+    private val frameCounter = AtomicInteger(0)
+    private val jankCounter = AtomicInteger(0)
+    private val maxFrameNs = AtomicLong(0L)
+
+    @Volatile
+    private var frameMetricsListener: Window.OnFrameMetricsAvailableListener? = null
+
+    @Volatile
+    private var attachedWindow: WeakReference<Window>? = null
+
+    private var metricsRunnable: Runnable? = null
+    private var lastSampleRealtimeMs = 0L
+    private var lastCpuTimeMs = 0L
+    private var lastBinderRx = 0L
+    private var lastBinderTx = 0L
+
     private val stopRunnable = Runnable {
         checkSessionExpiration()
+    }
+
+    /**
+     * Record CAN Bus receive event.
+     */
+    fun recordCanRx(count: Int = 1) {
+        if (isSessionActive) canRxCounter.addAndGet(count)
+    }
+
+    /**
+     * Record CAN Bus transmit / command event.
+     */
+    fun recordCanTx(count: Int = 1) {
+        if (isSessionActive) canTxCounter.addAndGet(count)
+    }
+
+    /**
+     * Attaches a [Window.OnFrameMetricsAvailableListener] to monitor FPS, frame time, and jank.
+     */
+    fun attachWindow(window: Window) {
+        synchronized(lock) {
+            detachWindowInternal()
+            val listener = Window.OnFrameMetricsAvailableListener { _, frameMetrics, _ ->
+                if (!isSessionActive) return@OnFrameMetricsAvailableListener
+                frameCounter.incrementAndGet()
+                val durationNs = frameMetrics.getMetric(FrameMetrics.TOTAL_DURATION)
+                var currentMax = maxFrameNs.get()
+                while (durationNs > currentMax) {
+                    if (maxFrameNs.compareAndSet(currentMax, durationNs)) break
+                    currentMax = maxFrameNs.get()
+                }
+                val durationMs = durationNs / 1_000_000f
+                if (durationMs > 33.3f) {
+                    jankCounter.incrementAndGet()
+                }
+                if (durationMs > 66.6f) {
+                    val layoutNs = frameMetrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION)
+                    val drawNs = frameMetrics.getMetric(FrameMetrics.DRAW_DURATION)
+                    val issueNs = frameMetrics.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION)
+                    val swapNs = frameMetrics.getMetric(FrameMetrics.SWAP_BUFFERS_DURATION)
+                    val gpuMs = (issueNs + swapNs) / 1_000_000f
+                    log(
+                        "FrameJank",
+                        String.format(
+                            Locale.US,
+                            "JANK_FRAME totalMs=%.1f layoutMs=%.1f drawMs=%.1f gpuMs=%.1f",
+                            durationMs,
+                            layoutNs / 1_000_000f,
+                            drawNs / 1_000_000f,
+                            gpuMs,
+                        ),
+                    )
+                }
+            }
+            frameMetricsListener = listener
+            attachedWindow = WeakReference(window)
+            try {
+                window.addOnFrameMetricsAvailableListener(listener, mainHandler)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to attach frame metrics listener", e)
+            }
+        }
+    }
+
+    /**
+     * Detaches frame metrics listener from [window].
+     */
+    fun detachWindow(window: Window) {
+        synchronized(lock) {
+            if (attachedWindow?.get() === window) {
+                detachWindowInternal()
+            }
+        }
+    }
+
+    private fun detachWindowInternal() {
+        val win = attachedWindow?.get()
+        val listener = frameMetricsListener
+        if (win != null && listener != null) {
+            runCatching { win.removeOnFrameMetricsAvailableListener(listener) }
+        }
+        frameMetricsListener = null
+        attachedWindow = null
     }
 
     /**
@@ -152,6 +262,17 @@ object DclLogRecorder {
                 return
             }
 
+            // Reset counters & metrics
+            canRxCounter.set(0)
+            canTxCounter.set(0)
+            frameCounter.set(0)
+            jankCounter.set(0)
+            maxFrameNs.set(0L)
+            lastSampleRealtimeMs = SystemClock.elapsedRealtime()
+            lastCpuTimeMs = Process.getElapsedCpuTime()
+            lastBinderRx = Debug.getBinderReceivedTransactions().toLong()
+            lastBinderTx = Debug.getBinderSentTransactions().toLong()
+
             // Start new session
             isSessionActive = true
             val logsDir = resolveLogsDir(appCtx)
@@ -171,6 +292,7 @@ object DclLogRecorder {
                 append("========================================\n")
             }
             writeRaw(newFile, header)
+            scheduleMetricsSampling(appCtx)
             Log.i(TAG, "DCL logging session started (file=${newFile.absolutePath}, reason=$reason, durationMs=$durationMs)")
         }
     }
@@ -379,6 +501,8 @@ object DclLogRecorder {
             if (!isSessionActive) return
             isSessionActive = false
             mainHandler.removeCallbacks(stopRunnable)
+            metricsRunnable?.let { mainHandler.removeCallbacks(it) }
+            metricsRunnable = null
             val file = activeFile
             if (file != null) {
                 val footer = buildString {
@@ -392,6 +516,91 @@ object DclLogRecorder {
             activeFile = null
             Log.i(TAG, "DCL logging session stopped ($reason)")
         }
+    }
+
+    private fun scheduleMetricsSampling(context: Context) {
+        metricsRunnable?.let { mainHandler.removeCallbacks(it) }
+        val r = object : Runnable {
+            override fun run() {
+                synchronized(lock) {
+                    if (!isSessionActive) return
+                    sampleAndLogMetrics(context)
+                    mainHandler.postDelayed(this, SAMPLE_INTERVAL_MS)
+                }
+            }
+        }
+        metricsRunnable = r
+        mainHandler.postDelayed(r, SAMPLE_INTERVAL_MS)
+    }
+
+    private fun sampleAndLogMetrics(context: Context) {
+        val nowRealtime = SystemClock.elapsedRealtime()
+        val intervalMs = (nowRealtime - lastSampleRealtimeMs).coerceAtLeast(1L)
+        val intervalSec = intervalMs / 1000f
+
+        val nowCpuTime = Process.getElapsedCpuTime()
+        val cpuTimeDelta = (nowCpuTime - lastCpuTimeMs).coerceAtLeast(0L)
+        val cores = Runtime.getRuntime().availableProcessors()
+        val cpuPercentAllCores = (cpuTimeDelta.toFloat() / intervalMs.toFloat()) * 100f
+        val cpuPercentPerCore = cpuPercentAllCores / cores
+
+        lastSampleRealtimeMs = nowRealtime
+        lastCpuTimeMs = nowCpuTime
+
+        val runtime = Runtime.getRuntime()
+        val javaUsedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+        val javaMaxMb = runtime.maxMemory() / (1024 * 1024)
+        val nativeAllocMb = Debug.getNativeHeapAllocatedSize() / (1024 * 1024)
+
+        var sysAvailMb = -1L
+        var sysTotalMb = -1L
+        runCatching {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            if (am != null) {
+                val memInfo = ActivityManager.MemoryInfo()
+                am.getMemoryInfo(memInfo)
+                sysAvailMb = memInfo.availMem / (1024 * 1024)
+                sysTotalMb = memInfo.totalMem / (1024 * 1024)
+            }
+        }
+
+        val activeThreads = Thread.activeCount()
+
+        val nowBinderRx = Debug.getBinderReceivedTransactions().toLong()
+        val nowBinderTx = Debug.getBinderSentTransactions().toLong()
+        val binderRxDelta = (nowBinderRx - lastBinderRx).coerceAtLeast(0L)
+        val binderTxDelta = (nowBinderTx - lastBinderTx).coerceAtLeast(0L)
+        lastBinderRx = nowBinderRx
+        lastBinderTx = nowBinderTx
+
+        val rxCount = canRxCounter.getAndSet(0)
+        val txCount = canTxCounter.getAndSet(0)
+        val canRxRate = rxCount / intervalSec
+        val canTxRate = txCount / intervalSec
+
+        val frames = frameCounter.getAndSet(0)
+        val janks = jankCounter.getAndSet(0)
+        val maxFrameDurationNs = maxFrameNs.getAndSet(0L)
+        val maxFrameMsVal = maxFrameDurationNs / 1_000_000f
+        val fps = frames / intervalSec
+
+        val msg = buildString {
+            append("SYS_METRICS ")
+            append("cpu=").append(String.format(Locale.US, "%.1f%%", cpuPercentAllCores))
+            append(" (perCore=").append(String.format(Locale.US, "%.1f%%", cpuPercentPerCore))
+            append(", cores=").append(cores).append(")")
+            append(" javaHeap=").append(javaUsedMb).append("/").append(javaMaxMb).append("MB")
+            append(" nativeAlloc=").append(nativeAllocMb).append("MB")
+            if (sysAvailMb >= 0) append(" sysMemAvail=").append(sysAvailMb).append("/").append(sysTotalMb).append("MB")
+            append(" threads=").append(activeThreads)
+            append(" binderRx=").append(binderRxDelta).append(" binderTx=").append(binderTxDelta)
+            append(" fps=").append(String.format(Locale.US, "%.1f", fps))
+            append(" jank=").append(janks)
+            append(" maxFrameMs=").append(String.format(Locale.US, "%.1f", maxFrameMsVal))
+            append(" canRx=").append(String.format(Locale.US, "%.1f/s", canRxRate))
+            append(" canTx=").append(String.format(Locale.US, "%.1f/s", canTxRate))
+        }
+        log("SysMetrics", msg)
     }
 
     private fun resolveLogsDir(context: Context): File {

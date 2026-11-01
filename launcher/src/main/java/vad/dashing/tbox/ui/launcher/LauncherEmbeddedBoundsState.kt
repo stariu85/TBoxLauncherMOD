@@ -115,4 +115,34 @@ object LauncherEmbeddedBoundsState {
         )
         return rect
     }
+
+    /** Small square freeform window centered vertically within the ADAS zone. */
+    fun adasSquareBounds(context: android.content.Context? = null): Rect {
+        val adasZoneTop = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
+        val adasZoneBottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
+        val adasZoneHeight = (adasZoneBottom - adasZoneTop).coerceAtLeast(300)
+
+        val leftPanel = leftPanelBounds
+        val width = if (leftPanel != null && leftPanel.width() > 200) {
+            leftPanel.width()
+        } else {
+            val density = context?.resources?.displayMetrics?.density ?: 1.0f
+            val sidebarDp = context?.let { LauncherAppConfigStore.sidebarWidthDp(it) } ?: 344
+            (sidebarDp * density).toInt().coerceAtLeast(300)
+        }
+        val sideLength = width.coerceAtMost(adasZoneHeight)
+        val top = adasZoneTop + (adasZoneHeight - sideLength) / 2
+        val rect = Rect(0, top, width, top + sideLength)
+        vad.dashing.tbox.DclLogRecorder.logAdasBounds(
+            "adasSquareBounds()",
+            leftPanelBounds,
+            contentRowBounds,
+            embeddedZoneBounds,
+            screenBounds,
+            rect,
+            topHeaderBottomPx,
+            bottomBarTopPx,
+        )
+        return rect
+    }
 }

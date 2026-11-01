@@ -1,6 +1,9 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,7 +63,8 @@ enum class VehicleSettingsSection {
 fun LauncherVehicleSectionCard(
     title: String,
     subtitle: String,
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    iconPainter: Painter? = null,
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
@@ -85,7 +89,16 @@ fun LauncherVehicleSectionCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(icon, null, tint = LauncherColors.AccentCyan, modifier = Modifier.size(22.dp))
+                if (iconPainter != null) {
+                    Image(
+                        painter = iconPainter,
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(LauncherColors.AccentCyan),
+                        modifier = Modifier.size(22.dp)
+                    )
+                } else if (icon != null) {
+                    Icon(icon, null, tint = LauncherColors.AccentCyan, modifier = Modifier.size(22.dp))
+                }
                 Column {
                     Text(
                         text = title,

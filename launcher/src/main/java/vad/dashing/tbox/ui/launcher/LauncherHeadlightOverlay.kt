@@ -83,22 +83,11 @@ fun LauncherHeadlightOverlay(
     modifier: Modifier = Modifier,
 ) {
     if (frame == null) return
-    val isLong = beams.highBeam || hma == LauncherAdasAssistIcon.Active
-    val isShort = !isLong && (beams.lowBeam || hma == LauncherAdasAssistIcon.Dark)
-    if (!isLong && !isShort) return
 
-    val color = if (isLong) Color(0xFFEAF4FF) else Color(0xFFFFF1C2)
-    val coreAlpha = if (isLong) 0.58f else 0.36f
-    val leftFan = if (isLong) {
-        if (frame.leftHighFan.size >= 2) frame.leftHighFan else frame.leftLowFan
-    } else {
-        if (frame.leftLowFan.size >= 2) frame.leftLowFan else frame.leftShortFan
-    }
-    val rightFan = if (isLong) {
-        if (frame.rightHighFan.size >= 2) frame.rightHighFan else frame.rightLowFan
-    } else {
-        if (frame.rightLowFan.size >= 2) frame.rightLowFan else frame.rightShortFan
-    }
+    val color = Color(0xFFFFF1C2)
+    val coreAlpha = 0.36f
+    val leftFan = if (frame.leftLowFan.size >= 2) frame.leftLowFan else frame.leftShortFan
+    val rightFan = if (frame.rightLowFan.size >= 2) frame.rightLowFan else frame.rightShortFan
 
     Canvas(modifier = modifier.fillMaxSize()) {
         drawHeadlightCone(

@@ -158,12 +158,17 @@ fun LauncherRightPanel(
     val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
     val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
 
+    val cruisePresetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow.collectAsStateWithLifecycle()
+    val tankCapacityLiters = remember(context, cruisePresetsRevision) {
+        LauncherAppConfigStore.fuelTankCapacityLiters(context)
+    }
+
     val usedFuelLiters = fuelLiters
         ?: fuelLevelCalibratedLitersActual
         ?: fuelLevelCalibratedLiters
-        ?: (fuelPctFiltered ?: fuelPctRaw)?.let { 57.0f * (it.toFloat() / 100.0f) }
+        ?: (fuelPctFiltered ?: fuelPctRaw)?.let { tankCapacityLiters * (it.toFloat() / 100.0f) }
 
-    val freeTankLiters = usedFuelLiters?.let { (57.0f - it).coerceIn(0.0f, 57.0f) }
+    val freeTankLiters = usedFuelLiters?.let { (tankCapacityLiters - it).coerceIn(0.0f, tankCapacityLiters) }
 
     var addMenuVisible by remember { mutableStateOf(false) }
     var appPickerVisible by remember { mutableStateOf(false) }
@@ -2708,9 +2713,9 @@ private fun LauncherVehicleStatusCard(
 
         Spacer(modifier = Modifier.width(4.dp))
 
-        // Right side: 3 circular buttons (Car, System, DCL -> Launcher settings)
+        // Right side: 4 circular buttons (Car, System, DCL, Android settings)
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxHeight(),
         ) {
@@ -2724,11 +2729,13 @@ private fun LauncherVehicleStatusCard(
             } else {
                 Color.Black.copy(alpha = 0.20f)
             }
+            val btnSize = 38.dp
+            val iconSize = 18.dp
 
             // Button 1: Car settings (icon)
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(btnSize)
                     .clip(CircleShape)
                     .background(btnBg)
                     .border(1.dp, btnBorder, CircleShape)
@@ -2740,7 +2747,7 @@ private fun LauncherVehicleStatusCard(
                 Image(
                     painter = painterResource(R.drawable.ic_widget_settings_car),
                     contentDescription = stringResource(R.string.launcher_settings_car_btn),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(iconSize),
                     colorFilter = ColorFilter.tint(valueColor),
                 )
             }
@@ -2748,7 +2755,7 @@ private fun LauncherVehicleStatusCard(
             // Button 2: System settings (icon)
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(btnSize)
                     .clip(CircleShape)
                     .background(btnBg)
                     .border(1.dp, btnBorder, CircleShape)
@@ -2760,7 +2767,7 @@ private fun LauncherVehicleStatusCard(
                 Image(
                     painter = painterResource(R.drawable.ic_widget_settings_system),
                     contentDescription = stringResource(R.string.launcher_settings_system_btn),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(iconSize),
                     colorFilter = ColorFilter.tint(valueColor),
                 )
             }
@@ -2768,7 +2775,7 @@ private fun LauncherVehicleStatusCard(
             // Button 3: Launcher settings (DCL)
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(btnSize)
                     .clip(CircleShape)
                     .background(btnBg)
                     .border(1.dp, btnBorder, CircleShape)
@@ -2780,8 +2787,28 @@ private fun LauncherVehicleStatusCard(
                 Text(
                     text = "DCL",
                     color = valueColor,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
+                )
+            }
+
+            // Button 4: Android settings (icon)
+            Box(
+                modifier = Modifier
+                    .size(btnSize)
+                    .clip(CircleShape)
+                    .background(btnBg)
+                    .border(1.dp, btnBorder, CircleShape)
+                    .clickable {
+                        launchAndroidSettings(context)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_settings_android),
+                    contentDescription = stringResource(R.string.launcher_settings_android_btn),
+                    modifier = Modifier.size(iconSize),
+                    colorFilter = ColorFilter.tint(valueColor),
                 )
             }
         }

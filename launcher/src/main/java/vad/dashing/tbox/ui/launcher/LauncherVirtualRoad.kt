@@ -528,17 +528,9 @@ private fun DrawScope.drawVirtualRoad(
             val isGreenLane = activeAdasLane && !lkaActive && laneState != LauncherAdasLaneVisualization.Warning
 
             if (isGreenLane) {
-                // Soft green outer glow matching exact 3D perspective road dash
+                // Clean green dash matching exact 3D perspective road dash (no outer glow)
                 drawLine(
-                    color = LdwBrightGreen.copy(alpha = 0.40f * alpha),
-                    start = Offset(x1, y),
-                    end = Offset(x2, y + dashLen),
-                    strokeWidth = (6.0f + 6.0f * t) * (if (laneProgress > 0f) 1.25f else 1.0f),
-                    cap = StrokeCap.Round,
-                )
-                // Bright green core dash matching exact 3D perspective road dash
-                drawLine(
-                    color = LdwBrightGreen.copy(alpha = 0.95f * (alpha * alpha).coerceIn(0f, 1f)),
+                    color = LdwBrightGreen.copy(alpha = 0.95f * alpha),
                     start = Offset(x1, y),
                     end = Offset(x2, y + dashLen),
                     strokeWidth = (2.2f + 2.2f * t) * (if (laneProgress > 0f) 1.25f else 1.0f),
@@ -870,7 +862,6 @@ private fun DrawScope.drawAccDistanceSteps(
 
 private val LdwBrightGreen = Color(0xFF22C55E)
 private val LkaBlueCore = Color(0xFF3B82F6)
-private val LkaBlueOuter = Color(0xFF60A5FA)
 
 private fun createLaneBrush(
     color: Color,
@@ -943,22 +934,8 @@ private fun DrawScope.drawAdasLaneAssist(
 
         if (isWarning) {
             val warningColor = Color(0xFFEF4444)
-            val outerBrush = createLaneBrush(
+            val lineBrush = createLaneBrush(
                 color = warningColor,
-                maxAlpha = 0.40f * alphaFactor,
-                coreFade = false,
-                startY = startY,
-                endY = endY,
-            )
-            val midBrush = createLaneBrush(
-                color = warningColor,
-                maxAlpha = 0.65f * alphaFactor,
-                coreFade = false,
-                startY = startY,
-                endY = endY,
-            )
-            val coreBrush = createLaneBrush(
-                color = Color(0xFFFF3333),
                 maxAlpha = 0.95f * alphaFactor,
                 coreFade = true,
                 startY = startY,
@@ -967,38 +944,14 @@ private fun DrawScope.drawAdasLaneAssist(
 
             drawPath(
                 path = lanePath,
-                brush = outerBrush,
-                style = Stroke(width = 11.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-            drawPath(
-                path = lanePath,
-                brush = midBrush,
-                style = Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-            drawPath(
-                path = lanePath,
-                brush = coreBrush,
-                style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                brush = lineBrush,
+                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         } else if (adas.lkaStatusCode == 2) {
-            // TJA / ICA / LKA active: Solid Blue with gradient fade and soft blur towards ends
-            val outerBrush = createLaneBrush(
-                color = LkaBlueOuter,
-                maxAlpha = 0.28f * alphaFactor,
-                coreFade = false,
-                startY = startY,
-                endY = endY,
-            )
-            val midBrush = createLaneBrush(
+            // TJA / ICA / LKA active: Clean Solid Blue line with gradient fade towards ends (no outer glow)
+            val lineBrush = createLaneBrush(
                 color = LkaBlueCore,
-                maxAlpha = 0.45f * alphaFactor,
-                coreFade = false,
-                startY = startY,
-                endY = endY,
-            )
-            val coreBrush = createLaneBrush(
-                color = LkaBlueCore,
-                maxAlpha = 0.92f * alphaFactor,
+                maxAlpha = 0.95f * alphaFactor,
                 coreFade = true,
                 startY = startY,
                 endY = endY,
@@ -1006,18 +959,8 @@ private fun DrawScope.drawAdasLaneAssist(
 
             drawPath(
                 path = lanePath,
-                brush = outerBrush,
-                style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-            drawPath(
-                path = lanePath,
-                brush = midBrush,
-                style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-            drawPath(
-                path = lanePath,
-                brush = coreBrush,
-                style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                brush = lineBrush,
+                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
         // For green lane tracking (LDW / lasMode = 1), green dashes are rendered

@@ -262,10 +262,24 @@ fun LauncherLeftPanel(
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
         LauncherAppConfigStore.driveModeGlowVisible(context)
     }
+    val isDarkTheme = LauncherThemeState.darkTheme
+    val solarDaytime = rememberSolarDaytimeState()
+    val isNight = if (solarDaytime != null) !solarDaytime else {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        hour < 6 || hour >= 21
+    }
+
     val headlightBeamsRevision by LauncherAppConfigStore.headlightBeamsRevisionFlow
         .collectAsStateWithLifecycle()
-    val headlightBeamsVisible = remember(context, headlightBeamsRevision) {
-        LauncherAppConfigStore.headlightBeamsVisible(context)
+    val headlightBeamsMode = remember(context, headlightBeamsRevision) {
+        LauncherAppConfigStore.headlightBeamsMode(context)
+    }
+
+    val projectHeadlightsEnabled = when (headlightBeamsMode) {
+        HEADLIGHT_BEAMS_OFF -> false
+        HEADLIGHT_BEAMS_DARK_THEME -> isDarkTheme
+        HEADLIGHT_BEAMS_NIGHT_ONLY -> isNight
+        else -> false
     }
     val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle()
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
@@ -459,11 +473,12 @@ fun LauncherLeftPanel(
                 "drive_mode" -> driveModeBarVisible
                 "assist", "presets" -> assistPanelVisible
                 "body_controls" -> bodyControlsPanelVisible
+                "media_player" -> miniPlayerVisible
                 else -> false
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -479,7 +494,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = "assist" in activeTopPanels
@@ -516,6 +531,11 @@ fun LauncherLeftPanel(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
+                "media_player" -> {
+                    if (miniPlayerVisible) {
+                        LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }
@@ -571,7 +591,7 @@ fun LauncherLeftPanel(
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
                     projectPdcRings = !racing,
-                    projectHeadlights = !racing && headlightBeamsVisible && headlightBeams.any,
+                    projectHeadlights = !racing && projectHeadlightsEnabled,
                     textureSurface = racing,
                     modifier = Modifier
                         .fillMaxSize()
@@ -766,7 +786,7 @@ fun LauncherLeftPanel(
         }
 
         // --- BOTTOM OVERLAY PANELS LAYER ---
-        val bottomHasPanel = !racing && (miniPlayerVisible || activeBottomPanels.isNotEmpty())
+        val bottomHasPanel = !racing && activeBottomPanels.isNotEmpty()
 
         if (bottomHasPanel) {
             Box(
@@ -780,9 +800,6 @@ fun LauncherLeftPanel(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (miniPlayerVisible) {
-                        LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
-                    }
                     activeBottomPanels.forEach { panelId ->
                         DraggableAdasPanel(
                             panelId = panelId,

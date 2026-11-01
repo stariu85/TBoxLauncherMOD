@@ -581,7 +581,7 @@ internal class MbCanSignalStateEngine(
             else -> MbCanBinaryState.Unknown
         }
 
-        /** [MBFrontDefrostingView.getValue] toggle target for mbCAN. */
+        /** [MBFrontDefrostingView.getValue] toggle target for mbCAN. Always target defrost-only (4) when turning on. */
         fun resolveHvacFrontDefrostMbCanToggleTarget(currentRaw: Int): Int {
             val active = decodeHvacFrontDefrostMbCanRaw(currentRaw) is MbCanBinaryState.On
             return if (active) {
@@ -591,11 +591,7 @@ internal class MbCanSignalStateEngine(
                     MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE
                 }
             } else {
-                if (currentRaw == MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT) {
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST_FOOT
-                } else {
-                    MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST
-                }
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST
             }
         }
 

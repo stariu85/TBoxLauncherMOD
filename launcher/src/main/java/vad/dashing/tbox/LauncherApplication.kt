@@ -23,6 +23,8 @@ class LauncherApplication : Application() {
         DiagFileLog.install(this)
         val settings = SettingsManager(this)
         appScope.launch {
+            runCatching { clearCacheOnAppUpdate(settings) }
+                .onFailure { Log.w(TAG, "App cache clear on update failed", it) }
             runCatching { syncHuRebootAfterUpdate(settings) }
                 .onFailure { Log.w(TAG, "HU reboot-after-update sync failed", it) }
             runCatching {
@@ -31,6 +33,17 @@ class LauncherApplication : Application() {
                 Log.w(TAG, "CAN auto-bind failed", it)
             }
         }
+    }
+
+    private suspend fun clearCacheOnAppUpdate(settings: SettingsManager) {
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        settings.clearCacheOnAppUpdate(versionCode)
     }
 
     private suspend fun syncHuRebootAfterUpdate(settings: SettingsManager) {

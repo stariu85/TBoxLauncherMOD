@@ -247,6 +247,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("close_apps", "Закрыть приложения", R.drawable.close_apps_24),
     LauncherDockButtonDescriptor("dcl_log", "Запись лога (5 мин)", R.drawable.menu_icon_log),
     LauncherDockButtonDescriptor("car_dialer", "Телефон", R.drawable.ic_widget_phone),
+    LauncherDockButtonDescriptor("radio_app", "Радио", R.drawable.radio_vtkb246z55e9),
 )
 
 @Composable
@@ -1189,7 +1190,7 @@ private fun LauncherBottomDockButtonContent(
                 Image(
                     painter = painterResource(drawableRes),
                     contentDescription = "Направление обдува",
-                    colorFilter = ColorFilter.tint(HvacOnColor),
+                    colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                     modifier = Modifier.size(dockDp(31.68f)),
                 )
             }
@@ -1216,7 +1217,7 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(R.drawable.undo_24),
                 contentDescription = stringResource(R.string.launcher_back_cd),
-                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(17.35f)),
             )
         }
@@ -1239,7 +1240,7 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(R.drawable.ic_all_apps_dock),
                 contentDescription = "Все приложения",
-                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(21.42f)),
             )
         }
@@ -1251,7 +1252,7 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(R.drawable.ic_undo_app),
                 contentDescription = "Предыдущее приложение",
-                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(36.29f)),
             )
         }
@@ -1263,7 +1264,7 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(R.drawable.close_apps_24),
                 contentDescription = "Закрыть приложения",
-                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(28.98f)),
             )
         }
@@ -1294,7 +1295,7 @@ private fun LauncherBottomDockButtonContent(
             }
 
             val isLoggingActive = vad.dashing.tbox.DclLogRecorder.isLoggingActive()
-            val tint = if (isLoggingActive) Color(0xFFEF4444) else (if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151))
+            val tint = if (isLoggingActive) Color(0xFFEF4444) else (if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151))
 
             LauncherDockIcon(
                 onClick = {
@@ -1327,7 +1328,19 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(R.drawable.ic_widget_phone),
                 contentDescription = "Телефон",
-                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) LauncherColors.AccentCyan else Color(0xFF374151)),
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(25.2f)),
+            )
+        }
+        "radio_app", "radio", "com.wt.multimedia.local" -> LauncherDockIcon(
+            onClick = {
+                launchLauncherApp(context, "com.wt.multimedia.local")
+            },
+        ) {
+            Image(
+                painter = painterResource(R.drawable.radio_vtkb246z55e9),
+                contentDescription = "Радио",
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(28f)),
             )
         }
@@ -1375,7 +1388,7 @@ private fun LauncherBottomDockButtonContent(
             LauncherSeatVentIcon(raw = leftRaw)
         }
         "recirc" -> LauncherDockIcon(onClick = { sendToggleHvacAirRecirculation(context) }) {
-            LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc, sizeDp = 28.6f)
+            LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc, sizeDp = 31.46f)
         }
         "seat_heat_right" -> LauncherDockIcon(onClick = {
             sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
@@ -1509,26 +1522,37 @@ private fun LauncherBottomDockButtonContent(
             }
             else -> {
                 val pkg = buttonId.removePrefix("pkg:").removePrefix("app:")
-                val rawApps = rememberLaunchableAppEntries(null, 0)
-                val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
-                val visibleApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
-                val app = remember(pkg, visibleApps) { visibleApps.firstOrNull { it.packageName == pkg } }
-
-                LauncherDockIcon(onClick = { launchLauncherApp(context, pkg) }) {
-                    if (app?.icon != null) {
+                if (pkg == "com.wt.multimedia.local") {
+                    LauncherDockIcon(onClick = { launchLauncherApp(context, pkg) }) {
                         Image(
-                            bitmap = app.icon,
-                            contentDescription = app.label,
+                            painter = painterResource(R.drawable.radio_vtkb246z55e9),
+                            contentDescription = "Радио",
+                            colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                             modifier = Modifier.size(dockDp(28f)),
-                            contentScale = ContentScale.Fit,
                         )
-                    } else {
-                        Text(
-                            text = (app?.label ?: pkg.substringAfterLast('.')).take(1).uppercase(),
-                            color = LauncherColors.AccentCyan,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
+                    }
+                } else {
+                    val rawApps = rememberLaunchableAppEntries(null, 0)
+                    val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
+                    val visibleApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
+                    val app = remember(pkg, visibleApps) { visibleApps.firstOrNull { it.packageName == pkg } }
+
+                    LauncherDockIcon(onClick = { launchLauncherApp(context, pkg) }) {
+                        if (app?.icon != null) {
+                            Image(
+                                bitmap = app.icon,
+                                contentDescription = app.label,
+                                modifier = Modifier.size(dockDp(28f)),
+                                contentScale = ContentScale.Fit,
+                            )
+                        } else {
+                            Text(
+                                text = (app?.label ?: pkg.substringAfterLast('.')).take(1).uppercase(),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
             }
