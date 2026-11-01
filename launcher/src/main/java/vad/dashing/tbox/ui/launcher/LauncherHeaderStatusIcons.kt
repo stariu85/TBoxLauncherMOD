@@ -1383,13 +1383,24 @@ private fun rememberSatelliteInfo(
     val tbmLocateStatus by tbmRepo.locateStatusSignal.collectAsStateWithLifecycle()
     val tbmSpeedSource by tbmRepo.geoSpeedSource.collectAsStateWithLifecycle()
 
+    var pollTick by remember { mutableStateOf(0) }
     val isTbmConnected = tbmConnState is TbmConnectionState.Connected
     val isTbmGeoAvailable = isTbmConnected && (tbmSatVisible != null || tbmSatUsed != null || tbmFixValid != null || tbmLocateStatus != null)
 
     val now = System.currentTimeMillis()
     val isTboxLocFresh = tboxConnected &&
             locValues.updateTime != null &&
-            (now - locValues.updateTime.time <= 15_000L)
+            (now - locValues.updateTime.time <= 15_000L) &&
+            (pollTick >= 0)
+
+    LaunchedEffect(isTbmGeoAvailable, isTboxLocFresh) {
+        if (!isTbmGeoAvailable || !isTboxLocFresh) {
+            while (true) {
+                delay(10_000L)
+                pollTick++
+            }
+        }
+    }
 
     return resolveSatelliteInfo(
         isTbmGeoAvailable = isTbmGeoAvailable,

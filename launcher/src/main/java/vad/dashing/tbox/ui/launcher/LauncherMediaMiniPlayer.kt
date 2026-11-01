@@ -61,6 +61,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import android.view.SoundEffectConstants
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -372,13 +374,45 @@ fun LauncherMediaMiniPlayer(
             )
         }
     } else {
+        val view = LocalView.current
+        var isFlashedState by remember { mutableStateOf(false) }
+        val isFlashed by animateColorAsState(
+            targetValue = if (isFlashedState) Color.Gray.copy(alpha = 0.5f) else Color.Transparent,
+            animationSpec = tween(durationMillis = 120),
+            label = "widgetFlash",
+        )
+        LaunchedEffect(isFlashedState) {
+            if (isFlashedState) {
+                kotlinx.coroutines.delay(120L)
+                isFlashedState = false
+            }
+        }
+
+        val triggerPlayAction = {
+            view.playSoundEffect(SoundEffectConstants.CLICK)
+            isFlashedState = true
+            if (activePkg.isBlank()) {
+                pickerVisible = true
+            } else {
+                SharedMediaControlService.playPause(
+                    context = context,
+                    selectedPackages = monitorPackages.ifEmpty { setOf(activePkg) },
+                    preferredPackage = activePkg,
+                    keepPlayerForeground = false,
+                    launchAppIfNeeded = true,
+                )
+            }
+        }
+
         val playButtonSize = activePlayerHeight * 0.6f
         Box(
             modifier = modifier
                 .fillMaxWidth()
                 .height(activePlayerHeight)
                 .clip(RoundedCornerShape(16.dp))
-                .background(mediaCardColor),
+                .background(mediaCardColor)
+                .background(isFlashed)
+                .clickable(onClick = triggerPlayAction),
             contentAlignment = Alignment.Center,
         ) {
             RotatingPlayerNameText(
@@ -391,20 +425,7 @@ fun LauncherMediaMiniPlayer(
                 modifier = Modifier
                     .size(playButtonSize)
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0x33FFFFFF) else Color(0x1A000000))
-                    .clickable {
-                        if (activePkg.isBlank()) {
-                            pickerVisible = true
-                        } else {
-                            SharedMediaControlService.playPause(
-                                context = context,
-                                selectedPackages = monitorPackages.ifEmpty { setOf(activePkg) },
-                                preferredPackage = activePkg,
-                                keepPlayerForeground = false,
-                                launchAppIfNeeded = true,
-                            )
-                        }
-                    },
+                    .background(if (isDark) Color(0x33FFFFFF) else Color(0x1A000000)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -580,9 +601,9 @@ private fun RotatingPlayerNameText(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val fontSizePx = with(density) { 8.dp.toPx() }
+    val fontSizePx = with(density) { 10.dp.toPx() }
     val playButtonRadiusPx = with(density) { playButtonSize.toPx() / 2f }
-    val pathRadiusPx = playButtonRadiusPx + with(density) { 9.dp.toPx() }
+    val pathRadiusPx = playButtonRadiusPx + with(density) { 10.dp.toPx() }
 
     val infiniteTransition = rememberInfiniteTransition(label = "playerTextRotation")
     val rotationAngle by infiniteTransition.animateFloat(
@@ -607,14 +628,18 @@ private fun RotatingPlayerNameText(
     val formattedText = remember(text, pathRadiusPx, fontSizePx, paint) {
         if (text.isBlank()) ""
         else {
-            val singleUnit = "$text   •   "
-            val unitWidth = paint.measureText(singleUnit)
-            if (unitWidth <= 0f) text
-            else {
-                val circumference = (2 * Math.PI * pathRadiusPx).toFloat()
-                val repeats = (circumference / unitWidth).toInt().coerceAtLeast(1)
-                singleUnit.repeat(repeats)
-            }
+            val circumference = (2 * Math.PI * pathRadiusPx).toFloat()
+            val count = 4
+            val sectorLength = circumference / count
+            val textWidth = paint.measureText(text)
+            val bulletWidth = paint.measureText(" • ")
+            val availableSpace = (sectorLength - textWidth - bulletWidth).coerceAtLeast(0f)
+            val sidePaddingSpace = availableSpace / 2f
+            val spaceWidth = paint.measureText(" ")
+            val spacesCount = if (spaceWidth > 0f) (sidePaddingSpace / spaceWidth).toInt().coerceAtLeast(1) else 2
+            val padding = " ".repeat(spacesCount.coerceIn(1, 25))
+            val sectorUnit = "$padding$text$padding • "
+            sectorUnit.repeat(count)
         }
     }
 
