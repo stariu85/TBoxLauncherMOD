@@ -288,6 +288,14 @@ object MbCanKnownVehiclePropertyId {
     const val STATIC_EFFECT = 169
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_WELCOME_SEAT] — 1 off, 2 on. */
     const val WELCOME_SEAT = 190
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SEAT_POSITION_STOREREQ] — store preset slot (1..3). */
+    const val SEAT_POSITION_STOREREQ = 270
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SEAT_POSITION_CALLOUTREQ] — callout preset slot (1..3). */
+    const val SEAT_POSITION_CALLOUTREQ = 271
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PASSENGER_SEAT_BACK_FR] — passenger seat back incline. */
+    const val PASSENGER_SEAT_BACK_FR = 179
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PASSENGER_SEAT_FR] — passenger seat forward/backward. */
+    const val PASSENGER_SEAT_FR = 180
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_UNLOCK_ANIMATION] — 1 off, 2 on. */
     const val UNLOCK_ANIMATION = 206
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_LOCK_ANIMATION] — 1 off, 2 on. */

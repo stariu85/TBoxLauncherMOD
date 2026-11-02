@@ -9,7 +9,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1097,12 +1100,21 @@ fun LauncherRightPanel(
         )
 
         // Round Theme Toggle Button in the bottom-left corner
+        val themeOffsetRevision by LauncherAppConfigStore.themeButtonOffsetRevisionFlow.collectAsStateWithLifecycle()
+        var themeOffsetX by remember(context, themeOffsetRevision) {
+            mutableFloatStateOf(LauncherAppConfigStore.themeButtonOffsetX(context))
+        }
+        var themeOffsetY by remember(context, themeOffsetRevision) {
+            mutableFloatStateOf(LauncherAppConfigStore.themeButtonOffsetY(context))
+        }
+
         if (LauncherThemeState.themeButtonVisible) {
             val isDark = LauncherThemeState.darkTheme
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .zIndex(500f)
+                    .offset { IntOffset(themeOffsetX.roundToInt(), themeOffsetY.roundToInt()) }
                     .padding(start = 12.dp, bottom = 12.dp)
                     .size(42.dp)
                     .clip(CircleShape)
@@ -1111,12 +1123,32 @@ fun LauncherRightPanel(
                         else Color.White.copy(alpha = 0.90f)
                     )
                     .border(
-                        width = 1.dp,
-                        color = if (isDark) LauncherColors.AccentCyan.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.20f),
+                        width = if (isDragMode) 1.5.dp else 1.dp,
+                        color = when {
+                            isDragMode -> LauncherColors.AccentCyan
+                            isDark -> LauncherColors.AccentCyan.copy(alpha = 0.50f)
+                            else -> Color.Black.copy(alpha = 0.20f)
+                        },
                         shape = CircleShape,
                     )
-                    .clickable {
-                        LauncherThemeState.setDarkTheme(context, !isDark)
+                    .pointerInput(isDragMode) {
+                        if (isDragMode) {
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    themeOffsetX += dragAmount.x
+                                    themeOffsetY += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setThemeButtonOffset(context, themeOffsetX, themeOffsetY)
+                                },
+                            )
+                        } else {
+                            detectTapGestures(
+                                onTap = { LauncherThemeState.setDarkTheme(context, !isDark) },
+                                onLongPress = { isDragMode = true },
+                            )
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -1131,6 +1163,157 @@ fun LauncherRightPanel(
                     ),
                 )
             }
+        }
+
+        // Round Seat Memory Button in the bottom-right corner (symmetrical to theme button)
+        var seatMemoryDialogVisible by remember { mutableStateOf(false) }
+        val seatMemoryPanelRevision by LauncherAppConfigStore.seatMemoryAdasPanelRevisionFlow.collectAsStateWithLifecycle()
+        val seatMemoryEnabled = remember(context, seatMemoryPanelRevision) {
+            LauncherAppConfigStore.seatMemoryAdasPanelEnabled(context)
+        }
+        val seatOffsetRevision by LauncherAppConfigStore.seatMemoryButtonOffsetRevisionFlow.collectAsStateWithLifecycle()
+        var seatOffsetX by remember(context, seatOffsetRevision) {
+            mutableFloatStateOf(LauncherAppConfigStore.seatMemoryButtonOffsetX(context))
+        }
+        var seatOffsetY by remember(context, seatOffsetRevision) {
+            mutableFloatStateOf(LauncherAppConfigStore.seatMemoryButtonOffsetY(context))
+        }
+
+        if (seatMemoryEnabled) {
+            val isDark = LauncherThemeState.darkTheme
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .zIndex(500f)
+                    .offset { IntOffset(seatOffsetX.roundToInt(), seatOffsetY.roundToInt()) }
+                    .padding(end = 12.dp, bottom = 12.dp)
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isDark) LauncherColors.CardDarkElevated.copy(alpha = 0.90f)
+                        else Color.White.copy(alpha = 0.90f)
+                    )
+                    .border(
+                        width = if (isDragMode) 1.5.dp else 1.dp,
+                        color = when {
+                            isDragMode -> LauncherColors.AccentCyan
+                            isDark -> LauncherColors.AccentCyan.copy(alpha = 0.50f)
+                            else -> Color.Black.copy(alpha = 0.20f)
+                        },
+                        shape = CircleShape,
+                    )
+                    .pointerInput(isDragMode) {
+                        if (isDragMode) {
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    seatOffsetX += dragAmount.x
+                                    seatOffsetY += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setSeatMemoryButtonOffset(context, seatOffsetX, seatOffsetY)
+                                },
+                            )
+                        } else {
+                            detectTapGestures(
+                                onTap = { seatMemoryDialogVisible = true },
+                                onLongPress = { isDragMode = true },
+                            )
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_seat_memory_btn),
+                    contentDescription = "Память сидений и зеркал",
+                    modifier = Modifier.size(22.dp),
+                    colorFilter = ColorFilter.tint(
+                        if (isDark) LauncherColors.TextPrimary else Color(0xFF374151)
+                    ),
+                )
+            }
+        }
+
+        if (seatMemoryDialogVisible) {
+            SeatMemoryDialog(
+                onDismissRequest = { seatMemoryDialogVisible = false }
+            )
+        }
+
+        // Round Passenger Seat Button in the bottom-right corner (flipped 180 deg)
+        var passengerSeatDialogVisible by remember { mutableStateOf(false) }
+        val passengerSeatOffsetRevision by LauncherAppConfigStore.passengerSeatButtonOffsetRevisionFlow.collectAsStateWithLifecycle()
+        val passengerSeatEnabled = remember(context, passengerSeatOffsetRevision) {
+            LauncherAppConfigStore.passengerSeatButtonEnabled(context)
+        }
+        var passengerOffsetX by remember(context, passengerSeatOffsetRevision) {
+            mutableFloatStateOf(LauncherAppConfigStore.passengerSeatButtonOffsetX(context))
+        }
+        var passengerOffsetY by remember(context, passengerSeatOffsetRevision) {
+            mutableFloatStateOf(LauncherAppConfigStore.passengerSeatButtonOffsetY(context))
+        }
+
+        if (passengerSeatEnabled) {
+            val isDark = LauncherThemeState.darkTheme
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .zIndex(500f)
+                    .offset { IntOffset(passengerOffsetX.roundToInt(), passengerOffsetY.roundToInt()) }
+                    .padding(end = 60.dp, bottom = 12.dp)
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isDark) LauncherColors.CardDarkElevated.copy(alpha = 0.90f)
+                        else Color.White.copy(alpha = 0.90f)
+                    )
+                    .border(
+                        width = if (isDragMode) 1.5.dp else 1.dp,
+                        color = when {
+                            isDragMode -> LauncherColors.AccentCyan
+                            isDark -> LauncherColors.AccentCyan.copy(alpha = 0.50f)
+                            else -> Color.Black.copy(alpha = 0.20f)
+                        },
+                        shape = CircleShape,
+                    )
+                    .pointerInput(isDragMode) {
+                        if (isDragMode) {
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    passengerOffsetX += dragAmount.x
+                                    passengerOffsetY += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setPassengerSeatButtonOffset(context, passengerOffsetX, passengerOffsetY)
+                                },
+                            )
+                        } else {
+                            detectTapGestures(
+                                onTap = { passengerSeatDialogVisible = true },
+                                onLongPress = { isDragMode = true },
+                            )
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_seat_memory_btn),
+                    contentDescription = "Регулировка пассажирского сиденья",
+                    modifier = Modifier
+                        .size(22.dp)
+                        .graphicsLayer { scaleX = -1f },
+                    colorFilter = ColorFilter.tint(
+                        if (isDark) LauncherColors.TextPrimary else Color(0xFF374151)
+                    ),
+                )
+            }
+        }
+
+        if (passengerSeatDialogVisible) {
+            PassengerSeatAdjustDialog(
+                onDismissRequest = { passengerSeatDialogVisible = false }
+            )
         }
 
         LauncherSplitPresetCreateDialog(

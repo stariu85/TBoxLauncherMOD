@@ -229,6 +229,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("hvac_fan_direction", "Направление обдува", R.drawable.ic_widget_fan_face_feet),
     LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
     LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_3),
+    LauncherDockButtonDescriptor("seat_memory", "Память сидений", R.drawable.ic_seat_memory_btn),
     LauncherDockButtonDescriptor("seat_heat_right", "Подогрев пассажира", R.drawable.ic_widget_seat_heat_right),
     LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_3),
     LauncherDockButtonDescriptor("seat_heat_rear_left", "Подогрев зад. лев.", R.drawable.ic_widget_seat_heat_left),
@@ -1388,6 +1389,20 @@ private fun LauncherBottomDockButtonContent(
             sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
         }) {
             LauncherSeatVentIcon(raw = leftRaw)
+        }
+        "seat_memory" -> {
+            var dialogVisible by remember { mutableStateOf(false) }
+            LauncherDockIcon(onClick = { dialogVisible = true }) {
+                Image(
+                    painter = painterResource(R.drawable.ic_seat_memory_btn),
+                    contentDescription = "Память сидений",
+                    modifier = Modifier.size(dockDp(26f)),
+                    colorFilter = ColorFilter.tint(HvacOffColor),
+                )
+            }
+            if (dialogVisible) {
+                SeatMemoryDialog(onDismissRequest = { dialogVisible = false })
+            }
         }
         "recirc" -> LauncherDockIcon(onClick = { sendToggleHvacAirRecirculation(context) }) {
             val isRecircOn = hvacRecirc is MbCanBinaryState.On

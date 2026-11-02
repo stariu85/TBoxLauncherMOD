@@ -1119,6 +1119,13 @@
     <string name="launcher_adas_time_gap">Gap %1$d</string>
     <string name="launcher_adas_title">Driver Assists</string>
     <string name="launcher_vs_bsd_alert_overlay">BSD Alert screen overlay</string>
+    <string name="launcher_vs_seat_memory_adas_panel">Desktop seat memory button</string>
+    <string name="launcher_seat_memory_panel_visible_desc">Show panel with 3 seat &amp; mirror memory presets in the ADAS zone</string>
+    <string name="launcher_vs_seat_memory_preset_name">Preset %1$d name</string>
+    <string name="launcher_vs_seat_memory_preset_edit">Edit preset %1$d name</string>
+    <string name="launcher_seat_memory_adjust_mode">Mirror adjustment</string>
+    <string name="launcher_seat_memory_adjust_hint">Adjust mirrors and long press again to save</string>
+    <string name="launcher_seat_memory_saved">Preset «%1$s» saved</string>
     <string name="launcher_app_drawer_done">Done</string>
     <string name="launcher_app_drawer_drag_hint">Hold and drag an app to the home screen</string>
     <string name="launcher_app_drawer_edit_hint">Tap cross to hide. Drag to grid or dock.</string>

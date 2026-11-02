@@ -58,6 +58,17 @@ private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
 private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
 private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
+private const val KEY_SEAT_MEMORY_ADAS_PANEL_ENABLED = "seat_memory_adas_panel_enabled"
+private const val KEY_SEAT_MEMORY_PRESET_1_NAME = "seat_memory_preset_1_name"
+private const val KEY_SEAT_MEMORY_PRESET_2_NAME = "seat_memory_preset_2_name"
+private const val KEY_SEAT_MEMORY_PRESET_3_NAME = "seat_memory_preset_3_name"
+private const val KEY_THEME_BUTTON_OFFSET_X = "theme_button_offset_x_dp"
+private const val KEY_THEME_BUTTON_OFFSET_Y = "theme_button_offset_y_dp"
+private const val KEY_SEAT_MEMORY_BUTTON_OFFSET_X = "seat_memory_button_offset_x_dp"
+private const val KEY_SEAT_MEMORY_BUTTON_OFFSET_Y = "seat_memory_button_offset_y_dp"
+private const val KEY_PASSENGER_SEAT_BUTTON_ENABLED = "passenger_seat_button_enabled"
+private const val KEY_PASSENGER_SEAT_BUTTON_OFFSET_X = "passenger_seat_button_offset_x_dp"
+private const val KEY_PASSENGER_SEAT_BUTTON_OFFSET_Y = "passenger_seat_button_offset_y_dp"
 private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
 private const val KEY_SPEED_LIMIT_Y_RATIO = "speed_limit_y_ratio"
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
@@ -354,6 +365,14 @@ internal object LauncherAppConfigStore {
     internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
     private val adasBsdAlertOverlayRevision = MutableStateFlow(0)
     internal val adasBsdAlertOverlayRevisionFlow: StateFlow<Int> = adasBsdAlertOverlayRevision
+    private val seatMemoryAdasPanelRevision = MutableStateFlow(0)
+    internal val seatMemoryAdasPanelRevisionFlow: StateFlow<Int> = seatMemoryAdasPanelRevision
+    private val themeButtonOffsetRevision = MutableStateFlow(0)
+    internal val themeButtonOffsetRevisionFlow: StateFlow<Int> = themeButtonOffsetRevision
+    private val seatMemoryButtonOffsetRevision = MutableStateFlow(0)
+    internal val seatMemoryButtonOffsetRevisionFlow: StateFlow<Int> = seatMemoryButtonOffsetRevision
+    private val passengerSeatButtonOffsetRevision = MutableStateFlow(0)
+    internal val passengerSeatButtonOffsetRevisionFlow: StateFlow<Int> = passengerSeatButtonOffsetRevision
     private val speedLimitPositionRevision = MutableStateFlow(0)
     internal val speedLimitPositionRevisionFlow: StateFlow<Int> = speedLimitPositionRevision
     private val climateControlsRevision = MutableStateFlow(0)
@@ -756,6 +775,87 @@ internal object LauncherAppConfigStore {
     fun setAdasBsdAlertOverlayEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_BSD_ALERT_OVERLAY, enabled).apply()
         adasBsdAlertOverlayRevision.value++
+    }
+
+    fun seatMemoryAdasPanelEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SEAT_MEMORY_ADAS_PANEL_ENABLED, true)
+
+    fun setSeatMemoryAdasPanelEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SEAT_MEMORY_ADAS_PANEL_ENABLED, enabled).apply()
+        seatMemoryAdasPanelRevision.value++
+    }
+
+    fun seatMemoryPresetName(context: Context, slot: Int): String {
+        val key = when (slot) {
+            1 -> KEY_SEAT_MEMORY_PRESET_1_NAME
+            2 -> KEY_SEAT_MEMORY_PRESET_2_NAME
+            3 -> KEY_SEAT_MEMORY_PRESET_3_NAME
+            else -> return "M$slot"
+        }
+        val defaultName = "M$slot"
+        return prefs(context).getString(key, defaultName) ?: defaultName
+    }
+
+    fun setSeatMemoryPresetName(context: Context, slot: Int, name: String) {
+        val key = when (slot) {
+            1 -> KEY_SEAT_MEMORY_PRESET_1_NAME
+            2 -> KEY_SEAT_MEMORY_PRESET_2_NAME
+            3 -> KEY_SEAT_MEMORY_PRESET_3_NAME
+            else -> return
+        }
+        val cleanName = name.trim().ifBlank { "M$slot" }
+        prefs(context).edit().putString(key, cleanName).apply()
+        seatMemoryAdasPanelRevision.value++
+    }
+
+    fun themeButtonOffsetX(context: Context): Float =
+        prefs(context).getFloat(KEY_THEME_BUTTON_OFFSET_X, 0f)
+
+    fun themeButtonOffsetY(context: Context): Float =
+        prefs(context).getFloat(KEY_THEME_BUTTON_OFFSET_Y, 0f)
+
+    fun setThemeButtonOffset(context: Context, xDp: Float, yDp: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_THEME_BUTTON_OFFSET_X, xDp)
+            .putFloat(KEY_THEME_BUTTON_OFFSET_Y, yDp)
+            .apply()
+        themeButtonOffsetRevision.value++
+    }
+
+    fun seatMemoryButtonOffsetX(context: Context): Float =
+        prefs(context).getFloat(KEY_SEAT_MEMORY_BUTTON_OFFSET_X, 0f)
+
+    fun seatMemoryButtonOffsetY(context: Context): Float =
+        prefs(context).getFloat(KEY_SEAT_MEMORY_BUTTON_OFFSET_Y, 0f)
+
+    fun setSeatMemoryButtonOffset(context: Context, xDp: Float, yDp: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_SEAT_MEMORY_BUTTON_OFFSET_X, xDp)
+            .putFloat(KEY_SEAT_MEMORY_BUTTON_OFFSET_Y, yDp)
+            .apply()
+        seatMemoryButtonOffsetRevision.value++
+    }
+
+    fun passengerSeatButtonEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PASSENGER_SEAT_BUTTON_ENABLED, true)
+
+    fun setPassengerSeatButtonEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PASSENGER_SEAT_BUTTON_ENABLED, enabled).apply()
+        passengerSeatButtonOffsetRevision.value++
+    }
+
+    fun passengerSeatButtonOffsetX(context: Context): Float =
+        prefs(context).getFloat(KEY_PASSENGER_SEAT_BUTTON_OFFSET_X, 0f)
+
+    fun passengerSeatButtonOffsetY(context: Context): Float =
+        prefs(context).getFloat(KEY_PASSENGER_SEAT_BUTTON_OFFSET_Y, 0f)
+
+    fun setPassengerSeatButtonOffset(context: Context, xDp: Float, yDp: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_PASSENGER_SEAT_BUTTON_OFFSET_X, xDp)
+            .putFloat(KEY_PASSENGER_SEAT_BUTTON_OFFSET_Y, yDp)
+            .apply()
+        passengerSeatButtonOffsetRevision.value++
     }
 
     fun tirePressureOnCarEnabled(context: Context): Boolean =
@@ -1458,6 +1558,7 @@ internal object LauncherAppConfigStore {
         adasPanelVisibleRevision.value++
         adasAlertsPlacementRevision.value++
         adasBsdAlertOverlayRevision.value++
+        seatMemoryAdasPanelRevision.value++
         speedLimitPositionRevision.value++
         climateControlsRevision.value++
         climateCardBgRevision.value++

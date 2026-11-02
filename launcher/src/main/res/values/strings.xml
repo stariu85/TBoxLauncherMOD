@@ -166,6 +166,13 @@
     <string name="launcher_trunk_long_press_cd">Багажник (удерживайте)</string>
     <string name="launcher_adas_title">Ассистенты</string>
     <string name="launcher_vs_bsd_alert_overlay">Экранный оверлей BSD Alert</string>
+    <string name="launcher_vs_seat_memory_adas_panel">Кнопка памяти сидений на рабочем столе</string>
+    <string name="launcher_seat_memory_panel_visible_desc">Отображение блока 3 пресетов сидений и зеркал в ADAS-зоне</string>
+    <string name="launcher_vs_seat_memory_preset_name">Имя пресета %1$d</string>
+    <string name="launcher_vs_seat_memory_preset_edit">Изменить имя пресета %1$d</string>
+    <string name="launcher_seat_memory_adjust_mode">Регулировка зеркал</string>
+    <string name="launcher_seat_memory_adjust_hint">Настройте зеркала и зажмите кнопку ещё раз для сохранения</string>
+    <string name="launcher_seat_memory_saved">Память «%1$s» сохранена</string>
     <string name="launcher_adas_pas_on">Парктроник вкл.</string>
     <string name="launcher_adas_pas_off">Парктроник выкл.</string>
     <string name="launcher_adas_cruise">Круиз %1$s</string>
