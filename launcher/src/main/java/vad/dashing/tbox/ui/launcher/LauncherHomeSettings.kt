@@ -1435,6 +1435,25 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val launcherSettingsOnDoubleTapRevision by LauncherAppConfigStore.launcherSettingsOnDoubleTapRevisionFlow
+            .collectAsStateWithLifecycle()
+        val launcherSettingsOnDoubleTap = remember(context, launcherSettingsOnDoubleTapRevision) {
+            LauncherAppConfigStore.launcherSettingsOnDoubleTap(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_settings_on_double_tap_title),
+            active = launcherSettingsOnDoubleTap,
+            onClick = {
+                LauncherAppConfigStore.setLauncherSettingsOnDoubleTap(context, !launcherSettingsOnDoubleTap)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_settings_on_double_tap_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()

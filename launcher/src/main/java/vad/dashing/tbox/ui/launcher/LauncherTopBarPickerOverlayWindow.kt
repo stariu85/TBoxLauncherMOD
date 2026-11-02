@@ -141,7 +141,7 @@ internal object LauncherTopBarPickerOverlayWindow {
             it.setCurrentState(Lifecycle.State.STARTED)
             it.setCurrentState(Lifecycle.State.RESUMED)
         }
-        val wm = (context.applicationContext ?: activity).getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -222,13 +222,11 @@ internal object LauncherTopBarPickerOverlayWindow {
             view.requestFocus()
             runCatching { LauncherOverlayBar.bringToFront() }
             runCatching { LauncherEdgeGestureOverlay.bringToFront() }
-            runCatching { LauncherOverlayElevator.setHoldSource("top_bar_picker", true) }
             isShowingState.value = true
             Log.w(TAG, "top bar picker overlay shown")
             true
         }.onFailure {
             Log.e(TAG, "Unable to add top bar picker overlay", it)
-            runCatching { LauncherOverlayElevator.setHoldSource("top_bar_picker", false) }
             isShowingState.value = false
             lifecycleOwner = null
             windowManager = null
@@ -239,11 +237,9 @@ internal object LauncherTopBarPickerOverlayWindow {
     }
 
     fun hide() {
-        val view = composeView
+        val view = composeView ?: return
         composeView = null
         isShowingState.value = false
-        LauncherOverlayElevator.setHoldSource("top_bar_picker", false)
-        if (view == null) return
         val cb = dismissCallback
         dismissCallback = null
         runCatching { windowManager?.removeViewImmediate(view) }

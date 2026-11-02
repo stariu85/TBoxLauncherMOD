@@ -1,0 +1,700 @@
+package vad.dashing.tbox.ui.launcher
+
+import android.content.Context
+import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.os.Build
+import android.os.SystemClock
+import android.provider.Settings
+import android.util.Log
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import vad.dashing.tbox.CanDataViewModel
+import vad.dashing.tbox.LauncherHomeActivity
+import vad.dashing.tbox.LauncherHomeActivityHolder
+import vad.dashing.tbox.R
+import vad.dashing.tbox.TboxViewModel
+import vad.dashing.tbox.mbcan.MbCanEngineFacade
+import vad.dashing.tbox.ui.MyLifecycleOwner
+import vad.dashing.tbox.ui.ProvideUiClickSounds
+import vad.dashing.tbox.ui.sendOpenCloseTrunk
+import kotlin.math.roundToInt
+
+internal object LauncherAdasQuickSettingsWindow {
+    private const val TAG = "LauncherAdasQuickSetWin"
+
+    @Volatile
+    private var composeView: ComposeView? = null
+    private var lifecycleOwner: MyLifecycleOwner? = null
+    private var windowManager: WindowManager? = null
+
+    fun isShowing(): Boolean = composeView != null
+
+    private fun calculateAdasPanelBounds(context: Context): Rect {
+        val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
+            ?: Rect(0, 51, 344, 1000)
+        val metrics = (activity as Context).resources.displayMetrics
+        val density = metrics.density
+        val screenH = metrics.heightPixels.coerceAtLeast(1080)
+
+        val adasVisible = LauncherAppConfigStore.adasPanelVisible(context)
+        val sidebarDp = LauncherAppConfigStore.sidebarWidthDp(context)
+        val topBarDp = LauncherAppConfigStore.topBarHeightDp(context)
+        val bottomBarDp = LauncherAppConfigStore.bottomBarHeightDp(context)
+
+        val widthPx = if (adasVisible) (sidebarDp * density).toInt() else (344 * density).toInt()
+        val topPx = (topBarDp * density).toInt().coerceIn(0, 100).takeIf { it > 0 } ?: 51
+        val bottomPx = screenH - (bottomBarDp * density).toInt().coerceIn(0, 150)
+
+        val top = LauncherEmbeddedBoundsState.topHeaderBottomPx.takeIf { it > 0 } ?: topPx
+        val bottom = LauncherEmbeddedBoundsState.bottomBarTopPx.takeIf { it > 0 } ?: bottomPx
+        val measuredLeftPanel = LauncherEmbeddedBoundsState.leftPanelBounds
+
+        val width = if (measuredLeftPanel != null && measuredLeftPanel.width() > 200) {
+            measuredLeftPanel.width()
+        } else {
+            widthPx
+        }
+        val height = (bottom - top).coerceAtLeast(400)
+
+        return Rect(0, top, width, top + height)
+    }
+
+    fun toggle(
+        context: Context,
+        canViewModel: CanDataViewModel,
+        tboxViewModel: TboxViewModel,
+    ): Boolean {
+        return if (isShowing()) {
+            hide()
+            true
+        } else {
+            show(context, canViewModel, tboxViewModel)
+        }
+    }
+
+    fun show(
+        context: Context,
+        canViewModel: CanDataViewModel,
+        tboxViewModel: TboxViewModel,
+    ): Boolean {
+        if (isShowing()) return true
+        val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
+            ?: return false
+        if (activity.isFinishing || activity.isDestroyed) return false
+        if (!Settings.canDrawOverlays(activity)) {
+            Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
+            return false
+        }
+
+        val bounds = calculateAdasPanelBounds(activity)
+
+        val owner = MyLifecycleOwner().also {
+            it.setCurrentState(Lifecycle.State.CREATED)
+            it.setCurrentState(Lifecycle.State.STARTED)
+            it.setCurrentState(Lifecycle.State.RESUMED)
+        }
+        val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            type,
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            dimAmount = 0.35f
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        }
+
+        val view = ComposeView(activity).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode != KeyEvent.KEYCODE_BACK) return@setOnKeyListener false
+                if (event.action == KeyEvent.ACTION_UP) {
+                    hide()
+                }
+                true
+            }
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setViewTreeViewModelStoreOwner(activity)
+            setContent {
+                val density = LocalDensity.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = ::hide,
+                        ),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = with(density) { bounds.left.toDp() },
+                                y = with(density) { bounds.top.toDp() },
+                            )
+                            .size(
+                                width = with(density) { bounds.width().toDp() },
+                                height = with(density) { bounds.height().toDp() },
+                            )
+                            .background(LauncherColors.LeftPanelBg, RoundedCornerShape(12.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {},
+                            )
+                            .padding(8.dp),
+                    ) {
+                        ProvideUiClickSounds {
+                            tboxViewModel.currentTheme.collectAsStateWithLifecycle()
+                            vad.dashing.tbox.ui.theme.TboxAppTheme(theme = 2) {
+                                BackHandler {
+                                    hide()
+                                }
+                                LauncherAdasQuickSettingsContent(
+                                    canViewModel = canViewModel,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return runCatching {
+            lifecycleOwner = owner
+            windowManager = wm
+            wm.addView(view, params)
+            composeView = view
+            view.requestFocus()
+            LauncherOverlayBar.bringToFront()
+            LauncherEdgeGestureOverlay.bringToFront()
+            true
+        }.onFailure {
+            Log.e(TAG, "Unable to add adas quick settings overlay", it)
+            lifecycleOwner = null
+            windowManager = null
+            owner.setCurrentState(Lifecycle.State.DESTROYED)
+            owner.clear()
+        }.getOrDefault(false)
+    }
+
+    fun hide() {
+        val view = composeView ?: return
+        composeView = null
+        runCatching { windowManager?.removeViewImmediate(view) }
+            .onFailure { Log.w(TAG, "Unable to remove adas quick settings overlay", it) }
+        windowManager = null
+        lifecycleOwner?.let { owner ->
+            owner.setCurrentState(Lifecycle.State.DESTROYED)
+            owner.clear()
+        }
+        lifecycleOwner = null
+    }
+}
+
+enum class SwipeDirection { LEFT, RIGHT }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LauncherAdasQuickSettingsContent(
+    canViewModel: CanDataViewModel,
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+    val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
+    val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle()
+    val parsedGear = LauncherDevVehicleState.gearSlotOverride
+        ?: resolveActiveGearSlot(gearBoxMode, gearBoxCurrentGear)
+    val activeGear = parsedGear ?: 'P'
+
+    val items = remember {
+        mutableStateListOf("media_player", "drive_mode", "body_controls_trunk", "body_controls_seats", "assist", "presets", "lanes")
+    }
+
+    var draggingItemId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var activeGreenPlusItemId by remember { mutableStateOf<String?>(null) }
+    var plusPlusTimerJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+
+    var showOptionsDialogForId by remember { mutableStateOf<String?>(null) }
+    var waitingForTargetForAttach by remember { mutableStateOf<Pair<String, SwipeDirection>?>(null) }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items.forEach { id ->
+                val isDragging = draggingItemId == id
+                val showPlus = activeGreenPlusItemId == id
+                val slotHeight = if (id == "media_player") 128.dp else 60.dp
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(slotHeight)
+                        .zIndex(if (isDragging) 200f else 1f)
+                        .graphicsLayer {
+                            translationY = if (isDragging) dragOffsetY else 0f
+                            scaleX = if (isDragging) 1.03f else 1f
+                            scaleY = if (isDragging) 1.03f else 1f
+                        }
+                        .then(
+                            if (draggingItemId != null) {
+                                Modifier.border(2.dp, Color(0xFF06B6D4).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .then(
+                            if (isDragging) {
+                                Modifier
+                                    .shadow(12.dp, RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .border(2.dp, Color(0xFF22C55E), RoundedCornerShape(10.dp))
+                            } else {
+                                Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                            }
+                        )
+                        .background(LauncherColors.LeftPanelCard)
+                        .clickable {
+                            if (waitingForTargetForAttach != null) {
+                                val (srcId, dir) = waitingForTargetForAttach!!
+                                val cleanSrc = srcId.substringBefore("_")
+                                val cleanTarget = id.substringBefore("_")
+                                if (dir == SwipeDirection.LEFT) {
+                                    LauncherAppConfigStore.setPanelSwipeLeft(context, cleanTarget, cleanSrc)
+                                } else {
+                                    LauncherAppConfigStore.setPanelSwipeRight(context, cleanTarget, cleanSrc)
+                                }
+                                waitingForTargetForAttach = null
+                                Toast.makeText(context, "Панель присоединена по свайпу", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .pointerInput(id, items) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var dragActive = false
+                                var accumulativeY = 0f
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                    if (!pointer.pressed) {
+                                        if (dragActive) {
+                                            pointer.consume()
+                                            val slotHeightPx = with(density) { 68.dp.toPx() }
+                                            val slotShift = (accumulativeY / slotHeightPx).roundToInt()
+                                            val fromIdx = items.indexOf(id)
+                                            val toIdx = (fromIdx + slotShift).coerceIn(0, items.size - 1)
+                                            if (fromIdx != toIdx) {
+                                                val item = items.removeAt(fromIdx)
+                                                items.add(toIdx, item)
+                                            }
+
+                                            draggingItemId = null
+                                            dragOffsetY = 0f
+                                            activeGreenPlusItemId = id
+                                            plusPlusTimerJob?.cancel()
+                                            plusPlusTimerJob = scope.launch {
+                                                delay(5000L)
+                                                if (activeGreenPlusItemId == id) {
+                                                    activeGreenPlusItemId = null
+                                                }
+                                            }
+                                        }
+                                        break
+                                    }
+
+                                    val elapsed = SystemClock.uptimeMillis() - down.uptimeMillis
+                                    if (!dragActive) {
+                                        val deltaY = kotlin.math.abs(pointer.position.y - down.position.y)
+                                        val deltaX = kotlin.math.abs(pointer.position.x - down.position.x)
+                                        if (elapsed >= 350L || deltaY > 15f && deltaY > deltaX) {
+                                            dragActive = true
+                                            draggingItemId = id
+                                            activeGreenPlusItemId = id
+                                            plusPlusTimerJob?.cancel()
+                                            accumulativeY = pointer.position.y - down.position.y
+                                            dragOffsetY = accumulativeY
+                                            pointer.consume()
+                                        }
+                                    } else {
+                                        val frameDelta = pointer.position.y - pointer.previousPosition.y
+                                        accumulativeY += frameDelta
+                                        dragOffsetY = accumulativeY
+                                        pointer.consume()
+                                    }
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (id) {
+                        "media_player" -> LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                        "drive_mode" -> LauncherDriveModeBar(canViewModel = canViewModel, onModeSelected = {}, modifier = Modifier.fillMaxWidth())
+                        "body_controls_trunk" -> LauncherTrunkAndWindowsBar(activeGear = activeGear, onShowTrunkParkWarning = {}, modifier = Modifier.fillMaxWidth())
+                        "body_controls_seats" -> LauncherSeatMemoryAndAdjustmentBar(modifier = Modifier.fillMaxWidth())
+                        "assist" -> LauncherAssistControlBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
+                        "presets" -> LauncherCruisePresetControl(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
+                        "lanes" -> LauncherLanesControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
+                    }
+
+                    if (showPlus) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(6.dp)
+                                .size(28.dp)
+                                .zIndex(300f)
+                                .clip(CircleShape)
+                                .background(Color(0xFF22C55E))
+                                .clickable {
+                                    showOptionsDialogForId = id
+                                    activeGreenPlusItemId = null
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "+",
+                                color = Color.White,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Options Dialog Overlay with high zIndex
+        if (showOptionsDialogForId != null) {
+            val targetId = showOptionsDialogForId!!
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1000f)
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable { showOptionsDialogForId = null },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(LauncherColors.LeftPanelCard)
+                        .padding(20.dp)
+                        .clickable(enabled = false) {},
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "Выберите действие для панели:",
+                        color = LauncherColors.LeftTextPrimary,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                    TextButton(
+                        onClick = {
+                            val currentBottom = LauncherAppConfigStore.adasBottomPanels(context).toMutableList()
+                            if (targetId !in currentBottom) {
+                                currentBottom.add(targetId.substringBefore("_"))
+                                LauncherAppConfigStore.setAdasPanelsLayout(context, LauncherAppConfigStore.adasTopPanels(context), currentBottom)
+                            }
+                            showOptionsDialogForId = null
+                            Toast.makeText(context, "Добавлено вниз зоны ADAS", Toast.LENGTH_SHORT).show()
+                        },
+                    ) {
+                        Text(text = "1) " + stringResource(R.string.adas_quick_settings_add_separate))
+                    }
+                    TextButton(
+                        onClick = {
+                            showOptionsDialogForId = null
+                            waitingForTargetForAttach = Pair(targetId, SwipeDirection.LEFT)
+                        },
+                    ) {
+                        Text(text = "2) " + stringResource(R.string.adas_quick_settings_attach_left))
+                    }
+                    TextButton(
+                        onClick = {
+                            showOptionsDialogForId = null
+                            waitingForTargetForAttach = Pair(targetId, SwipeDirection.RIGHT)
+                        },
+                    ) {
+                        Text(text = "3) " + stringResource(R.string.adas_quick_settings_attach_right))
+                    }
+                }
+            }
+        }
+
+        // Waiting for target overlay with high zIndex
+        if (waitingForTargetForAttach != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(1000f)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable { waitingForTargetForAttach = null },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(LauncherColors.LeftPanelCard)
+                        .padding(16.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.adas_quick_settings_select_target),
+                        color = LauncherColors.LeftTextPrimary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LauncherTrunkAndWindowsBar(
+    activeGear: Char?,
+    onShowTrunkParkWarning: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var windowJob by remember { mutableStateOf<Job?>(null) }
+    var isOperatingWindows by remember { mutableStateOf(false) }
+
+    fun triggerWindowsCommand(targetPercent: Int) {
+        windowJob?.cancel()
+        windowJob = scope.launch {
+            isOperatingWindows = true
+            try {
+                sendSequentialWindowCommands(targetPercent)
+            } finally {
+                isOperatingWindows = false
+            }
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(60.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Trunk Button
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LauncherColors.LeftPanelCard)
+                .combinedClickable(
+                    onClick = {
+                        if (activeGear != 'P') {
+                            onShowTrunkParkWarning()
+                        }
+                    },
+                    onLongClick = {
+                        if (activeGear == 'P') {
+                            sendOpenCloseTrunk(context)
+                        } else {
+                            onShowTrunkParkWarning()
+                        }
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_trunk),
+                contentDescription = "Багажник",
+                modifier = Modifier.size(40.dp),
+                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+            )
+        }
+
+        // Windows Button
+        val activeGreen = Color(0xFF10B981)
+        val windowsBg = if (isOperatingWindows) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+        val windowsBorder = if (isOperatingWindows) activeGreen else Color.Transparent
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(windowsBg)
+                .then(
+                    if (isOperatingWindows) {
+                        Modifier.border(1.dp, windowsBorder, RoundedCornerShape(12.dp))
+                    } else {
+                        Modifier
+                    }
+                )
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { triggerWindowsCommand(0) },
+                        onDoubleTap = { triggerWindowsCommand(100) },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_widget_side_window),
+                contentDescription = "Окна",
+                modifier = Modifier.size(40.dp),
+                colorFilter = ColorFilter.tint(
+                    if (isOperatingWindows) activeGreen else LauncherColors.LeftTextPrimary,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherSeatMemoryAndAdjustmentBar(
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(60.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Seat Memory Button
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LauncherColors.LeftPanelCard)
+                .clickable { SeatMemoryOverlayWindow.show(context) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_seat_memory_btn),
+                contentDescription = "Память сидений",
+                modifier = Modifier.size(40.dp),
+                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+            )
+        }
+
+        // Passenger Seat Adjustment Button
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LauncherColors.LeftPanelCard)
+                .clickable { PassengerSeatOverlayWindow.show(context) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_seat_memory_btn),
+                contentDescription = "Регулировка пассажирского сиденья",
+                modifier = Modifier
+                    .size(40.dp)
+                    .graphicsLayer { scaleX = -1f },
+                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+            )
+        }
+    }
+}
+
+private suspend fun sendSequentialWindowCommands(percent: Int) {
+    val target = percent.coerceIn(0, 100)
+    val activeTargets = mutableMapOf<Int, Int>()
+    val windowIndices = intArrayOf(0, 1, 2, 3)
+    for (i in windowIndices.indices) {
+        if (i > 0) {
+            delay(1000L)
+        }
+        val windowIdx = windowIndices[i]
+        activeTargets[windowIdx] = target
+        MbCanEngineFacade.setWindowPositions(activeTargets)
+    }
+    delay(2500L)
+}

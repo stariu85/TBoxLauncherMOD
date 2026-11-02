@@ -36,7 +36,9 @@ private fun isOverlayMode(): Boolean {
             LauncherAppDrawerWindow.isShowing() ||
             LauncherTopBarPickerOverlayWindow.isShowing() ||
             LauncherBsdAlertOverlayWindow.isShowing() ||
-            LauncherRightPanelOverlayWindow.isShowing()
+            LauncherRightPanelOverlayWindow.isShowing() ||
+            SeatMemoryOverlayWindow.isShowing() ||
+            PassengerSeatOverlayWindow.isShowing()
 }
 
 /**

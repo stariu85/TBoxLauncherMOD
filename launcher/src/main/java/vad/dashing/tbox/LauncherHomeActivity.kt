@@ -30,6 +30,8 @@ import vad.dashing.tbox.ui.launcher.LauncherEdgeGestureOverlay
 import vad.dashing.tbox.ui.launcher.LauncherOverlayBar
 import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
 import vad.dashing.tbox.ui.launcher.LauncherRightPanelOverlayWindow
+import vad.dashing.tbox.ui.launcher.SeatMemoryOverlayWindow
+import vad.dashing.tbox.ui.launcher.PassengerSeatOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
@@ -182,6 +184,8 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherAppPickerOverlayWindow.hide()
         LauncherVehicleSettingsOverlayWindow.hide()
         LauncherAboutOverlayWindow.hide()
+        SeatMemoryOverlayWindow.hide()
+        PassengerSeatOverlayWindow.hide()
         LauncherOverlayBar.hide()
         runCatching { minimizeForeignFreeformTasks(this) }
         LauncherOverlayElevator.reset()

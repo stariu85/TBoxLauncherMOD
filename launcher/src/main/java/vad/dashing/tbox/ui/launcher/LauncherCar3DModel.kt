@@ -115,6 +115,7 @@ fun LauncherCar3DModel(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
     onTrunkClick: (() -> Unit)? = null,
     onTrunkLongClick: (() -> Unit)? = null,
     modelRevision: Int = 0,
@@ -195,6 +196,7 @@ private fun LauncherCarFilamentModel(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
     onTrunkClick: (() -> Unit)? = null,
     onTrunkLongClick: (() -> Unit)? = null,
     modelRevision: Int,
@@ -240,6 +242,7 @@ private fun LauncherCarFilamentModel(
                 modifier = Modifier.fillMaxSize(),
                 onClick = onClick,
                 onLongClick = onLongClick,
+                onDoubleClick = onDoubleClick,
                 onTrunkClick = onTrunkClick,
                 onTrunkLongClick = onTrunkLongClick,
                 paintId = paintId,
@@ -276,6 +279,7 @@ private fun LauncherCarFilamentContent(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
     onTrunkClick: (() -> Unit)? = null,
     onTrunkLongClick: (() -> Unit)? = null,
     paintId: String,
@@ -304,12 +308,13 @@ private fun LauncherCarFilamentContent(
     lowPowerPreview: Boolean = false,
 ) {
     val context = LocalContext.current
-    val interactionModifier = if (onClick != null || onLongClick != null) {
+    val interactionModifier = if (onClick != null || onLongClick != null || onDoubleClick != null) {
         Modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
             onClick = { onClick?.invoke() },
             onLongClick = { onLongClick?.invoke() },
+            onDoubleClick = { onDoubleClick?.invoke() },
         )
     } else {
         Modifier

@@ -828,29 +828,17 @@ internal fun LauncherVehicleSettingsContent(
             )
 
             val seatMemoryPanelRevision by LauncherAppConfigStore.seatMemoryAdasPanelRevisionFlow.collectAsStateWithLifecycle()
-            val seatMemoryPanelEnabled = remember(context, seatMemoryPanelRevision) {
-                LauncherAppConfigStore.seatMemoryAdasPanelEnabled(context)
-            }
             var editingPresetSlot by remember { mutableStateOf<Int?>(null) }
 
-            LauncherSettingsToggleRow(
-                label = stringResource(R.string.launcher_vs_seat_memory_adas_panel),
-                active = seatMemoryPanelEnabled,
-                onClick = {
-                    LauncherAppConfigStore.setSeatMemoryAdasPanelEnabled(context, !seatMemoryPanelEnabled)
-                },
-            )
-            if (seatMemoryPanelEnabled) {
-                (1..3).forEach { slot ->
-                    val name = remember(context, seatMemoryPanelRevision, slot) {
-                        LauncherAppConfigStore.seatMemoryPresetName(context, slot)
-                    }
-                    LauncherSettingsValueRow(
-                        label = stringResource(R.string.launcher_vs_seat_memory_preset_name, slot),
-                        value = name,
-                        onClick = { editingPresetSlot = slot },
-                    )
+            (1..3).forEach { slot ->
+                val name = remember(context, seatMemoryPanelRevision, slot) {
+                    LauncherAppConfigStore.seatMemoryPresetName(context, slot)
                 }
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.launcher_vs_seat_memory_preset_name, slot),
+                    value = name,
+                    onClick = { editingPresetSlot = slot },
+                )
             }
 
             editingPresetSlot?.let { slot ->

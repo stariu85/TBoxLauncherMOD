@@ -261,6 +261,11 @@ fun LauncherLeftPanel(
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
         LauncherAppConfigStore.driveModeGlowVisible(context)
     }
+    val launcherSettingsOnDoubleTapRevision by LauncherAppConfigStore.launcherSettingsOnDoubleTapRevisionFlow
+        .collectAsStateWithLifecycle()
+    val launcherSettingsOnDoubleTap = remember(context, launcherSettingsOnDoubleTapRevision) {
+        LauncherAppConfigStore.launcherSettingsOnDoubleTap(context)
+    }
     val isDarkTheme = LauncherThemeState.darkTheme
     val solarDaytime = rememberSolarDaytimeState()
     val isNight = if (solarDaytime != null) !solarDaytime else {
@@ -523,29 +528,31 @@ fun LauncherLeftPanel(
         }
 
         val renderPanel: @Composable (String) -> Unit = { panelId ->
-            when (panelId) {
-                "drive_mode" -> driveModeBarContent()
-                "assist", "presets" -> {
-                    if (assistPanelVisible) {
-                        LauncherAssistAndPresetsPanel(
-                            canViewModel = canViewModel,
-                            adas = adas,
+            RenderSwipeGroupedPanel(panelId = panelId) { actualPanelId ->
+                when (actualPanelId) {
+                    "drive_mode" -> driveModeBarContent()
+                    "assist", "presets" -> {
+                        if (assistPanelVisible) {
+                            LauncherAssistAndPresetsPanel(
+                                canViewModel = canViewModel,
+                                adas = adas,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    "body_controls" -> {
+                        LauncherVehicleBodyControlsBar(
+                            activeGear = activeGear,
+                            onShowTrunkParkWarning = {
+                                trunkParkWarningUntilMs = SystemClock.uptimeMillis() + 3000L
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                }
-                "body_controls" -> {
-                    LauncherVehicleBodyControlsBar(
-                        activeGear = activeGear,
-                        onShowTrunkParkWarning = {
-                            trunkParkWarningUntilMs = SystemClock.uptimeMillis() + 3000L
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                "media_player" -> {
-                    if (miniPlayerVisible) {
-                        LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                    "media_player" -> {
+                        if (miniPlayerVisible) {
+                            LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                        }
                     }
                 }
             }
@@ -585,7 +592,20 @@ fun LauncherLeftPanel(
                     customModelScale = carModelScale,
                     customModelDriveScale = carModelDriveScale,
                     cameraSwitchMode = cameraSwitchMode,
-                    onClick = if (!racing) onOpenVehicleSettings else null,
+                    onClick = if (!racing) {
+                        if (launcherSettingsOnDoubleTap) {
+                            { LauncherAdasQuickSettingsWindow.toggle(context, canViewModel, tboxViewModel); Unit }
+                        } else {
+                            onOpenVehicleSettings
+                        }
+                    } else null,
+                    onDoubleClick = if (!racing) {
+                        if (launcherSettingsOnDoubleTap) {
+                            onOpenVehicleSettings
+                        } else {
+                            { LauncherAdasQuickSettingsWindow.toggle(context, canViewModel, tboxViewModel); Unit }
+                        }
+                    } else null,
                     onLongClick = null,
                     onTrunkClick = if (!racing) onOpenVehicleSettings else null,
                     onTrunkLongClick = if (!racing && trunkLongPressEnabled) {
@@ -921,6 +941,31 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
                         }
                     },
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RenderSwipeGroupedPanel(
+    panelId: String,
+    renderContent: @Composable (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val leftPanel = remember(context, panelId) { LauncherAppConfigStore.panelSwipeLeft(context, panelId) }
+    val rightPanel = remember(context, panelId) { LauncherAppConfigStore.panelSwipeRight(context, panelId) }
+
+    if (leftPanel == null && rightPanel == null) {
+        renderContent(panelId)
+    } else {
+        val pages = listOfNotNull(leftPanel, panelId, rightPanel)
+        val initialPageIndex = pages.indexOf(panelId).coerceAtLeast(0)
+        val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = initialPageIndex) { pages.size }
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth(),
+        ) { page ->
+            renderContent(pages[page])
         }
     }
 }

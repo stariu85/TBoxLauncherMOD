@@ -541,7 +541,9 @@ object LauncherBackupManager {
                 "tire_pressure_inertia_animation_enabled", "tire_pressure_persist_enabled",
                 "fuel_shows_range", "cruise_panel_visible", "swap_top_bottom_panels",
                 "drive_mode_bar_visible", "assist_panel_visible", "body_controls_panel_visible",
-                "drive_mode_glow_visible", "headlight_beams_visible", "ngp_enabled" -> PrefType.BOOLEAN
+                "drive_mode_glow_visible", "headlight_beams_visible", "ngp_enabled",
+                "launcher_settings_on_double_tap" -> PrefType.BOOLEAN
+                "panel_swipe_left_map", "panel_swipe_right_map" -> PrefType.STRING
 
                 else -> {
                     if (key.startsWith("bottom_slots_preset_")) PrefType.STRING

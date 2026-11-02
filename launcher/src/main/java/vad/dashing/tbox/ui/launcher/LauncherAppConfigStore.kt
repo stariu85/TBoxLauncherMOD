@@ -231,6 +231,9 @@ private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
 private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
+private const val KEY_LAUNCHER_SETTINGS_ON_DOUBLE_TAP = "launcher_settings_on_double_tap"
+private const val KEY_PANEL_SWIPE_LEFT_MAP = "panel_swipe_left_map"
+private const val KEY_PANEL_SWIPE_RIGHT_MAP = "panel_swipe_right_map"
 const val HEADLIGHT_BEAMS_OFF = 0
 const val HEADLIGHT_BEAMS_DARK_THEME = 1
 const val HEADLIGHT_BEAMS_NIGHT_ONLY = 2
@@ -403,6 +406,8 @@ internal object LauncherAppConfigStore {
     internal val adasPanelsRevisionFlow: StateFlow<Int> = adasPanelsRevision
     private val driveModeGlowRevision = MutableStateFlow(0)
     internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
+    private val launcherSettingsOnDoubleTapRevision = MutableStateFlow(0)
+    internal val launcherSettingsOnDoubleTapRevisionFlow: StateFlow<Int> = launcherSettingsOnDoubleTapRevision
     private val headlightBeamsRevision = MutableStateFlow(0)
     internal val headlightBeamsRevisionFlow: StateFlow<Int> = headlightBeamsRevision
     private val ngpRevision = MutableStateFlow(0)
@@ -1311,6 +1316,14 @@ internal object LauncherAppConfigStore {
         driveModeGlowRevision.value++
     }
 
+    fun launcherSettingsOnDoubleTap(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_LAUNCHER_SETTINGS_ON_DOUBLE_TAP, false)
+
+    fun setLauncherSettingsOnDoubleTap(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_LAUNCHER_SETTINGS_ON_DOUBLE_TAP, enabled).apply()
+        launcherSettingsOnDoubleTapRevision.value++
+    }
+
     fun headlightBeamsVisible(context: Context): Boolean =
         headlightBeamsMode(context) != HEADLIGHT_BEAMS_OFF
 
@@ -1590,4 +1603,28 @@ internal object LauncherAppConfigStore {
 
     private fun encodeSlots(slots: List<String>): String =
         slots.joinToString("|")
+
+    fun panelSwipeLeft(context: Context, panelId: String): String? {
+        val mapStr = prefs(context).getString(KEY_PANEL_SWIPE_LEFT_MAP, "") ?: ""
+        return mapStr.split(',').firstOrNull { it.startsWith("$panelId:") }?.substringAfter(":")
+    }
+
+    fun setPanelSwipeLeft(context: Context, panelId: String, targetId: String) {
+        val mapStr = prefs(context).getString(KEY_PANEL_SWIPE_LEFT_MAP, "") ?: ""
+        val list = mapStr.split(',').filter { it.isNotBlank() && !it.startsWith("$panelId:") }.toMutableList()
+        list.add("$panelId:$targetId")
+        prefs(context).edit().putString(KEY_PANEL_SWIPE_LEFT_MAP, list.joinToString(",")).apply()
+    }
+
+    fun panelSwipeRight(context: Context, panelId: String): String? {
+        val mapStr = prefs(context).getString(KEY_PANEL_SWIPE_RIGHT_MAP, "") ?: ""
+        return mapStr.split(',').firstOrNull { it.startsWith("$panelId:") }?.substringAfter(":")
+    }
+
+    fun setPanelSwipeRight(context: Context, panelId: String, targetId: String) {
+        val mapStr = prefs(context).getString(KEY_PANEL_SWIPE_RIGHT_MAP, "") ?: ""
+        val list = mapStr.split(',').filter { it.isNotBlank() && !it.startsWith("$panelId:") }.toMutableList()
+        list.add("$panelId:$targetId")
+        prefs(context).edit().putString(KEY_PANEL_SWIPE_RIGHT_MAP, list.joinToString(",")).apply()
+    }
 }

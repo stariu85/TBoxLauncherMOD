@@ -80,6 +80,7 @@ internal fun SeatMemoryAdasPanel(
     val revision by LauncherAppConfigStore.seatMemoryAdasPanelRevisionFlow.collectAsStateWithLifecycle()
 
     var adjustingSlot by remember { mutableStateOf<Int?>(null) }
+    var pressedSlot by remember { mutableStateOf<Int?>(null) }
 
     DisposableEffect(adjustingSlot) {
         if (adjustingSlot != null) {
@@ -168,15 +169,18 @@ internal fun SeatMemoryAdasPanel(
             (1..3).forEach { slot ->
                 val presetName = presetNames.getOrElse(slot - 1) { "M$slot" }
                 val isAdjusting = adjustingSlot == slot
+                val isPressed = pressedSlot == slot
                 val seatMemorySavedText = stringResource(R.string.launcher_seat_memory_saved, presetName)
 
                 val buttonBg = when {
                     isAdjusting -> LauncherColors.WarningAmber.copy(alpha = 0.25f)
+                    isPressed -> LauncherColors.AccentCyan.copy(alpha = 0.30f)
                     else -> LauncherColors.CardDarkElevated
                 }
 
                 val borderColor = when {
                     isAdjusting -> LauncherColors.WarningAmber.copy(alpha = pulseAlpha)
+                    isPressed -> LauncherColors.AccentCyan
                     else -> Color.Transparent
                 }
 
@@ -187,11 +191,16 @@ internal fun SeatMemoryAdasPanel(
                         .clip(RoundedCornerShape(16.dp))
                         .background(buttonBg)
                         .then(
-                            if (isAdjusting) Modifier.border(2.dp, borderColor, RoundedCornerShape(16.dp))
+                            if (isAdjusting || isPressed) Modifier.border(2.dp, borderColor, RoundedCornerShape(16.dp))
                             else Modifier
                         )
                         .pointerInput(slot, isAdjusting) {
                             detectTapGestures(
+                                onPress = {
+                                    pressedSlot = slot
+                                    tryAwaitRelease()
+                                    pressedSlot = null
+                                },
                                 onTap = {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     if (adjustingSlot != null && !isAdjusting) {
@@ -226,7 +235,11 @@ internal fun SeatMemoryAdasPanel(
                 ) {
                     Text(
                         text = presetName,
-                        color = if (isAdjusting) LauncherColors.WarningAmber else LauncherColors.TextPrimary,
+                        color = when {
+                            isAdjusting -> LauncherColors.WarningAmber
+                            isPressed -> LauncherColors.AccentCyan
+                            else -> LauncherColors.TextPrimary
+                        },
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
@@ -314,45 +327,48 @@ private fun handleMirrorAdjustmentScrollKey(keyCode: Int, extra: Byte) {
 }
 
 @Composable
-internal fun SeatMemoryDialog(
-    onDismissRequest: () -> Unit,
+internal fun SeatMemoryDialogContent(
+    onDismiss: () -> Unit,
 ) {
-    LauncherDarkAlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_seat_memory_btn),
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                    colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
-                )
-                Text(
-                    text = "Память водительского сиденья",
-                    color = LauncherColors.TextPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismissRequest) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_seat_memory_btn),
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+            )
+            Text(
+                text = "Память водительского сиденья",
+                color = LauncherColors.TextPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        SeatMemoryAdasPanel(modifier = Modifier.fillMaxWidth())
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = onDismiss) {
                 Text(stringResource(android.R.string.ok), color = LauncherColors.AccentCyan, fontSize = 16.sp)
             }
-        },
-        text = {
-            SeatMemoryAdasPanel(modifier = Modifier.fillMaxWidth())
-        },
-    )
+        }
+    }
 }
 
 @Composable
-internal fun PassengerSeatAdjustDialog(
-    onDismissRequest: () -> Unit,
+internal fun PassengerSeatAdjustContent(
+    onDismiss: () -> Unit,
 ) {
     var sliderBackrest by remember { mutableFloatStateOf(0f) }
     var sliderPosition by remember { mutableFloatStateOf(0f) }
@@ -403,148 +419,170 @@ internal fun PassengerSeatAdjustDialog(
         }
     }
 
-    LauncherDarkAlertDialog(
-        onDismissRequest = {
+    DisposableEffect(Unit) {
+        onDispose {
             MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR, 0)
             MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR, 0)
-            onDismissRequest()
-        },
-        title = {
-            Row(
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_seat_memory_btn),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(28.dp)
+                    .graphicsLayer { scaleX = -1f },
+                colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
+            )
+            Text(
+                text = "Регулировка пассажирского сиденья",
+                color = LauncherColors.TextPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            // Slider 1: Backrest Incline
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_seat_memory_btn),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .graphicsLayer { scaleX = -1f },
-                    colorFilter = ColorFilter.tint(LauncherColors.TextPrimary),
-                )
-                Text(
-                    text = "Регулировка пассажирского сиденья",
-                    color = LauncherColors.TextPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "◄ Вперед",
+                        color = if (sliderBackrest < -0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Наклон спинки",
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Назад ►",
+                        color = if (sliderBackrest > 0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+
+                Slider(
+                    value = sliderBackrest,
+                    onValueChange = { newVal ->
+                        sliderBackrest = newVal
+                    },
+                    onValueChangeFinished = {
+                        sliderBackrest = 0f
+                    },
+                    valueRange = -1f..1f,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = LauncherColors.AccentCyan,
+                        activeTrackColor = LauncherColors.AccentCyan,
+                        inactiveTrackColor = LauncherColors.CardDarkElevated,
+                    ),
                 )
             }
-        },
-        confirmButton = {
+
+            // Slider 2: Seat Position
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "◄ Вперед",
+                        color = if (sliderPosition < -0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Положение кресла",
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Назад ►",
+                        color = if (sliderPosition > 0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+
+                Slider(
+                    value = sliderPosition,
+                    onValueChange = { newVal ->
+                        sliderPosition = newVal
+                    },
+                    onValueChangeFinished = {
+                        sliderPosition = 0f
+                    },
+                    valueRange = -1f..1f,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = LauncherColors.AccentCyan,
+                        activeTrackColor = LauncherColors.AccentCyan,
+                        inactiveTrackColor = LauncherColors.CardDarkElevated,
+                    ),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
             TextButton(
                 onClick = {
                     MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR, 0)
                     MbCanEngineFacade.canSetVehicleParam(MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR, 0)
-                    onDismissRequest()
+                    onDismiss()
                 }
             ) {
                 Text(stringResource(android.R.string.ok), color = LauncherColors.AccentCyan, fontSize = 16.sp)
             }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                // Slider 1: Backrest Incline
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "◄ Вперед",
-                            color = if (sliderBackrest < -0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = "Наклон спинки",
-                            color = LauncherColors.TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "Назад ►",
-                            color = if (sliderBackrest > 0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+        }
+    }
+}
 
-                    Slider(
-                        value = sliderBackrest,
-                        onValueChange = { newVal ->
-                            sliderBackrest = newVal
-                        },
-                        onValueChangeFinished = {
-                            sliderBackrest = 0f
-                        },
-                        valueRange = -1f..1f,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = LauncherColors.AccentCyan,
-                            activeTrackColor = LauncherColors.AccentCyan,
-                            inactiveTrackColor = LauncherColors.CardDarkElevated,
-                        ),
-                    )
-                }
+@Composable
+internal fun SeatMemoryDialog(
+    onDismissRequest: () -> Unit,
+) {
+    SeatMemoryDialogContent(onDismiss = onDismissRequest)
+}
 
-                // Slider 2: Seat Position
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "◄ Вперед",
-                            color = if (sliderPosition < -0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = "Положение кресла",
-                            color = LauncherColors.TextPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "Назад ►",
-                            color = if (sliderPosition > 0.15f) LauncherColors.AccentCyan else LauncherColors.TextMuted,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-
-                    Slider(
-                        value = sliderPosition,
-                        onValueChange = { newVal ->
-                            sliderPosition = newVal
-                        },
-                        onValueChangeFinished = {
-                            sliderPosition = 0f
-                        },
-                        valueRange = -1f..1f,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = LauncherColors.AccentCyan,
-                            activeTrackColor = LauncherColors.AccentCyan,
-                            inactiveTrackColor = LauncherColors.CardDarkElevated,
-                        ),
-                    )
-                }
-            }
-        },
-    )
+@Composable
+internal fun PassengerSeatAdjustDialog(
+    onDismissRequest: () -> Unit,
+) {
+    PassengerSeatAdjustContent(onDismiss = onDismissRequest)
 }
