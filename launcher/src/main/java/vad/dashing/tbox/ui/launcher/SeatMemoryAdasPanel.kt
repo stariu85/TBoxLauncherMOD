@@ -33,11 +33,14 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,6 +80,19 @@ internal fun SeatMemoryAdasPanel(
     val revision by LauncherAppConfigStore.seatMemoryAdasPanelRevisionFlow.collectAsStateWithLifecycle()
 
     var adjustingSlot by remember { mutableStateOf<Int?>(null) }
+
+    DisposableEffect(adjustingSlot) {
+        if (adjustingSlot != null) {
+            MbCanEngineFacade.setHardKeyCallback { keyCode, _, extra ->
+                handleMirrorAdjustmentScrollKey(keyCode, extra)
+            }
+        } else {
+            MbCanEngineFacade.setHardKeyCallback(null)
+        }
+        onDispose {
+            MbCanEngineFacade.setHardKeyCallback(null)
+        }
+    }
 
     val presetNames = remember(context, revision) {
         listOf(
@@ -256,6 +272,47 @@ internal fun SeatMemoryAdasPanel(
     }
 }
 
+private fun handleMirrorAdjustmentScrollKey(keyCode: Int, extra: Byte) {
+    // Key codes from MBHardKeyCode:
+    // eMBHARDKEY_UP = 103, eMBHARDKEY_DOWN = 108, eMBHARDKEY_LEFT = 105, eMBHARDKEY_RIGHT = 106,
+    // eMBHARDKEY_ANTICLOCKWISE = 114, eMBHARDKEY_CLOCKWISE = 115
+    val isRightWheel = extra.toInt() == 1
+    when (keyCode) {
+        103, 115 -> { // UP / CLOCKWISE
+            val propertyId = if (isRightWheel) {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_UD_LOCATION
+            } else {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION
+            }
+            MbCanEngineFacade.canSetVehicleParam(propertyId, 1) // 1 = Up
+        }
+        108, 114 -> { // DOWN / ANTICLOCKWISE
+            val propertyId = if (isRightWheel) {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_UD_LOCATION
+            } else {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION
+            }
+            MbCanEngineFacade.canSetVehicleParam(propertyId, 2) // 2 = Down
+        }
+        105 -> { // LEFT
+            val propertyId = if (isRightWheel) {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_LR_LOCATION
+            } else {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION
+            }
+            MbCanEngineFacade.canSetVehicleParam(propertyId, 1) // 1 = Left
+        }
+        106 -> { // RIGHT
+            val propertyId = if (isRightWheel) {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_LR_LOCATION
+            } else {
+                MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION
+            }
+            MbCanEngineFacade.canSetVehicleParam(propertyId, 2) // 2 = Right
+        }
+    }
+}
+
 @Composable
 internal fun SeatMemoryDialog(
     onDismissRequest: () -> Unit,
@@ -299,6 +356,52 @@ internal fun PassengerSeatAdjustDialog(
 ) {
     var sliderBackrest by remember { mutableFloatStateOf(0f) }
     var sliderPosition by remember { mutableFloatStateOf(0f) }
+
+    val backrestDirection = when {
+        sliderBackrest < -0.15f -> 1
+        sliderBackrest > 0.15f -> 2
+        else -> 0
+    }
+
+    LaunchedEffect(backrestDirection) {
+        if (backrestDirection != 0) {
+            while (true) {
+                MbCanEngineFacade.canSetVehicleParam(
+                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR,
+                    backrestDirection
+                )
+                delay(150L)
+            }
+        } else {
+            MbCanEngineFacade.canSetVehicleParam(
+                MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR,
+                0
+            )
+        }
+    }
+
+    val positionDirection = when {
+        sliderPosition < -0.15f -> 1
+        sliderPosition > 0.15f -> 2
+        else -> 0
+    }
+
+    LaunchedEffect(positionDirection) {
+        if (positionDirection != 0) {
+            while (true) {
+                MbCanEngineFacade.canSetVehicleParam(
+                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR,
+                    positionDirection
+                )
+                delay(150L)
+            }
+        } else {
+            MbCanEngineFacade.canSetVehicleParam(
+                MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR,
+                0
+            )
+        }
+    }
 
     LauncherDarkAlertDialog(
         onDismissRequest = {
@@ -380,23 +483,9 @@ internal fun PassengerSeatAdjustDialog(
                         value = sliderBackrest,
                         onValueChange = { newVal ->
                             sliderBackrest = newVal
-                            when {
-                                newVal < -0.15f -> MbCanEngineFacade.canSetVehicleParam(
-                                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR, 1
-                                )
-                                newVal > 0.15f -> MbCanEngineFacade.canSetVehicleParam(
-                                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR, 2
-                                )
-                                else -> MbCanEngineFacade.canSetVehicleParam(
-                                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR, 0
-                                )
-                            }
                         },
                         onValueChangeFinished = {
                             sliderBackrest = 0f
-                            MbCanEngineFacade.canSetVehicleParam(
-                                MbCanKnownVehiclePropertyId.PASSENGER_SEAT_BACK_FR, 0
-                            )
                         },
                         valueRange = -1f..1f,
                         modifier = Modifier.fillMaxWidth(),
@@ -442,23 +531,9 @@ internal fun PassengerSeatAdjustDialog(
                         value = sliderPosition,
                         onValueChange = { newVal ->
                             sliderPosition = newVal
-                            when {
-                                newVal < -0.15f -> MbCanEngineFacade.canSetVehicleParam(
-                                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR, 1
-                                )
-                                newVal > 0.15f -> MbCanEngineFacade.canSetVehicleParam(
-                                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR, 2
-                                )
-                                else -> MbCanEngineFacade.canSetVehicleParam(
-                                    MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR, 0
-                                )
-                            }
                         },
                         onValueChangeFinished = {
                             sliderPosition = 0f
-                            MbCanEngineFacade.canSetVehicleParam(
-                                MbCanKnownVehiclePropertyId.PASSENGER_SEAT_FR, 0
-                            )
                         },
                         valueRange = -1f..1f,
                         modifier = Modifier.fillMaxWidth(),

@@ -151,7 +151,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private val HvacOnColor = Color(0xFF4FC3F7)
-private val SeatHeatOnColor = Color(0xFFF59E0B)
+private val SeatHeatOnColor = Color(0xFFF97316)
 private val HvacOffColor: Color get() = LauncherColors.TextSecondary
 private const val LAUNCHER_BOTTOM_BAR_CAN_SOURCE = "launcher-bottom-bar"
 private const val SEAT_COMMAND_CONFIRM_TIMEOUT_MS = 2_500L

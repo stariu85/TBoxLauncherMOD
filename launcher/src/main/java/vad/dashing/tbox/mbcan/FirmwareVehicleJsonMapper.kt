@@ -64,6 +64,13 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH to 289415315, // T_0201_SET_FRSeatHeatVentSwReq
         MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH to 289415345, // T_0203_SET_LRSeatHeatVentSwReq
         MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH to 289415344, // T_0203_SET_RRSeatHeatVentSwReq
+        MbCanKnownVehiclePropertyId.SEAT_POSITION_STOREREQ to MbCanKnownVehiclePropertyId.SEAT_POSITION_STOREREQ,
+        MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ to MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ,
+        // Mirror location controls
+        MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION,
+        MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION,
+        MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_LR_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_LR_LOCATION,
+        MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_UD_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_UD_LOCATION,
         // Car settings (drive/eps)
         MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_EPS_MODE to 289412662, // T_0401_IHU_1_DVD_SET_EPSmode
         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE to 289412695, // T_0401_IHU_9_DriveMode

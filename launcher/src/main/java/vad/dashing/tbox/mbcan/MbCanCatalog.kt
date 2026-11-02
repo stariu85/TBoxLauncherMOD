@@ -292,6 +292,14 @@ object MbCanKnownVehiclePropertyId {
     const val SEAT_POSITION_STOREREQ = 270
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SEAT_POSITION_CALLOUTREQ] — callout preset slot (1..3). */
     const val SEAT_POSITION_CALLOUTREQ = 271
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_MIRROR_SET_LMIRROR_LR_LOCATON] — 1 left, 2 right, 0 stop. */
+    const val MIRROR_SET_LMIRROR_LR_LOCATION = 200
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_MIRROR_SET_LMIRROR_UD_LOCATON] — 1 up, 2 down, 0 stop. */
+    const val MIRROR_SET_LMIRROR_UD_LOCATION = 201
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_MIRROR_SET_RMIRROR_LR_LOCATON] — 1 left, 2 right, 0 stop. */
+    const val MIRROR_SET_RMIRROR_LR_LOCATION = 202
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_MIRROR_SET_RMIRROR_UD_LOCATON] — 1 up, 2 down, 0 stop. */
+    const val MIRROR_SET_RMIRROR_UD_LOCATION = 203
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PASSENGER_SEAT_BACK_FR] — passenger seat back incline. */
     const val PASSENGER_SEAT_BACK_FR = 179
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PASSENGER_SEAT_FR] — passenger seat forward/backward. */
@@ -469,6 +477,30 @@ object MbCanCommandRegistry {
                 unknownFallbackValue = 2
             ),
             refreshSignal = MbCanSignal.WirelessChargingSwitch
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.SEAT_POSITION_STOREREQ,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1, 2)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1, 2)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_LR_LOCATION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1, 2)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MIRROR_SET_RMIRROR_UD_LOCATION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1, 2)),
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_STEERING_MODE,

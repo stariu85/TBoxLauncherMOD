@@ -49,6 +49,10 @@ object MbCanEngineFacade {
     private var cfgAudioDataType: Any? = null
     private var vehicleCfgCmdListenerProxy: Any? = null
     private var audioCfgCmdListenerProxy: Any? = null
+    private var registHardKeyListenerMethod: Method? = null
+    private var unRegistHardKeyListenerMethod: Method? = null
+    private var hardKeyCallback: ((keyCode: Int, keyAction: Int, extra: Byte) -> Unit)? = null
+    private var hardKeyListenerProxy: Any? = null
     private var initialized = false
 
     /**
@@ -124,6 +128,12 @@ object MbCanEngineFacade {
                 Class.forName("com.mengbo.mbCan.interfaces.IMBCmdListener")
             )
             unRegistCmdListenerMethod = engineClass.getMethod("unRegistCMDListener", Class.forName(DATA_TYPE_CLASS))
+            registHardKeyListenerMethod = runCatching {
+                engineClass.getMethod("registHardKeyListener", Class.forName("com.mengbo.mbCan.interfaces.IMBHardKeyListener"))
+            }.getOrNull()
+            unRegistHardKeyListenerMethod = runCatching {
+                engineClass.getMethod("unRegistHardKeyListener")
+            }.getOrNull()
             val dataTypeClass = Class.forName(DATA_TYPE_CLASS) as Class<out Enum<*>>
             cfgVehicleDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_VEHICLE")
             cfgAudioDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_AUDIO")
@@ -450,19 +460,7 @@ object MbCanEngineFacade {
                     }
                 }
                 "onVehicleConsumptionChange" -> {
-                    val consumptionObj = args?.getOrNull(0)
-                    var avgVal = runCatching {
-                        val getter = consumptionObj?.javaClass?.getMethod("getfAvgFuCns")
-                        (getter?.invoke(consumptionObj) as? Number)?.toFloat()
-                    }.getOrNull()
-                    if (avgVal != null) {
-                        if (avgVal > 35f) {
-                            avgVal /= 10f
-                        }
-                        if (avgVal > 0f) {
-                            CanDataRepository.updateAverageFuelConsumption(avgVal)
-                        }
-                    }
+                    // Штатный расход с CAN игнорируется: расчёт среднего расхода идет только по пройденному расстоянию и потраченному бензину
                 }
             }
             null
@@ -797,6 +795,59 @@ object MbCanEngineFacade {
         } catch (t: Throwable) {
             "mbCAN_motion_err=${t.javaClass.simpleName}:${t.message}"
         }
+    }
+
+    /**
+     * Registers [IMBHardKeyListener] for steering wheel / hardware key events.
+     */
+    @Synchronized
+    fun setHardKeyCallback(callback: ((keyCode: Int, keyAction: Int, extra: Byte) -> Unit)?) {
+        hardKeyCallback = callback
+        if (callback == null) {
+            unregisterHardKeyListener()
+            return
+        }
+        if (hardKeyListenerProxy != null) return
+        if (ensureInitialized() !is MbCanAvailability.Available) return
+        val inst = engineInstance ?: return
+        val iface = try {
+            Class.forName("com.mengbo.mbCan.interfaces.IMBHardKeyListener")
+        } catch (_: Throwable) {
+            return
+        }
+        val loader = iface.classLoader ?: return
+        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            vad.dashing.tbox.DclLogRecorder.recordCanRx()
+            if (method.name == "onHardKey" && args != null && args.size >= 3) {
+                val keyCode = (args[0] as Number).toInt()
+                val keyAction = (args[1] as Number).toInt()
+                val extra = (args[2] as Number).toByte()
+                hardKeyCallback?.invoke(keyCode, keyAction, extra)
+            }
+            null
+        }
+        val proxy = Proxy.newProxyInstance(loader, arrayOf(iface), handler)
+        hardKeyListenerProxy = proxy
+        try {
+            registHardKeyListenerMethod?.invoke(inst, proxy)
+            Log.i(LOG_TAG, "setHardKeyCallback: registered IMBHardKeyListener")
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "setHardKeyCallback failed: ${t.message}")
+            hardKeyListenerProxy = null
+        }
+    }
+
+    @Synchronized
+    private fun unregisterHardKeyListener() {
+        val inst = engineInstance
+        if (inst != null && hardKeyListenerProxy != null) {
+            try {
+                unRegistHardKeyListenerMethod?.invoke(inst)
+                Log.i(LOG_TAG, "unregisterHardKeyListener: unregistered IMBHardKeyListener")
+            } catch (_: Throwable) {
+            }
+        }
+        hardKeyListenerProxy = null
     }
 }
 

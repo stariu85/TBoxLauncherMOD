@@ -428,7 +428,7 @@ object CanDataRepository {
         if (initFuel == null) {
             initFuel = currentFuelLiters
             initialFuelLiters = initFuel
-        } else if (currentFuelLiters > initFuel + 2.0f) {
+        } else if (currentFuelLiters > initFuel + 5.0f) {
             // Refuel detected: commit segment fuel and distance to overall totals
             val segUsed = (initFuel - (lastKnownFuelLiters ?: initFuel)).coerceAtLeast(0f)
             overallAccumulatedFuelLiters += segUsed
