@@ -21,8 +21,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -99,6 +101,7 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("rear_fog", "Задняя ПТФ", isButton = true, iconRes = R.drawable.ic_launcher_rear_fog),
         LauncherTopBarItemDescriptor("avm", "Камеры 360", isButton = true, iconRes = R.drawable.ic_launcher_avm),
         LauncherTopBarItemDescriptor("spacer", "Разделитель", isButton = true),
+        LauncherTopBarItemDescriptor("spacer_small", "Разделитель малый", isButton = true),
     )
 }
 
@@ -271,7 +274,7 @@ internal fun LauncherTopBarPickerContent(
     val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
 
     val availableButtons = LauncherTopBarDescriptors.ALL_BUTTONS.filter { desc ->
-        desc.id == "spacer" || !activeItems.contains(desc.id)
+        desc.id.startsWith("spacer") || !activeItems.contains(desc.id)
     }
     val availableIndicators = LauncherTopBarDescriptors.ALL_INDICATORS.filter { !activeItems.contains(it.id) }
 
@@ -401,6 +404,22 @@ internal fun LauncherTopBarPickerContent(
                                         style = TextStyle(
                                             platformStyle = PlatformTextStyle(includeFontPadding = false),
                                         ),
+                                    )
+                                } else if (desc.id == "spacer") {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(4.dp)
+                                            .height(16.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(LauncherColors.TextPrimary),
+                                    )
+                                } else if (desc.id == "spacer_small") {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(2.dp)
+                                            .height(16.dp)
+                                            .clip(RoundedCornerShape(1.dp))
+                                            .background(LauncherColors.TextPrimary),
                                     )
                                 }
                             }

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.ui.launcher.ExperimentalPlayerLaunchMode
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
+import vad.dashing.tbox.ui.launcher.launchLauncherApp
 import vad.dashing.tbox.ui.launcher.removeAppTaskWindow
 import java.util.LinkedHashSet
 
@@ -444,12 +445,9 @@ object SharedMediaControlService {
     internal fun scheduleLateSessionPlayRetryIfNeeded(appContext: Context, targetPackage: String) {
         launchPlayerVerifyScope.launch {
             try {
-                val openInAdas = LauncherAppConfigStore.openPlayerInAdasWindow(appContext)
-                val timeoutMs = if (openInAdas) 10_000L else LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS
+                val timeoutMs = LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS
                 val deadline = SystemClock.elapsedRealtime() + timeoutMs
                 var shouldSendFallbackKey = false
-                var sessionFound = false
-                var closedEarly = false
                 while (SystemClock.elapsedRealtime() < deadline) {
                     var shouldExit = false
                     synchronized(this@SharedMediaControlService) {
@@ -464,13 +462,11 @@ object SharedMediaControlService {
                             controller == null -> Unit
                             controller.playbackState.isPlayingState() -> {
                                 shouldExit = true
-                                sessionFound = true
                             }
                             else -> {
                                 controller.transportControls.play()
                                 shouldSendFallbackKey = true
                                 shouldExit = true
-                                sessionFound = true
                             }
                         }
                     }
@@ -479,18 +475,6 @@ object SharedMediaControlService {
                 }
                 if (shouldSendFallbackKey) {
                     sendMediaPlayKeyEvent(appContext, targetPackage)
-                }
-                if (sessionFound && LauncherAppConfigStore.closePlayerAfterPlayback(appContext)) {
-                    delay(500L)
-                    removeAppTaskWindow(appContext, targetPackage)
-                    closedEarly = true
-                }
-                if (openInAdas && !closedEarly) {
-                    val remainingMs = deadline - SystemClock.elapsedRealtime()
-                    if (remainingMs > 0) {
-                        delay(remainingMs)
-                    }
-                    removeAppTaskWindow(appContext, targetPackage)
                 }
             } catch (e: Exception) {
                 TboxRepository.addLog("ERROR", "MediaControl", "Late play retry failed: ${e.message}")
@@ -1031,24 +1015,19 @@ private fun launchPlayerApp(
         return
     }
 
-    val openInAdas = LauncherAppConfigStore.openPlayerInAdasWindow(context)
     val launched = runCatching {
-        if (openInAdas) {
-            vad.dashing.tbox.ui.launcher.launchLauncherAppInAdas(context, packageName)
-        } else {
-            vad.dashing.tbox.ui.launcher.launchLauncherApp(context, packageName)
-        }
+        launchLauncherApp(context, packageName)
     }.isSuccess
     DiagFileLog.i(
         "MediaLaunch",
-        "launchPlayerApp pkg=$packageName ok=$launched keepFg=$keepPlayerForeground openInAdas=$openInAdas",
+        "launchPlayerApp pkg=$packageName ok=$launched keepFg=$keepPlayerForeground",
     )
     if (!launched) return
 
     if (scheduleColdStartPlayRetry) {
         SharedMediaControlService.scheduleColdStartPlayRetryIfNeeded(context.applicationContext, packageName)
     }
-    if (scheduleLateSessionPlayRetry || openInAdas) {
+    if (scheduleLateSessionPlayRetry) {
         SharedMediaControlService.scheduleLateSessionPlayRetryIfNeeded(context.applicationContext, packageName)
     }
 }

@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -87,6 +90,18 @@ fun LauncherDriveModeBar(
     val isEco = activeMode == "ECO"
     val isNor = activeMode == "NOR" || activeMode == "NORMAL" || activeMode == "COMFORT"
     val isSpt = activeMode == "SPT" || activeMode == "SPORT"
+    val isSnow = activeMode == "SNOW" || activeMode == "СНЕГ"
+    val isMud = activeMode == "MUD" || activeMode == "ГРЯЗЬ"
+    val isSand = activeMode == "SAND" || activeMode == "ПЕСОК"
+
+    val initialPage = if (isSnow || isMud || isSand) 1 else 0
+    val pagerState = rememberPagerState(initialPage = initialPage) { 2 }
+
+    LaunchedEffect(isSnow, isMud, isSand) {
+        if (isSnow || isMud || isSand) {
+            pagerState.animateScrollToPage(1)
+        }
+    }
 
     val onSelectMode: (String) -> Unit = { mode ->
         pendingMode = mode
@@ -96,6 +111,9 @@ fun LauncherDriveModeBar(
                 "ECO" -> 2 to 1
                 "NOR" -> 0 to 2
                 "SPT" -> 1 to 0
+                "SNOW" -> 3 to 2
+                "MUD" -> 4 to 2
+                "SAND" -> 5 to 2
                 else -> 0 to 2
             }
             UniversalCanRepository.execute(
@@ -107,54 +125,98 @@ fun LauncherDriveModeBar(
         }
     }
 
-    Row(
+    HorizontalPager(
+        state = pagerState,
         modifier = modifier
             .fillMaxWidth()
             .height(ButtonHeight),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Slot 1: Active Gear Indicator
-        GearIndicatorChip(
-            activeGear = activeGear,
-            currentGearNum = gearBoxCurrentGear,
+    ) { page ->
+        Row(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
                 .height(ButtonHeight),
-        )
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Slot 1: Active Gear Indicator
+            GearIndicatorChip(
+                activeGear = activeGear,
+                currentGearNum = gearBoxCurrentGear,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(ButtonHeight),
+            )
 
-        // Slot 2: ECO Button
-        DriveModeChip(
-            label = "ECO",
-            selected = isEco,
-            activeColor = Color(0xFF16A34A), // Green
-            onClick = { onSelectMode("ECO") },
-            modifier = Modifier
-                .weight(1f)
-                .height(ButtonHeight),
-        )
+            if (page == 0) {
+                // Slot 2: ECO Button
+                DriveModeChip(
+                    label = "ECO",
+                    selected = isEco,
+                    activeColor = Color(0xFF16A34A), // Green
+                    onClick = { onSelectMode("ECO") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
 
-        // Slot 3: NOR Button
-        DriveModeChip(
-            label = "NOR",
-            selected = isNor,
-            activeColor = Color(0xFF3B82F6), // Blue
-            onClick = { onSelectMode("NOR") },
-            modifier = Modifier
-                .weight(1f)
-                .height(ButtonHeight),
-        )
+                // Slot 3: NOR Button
+                DriveModeChip(
+                    label = "NOR",
+                    selected = isNor,
+                    activeColor = Color(0xFF3B82F6), // Blue
+                    onClick = { onSelectMode("NOR") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
 
-        // Slot 4: SPT Button
-        DriveModeChip(
-            label = "SPT",
-            selected = isSpt,
-            activeColor = Color(0xFFEF4444), // Red
-            onClick = { onSelectMode("SPT") },
-            modifier = Modifier
-                .weight(1f)
-                .height(ButtonHeight),
-        )
+                // Slot 4: SPT Button
+                DriveModeChip(
+                    label = "SPT",
+                    selected = isSpt,
+                    activeColor = Color(0xFFEF4444), // Red
+                    onClick = { onSelectMode("SPT") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
+            } else {
+                // Slot 2: SNOW Button
+                DriveModeChip(
+                    label = "SNOW",
+                    selected = isSnow,
+                    activeColor = Color(0xFFFFFFFF), // White background
+                    borderColor = Color(0xFF64748B), // Dark grey border
+                    textColorOverride = Color(0xFF334155), // Dark grey text
+                    onClick = { onSelectMode("SNOW") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
+
+                // Slot 3: MUD Button
+                DriveModeChip(
+                    label = "MUD",
+                    selected = isMud,
+                    activeColor = Color(0xFFF97316), // Orange
+                    onClick = { onSelectMode("MUD") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
+
+                // Slot 4: SAND Button
+                DriveModeChip(
+                    label = "SAND",
+                    selected = isSand,
+                    activeColor = Color(0xFFEAB308), // Yellow
+                    onClick = { onSelectMode("SAND") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
+            }
+        }
     }
 }
 
@@ -197,20 +259,34 @@ private fun DriveModeChip(
     label: String,
     selected: Boolean,
     activeColor: Color,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    borderColor: Color? = null,
+    textColorOverride: Color? = null,
+    onClick: () -> Unit,
 ) {
-    val textColor = if (selected) activeColor else LauncherColors.LeftTextPrimary
+    val effectiveBorderColor = borderColor ?: activeColor.copy(alpha = 0.85f)
+    val textColor = if (selected) (textColorOverride ?: activeColor) else LauncherColors.LeftTextPrimary
+
+    val backgroundModifier = if (selected) {
+        Modifier.background(
+            Brush.verticalGradient(
+                colors = listOf(
+                    activeColor.copy(alpha = 0.35f),
+                    activeColor.copy(alpha = 0.15f),
+                )
+            )
+        )
+    } else {
+        Modifier.background(LauncherColors.LeftPanelCard)
+    }
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (selected) activeColor.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard,
-            )
+            .then(backgroundModifier)
             .then(
                 if (selected) {
-                    Modifier.border(1.5.dp, activeColor.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                    Modifier.border(1.5.dp, effectiveBorderColor, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }

@@ -382,6 +382,9 @@ fun LauncherLeftPanel(
     val isEco = activeDriveMode == "ECO"
     val isNor = activeDriveMode == "NOR" || activeDriveMode == "NORMAL" || activeDriveMode == "COMFORT"
     val isSpt = activeDriveMode == "SPT" || activeDriveMode == "SPORT"
+    val isSnow = activeDriveMode == "SNOW" || activeDriveMode == "СНЕГ"
+    val isMud = activeDriveMode == "MUD" || activeDriveMode == "ГРЯЗЬ"
+    val isSand = activeDriveMode == "SAND" || activeDriveMode == "ПЕСОК"
 
     val isDrivingState = (inDriveGear || effectiveSpeed > 0.5f) && activeGear != 'P'
 
@@ -389,6 +392,9 @@ fun LauncherLeftPanel(
         isEco -> Color(0xFF16A34A) // Green
         isNor -> Color(0xFF3B82F6) // Blue
         isSpt -> Color(0xFFEF4444) // Red
+        isSnow -> Color(0xFFFFFFFF) // White
+        isMud -> Color(0xFFF97316) // Orange
+        isSand -> Color(0xFFEAB308) // Yellow
         else -> Color.Transparent
     }
 

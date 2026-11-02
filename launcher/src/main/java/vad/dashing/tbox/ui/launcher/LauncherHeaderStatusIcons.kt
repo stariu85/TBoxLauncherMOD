@@ -121,6 +121,7 @@ private val IndicatorIconTint: Color
     get() = if (LauncherThemeState.darkTheme) Color(0xFFB0B7C0) else Color(0xFF5C6675)
 
 private fun isSpacer(itemId: String): Boolean = itemId == "spacer" || itemId.startsWith("spacer")
+private fun isSpacerSmall(itemId: String): Boolean = itemId == "spacer_small" || itemId.startsWith("spacer_small")
 
 private fun isIndicator(itemId: String): Boolean = itemId in setOf(
     "temp", "inside_temp", "combined_temp", "engine_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance"
@@ -170,10 +171,8 @@ internal fun LauncherTopHeaderBar(
     val engineTemp by canViewModel.engineTemperature.collectAsStateWithLifecycle()
     val insideAirQuality by canViewModel.insideAirQuality.collectAsStateWithLifecycle()
     val outsideAirQuality by canViewModel.outsideAirQuality.collectAsStateWithLifecycle()
-    val avgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
+    val displayedAvgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
-    val tbmAvgFuel by tbmRepo.activeTripAvgFuelL100km.collectAsStateWithLifecycle()
-    val displayedAvgFuel = tbmAvgFuel ?: avgFuel
     val activeTripDistanceKm by tbmRepo.activeTripDistanceKm.collectAsStateWithLifecycle()
     val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
     val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
@@ -541,9 +540,14 @@ private fun RenderTopBarItemContent(
             } else {
                 Color.Transparent
             }
+            val spacerWidth = if (isSpacerSmall(itemId)) {
+                ((buttonDiameterDp + 32) / 2f).dp
+            } else {
+                (buttonDiameterDp + 32).dp
+            }
             Box(
                 modifier = Modifier
-                    .width((buttonDiameterDp + 32).dp)
+                    .width(spacerWidth)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
                     .background(bgColor)
@@ -869,20 +873,20 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "gps" -> {
-            val satColor = when {
-                satInfo.isInertial -> Color(0xFF3B82F6)
-                satInfo.hasFix -> Color(0xFF22C55E)
-                else -> Color(0xFFEF4444)
+            val satPainter = when {
+                satInfo.hasFix -> painterResource(R.drawable.ic_launcher_satellite)
+                satInfo.isInertial -> painterResource(R.drawable.ic_launcher_satellite_outline)
+                else -> painterResource(R.drawable.ic_launcher_satellite_off)
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Image(
-                    painter = painterResource(R.drawable.ic_launcher_satellite),
+                    painter = satPainter,
                     contentDescription = stringResource(R.string.location_visible_satellites),
                     modifier = Modifier.size(indicatorIconSizeDp),
-                    colorFilter = ColorFilter.tint(satColor),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
                 )
                 if (satInfo.hasFix || satInfo.isInertial) {
                     Text(
@@ -1327,9 +1331,7 @@ internal fun resolveSatelliteInfo(
             val used = tbmSatUsed ?: 0
             val hasLocFix = tbmFixValid == true || tbmLocateStatus == true || used > 0
             val speedSourceLower = tbmSpeedSource?.lowercase()
-            val isInertialSpeedSource = speedSourceLower in setOf(
-                "retention", "can", "dr", "dead_reckoning", "inertial", "extrapolated", "sensor"
-            )
+            val isInertialSpeedSource = speedSourceLower == "inertial" && used == 0
 
             if (isInertialSpeedSource) {
                 SatelliteInfo(

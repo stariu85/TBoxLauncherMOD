@@ -100,50 +100,7 @@ import vad.dashing.tbox.ui.sendToggleWiperMaintenance
 import vad.dashing.tbox.ui.theme.tboxCaption
 import vad.dashing.tbox.valueToString
 
-@Composable
-internal fun LauncherAboutUpdatesHeaderButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val updateViewModel: UpdateViewModel = viewModel(
-        factory = UpdateViewModelFactory(
-            context.applicationContext as Application,
-            SettingsManager(context.applicationContext),
-        ),
-    )
-    val updateUiState by updateViewModel.uiState.collectAsStateWithLifecycle()
-    val hasUpdate = when (updateUiState) {
-        is UpdateUiState.Available,
-        is UpdateUiState.WaitingForServer,
-        is UpdateUiState.Downloading,
-        is UpdateUiState.Verifying,
-        is UpdateUiState.ReadyToInstall -> true
-        else -> false
-    }
 
-    val greenBg = Color(0xFF22C55E)
-    val normalBg = LauncherColors.CardDarkElevated
-    val bg = if (hasUpdate) greenBg else normalBg
-    val textColor = if (hasUpdate) Color.White else LauncherColors.TextPrimary
-    val text = if (hasUpdate) stringResource(R.string.launcher_update_available_short) else stringResource(R.string.launcher_about_app_short)
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            color = textColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
 
 @Composable
 fun LauncherVehicleSettingsOverlay(
@@ -166,7 +123,7 @@ fun LauncherVehicleSettingsOverlay(
     if (!visible && transitionProgress <= 0.001f) return
 
     val context = LocalContext.current
-    var expandedSection by remember { mutableStateOf<VehicleSettingsSection?>(VehicleSettingsSection.Status) }
+    var expandedSection by remember { mutableStateOf<VehicleSettingsSection?>(null) }
     val progress = transitionProgress.coerceIn(0f, 1f)
     Box(
         modifier = modifier
@@ -241,9 +198,6 @@ fun LauncherVehicleSettingsOverlay(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Normal,
                             )
-                            LauncherAboutUpdatesHeaderButton(
-                                onClick = { launchTBoxSettings(context) },
-                            )
                         }
                         Text(
                             text = stringResource(R.string.launcher_vs_overlay_hint),
@@ -284,24 +238,10 @@ internal fun LauncherVehicleSettingsContent(
     simulationUnlocked: Boolean = false,
 ) {
     val context = LocalContext.current
-    val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
-    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
-    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
-    // Filtered % считается только в активной поездке; вне поездки показываем сырой процент.
-    val fuelPct = fuelPctFiltered ?: fuelPctRaw
-    val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
     val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
     val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
     val climateSet by canViewModel.climateSetTemperature1.collectAsStateWithLifecycle()
     val climateSetPassenger by canViewModel.climateSetTemperature2.collectAsStateWithLifecycle()
-    val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
-    val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
-    val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
-    val driveMode = vad.dashing.tbox.resolveDriveModeDisplayLabel(
-        driveModeRaw = driveModeRaw,
-        driveModeWetRaw = driveModeWetRaw,
-        gearBoxDriveMode = gearBoxDriveMode,
-    )
     val wheelPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
     val wheelTemp by canViewModel.wheelsTemperature.collectAsStateWithLifecycle()
     val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
@@ -343,7 +283,6 @@ internal fun LauncherVehicleSettingsContent(
     val wiperMaintenance by UniversalCanRepository.wiperMaintenanceState.collectAsStateWithLifecycle()
     var headlightsMode by remember { mutableStateOf(LIGHT_CONTROL_OFF) }
     var rearFogActive by remember { mutableStateOf(false) }
-    val systemSettings = rememberLauncherSystemSettings(context)
     val dash = stringResource(R.string.launcher_vs_value_unknown)
 
     LaunchedEffect(vehicleControls.lightControlRaw) {
@@ -358,27 +297,13 @@ internal fun LauncherVehicleSettingsContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         LauncherVehicleSectionCard(
-            title = stringResource(R.string.launcher_vs_section_status),
-            subtitle = stringResource(R.string.launcher_vs_section_status_sub),
-            icon = VehicleSettingsSectionIcons.Status,
-            expanded = expandedSection == VehicleSettingsSection.Status,
-            onToggle = { onSectionToggle(VehicleSettingsSection.Status) },
+            title = stringResource(R.string.launcher_vs_section_system),
+            subtitle = stringResource(R.string.launcher_vs_section_system_sub),
+            icon = VehicleSettingsSectionIcons.System,
+            expanded = expandedSection == VehicleSettingsSection.System,
+            onToggle = { onSectionToggle(VehicleSettingsSection.System) },
         ) {
-            LauncherSettingsValueRow(
-                stringResource(R.string.launcher_vs_tbox),
-                stringResource(if (tboxConnected) R.string.value_connected else R.string.value_disconnected),
-            )
-            LauncherSettingsValueRow(
-                stringResource(R.string.launcher_metric_range),
-                rangeKm?.let { "$it km" } ?: dash,
-            )
-            LauncherSettingsValueRow(
-                stringResource(R.string.launcher_vs_fuel),
-                fuelPct?.let { "$it%" } ?: dash,
-            )
-            if (driveMode.isNotBlank()) {
-                LauncherSettingsValueRow(stringResource(R.string.launcher_drive_mode_label), driveMode)
-            }
+            LauncherSystemAndAboutSettingsContent()
         }
 
         LauncherVehicleSectionCard(
@@ -941,103 +866,6 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
-            title = stringResource(R.string.launcher_vs_section_system),
-            subtitle = stringResource(R.string.launcher_vs_section_system_sub),
-            icon = VehicleSettingsSectionIcons.System,
-            expanded = expandedSection == VehicleSettingsSection.System,
-            onToggle = { onSectionToggle(VehicleSettingsSection.System) },
-        ) {
-            val settingsManager = remember(context) { SettingsManager(context) }
-            val uiClickSoundsEnabled by settingsManager.uiClickSoundsEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
-            val scope = rememberCoroutineScope()
-
-            LauncherSettingsToggleRow(
-                label = stringResource(R.string.launcher_vs_ui_click_sounds),
-                active = uiClickSoundsEnabled,
-                onClick = {
-                    scope.launch {
-                        settingsManager.saveUiClickSoundsEnabled(!uiClickSoundsEnabled)
-                    }
-                },
-            )
-            Text(
-                text = stringResource(R.string.launcher_vs_ui_click_sounds_desc),
-                color = LauncherColors.TextMuted,
-                fontSize = 12.sp,
-            )
-            LauncherSettingsToggleRow(
-                label = stringResource(R.string.launcher_vs_wifi) +
-                    (systemSettings.wifiSsid?.let { " · $it" } ?: ""),
-                active = systemSettings.wifiEnabled,
-                onClick = { systemSettings.applyWifiEnabled(!systemSettings.wifiEnabled) },
-            )
-            LauncherWifiApBlock()
-            LauncherSettingsToggleRow(
-                label = stringResource(R.string.launcher_vs_bluetooth) +
-                    (systemSettings.bluetoothName?.let { " · $it" } ?: ""),
-                active = systemSettings.bluetoothEnabled,
-                onClick = { systemSettings.applyBluetoothEnabled(!systemSettings.bluetoothEnabled) },
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.launcher_vs_volume),
-                    color = LauncherColors.TextPrimary,
-                    fontSize = 14.sp,
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "−",
-                        color = LauncherColors.AccentCyan,
-                        fontSize = 20.sp,
-                        modifier = Modifier.clickable { systemSettings.adjustMediaVolume(-1) },
-                    )
-                    Text(
-                        "${systemSettings.mediaVolume}/${systemSettings.mediaVolumeMax}",
-                        color = LauncherColors.TextSecondary,
-                        fontSize = 14.sp,
-                    )
-                    Text(
-                        "+",
-                        color = LauncherColors.AccentCyan,
-                        fontSize = 20.sp,
-                        modifier = Modifier.clickable { systemSettings.adjustMediaVolume(1) },
-                    )
-                }
-            }
-            Text(
-                stringResource(R.string.launcher_vs_brightness),
-                color = LauncherColors.TextPrimary,
-                fontSize = 14.sp,
-            )
-            if (systemSettings.brightnessWritable) {
-                Slider(
-                    value = systemSettings.brightnessNorm,
-                    onValueChange = { systemSettings.applyBrightnessNorm(it) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(
-                        thumbColor = LauncherColors.AccentCyan,
-                        activeTrackColor = LauncherColors.AccentCyan,
-                    ),
-                )
-            } else {
-                Text(
-                    stringResource(R.string.launcher_vs_brightness_locked),
-                    color = LauncherColors.TextMuted,
-                    fontSize = 12.sp,
-                )
-            }
-        }
-
-        LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_experimental),
             subtitle = stringResource(R.string.launcher_vs_section_experimental_sub),
             icon = VehicleSettingsSectionIcons.Experimental,
@@ -1081,7 +909,7 @@ internal fun LauncherVehicleSettingsContent(
                     label = label,
                     active = currentExpPlayerMode == mode,
                     onClick = {
-                        val nextMode = if (currentExpPlayerMode == mode) ExperimentalPlayerLaunchMode.DISABLED else mode
+                        val nextMode = if (currentExpPlayerMode == mode) ExperimentalPlayerLaunchMode.MEDIA_BUTTON_BROADCAST else mode
                         LauncherAppConfigStore.setExperimentalPlayerLaunchMode(context, nextMode)
                     },
                 )

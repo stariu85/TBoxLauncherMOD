@@ -43,7 +43,7 @@ import vad.dashing.tbox.ui.rememberWrappedOnClick
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 enum class VehicleSettingsSection {
-    Status,
+    System,
     Wheels,
     Body,
     Lights,
@@ -54,7 +54,6 @@ enum class VehicleSettingsSection {
     Launcher,
     TbmApi,
     Theme,
-    System,
     Experimental,
     Simulation,
 }

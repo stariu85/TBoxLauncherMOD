@@ -1,8 +1,10 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.app.Application
 import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,10 +38,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.BuildConfig
 import vad.dashing.tbox.DonationLinks
@@ -49,16 +55,18 @@ import vad.dashing.tbox.ui.theme.tboxBody
 import vad.dashing.tbox.ui.theme.tboxButton
 import vad.dashing.tbox.ui.theme.tboxHeadline
 import vad.dashing.tbox.ui.theme.tboxTitle
+import vad.dashing.tbox.update.InstallPermissionHelper
 import vad.dashing.tbox.update.UpdateChannel
 import vad.dashing.tbox.update.UpdateReleaseInfo
 import vad.dashing.tbox.update.UpdateUiState
 import vad.dashing.tbox.update.UpdateViewModel
+import vad.dashing.tbox.update.UpdateViewModelFactory
 import vad.dashing.tbox.update.formatApkSizeMegabytes
 import vad.dashing.tbox.update.formatDownloadEta
 import vad.dashing.tbox.update.formatDownloadSpeed
 
 /**
- * About + OTA screen opened by the launcher «Настроить» button ([MainActivity]).
+ * About + System Settings screen.
  */
 @Composable
 fun LauncherSettingsScreen(
@@ -67,19 +75,73 @@ fun LauncherSettingsScreen(
     onOpenInstallPermissionSettings: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val uiState by updateViewModel.uiState.collectAsStateWithLifecycle()
-    val updateChannel by updateViewModel.updateChannel.collectAsStateWithLifecycle()
-    val updateCheckEnabled by updateViewModel.updateCheckEnabled.collectAsStateWithLifecycle()
-    val pendingUpdateInfo = updateViewModel.peekUpdateInfo()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LauncherColors.SettingsBackground)
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_vs_section_system),
+                style = MaterialTheme.typography.tboxHeadline,
+                color = LauncherColors.TextPrimary,
+            )
+            OutlinedButton(onClick = rememberWrappedOnClick(onClose)) {
+                Text(
+                    text = stringResource(R.string.action_close),
+                    style = MaterialTheme.typography.tboxButton,
+                )
+            }
+        }
+
+        LauncherSystemAndAboutSettingsContent(
+            updateViewModel = updateViewModel,
+            settingsManager = settingsManager,
+            onOpenInstallPermissionSettings = onOpenInstallPermissionSettings,
+        )
+    }
+}
+
+@Composable
+fun LauncherSystemAndAboutSettingsContent(
+    modifier: Modifier = Modifier,
+    settingsManager: SettingsManager? = null,
+    updateViewModel: UpdateViewModel? = null,
+    onOpenInstallPermissionSettings: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
+    val manager = settingsManager ?: remember(context) { SettingsManager(context) }
+    val vm: UpdateViewModel = updateViewModel ?: viewModel(
+        factory = UpdateViewModelFactory(
+            context.applicationContext as Application,
+            manager,
+        ),
+    )
+    val onOpenPermissionSettings: () -> Unit = onOpenInstallPermissionSettings ?: {
+        launchSystemSettingsInFreeform(
+            context,
+            InstallPermissionHelper.createUnknownSourcesSettingsIntent(context),
+        )
+    }
+    val uiState by vm.uiState.collectAsStateWithLifecycle()
+    val updateChannel by vm.updateChannel.collectAsStateWithLifecycle()
+    val updateCheckEnabled by vm.updateCheckEnabled.collectAsStateWithLifecycle()
+    val pendingUpdateInfo = vm.peekUpdateInfo()
     val activity = LocalActivity.current
-    var canInstall by remember { mutableStateOf(updateViewModel.canInstallPackages()) }
+    var canInstall by remember { mutableStateOf(vm.canInstallPackages()) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, activity) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                canInstall = updateViewModel.canInstallPackages()
+                canInstall = vm.canInstallPackages()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -87,7 +149,7 @@ fun LauncherSettingsScreen(
     }
 
     LaunchedEffect(Unit) {
-        updateViewModel.checkForUpdateOnStartupIfEnabled()
+        vm.checkForUpdateOnStartupIfEnabled()
     }
 
     val packageInfo = remember {
@@ -103,32 +165,12 @@ fun LauncherSettingsScreen(
         }
     }
 
+
+
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LauncherColors.SettingsBackground)
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.launcher_standalone_about_title),
-                style = MaterialTheme.typography.tboxHeadline,
-                color = LauncherColors.TextPrimary,
-            )
-            OutlinedButton(onClick = rememberWrappedOnClick(onClose)) {
-                Text(
-                    text = stringResource(R.string.action_close),
-                    style = MaterialTheme.typography.tboxButton,
-                )
-            }
-        }
-
         Text(
             text = stringResource(R.string.launcher_standalone_app_name),
             style = MaterialTheme.typography.tboxTitle,
@@ -164,7 +206,7 @@ fun LauncherSettingsScreen(
             onClick = {
                 rebootAction.onUsed()
                 rebootScope.launch {
-                    settingsManager.markHuRebootedAfterUpdate(currentVersionCode)
+                    manager.markHuRebootedAfterUpdate(currentVersionCode)
                     requestHeadUnitReboot(context)
                 }
             },
@@ -180,7 +222,7 @@ fun LauncherSettingsScreen(
         var showRestoredRebootDialog by remember { mutableStateOf(false) }
 
         LauncherBackupSection(
-            settingsManager = settingsManager,
+            settingsManager = manager,
             onRestoreSuccess = {
                 showRestoredRebootDialog = true
             },
@@ -199,42 +241,21 @@ fun LauncherSettingsScreen(
                 .background(LauncherColors.SettingsBorder),
         )
 
+        SystemWallpaperSection()
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(LauncherColors.SettingsBorder),
+        )
+
+        // OTA Update section
         Text(
             text = stringResource(R.string.update_tab_title),
             style = MaterialTheme.typography.tboxHeadline,
             color = LauncherColors.TextPrimary,
         )
-
-        val uiClickSoundsEnabled by settingsManager.uiClickSoundsEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
-        val clickSoundScope = rememberCoroutineScope()
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.launcher_vs_ui_click_sounds),
-                    style = MaterialTheme.typography.tboxBody,
-                    color = LauncherColors.TextPrimary,
-                )
-                Text(
-                    text = stringResource(R.string.launcher_vs_ui_click_sounds_desc),
-                    style = MaterialTheme.typography.tboxBody,
-                    color = LauncherColors.TextMuted,
-                )
-            }
-            Switch(
-                checked = uiClickSoundsEnabled,
-                onCheckedChange = { enabled ->
-                    clickSoundScope.launch {
-                        settingsManager.saveUiClickSoundsEnabled(enabled)
-                    }
-                },
-                colors = launcherSwitchColors(),
-            )
-        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -256,7 +277,7 @@ fun LauncherSettingsScreen(
             Switch(
                 checked = updateCheckEnabled,
                 onCheckedChange = { enabled ->
-                    updateViewModel.saveUpdateCheckEnabled(enabled)
+                    vm.saveUpdateCheckEnabled(enabled)
                 },
                 colors = launcherSwitchColors(),
             )
@@ -276,7 +297,7 @@ fun LauncherSettingsScreen(
             FilterChip(
                 selected = updateChannel == UpdateChannel.RELEASE,
                 onClick = rememberWrappedOnClick {
-                    updateViewModel.saveUpdateChannel(UpdateChannel.RELEASE)
+                    vm.saveUpdateChannel(UpdateChannel.RELEASE)
                 },
                 label = {
                     Text(stringResource(R.string.update_channel_release))
@@ -285,7 +306,7 @@ fun LauncherSettingsScreen(
             FilterChip(
                 selected = updateChannel == UpdateChannel.DEVELOPMENT,
                 onClick = rememberWrappedOnClick {
-                    updateViewModel.saveUpdateChannel(UpdateChannel.DEVELOPMENT)
+                    vm.saveUpdateChannel(UpdateChannel.DEVELOPMENT)
                 },
                 label = {
                     Text(stringResource(R.string.update_channel_development))
@@ -294,7 +315,7 @@ fun LauncherSettingsScreen(
         }
 
         Button(
-            onClick = rememberWrappedOnClick { updateViewModel.checkForUpdate(force = true) },
+            onClick = rememberWrappedOnClick { vm.checkForUpdate(force = true) },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
@@ -342,7 +363,7 @@ fun LauncherSettingsScreen(
             is UpdateUiState.Available -> {
                 UpdateReleaseDetails(state.info)
                 Button(
-                    onClick = rememberWrappedOnClick { updateViewModel.downloadAndVerify() },
+                    onClick = rememberWrappedOnClick { vm.downloadAndVerify() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
@@ -360,7 +381,7 @@ fun LauncherSettingsScreen(
                     color = LauncherColors.TextPrimary,
                 )
                 Button(
-                    onClick = rememberWrappedOnClick { updateViewModel.cancelDownload() },
+                    onClick = rememberWrappedOnClick { vm.cancelDownload() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
@@ -412,7 +433,7 @@ fun LauncherSettingsScreen(
                     )
                 }
                 Button(
-                    onClick = rememberWrappedOnClick { updateViewModel.cancelDownload() },
+                    onClick = rememberWrappedOnClick { vm.cancelDownload() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
@@ -439,7 +460,7 @@ fun LauncherSettingsScreen(
                         color = LauncherColors.TextSecondary,
                     )
                     Button(
-                        onClick = rememberWrappedOnClick(onOpenInstallPermissionSettings),
+                        onClick = rememberWrappedOnClick(onOpenPermissionSettings),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
@@ -449,7 +470,7 @@ fun LauncherSettingsScreen(
                     }
                 }
                 Button(
-                    onClick = rememberWrappedOnClick { updateViewModel.installPreparedApk() },
+                    onClick = rememberWrappedOnClick { vm.installPreparedApk() },
                     enabled = canInstall,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -467,7 +488,7 @@ fun LauncherSettingsScreen(
                 )
                 state.cachedInfo?.let { UpdateReleaseDetails(it) }
                 Button(
-                    onClick = rememberWrappedOnClick { updateViewModel.checkForUpdate(force = true) },
+                    onClick = rememberWrappedOnClick { vm.checkForUpdate(force = true) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
@@ -477,7 +498,7 @@ fun LauncherSettingsScreen(
                 }
                 if (state.cachedInfo != null) {
                     Button(
-                        onClick = rememberWrappedOnClick { updateViewModel.downloadAndVerify() },
+                        onClick = rememberWrappedOnClick { vm.downloadAndVerify() },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
@@ -567,4 +588,50 @@ private fun resolveUpdateErrorMessage(raw: String): String = when {
     else -> stringResource(R.string.update_error_generic, raw)
 }
 
-
+@Composable
+private fun SystemWallpaperSection() {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.launcher_system_wallpaper_title),
+            style = MaterialTheme.typography.tboxHeadline,
+            color = LauncherColors.TextPrimary,
+        )
+        Text(
+            text = stringResource(R.string.launcher_system_wallpaper_desc),
+            style = MaterialTheme.typography.tboxBody,
+            color = LauncherColors.TextSecondary,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(
+                onClick = rememberWrappedOnClick {
+                    BlankWallpaperService.setSystemBlackWallpaper(context)
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = stringResource(R.string.launcher_system_wallpaper_set_button),
+                    style = MaterialTheme.typography.tboxButton,
+                )
+            }
+            OutlinedButton(
+                onClick = rememberWrappedOnClick {
+                    BlankWallpaperService.openSystemWallpaperSettings(context)
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = stringResource(R.string.launcher_system_wallpaper_settings_button),
+                    style = MaterialTheme.typography.tboxButton,
+                    color = LauncherColors.AccentCyan,
+                )
+            }
+        }
+    }
+}

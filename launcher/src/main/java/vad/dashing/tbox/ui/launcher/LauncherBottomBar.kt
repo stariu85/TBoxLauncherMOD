@@ -229,12 +229,10 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("hvac_fan_direction", "Направление обдува", R.drawable.ic_widget_fan_face_feet),
     LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
     LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_3),
-    LauncherDockButtonDescriptor("temp_driver", "Температура водителя", R.drawable.ic_widget_hvac_auto),
-    LauncherDockButtonDescriptor("temp_pass", "Температура пассажира", R.drawable.ic_widget_hvac_auto),
-    LauncherDockButtonDescriptor("audio_volume", "Громкость медиа", R.drawable.ic_widget_media_note),
-    LauncherDockButtonDescriptor("headlights", "Переключатель фар", R.drawable.ic_widget_headlights),
     LauncherDockButtonDescriptor("seat_heat_right", "Подогрев пассажира", R.drawable.ic_widget_seat_heat_right),
     LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_3),
+    LauncherDockButtonDescriptor("seat_heat_rear_left", "Подогрев зад. лев.", R.drawable.ic_widget_seat_heat_left),
+    LauncherDockButtonDescriptor("seat_heat_rear_right", "Подогрев зад. прав.", R.drawable.ic_widget_seat_heat_right),
     LauncherDockButtonDescriptor("recirc", "Рециркуляция", R.drawable.ic_widget_hvac_air_recirculation),
     LauncherDockButtonDescriptor("steering_heat", "Подогрев руля", R.drawable.ic_widget_steering_wheel_heat),
     LauncherDockButtonDescriptor("windscreen_heat", "Подогрев лобового", R.drawable.ic_widget_front_windscreen_heat),
@@ -1088,10 +1086,14 @@ private fun LauncherBottomDockButtonContent(
     val rearDefrost by UniversalCanRepository.hvacDefrosterState.collectAsStateWithLifecycle()
     val leftSeatMode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
     val rightSeatMode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
+    val rearLeftSeatMode by UniversalCanRepository.rearLeftSeatModeState.collectAsStateWithLifecycle()
+    val rearRightSeatMode by UniversalCanRepository.rearRightSeatModeState.collectAsStateWithLifecycle()
     val driverTemp by canViewModel.climateSetTemperature1.collectAsStateWithLifecycle()
     val passTemp by canViewModel.climateSetTemperature2.collectAsStateWithLifecycle()
     val leftRaw = launcherSeatModeToRaw(leftSeatMode) ?: 1
     val rightRaw = launcherSeatModeToRaw(rightSeatMode) ?: 1
+    val rearLeftRaw = launcherSeatModeToRaw(rearLeftSeatMode) ?: 1
+    val rearRightRaw = launcherSeatModeToRaw(rearRightSeatMode) ?: 1
 
     when (buttonId) {
         "hvac_sync" -> {
@@ -1388,7 +1390,14 @@ private fun LauncherBottomDockButtonContent(
             LauncherSeatVentIcon(raw = leftRaw)
         }
         "recirc" -> LauncherDockIcon(onClick = { sendToggleHvacAirRecirculation(context) }) {
-            LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc, sizeDp = 31.46f)
+            val isRecircOn = hvacRecirc is MbCanBinaryState.On
+            val recircRes = if (isRecircOn) R.drawable.ic_widget_hvac_recirc_on else R.drawable.ic_widget_hvac_recirc_off
+            Image(
+                painter = painterResource(recircRes),
+                contentDescription = null,
+                modifier = Modifier.size(dockDp(31.46f)),
+                colorFilter = ColorFilter.tint(HvacOffColor),
+            )
         }
         "seat_heat_right" -> LauncherDockIcon(onClick = {
             sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
@@ -1399,6 +1408,16 @@ private fun LauncherBottomDockButtonContent(
             sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
         }) {
             LauncherSeatVentIcon(raw = rightRaw, mirrored = true)
+        }
+        "seat_heat_rear_left" -> LauncherDockIcon(onClick = {
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH, rearLeftRaw)
+        }) {
+            LauncherSeatHeatIcon(raw = rearLeftRaw, badgeText = "REAR")
+        }
+        "seat_heat_rear_right" -> LauncherDockIcon(onClick = {
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, rearRightRaw)
+        }) {
+            LauncherSeatHeatIcon(raw = rearRightRaw, mirrored = true, badgeText = "REAR")
         }
         "steering_heat" -> LauncherDockIcon(onClick = { sendToggleSteeringWheelHeat(context) }) {
             LauncherBinaryTintIcon(
@@ -1709,8 +1728,7 @@ private fun LauncherVolumeStepper(
 private fun LauncherHvacIcon(drawableRes: Int, state: MbCanBinaryState, sizeDp: Float = 26f) {
     val tint = when (state) {
         is MbCanBinaryState.On -> HvacOnColor
-        is MbCanBinaryState.Off -> HvacOffColor
-        else -> HvacOffColor.copy(alpha = 0.55f)
+        else -> HvacOffColor
     }
     Image(
         painter = painterResource(drawableRes),
@@ -1755,30 +1773,82 @@ private fun LauncherSeatModeIcon(
  * Level lights progressively more waves, like ventilation blades.
  */
 @Composable
-private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
+private fun LauncherSeatHeatIcon(
+    raw: Int,
+    mirrored: Boolean = false,
+    badgeText: String? = null,
+) {
     val level = heatLevel(raw)
-    Box(modifier = Modifier.size(dockDp(25.5f)), contentAlignment = Alignment.Center) {
-        Image(
-            painter = painterResource(R.drawable.ic_widget_seat),
-            contentDescription = null,
-            modifier = Modifier
-                .size(dockDp(22.1f))
-                .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
-            colorFilter = ColorFilter.tint(if (level > 0) SeatHeatOnColor else HvacOffColor),
-        )
-        listOf(
-            R.drawable.ic_widget_seat_heat_1 to (level >= 1),
-            R.drawable.ic_widget_seat_heat_2 to (level >= 2),
-            R.drawable.ic_widget_seat_heat_3 to (level >= 3),
-        ).forEach { (drawable, enabled) ->
+    val activeColor = if (level > 0) SeatHeatOnColor else HvacOffColor
+
+    Box(
+        modifier = Modifier.size(dockDp(25.5f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (badgeText != null) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier.size(dockDp(17.5f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_widget_seat),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(dockDp(15.5f))
+                            .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
+                        colorFilter = ColorFilter.tint(activeColor),
+                    )
+                    listOf(
+                        R.drawable.ic_widget_seat_heat_1 to (level >= 1),
+                        R.drawable.ic_widget_seat_heat_2 to (level >= 2),
+                        R.drawable.ic_widget_seat_heat_3 to (level >= 3),
+                    ).forEach { (drawable, enabled) ->
+                        Image(
+                            painter = painterResource(drawable),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(dockDp(15.5f))
+                                .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
+                            colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
+                        )
+                    }
+                }
+                Text(
+                    text = badgeText,
+                    color = activeColor,
+                    fontSize = dockSp(6.5f),
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = dockSp(7f),
+                    maxLines = 1,
+                )
+            }
+        } else {
             Image(
-                painter = painterResource(drawable),
+                painter = painterResource(R.drawable.ic_widget_seat),
                 contentDescription = null,
                 modifier = Modifier
                     .size(dockDp(22.1f))
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
-                colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
+                colorFilter = ColorFilter.tint(activeColor),
             )
+            listOf(
+                R.drawable.ic_widget_seat_heat_1 to (level >= 1),
+                R.drawable.ic_widget_seat_heat_2 to (level >= 2),
+                R.drawable.ic_widget_seat_heat_3 to (level >= 3),
+            ).forEach { (drawable, enabled) ->
+                Image(
+                    painter = painterResource(drawable),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(dockDp(22.1f))
+                        .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
+                    colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
+                )
+            }
         }
     }
 }

@@ -161,40 +161,7 @@ internal fun LauncherHomeSettingsContent() {
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
-    val closePlayerAfterPlaybackRevision by LauncherAppConfigStore.closePlayerAfterPlaybackRevisionFlow
-        .collectAsStateWithLifecycle()
-    val closePlayerAfterPlayback = remember(context, closePlayerAfterPlaybackRevision) {
-        LauncherAppConfigStore.closePlayerAfterPlayback(context)
-    }
-    LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_close_player_after_playback_title),
-        active = closePlayerAfterPlayback,
-        onClick = {
-            LauncherAppConfigStore.setClosePlayerAfterPlayback(context, !closePlayerAfterPlayback)
-        },
-    )
-    Text(
-        text = stringResource(R.string.launcher_close_player_after_playback_desc),
-        color = LauncherColors.TextMuted,
-        fontSize = 12.sp,
-    )
-    val openPlayerInAdasWindowRevision by LauncherAppConfigStore.openPlayerInAdasWindowRevisionFlow
-        .collectAsStateWithLifecycle()
-    val openPlayerInAdasWindow = remember(context, openPlayerInAdasWindowRevision) {
-        LauncherAppConfigStore.openPlayerInAdasWindow(context)
-    }
-    LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_open_player_in_adas_window_title),
-        active = openPlayerInAdasWindow,
-        onClick = {
-            LauncherAppConfigStore.setOpenPlayerInAdasWindow(context, !openPlayerInAdasWindow)
-        },
-    )
-    Text(
-        text = stringResource(R.string.launcher_open_player_in_adas_window_desc),
-        color = LauncherColors.TextMuted,
-        fontSize = 12.sp,
-    )
+
     val disableCoverColorRevision by LauncherAppConfigStore.disableMediaCardCoverColorRevisionFlow
         .collectAsStateWithLifecycle()
     val disableCoverColor = remember(context, disableCoverColorRevision) {
@@ -235,7 +202,106 @@ internal fun LauncherHomeSettingsContent() {
     TopBarLeftIndicatorsToggle()
     BottomBarHeightSlider()
     HiddenAppsSettings()
-    TbmApiSettingsContent(settingsManager = remember(context) { SettingsManager(context) })
+    LauncherSystemControlsContent()
+}
+
+@Composable
+internal fun LauncherSystemControlsContent() {
+    val context = LocalContext.current
+    val settingsManager = remember(context) { SettingsManager(context) }
+    val uiClickSoundsEnabled by settingsManager.uiClickSoundsEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
+    val clickSoundScope = rememberCoroutineScope()
+    val systemSettings = rememberLauncherSystemSettings(context)
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_ui_click_sounds),
+            active = uiClickSoundsEnabled,
+            onClick = {
+                clickSoundScope.launch {
+                    settingsManager.saveUiClickSoundsEnabled(!uiClickSoundsEnabled)
+                }
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_ui_click_sounds_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_wifi) +
+                (systemSettings.wifiSsid?.let { " · $it" } ?: ""),
+            active = systemSettings.wifiEnabled,
+            onClick = { systemSettings.applyWifiEnabled(!systemSettings.wifiEnabled) },
+        )
+        LauncherWifiApBlock()
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_bluetooth) +
+                (systemSettings.bluetoothName?.let { " · $it" } ?: ""),
+            active = systemSettings.bluetoothEnabled,
+            onClick = { systemSettings.applyBluetoothEnabled(!systemSettings.bluetoothEnabled) },
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.launcher_vs_volume),
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "−",
+                    color = LauncherColors.AccentCyan,
+                    fontSize = 20.sp,
+                    modifier = Modifier.clickable { systemSettings.adjustMediaVolume(-1) },
+                )
+                Text(
+                    "${systemSettings.mediaVolume}/${systemSettings.mediaVolumeMax}",
+                    color = LauncherColors.TextSecondary,
+                    fontSize = 14.sp,
+                )
+                Text(
+                    "+",
+                    color = LauncherColors.AccentCyan,
+                    fontSize = 20.sp,
+                    modifier = Modifier.clickable { systemSettings.adjustMediaVolume(1) },
+                )
+            }
+        }
+        Text(
+            stringResource(R.string.launcher_vs_brightness),
+            color = LauncherColors.TextPrimary,
+            fontSize = 14.sp,
+        )
+        if (systemSettings.brightnessWritable) {
+            Slider(
+                value = systemSettings.brightnessNorm,
+                onValueChange = { systemSettings.applyBrightnessNorm(it) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = LauncherColors.AccentCyan,
+                    activeTrackColor = LauncherColors.AccentCyan,
+                ),
+            )
+        } else {
+            Text(
+                stringResource(R.string.launcher_vs_brightness_locked),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+            )
+        }
+    }
 }
 
 @Composable

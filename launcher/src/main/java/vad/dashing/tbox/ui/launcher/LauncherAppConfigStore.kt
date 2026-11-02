@@ -15,8 +15,6 @@ private const val KEY_DEFAULT_MEDIA = "default_media_package"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
-private const val KEY_CLOSE_PLAYER_AFTER_PLAYBACK = "close_player_after_playback"
-private const val KEY_OPEN_PLAYER_IN_ADAS_WINDOW = "open_player_in_adas_window"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
@@ -122,7 +120,7 @@ enum class ExperimentalPlayerLaunchMode(val code: String) {
 
     companion object {
         fun fromCode(code: String?): ExperimentalPlayerLaunchMode =
-            values().firstOrNull { it.code == code } ?: DISABLED
+            values().firstOrNull { it.code == code } ?: MEDIA_BUTTON_BROADCAST
     }
 }
 
@@ -305,10 +303,6 @@ internal object LauncherAppConfigStore {
     internal val mediaCardHeightScaleRevisionFlow: StateFlow<Int> = mediaCardHeightScaleRevision
     private val mediaMiniPlayerRevision = MutableStateFlow(0)
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
-    private val closePlayerAfterPlaybackRevision = MutableStateFlow(0)
-    internal val closePlayerAfterPlaybackRevisionFlow: StateFlow<Int> = closePlayerAfterPlaybackRevision
-    private val openPlayerInAdasWindowRevision = MutableStateFlow(0)
-    internal val openPlayerInAdasWindowRevisionFlow: StateFlow<Int> = openPlayerInAdasWindowRevision
     private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
@@ -489,22 +483,6 @@ internal object LauncherAppConfigStore {
         mediaMiniPlayerRevision.value++
     }
 
-    fun closePlayerAfterPlayback(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CLOSE_PLAYER_AFTER_PLAYBACK, false)
-
-    fun setClosePlayerAfterPlayback(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_CLOSE_PLAYER_AFTER_PLAYBACK, enabled).apply()
-        closePlayerAfterPlaybackRevision.value++
-    }
-
-    fun openPlayerInAdasWindow(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, true)
-
-    fun setOpenPlayerInAdasWindow(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_OPEN_PLAYER_IN_ADAS_WINDOW, enabled).apply()
-        openPlayerInAdasWindowRevision.value++
-    }
-
     fun experimentalPlayerLaunchMode(context: Context): ExperimentalPlayerLaunchMode =
         ExperimentalPlayerLaunchMode.fromCode(prefs(context).getString(KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE, null))
 
@@ -571,7 +549,9 @@ internal object LauncherAppConfigStore {
 
     fun addTopBarItem(context: Context, itemId: String) {
         val current = topBarItems(context).toMutableList()
-        val finalId = if (itemId == "spacer" || itemId.startsWith("spacer")) {
+        val finalId = if (itemId == "spacer_small" || itemId.startsWith("spacer_small")) {
+            "spacer_small_${System.currentTimeMillis()}"
+        } else if (itemId == "spacer" || itemId.startsWith("spacer")) {
             "spacer_${System.currentTimeMillis()}"
         } else {
             if (current.contains(itemId)) return
@@ -1442,8 +1422,6 @@ internal object LauncherAppConfigStore {
         mediaCardAlphaRevision.value++
         mediaCardHeightScaleRevision.value++
         mediaMiniPlayerRevision.value++
-        closePlayerAfterPlaybackRevision.value++
-        openPlayerInAdasWindowRevision.value++
         experimentalPlayerLaunchModeRevision.value++
         disableMediaCardCoverColorRevision.value++
         dockIconScaleRevision.value++

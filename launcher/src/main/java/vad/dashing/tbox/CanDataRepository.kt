@@ -196,6 +196,10 @@ object CanDataRepository {
                         _averageFuelConsumption.value = calculated
                         previousAvgConsumption = calculated
                     }
+                } else if (previousAvgConsumption != null && previousAvgConsumption!! > 0f && overallAccumulatedDistanceKm == 0f) {
+                    val baselineDist = 50f
+                    overallAccumulatedDistanceKm = baselineDist
+                    overallAccumulatedFuelLiters = (previousAvgConsumption!! / 100f) * baselineDist
                 }
                 updateTripDuration()
                 isPersistedStateLoaded = true
@@ -413,8 +417,12 @@ object CanDataRepository {
 
     private fun recalculateLocalAverageFuelConsumption() {
         loadPersistedStateIfNeeded()
-        val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat() ?: return
-        val currentFuelLiters = currentPercent * (getTankCapacityLiters() / 100f)
+        val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
+            ?: (_fuelLevelCalibratedLitersActual.value ?: _fuelLevelCalibratedLiters.value)?.let { (it / getTankCapacityLiters()) * 100f }
+            ?: return
+        val currentFuelLiters = _fuelLevelCalibratedLitersActual.value
+            ?: _fuelLevelCalibratedLiters.value
+            ?: (currentPercent * (getTankCapacityLiters() / 100f))
 
         var initFuel = initialFuelLiters
         if (initFuel == null) {
@@ -435,17 +443,16 @@ object CanDataRepository {
         val combinedTotalDist = overallAccumulatedDistanceKm + currentSegmentDistKm
         val combinedTotalFuel = overallAccumulatedFuelLiters + segUsedLiters
 
-        if (combinedTotalDist >= 0.1f) {
-            val overallAvg = if (combinedTotalFuel > 0f) {
-                (combinedTotalFuel / combinedTotalDist) * 100f
-            } else {
-                previousAvgConsumption ?: 0f
-            }
-            if (overallAvg > 0f) {
-                previousAvgConsumption = overallAvg
-                _averageFuelConsumption.value = overallAvg
-                savePersistedState()
-            }
+        val overallAvg = if (combinedTotalDist >= 0.1f && combinedTotalFuel > 0f) {
+            (combinedTotalFuel / combinedTotalDist) * 100f
+        } else {
+            previousAvgConsumption
+        }
+
+        if (overallAvg != null && overallAvg > 0f && overallAvg < 50f) {
+            previousAvgConsumption = overallAvg
+            _averageFuelConsumption.value = overallAvg
+            savePersistedState()
         }
     }
 

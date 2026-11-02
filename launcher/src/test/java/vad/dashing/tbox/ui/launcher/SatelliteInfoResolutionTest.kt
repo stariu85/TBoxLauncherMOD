@@ -28,14 +28,14 @@ class SatelliteInfoResolutionTest {
     }
 
     @Test
-    fun tbmInertialWithRetentionSpeedSourceReturnsBlueAndZeroCount() {
+    fun tbmInertialOnlyWhenSpeedSourceInertialAndUsedSatellitesZero() {
         val satInfo = resolveSatelliteInfo(
             isTbmGeoAvailable = true,
             tbmSatVisible = 10,
-            tbmSatUsed = 8,
+            tbmSatUsed = 0,
             tbmFixValid = true,
             tbmLocateStatus = true,
-            tbmSpeedSource = "retention",
+            tbmSpeedSource = "inertial",
             isTboxLocFresh = false,
             locValues = LocValues(),
         )
@@ -43,26 +43,26 @@ class SatelliteInfoResolutionTest {
         assertFalse(satInfo.hasFix)
         assertTrue(satInfo.isInertial)
         assertEquals(10, satInfo.visibleSatellites)
-        assertEquals(8, satInfo.usingSatellites)
+        assertEquals(0, satInfo.usingSatellites)
     }
 
     @Test
-    fun tbmInertialWithCanSpeedSourceReturnsBlueAndZeroCount() {
+    fun tbmInertialIgnoredWhenUsedSatellitesGreaterThanZero() {
         val satInfo = resolveSatelliteInfo(
             isTbmGeoAvailable = true,
-            tbmSatVisible = 5,
-            tbmSatUsed = 0,
+            tbmSatVisible = 10,
+            tbmSatUsed = 8,
             tbmFixValid = true,
             tbmLocateStatus = true,
-            tbmSpeedSource = "can",
+            tbmSpeedSource = "inertial",
             isTboxLocFresh = false,
             locValues = LocValues(),
         )
 
-        assertFalse(satInfo.hasFix)
-        assertTrue(satInfo.isInertial)
-        assertEquals(5, satInfo.visibleSatellites)
-        assertEquals(0, satInfo.usingSatellites)
+        assertTrue(satInfo.hasFix)
+        assertFalse(satInfo.isInertial)
+        assertEquals(10, satInfo.visibleSatellites)
+        assertEquals(8, satInfo.usingSatellites)
     }
 
     @Test

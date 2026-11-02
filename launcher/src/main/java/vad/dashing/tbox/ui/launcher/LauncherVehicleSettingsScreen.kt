@@ -101,7 +101,7 @@ fun LauncherVehicleSettingsScreen(
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     var paintId by remember(context) { mutableStateOf(LauncherAppConfigStore.carPaintId(context)) }
     var paintRevision by remember { mutableStateOf(0) }
-    var expandedSection by remember { mutableStateOf<VehicleSettingsSection?>(VehicleSettingsSection.Status) }
+    var expandedSection by remember { mutableStateOf<VehicleSettingsSection?>(null) }
     val settingsOrbit = remember { LauncherSettingsOrbitState() }
     var wheelAnchors by remember {
         mutableStateOf<Map<LauncherWheelCorner, Offset>>(emptyMap())
@@ -311,9 +311,6 @@ fun LauncherVehicleSettingsScreen(
                             color = LauncherColors.TextMuted,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Normal,
-                        )
-                        LauncherAboutUpdatesHeaderButton(
-                            onClick = { launchTBoxSettings(context) },
                         )
                     }
                     Text(

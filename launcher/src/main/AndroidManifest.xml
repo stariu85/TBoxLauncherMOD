@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
@@ -102,10 +104,27 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.CAR_LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.service.wallpaper.CHANGE_LIVE_WALLPAPER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_WALLPAPER" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.DISPLAY_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
+        </intent>
         <package android:name="com.wt.launcher3" />
         <package android:name="ru.yandex.yandexnavi" />
         <package android:name="com.mengbo.acsettings" />
         <package android:name="com.mengbo.mbcanwidget" />
+        <package android:name="com.android.wallpaper.livepicker" />
+        <package android:name="com.android.wallpaper" />
+        <package android:name="com.android.wallpapercropper" />
+        <package android:name="com.google.android.wallpaper" />
+        <package android:name="com.android.settings" />
         <package android:name="vad.dashing.tbox" />
         <provider android:authorities="com.wt.launcher3" />
     </queries>
@@ -188,6 +207,20 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <service
+            android:name="vad.dashing.tbox.ui.launcher.BlankWallpaperService"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/launcher_blank_wallpaper_title"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/blank_wallpaper" />
+        </service>
 
         <service
             android:name="vad.dashing.tbox.MediaControlNotificationListenerService"
