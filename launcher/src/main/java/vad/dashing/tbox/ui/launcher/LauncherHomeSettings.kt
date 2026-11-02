@@ -162,6 +162,24 @@ internal fun LauncherHomeSettingsContent() {
         fontSize = 12.sp,
     )
 
+    val showPlayerNameRevision by LauncherAppConfigStore.showPlayerNameInWidgetRevisionFlow
+        .collectAsStateWithLifecycle()
+    val showPlayerName = remember(context, showPlayerNameRevision) {
+        LauncherAppConfigStore.showPlayerNameInWidget(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_show_player_name_in_widget_title),
+        active = showPlayerName,
+        onClick = {
+            LauncherAppConfigStore.setShowPlayerNameInWidget(context, !showPlayerName)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_show_player_name_in_widget_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
     val disableCoverColorRevision by LauncherAppConfigStore.disableMediaCardCoverColorRevisionFlow
         .collectAsStateWithLifecycle()
     val disableCoverColor = remember(context, disableCoverColorRevision) {

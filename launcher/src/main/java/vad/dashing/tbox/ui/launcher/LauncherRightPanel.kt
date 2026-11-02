@@ -742,6 +742,44 @@ fun LauncherRightPanel(
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // Wallpaper and Done Buttons on the left
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = { wallpaperDialogVisible = true },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_wallpaper_button),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+
+                        TextButton(
+                            onClick = { isDragMode = false },
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
+                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.launcher_app_drawer_done),
+                                color = LauncherColors.AccentCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+
                     // Column X Slider
                     Column(
                         modifier = Modifier
@@ -924,44 +962,6 @@ fun LauncherRightPanel(
                                 inactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
                             ),
                         )
-                    }
-
-                    // Wallpaper and Done Buttons on the right
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(
-                            onClick = { wallpaperDialogVisible = true },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
-                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.launcher_wallpaper_button),
-                                color = LauncherColors.AccentCyan,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-
-                        TextButton(
-                            onClick = { isDragMode = false },
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(LauncherColors.AccentCyan.copy(alpha = 0.15f))
-                                .border(1.dp, LauncherColors.AccentCyan.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.launcher_app_drawer_done),
-                                color = LauncherColors.AccentCyan,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
                     }
                 }
             } else {

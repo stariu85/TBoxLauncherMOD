@@ -107,6 +107,11 @@ fun LauncherMediaMiniPlayer(
     val disableCoverColor = remember(context, disableCoverColorRevision) {
         LauncherAppConfigStore.disableMediaCardCoverColor(context)
     }
+    val showPlayerNameRevision by LauncherAppConfigStore.showPlayerNameInWidgetRevisionFlow
+        .collectAsStateWithLifecycle()
+    val showPlayerName = remember(context, showPlayerNameRevision) {
+        LauncherAppConfigStore.showPlayerNameInWidget(context)
+    }
 
     val isDark = LauncherThemeState.darkTheme
 
@@ -415,12 +420,14 @@ fun LauncherMediaMiniPlayer(
                 .clickable(onClick = triggerPlayAction),
             contentAlignment = Alignment.Center,
         ) {
-            RotatingPlayerNameText(
-                text = activePkgLabel,
-                playButtonSize = playButtonSize,
-                textColor = secondaryTextColor,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (showPlayerName) {
+                RotatingPlayerNameText(
+                    text = activePkgLabel,
+                    playButtonSize = playButtonSize,
+                    textColor = secondaryTextColor,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             Box(
                 modifier = Modifier
                     .size(playButtonSize)

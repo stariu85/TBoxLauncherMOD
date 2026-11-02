@@ -15,6 +15,7 @@ private const val KEY_DEFAULT_MEDIA = "default_media_package"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
+private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
@@ -303,6 +304,8 @@ internal object LauncherAppConfigStore {
     internal val mediaCardHeightScaleRevisionFlow: StateFlow<Int> = mediaCardHeightScaleRevision
     private val mediaMiniPlayerRevision = MutableStateFlow(0)
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
+    private val showPlayerNameInWidgetRevision = MutableStateFlow(0)
+    internal val showPlayerNameInWidgetRevisionFlow: StateFlow<Int> = showPlayerNameInWidgetRevision
     private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
@@ -481,6 +484,14 @@ internal object LauncherAppConfigStore {
     fun setMediaMiniPlayerVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_MEDIA_MINI_PLAYER_VISIBLE, visible).apply()
         mediaMiniPlayerRevision.value++
+    }
+
+    fun showPlayerNameInWidget(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SHOW_PLAYER_NAME_IN_WIDGET, true)
+
+    fun setShowPlayerNameInWidget(context: Context, show: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SHOW_PLAYER_NAME_IN_WIDGET, show).apply()
+        showPlayerNameInWidgetRevision.value++
     }
 
     fun experimentalPlayerLaunchMode(context: Context): ExperimentalPlayerLaunchMode =
@@ -1422,6 +1433,7 @@ internal object LauncherAppConfigStore {
         mediaCardAlphaRevision.value++
         mediaCardHeightScaleRevision.value++
         mediaMiniPlayerRevision.value++
+        showPlayerNameInWidgetRevision.value++
         experimentalPlayerLaunchModeRevision.value++
         disableMediaCardCoverColorRevision.value++
         dockIconScaleRevision.value++
