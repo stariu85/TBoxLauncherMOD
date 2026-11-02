@@ -793,6 +793,7 @@ object Android10VhalRepository {
             MbCanSignal.EngineRpm -> setOf(VHAL_ENGINE_RPM_PROPERTY_ID)
             MbCanSignal.EngineTemperature -> setOf(VHAL_ENGINE_TEMPERATURE_PROPERTY_ID)
             MbCanSignal.CarSpeed -> setOf(VHAL_CAR_SPEED_PROPERTY_ID)
+            MbCanSignal.SteeringAngle -> setOf(resolved(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_STEERING_MODE))
         }
     }
 
@@ -1124,6 +1125,7 @@ object Android10VhalRepository {
                 }
                 MbCanSignal.WirelessChargingSwitch -> Unit
                 MbCanSignal.TjaIca -> stateEngine.applyTjaIcaCandidate(MbCanBinaryState.Unavailable(deniedReason))
+                MbCanSignal.SteeringAngle -> Unit
             }
             return
         }
@@ -1165,6 +1167,7 @@ object Android10VhalRepository {
                 }
                 MbCanSignal.WirelessChargingSwitch -> Unit
                 MbCanSignal.TjaIca -> stateEngine.applyTjaIcaCandidate(MbCanBinaryState.Unavailable(reason))
+                MbCanSignal.SteeringAngle -> Unit
             }
             return
         }
@@ -1352,6 +1355,7 @@ object Android10VhalRepository {
                 _carSpeedState.value = readNumericProperty(VHAL_CAR_SPEED_PROPERTY_ID)?.coerceAtLeast(0f)
             }
             MbCanSignal.WirelessChargingSwitch -> Unit
+            MbCanSignal.SteeringAngle -> Unit
         }
     }
 

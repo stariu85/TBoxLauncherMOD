@@ -130,6 +130,7 @@ object MbCanEngineFacade {
             initialized = true
             availabilityRef.set(MbCanAvailability.Available)
             Log.i(LOG_TAG, "ensureInitialized: OK")
+            runCatching { unsubscribeUnusedChannels() }
         } catch (t: Throwable) {
             initialized = false
             availabilityRef.set(MbCanAvailability.Unavailable("${t.javaClass.simpleName}: ${t.message ?: "unknown"}"))
@@ -352,6 +353,27 @@ object MbCanEngineFacade {
         } catch (_: Throwable) {
             null
         }
+    }
+
+    private fun unsubscribeUnusedChannels() {
+        val unusedTypes = setOf(
+            "eMBCAN_DTC",
+            "eMBCAN_UART_TEST_RESULT",
+            "eMBCAN_USB_DEVICE",
+            "eMBCAN_UPGRADE_PROGRESS",
+            "eMBCAN_VEHICLE_CEM_FRAG",
+            "eMBCAN_VEHICLE_ICM_FAULT_INFO",
+            "eMBCAN_INSTRUMENT_CMDREPLY",
+            "eMBCAN_VEHICLE_INVERTER_STATUS",
+            "eMBCAN_CHARGING_RESERVE",
+            "eMBCAN_VEHICLE_EBS_SOC",
+            "eMBCAN_CFG_DMS",
+            "eMBCAN_DVR_STATUS",
+            "eMBCAN_VEHICLE_DVR_PARAM",
+            "eMBCAN_RADIO_PROGRAMSTATE",
+        )
+        val res = unSubscribe(unusedTypes)
+        Log.i(LOG_TAG, "unsubscribeUnusedChannels: unsubscribed ${unusedTypes.size} channels, res=$res")
     }
 
     /**

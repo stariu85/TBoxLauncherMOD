@@ -610,7 +610,7 @@ private fun RotatingPlayerNameText(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 18000, easing = LinearEasing),
+            animation = tween(durationMillis = 23400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "rotationAngle",
@@ -629,7 +629,7 @@ private fun RotatingPlayerNameText(
         if (text.isBlank()) ""
         else {
             val circumference = (2 * Math.PI * pathRadiusPx).toFloat()
-            val count = 4
+            val count = 3
             val sectorLength = circumference / count
             val textWidth = paint.measureText(text)
             val bulletWidth = paint.measureText(" • ")

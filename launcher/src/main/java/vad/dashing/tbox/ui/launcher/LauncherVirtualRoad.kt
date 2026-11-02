@@ -108,7 +108,7 @@ fun LauncherVirtualRoad(
         label = "roadDriveBlend",
     )
 
-    var roadPhase by remember { mutableFloatStateOf(0f) }
+    val roadPhaseState = remember { mutableFloatStateOf(0f) }
     val currentSpeedKmh by rememberUpdatedState(speedKmh)
     val currentDriveBlend by rememberUpdatedState(driveBlend)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -139,7 +139,8 @@ fun LauncherVirtualRoad(
                 lastRoadFrameNs = frameNs
 
                 val spd = currentSpeedKmh
-                roadPhase = (roadPhase + spd * 1.8f * dtSec) % DASH_SPACING
+                val current = roadPhaseState.floatValue
+                roadPhaseState.floatValue = (current + spd * 1.8f * dtSec) % DASH_SPACING
             }
         }
     }
@@ -194,7 +195,7 @@ fun LauncherVirtualRoad(
             .graphicsLayer { alpha = driveBlend },
     ) {
         drawVirtualRoad(
-            roadPhase = roadPhase,
+            roadPhase = roadPhaseState.floatValue,
             speedKmh = speedKmh,
             adas = adas,
             leadSprites = leadSprites,

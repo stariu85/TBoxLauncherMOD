@@ -179,7 +179,6 @@ fun LauncherLeftPanel(
 
     val simulateEnabled = LauncherDevVehicleState.simulateEnabled
     val effectiveSpeed = if (racing) LauncherEggRace.speedKmh else motion.speedKmh
-    val effectiveSteer = rememberLauncherVisualSteer(motion)
     val steerPreview = motion.steerPreviewActive
 
     val effectiveBody = if (simulateEnabled) {
@@ -617,7 +616,7 @@ fun LauncherLeftPanel(
                     showAll = !tirePressureOnlyLow,
                     lowPressureThreshold = tirePressureLowThreshold,
                     speedKmh = effectiveSpeed,
-                    steerAngleDeg = effectiveSteer,
+                    steerAngleDeg = 0f,
                     isRearView = showDriveView,
                     inertiaEnabled = tirePressureInertiaEnabled,
                     badgeShape = tirePressureBadgeShape,

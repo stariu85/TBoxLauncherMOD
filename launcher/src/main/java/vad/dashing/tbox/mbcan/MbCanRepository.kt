@@ -35,10 +35,15 @@ import vad.dashing.tbox.ui.decodeHvacTemperatureRaw
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
-enum class MbCanSignal(val subscribeDataTypes: Set<String>) {
+enum class MbCanSignalCategory { FAST, MEDIUM, SLOW }
+
+enum class MbCanSignal(
+    val subscribeDataTypes: Set<String>,
+    val category: MbCanSignalCategory = MbCanSignalCategory.SLOW,
+) {
     SteeringWheelHeat(setOf("eMBCAN_CFG_VEHICLE")),
     WiperMaintenance(setOf("eMBCAN_CFG_VEHICLE")),
-    ParkingRadar(setOf("eMBCAN_CFG_VEHICLE")),
+    ParkingRadar(setOf("eMBCAN_CFG_VEHICLE"), MbCanSignalCategory.FAST),
     FrontWindscreenHeat(setOf("eMBCAN_CFG_VEHICLE")),
     HvacDefroster(setOf("eMBCAN_CFG_VEHICLE")),
     HvacAirRecirculation(setOf("eMBCAN_CFG_VEHICLE")),
@@ -57,9 +62,10 @@ enum class MbCanSignal(val subscribeDataTypes: Set<String>) {
     RearRightSeatMode(setOf("eMBCAN_CFG_VEHICLE")),
     AudioVolume(setOf("eMBCAN_CFG_AUDIO")),
     AudioVolumeSpeed(setOf("eMBCAN_CFG_AUDIO")),
-    EngineRpm(setOf("eMBCAN_VEHICLE_ENGINE")),
-    EngineTemperature(setOf("eMBCAN_VEHICLE_ENGINE")),
-    CarSpeed(setOf("eMBCAN_VEHICLE_SPEED")),
+    EngineRpm(setOf("eMBCAN_VEHICLE_ENGINE"), MbCanSignalCategory.MEDIUM),
+    EngineTemperature(setOf("eMBCAN_VEHICLE_ENGINE"), MbCanSignalCategory.MEDIUM),
+    CarSpeed(setOf("eMBCAN_VEHICLE_SPEED"), MbCanSignalCategory.FAST),
+    SteeringAngle(setOf("eMBCAN_VEHICLE_STEERING_ANGLE"), MbCanSignalCategory.MEDIUM),
 }
 
 sealed class MbCanBinaryState {
@@ -903,6 +909,17 @@ object MbCanRepository {
             MbCanSignal.EngineRpm -> refreshEngineRpm()
             MbCanSignal.EngineTemperature -> refreshEngineTemperature()
             MbCanSignal.CarSpeed -> refreshCarSpeed()
+            MbCanSignal.SteeringAngle -> refreshSteeringAngle()
+        }
+    }
+
+    private suspend fun refreshSteeringAngle() {
+        withContext(stateApplyDispatcher) {
+            if (!MbCanEngineFacade.isInitialized()) return@withContext
+            val angle = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_STEERING_MODE)?.toFloat()
+            if (angle != null) {
+                CanDataRepository.updateSteerAngle(angle)
+            }
         }
     }
 

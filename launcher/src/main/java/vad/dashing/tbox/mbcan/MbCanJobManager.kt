@@ -124,7 +124,11 @@ object MbCanJobManager {
                     if (!inBurst) {
                         burstUntil.remove(signal)
                     }
-                    if (inBurst) BURST_POLL_MS else NORMAL_POLL_MS
+                    when (signal.category) {
+                        MbCanSignalCategory.FAST -> if (inBurst) 33L else 1_000L
+                        MbCanSignalCategory.MEDIUM -> if (inBurst) 100L else 2_000L
+                        MbCanSignalCategory.SLOW -> if (inBurst) BURST_POLL_MS else NORMAL_POLL_MS
+                    }
                 }
                 delay(delayMs)
             }
