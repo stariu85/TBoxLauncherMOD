@@ -826,68 +826,6 @@ internal fun LauncherVehicleSettingsContent(
                     )
                 },
             )
-
-            val seatMemoryPanelRevision by LauncherAppConfigStore.seatMemoryAdasPanelRevisionFlow.collectAsStateWithLifecycle()
-            var editingPresetSlot by remember { mutableStateOf<Int?>(null) }
-
-            (1..3).forEach { slot ->
-                val name = remember(context, seatMemoryPanelRevision, slot) {
-                    LauncherAppConfigStore.seatMemoryPresetName(context, slot)
-                }
-                LauncherSettingsValueRow(
-                    label = stringResource(R.string.launcher_vs_seat_memory_preset_name, slot),
-                    value = name,
-                    onClick = { editingPresetSlot = slot },
-                )
-            }
-
-            editingPresetSlot?.let { slot ->
-                var textValue by remember(slot) {
-                    mutableStateOf(LauncherAppConfigStore.seatMemoryPresetName(context, slot))
-                }
-                LauncherDarkAlertDialog(
-                    onDismissRequest = { editingPresetSlot = null },
-                    title = {
-                        Text(
-                            text = stringResource(R.string.launcher_vs_seat_memory_preset_edit, slot),
-                            color = LauncherColors.TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                LauncherAppConfigStore.setSeatMemoryPresetName(context, slot, textValue)
-                                editingPresetSlot = null
-                            }
-                        ) {
-                            Text(stringResource(android.R.string.ok), color = LauncherColors.AccentCyan)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = { editingPresetSlot = null }
-                        ) {
-                            Text(stringResource(android.R.string.cancel), color = LauncherColors.TextMuted)
-                        }
-                    },
-                    text = {
-                        OutlinedTextField(
-                            value = textValue,
-                            onValueChange = { textValue = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = LauncherColors.TextPrimary,
-                                unfocusedTextColor = LauncherColors.TextPrimary,
-                                focusedBorderColor = LauncherColors.AccentCyan,
-                                unfocusedBorderColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
-                            ),
-                        )
-                    },
-                )
-            }
         }
 
         LauncherVehicleSectionCard(

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- Ego car (Top car) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:pathData="M 32,10 C 25,10 22,15 22,25 L 22,45 C 22,52 25,55 32,55 C 39,55 42,52 42,45 L 42,25 C 42,15 39,10 32,10 Z" />
+    <!-- Windshields & mirrors on ego car -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 26,18 L 38,18 L 36,25 L 28,25 Z M 26,42 L 38,42 L 36,48 L 28,48 Z M 20,20 L 22,22 L 22,25 L 20,25 Z M 44,20 L 42,22 L 42,25 L 44,25 Z" />
+
+    <!-- Trailing car in blind spot (Bottom right car) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:pathData="M 60,65 C 54,65 52,68 52,75 L 52,85 C 52,90 54,92 60,92 C 66,92 68,90 68,85 L 68,75 C 68,68 66,65 60,65 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 55,70 L 65,70 L 64,74 L 56,74 Z M 50,72 L 52,74 L 52,77 L 50,77 Z M 70,72 L 68,74 L 68,77 L 70,77 Z" />
+
+    <!-- Radar waves between ego car rear-right and trailing car -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 42,52 C 46,55 48,58 50,62" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 45,47 C 50,51 53,55 55,60" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 48,42 C 54,47 58,52 60,58" />
+</vector>

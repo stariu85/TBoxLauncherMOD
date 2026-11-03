@@ -35,6 +35,10 @@ data class LauncherVehicleControlSnapshot(
     val parkingRadar: Boolean? = null,
     val homelightDelay: Int? = null,
     val lasSensitivity: Int? = null,
+    val lasMode: Int? = null,
+    val fcwOption: Int? = null,
+    val bsd: Boolean? = null,
+    val dow: Boolean? = null,
     // Experimental — polled only when [includeExperimental] is true.
     val welcomeLamp: Boolean? = null,
     val musicalRhythm: Boolean? = null,
@@ -141,11 +145,15 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         bcmLowBeam = actualLowBeam,
         bcmHighBeam = actualHighBeam,
         bcmWiperStatus = bcmWiper,
-        hmaOn = null,
+        hmaOn = onOff12(get(MbCanKnownVehiclePropertyId.HMA_SWITCH)),
         rearFogLight = onOff12(get(MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)),
         parkingRadar = onOff12(get(MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH)),
         homelightDelay = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_HOMELIGHT_DELAY)?.takeIf { it in 0..3 },
         lasSensitivity = get(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL)?.takeIf { it in 1..3 },
+        lasMode = get(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION)?.takeIf { it in 1..3 },
+        fcwOption = get(MbCanKnownVehiclePropertyId.FCW_OPTION)?.takeIf { it in 1..3 },
+        bsd = onOff12(get(MbCanKnownVehiclePropertyId.BSD_SWITCH)),
+        dow = onOff12(get(MbCanKnownVehiclePropertyId.DOW_SWITCH)),
     )
     if (!includeExperimental) return core
     return core.copy(

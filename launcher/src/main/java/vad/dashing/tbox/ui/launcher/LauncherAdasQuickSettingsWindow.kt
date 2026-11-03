@@ -38,6 +38,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
+import vad.dashing.tbox.MirrorFoldLastCommandStore
+import vad.dashing.tbox.ui.sendToggleMirrorFold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -50,16 +53,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,6 +88,7 @@ import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.ui.MyLifecycleOwner
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal object LauncherAdasQuickSettingsWindow {
@@ -264,15 +275,12 @@ internal object LauncherAdasQuickSettingsWindow {
     }
 }
 
-enum class SwipeDirection { LEFT, RIGHT }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LauncherAdasQuickSettingsContent(
     canViewModel: CanDataViewModel,
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
@@ -281,252 +289,509 @@ private fun LauncherAdasQuickSettingsContent(
         ?: resolveActiveGearSlot(gearBoxMode, gearBoxCurrentGear)
     val activeGear = parsedGear ?: 'P'
 
-    val items = remember {
-        mutableStateListOf("media_player", "drive_mode", "body_controls_trunk", "body_controls_seats", "assist", "presets", "lanes")
+    val adasPanelVisibleRevision by LauncherAppConfigStore.adasPanelVisibleRevisionFlow.collectAsStateWithLifecycle()
+    val adasPanelVisible = remember(context, adasPanelVisibleRevision) {
+        LauncherAppConfigStore.adasPanelVisible(context)
+    }
+
+    val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow.collectAsStateWithLifecycle()
+    val miniPlayerVisible = remember(context, miniPlayerRevision) {
+        LauncherAppConfigStore.mediaMiniPlayerVisible(context)
+    }
+
+    val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow.collectAsStateWithLifecycle()
+    val driveModeBarVisible = remember(context, driveModeBarRevision) {
+        LauncherAppConfigStore.driveModeBarVisible(context)
+    }
+
+    val assistPanelRevision by LauncherAppConfigStore.assistPanelRevisionFlow.collectAsStateWithLifecycle()
+    val assistPanelVisible = remember(context, assistPanelRevision) {
+        LauncherAppConfigStore.assistPanelVisible(context)
+    }
+
+    val bodyControlsRevision by LauncherAppConfigStore.bodyControlsPanelRevisionFlow.collectAsStateWithLifecycle()
+    val bodyControlsPanelVisible = remember(context, bodyControlsRevision) {
+        LauncherAppConfigStore.bodyControlsPanelVisible(context)
+    }
+
+    val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow.collectAsStateWithLifecycle()
+    val adasTopPanels = remember(context, adasPanelsRevision) {
+        LauncherAppConfigStore.adasTopPanels(context)
+    }
+    val adasBottomPanels = remember(context, adasPanelsRevision) {
+        LauncherAppConfigStore.adasBottomPanels(context)
+    }
+
+    val activeSubPanelsRevision by LauncherAppConfigStore.activeSubPanelsRevisionFlow.collectAsStateWithLifecycle()
+
+    val primarySlots = remember(
+        adasPanelVisible,
+        miniPlayerVisible,
+        driveModeBarVisible,
+        assistPanelVisible,
+        bodyControlsPanelVisible,
+        adasTopPanels,
+        adasBottomPanels,
+    ) {
+        if (!adasPanelVisible) {
+            emptySet<String>()
+        } else {
+            val isPanelVisible: (String) -> Boolean = { panelId ->
+                when (panelId) {
+                    "drive_mode" -> driveModeBarVisible
+                    "assist", "presets" -> assistPanelVisible
+                    "body_controls" -> bodyControlsPanelVisible
+                    "media_player" -> miniPlayerVisible
+                    "lanes" -> true
+                    else -> true
+                }
+            }
+            val top = adasTopPanels.filter { isPanelVisible(it) }
+            val bottom = adasBottomPanels.filter { isPanelVisible(it) && it !in top }
+            (top + bottom).toSet()
+        }
+    }
+
+    val directlyVisiblePanels = remember(
+        primarySlots,
+        activeSubPanelsRevision,
+    ) {
+        val visibleSubPanels = mutableSetOf<String>()
+        for (slot in primarySlots) {
+            val sub = LauncherAppConfigStore.getVisibleSubPanel(slot)
+            visibleSubPanels.add(sub)
+        }
+        visibleSubPanels
+    }
+
+    val availableItems = remember(directlyVisiblePanels) {
+        val allCandidates = listOf(
+            "media_player",
+            "drive_mode",
+            "drive_mode_offroad",
+            "body_controls_trunk",
+            "body_controls_seats",
+            "assist",
+            "presets",
+            "lanes",
+            "radars",
+            "chassis",
+            "lights",
+            "car_color",
+        )
+        allCandidates.filter { candidate ->
+            candidate !in directlyVisiblePanels
+        }
+    }
+
+    val quickSettingsRevision by LauncherAppConfigStore.quickSettingsPanelsRevisionFlow.collectAsStateWithLifecycle()
+    val savedQuickTop = remember(context, quickSettingsRevision) {
+        LauncherAppConfigStore.quickSettingsTopPanels(context)
+    }
+    val savedQuickBottom = remember(context, quickSettingsRevision) {
+        LauncherAppConfigStore.quickSettingsBottomPanels(context)
+    }
+
+    val (quickTopPanels, quickBottomPanels) = remember(availableItems, savedQuickTop, savedQuickBottom) {
+        fun familyOf(id: String): String = when (id) {
+            "body_controls_trunk", "body_controls_seats" -> "body_controls"
+            "drive_mode", "drive_mode_offroad" -> "drive_mode"
+            "presets" -> "assist"
+            else -> id
+        }
+
+        val unplaced = availableItems.toMutableList()
+        val top = mutableListOf<String>()
+        val bottom = mutableListOf<String>()
+
+        for (savedId in savedQuickTop) {
+            if (savedId in unplaced) {
+                top.add(savedId)
+                unplaced.remove(savedId)
+            } else {
+                val savedFamily = familyOf(savedId)
+                val sibling = unplaced.firstOrNull { familyOf(it) == savedFamily }
+                if (sibling != null) {
+                    top.add(sibling)
+                    unplaced.remove(sibling)
+                }
+            }
+        }
+
+        for (savedId in savedQuickBottom) {
+            if (savedId in unplaced) {
+                bottom.add(savedId)
+                unplaced.remove(savedId)
+            } else {
+                val savedFamily = familyOf(savedId)
+                val sibling = unplaced.firstOrNull { familyOf(it) == savedFamily }
+                if (sibling != null) {
+                    bottom.add(sibling)
+                    unplaced.remove(sibling)
+                }
+            }
+        }
+
+        bottom.addAll(unplaced)
+
+        Pair(top, bottom)
     }
 
     var draggingItemId by remember { mutableStateOf<String?>(null) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var initialPanelTopPx by remember { mutableFloatStateOf(0f) }
+    var panelHeightPx by remember { mutableFloatStateOf(0f) }
     var activeGreenPlusItemId by remember { mutableStateOf<String?>(null) }
-    var plusPlusTimerJob by remember { mutableStateOf<Job?>(null) }
-    val scope = rememberCoroutineScope()
+    var quickContainerHeightPx by remember { mutableFloatStateOf(0f) }
+    var containerWindowTopPx by remember { mutableFloatStateOf(0f) }
 
-    var showOptionsDialogForId by remember { mutableStateOf<String?>(null) }
-    var waitingForTargetForAttach by remember { mutableStateOf<Pair<String, SwipeDirection>?>(null) }
+    fun addPanelToAdas(targetId: String) {
+        fun canonicalPanelId(id: String): String = when (id) {
+            "body_controls_trunk", "body_controls_seats" -> "body_controls"
+            "drive_mode_offroad" -> "drive_mode"
+            "presets" -> "assist"
+            else -> id
+        }
+
+        val basePanelId = canonicalPanelId(targetId)
+
+        val rawTop = LauncherAppConfigStore.adasTopPanels(context).map { canonicalPanelId(it) }.filter { it != basePanelId }
+        val rawBottom = LauncherAppConfigStore.adasBottomPanels(context).map { canonicalPanelId(it) }.filter { it != basePanelId }
+
+        val activePanelsOnScreen = (rawTop + rawBottom).distinct()
+        val activeCount = activePanelsOnScreen.size
+
+        val hasMediaPlayer = "media_player" in activePanelsOnScreen || basePanelId == "media_player"
+        val maxAllowedPanels = if (hasMediaPlayer) 4 else 5
+
+        if (activeCount >= maxAllowedPanels) {
+            Toast.makeText(
+                context,
+                "Достигнуто максимальное количесвто панелей ADAS. Удалите панель чтобы добавить новую",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+
+        // 1. Ensure ADAS panel sidebar is visible
+        LauncherAppConfigStore.setAdasPanelVisible(context, true)
+
+        // 2. Ensure individual toggle is enabled
+        when (basePanelId) {
+            "media_player" -> LauncherAppConfigStore.setMediaMiniPlayerVisible(context, true)
+            "drive_mode" -> LauncherAppConfigStore.setDriveModeBarVisible(context, true)
+            "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, true)
+            "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, true)
+        }
+
+        // 3. Always add to bottom ADAS panels at index 0 and persist layout
+        val currentTop = LauncherAppConfigStore.adasTopPanels(context).filter { canonicalPanelId(it) != basePanelId }.toMutableList()
+        val currentBottom = LauncherAppConfigStore.adasBottomPanels(context).filter { canonicalPanelId(it) != basePanelId }.toMutableList()
+
+        currentBottom.add(0, basePanelId)
+        LauncherAppConfigStore.setAdasPanelsLayout(context, currentTop, currentBottom)
+
+        Toast.makeText(context, "Панель добавлена в зону ADAS", Toast.LENGTH_SHORT).show()
+    }
+
+    val mediaHeightScaleRevision by LauncherAppConfigStore.mediaCardHeightScaleRevisionFlow.collectAsStateWithLifecycle()
+    val mediaHeightScale = remember(context, mediaHeightScaleRevision) {
+        LauncherAppConfigStore.mediaCardHeightScale(context)
+    }
+    val mediaPlayerHeightDp = remember(mediaHeightScale) {
+        val expandedVerticalPadding = (12.dp * mediaHeightScale).coerceAtLeast(2.dp)
+        val expandedItemSpacing = (10.dp * ((mediaHeightScale - 0.5f) / 0.5f)).coerceAtLeast(0.dp)
+        expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 44.dp
+    }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coordinates ->
+                quickContainerHeightPx = coordinates.size.height.toFloat()
+                containerWindowTopPx = coordinates.positionInWindow().y
+            },
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items.forEach { id ->
-                val isDragging = draggingItemId == id
-                val showPlus = activeGreenPlusItemId == id
-                val slotHeight = if (id == "media_player") 128.dp else 60.dp
-
+        if (quickTopPanels.isEmpty() && quickBottomPanels.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Все панели отображаются в зоне ADAS",
+                    color = LauncherColors.LeftTextSecondary,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            // TOP SECTION (snapped to top of window)
+            if (quickTopPanels.isNotEmpty()) {
                 Box(
                     modifier = Modifier
+                        .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .height(slotHeight)
-                        .zIndex(if (isDragging) 200f else 1f)
-                        .graphicsLayer {
-                            translationY = if (isDragging) dragOffsetY else 0f
-                            scaleX = if (isDragging) 1.03f else 1f
-                            scaleY = if (isDragging) 1.03f else 1f
-                        }
-                        .then(
-                            if (draggingItemId != null) {
-                                Modifier.border(2.dp, Color(0xFF06B6D4).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .then(
-                            if (isDragging) {
-                                Modifier
-                                    .shadow(12.dp, RoundedCornerShape(10.dp))
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .border(2.dp, Color(0xFF22C55E), RoundedCornerShape(10.dp))
-                            } else {
-                                Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                            }
-                        )
-                        .background(LauncherColors.LeftPanelCard)
-                        .clickable {
-                            if (waitingForTargetForAttach != null) {
-                                val (srcId, dir) = waitingForTargetForAttach!!
-                                val cleanSrc = srcId.substringBefore("_")
-                                val cleanTarget = id.substringBefore("_")
-                                if (dir == SwipeDirection.LEFT) {
-                                    LauncherAppConfigStore.setPanelSwipeLeft(context, cleanTarget, cleanSrc)
-                                } else {
-                                    LauncherAppConfigStore.setPanelSwipeRight(context, cleanTarget, cleanSrc)
-                                }
-                                waitingForTargetForAttach = null
-                                Toast.makeText(context, "Панель присоединена по свайпу", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        .pointerInput(id, items) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                var dragActive = false
-                                var accumulativeY = 0f
-
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                                    if (!pointer.pressed) {
-                                        if (dragActive) {
-                                            pointer.consume()
-                                            val slotHeightPx = with(density) { 68.dp.toPx() }
-                                            val slotShift = (accumulativeY / slotHeightPx).roundToInt()
-                                            val fromIdx = items.indexOf(id)
-                                            val toIdx = (fromIdx + slotShift).coerceIn(0, items.size - 1)
-                                            if (fromIdx != toIdx) {
-                                                val item = items.removeAt(fromIdx)
-                                                items.add(toIdx, item)
-                                            }
-
-                                            draggingItemId = null
-                                            dragOffsetY = 0f
-                                            activeGreenPlusItemId = id
-                                            plusPlusTimerJob?.cancel()
-                                            plusPlusTimerJob = scope.launch {
-                                                delay(5000L)
-                                                if (activeGreenPlusItemId == id) {
-                                                    activeGreenPlusItemId = null
-                                                }
-                                            }
-                                        }
-                                        break
-                                    }
-
-                                    val elapsed = SystemClock.uptimeMillis() - down.uptimeMillis
-                                    if (!dragActive) {
-                                        val deltaY = kotlin.math.abs(pointer.position.y - down.position.y)
-                                        val deltaX = kotlin.math.abs(pointer.position.x - down.position.x)
-                                        if (elapsed >= 350L || deltaY > 15f && deltaY > deltaX) {
-                                            dragActive = true
-                                            draggingItemId = id
-                                            activeGreenPlusItemId = id
-                                            plusPlusTimerJob?.cancel()
-                                            accumulativeY = pointer.position.y - down.position.y
-                                            dragOffsetY = accumulativeY
-                                            pointer.consume()
-                                        }
-                                    } else {
-                                        val frameDelta = pointer.position.y - pointer.previousPosition.y
-                                        accumulativeY += frameDelta
-                                        dragOffsetY = accumulativeY
-                                        pointer.consume()
-                                    }
-                                }
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
+                        .padding(4.dp)
+                        .zIndex(200f),
                 ) {
-                    when (id) {
-                        "media_player" -> LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
-                        "drive_mode" -> LauncherDriveModeBar(canViewModel = canViewModel, onModeSelected = {}, modifier = Modifier.fillMaxWidth())
-                        "body_controls_trunk" -> LauncherTrunkAndWindowsBar(activeGear = activeGear, onShowTrunkParkWarning = {}, modifier = Modifier.fillMaxWidth())
-                        "body_controls_seats" -> LauncherSeatMemoryAndAdjustmentBar(modifier = Modifier.fillMaxWidth())
-                        "assist" -> LauncherAssistControlBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
-                        "presets" -> LauncherCruisePresetControl(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
-                        "lanes" -> LauncherLanesControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
-                    }
-
-                    if (showPlus) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(6.dp)
-                                .size(28.dp)
-                                .zIndex(300f)
-                                .clip(CircleShape)
-                                .background(Color(0xFF22C55E))
-                                .clickable {
-                                    showOptionsDialogForId = id
-                                    activeGreenPlusItemId = null
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        quickTopPanels.forEach { id ->
+                            RenderQuickPanelCard(
+                                id = id,
+                                activeGear = activeGear,
+                                adas = adas,
+                                canViewModel = canViewModel,
+                                primarySlots = primarySlots,
+                                draggingItemId = draggingItemId,
+                                dragOffsetY = dragOffsetY,
+                                activeGreenPlusItemId = activeGreenPlusItemId,
+                                mediaPlayerHeightDp = mediaPlayerHeightDp,
+                                containerWindowTopPx = containerWindowTopPx,
+                                onDragStart = { item, topPx, hPx ->
+                                    draggingItemId = item
+                                    activeGreenPlusItemId = item
+                                    initialPanelTopPx = topPx
+                                    panelHeightPx = hPx
                                 },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "+",
-                                color = Color.White,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                onDragMove = { deltaY ->
+                                    dragOffsetY = deltaY
+                                },
+                                onDragEnd = { accumulativeY ->
+                                    val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
+                                    val newLayout = calculateNewPanelLayout(
+                                        draggedPanelId = id,
+                                        releasedCenterY = releasedCenterY,
+                                        containerHeightPx = quickContainerHeightPx,
+                                        currentTop = quickTopPanels,
+                                        currentBottom = quickBottomPanels,
+                                    )
+                                    draggingItemId = null
+                                    dragOffsetY = 0f
+                                    LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+                                },
+                                onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // BOTTOM SECTION (snapped to bottom of window)
+            if (quickBottomPanels.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(4.dp)
+                        .zIndex(200f),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        quickBottomPanels.forEach { id ->
+                            RenderQuickPanelCard(
+                                id = id,
+                                activeGear = activeGear,
+                                adas = adas,
+                                canViewModel = canViewModel,
+                                primarySlots = primarySlots,
+                                draggingItemId = draggingItemId,
+                                dragOffsetY = dragOffsetY,
+                                activeGreenPlusItemId = activeGreenPlusItemId,
+                                mediaPlayerHeightDp = mediaPlayerHeightDp,
+                                containerWindowTopPx = containerWindowTopPx,
+                                onDragStart = { item, topPx, hPx ->
+                                    draggingItemId = item
+                                    activeGreenPlusItemId = item
+                                    initialPanelTopPx = topPx
+                                    panelHeightPx = hPx
+                                },
+                                onDragMove = { deltaY ->
+                                    dragOffsetY = deltaY
+                                },
+                                onDragEnd = { accumulativeY ->
+                                    val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
+                                    val newLayout = calculateNewPanelLayout(
+                                        draggedPanelId = id,
+                                        releasedCenterY = releasedCenterY,
+                                        containerHeightPx = quickContainerHeightPx,
+                                        currentTop = quickTopPanels,
+                                        currentBottom = quickBottomPanels,
+                                    )
+                                    draggingItemId = null
+                                    dragOffsetY = 0f
+                                    LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+                                },
+                                onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
                             )
                         }
                     }
                 }
             }
         }
+    }
+}
 
-        // Options Dialog Overlay with high zIndex
-        if (showOptionsDialogForId != null) {
-            val targetId = showOptionsDialogForId!!
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(1000f)
-                    .background(Color.Black.copy(alpha = 0.6f))
-                    .clickable { showOptionsDialogForId = null },
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(LauncherColors.LeftPanelCard)
-                        .padding(20.dp)
-                        .clickable(enabled = false) {},
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        text = "Выберите действие для панели:",
-                        color = LauncherColors.LeftTextPrimary,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    )
-                    TextButton(
-                        onClick = {
-                            val currentBottom = LauncherAppConfigStore.adasBottomPanels(context).toMutableList()
-                            if (targetId !in currentBottom) {
-                                currentBottom.add(targetId.substringBefore("_"))
-                                LauncherAppConfigStore.setAdasPanelsLayout(context, LauncherAppConfigStore.adasTopPanels(context), currentBottom)
-                            }
-                            showOptionsDialogForId = null
-                            Toast.makeText(context, "Добавлено вниз зоны ADAS", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text(text = "1) " + stringResource(R.string.adas_quick_settings_add_separate))
-                    }
-                    TextButton(
-                        onClick = {
-                            showOptionsDialogForId = null
-                            waitingForTargetForAttach = Pair(targetId, SwipeDirection.LEFT)
-                        },
-                    ) {
-                        Text(text = "2) " + stringResource(R.string.adas_quick_settings_attach_left))
-                    }
-                    TextButton(
-                        onClick = {
-                            showOptionsDialogForId = null
-                            waitingForTargetForAttach = Pair(targetId, SwipeDirection.RIGHT)
-                        },
-                    ) {
-                        Text(text = "3) " + stringResource(R.string.adas_quick_settings_attach_right))
-                    }
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RenderQuickPanelCard(
+    id: String,
+    activeGear: Char,
+    adas: LauncherAdasState,
+    canViewModel: CanDataViewModel,
+    primarySlots: Set<String>,
+    draggingItemId: String?,
+    dragOffsetY: Float,
+    activeGreenPlusItemId: String?,
+    mediaPlayerHeightDp: Dp,
+    containerWindowTopPx: Float,
+    onDragStart: (id: String, initialTopPx: Float, panelHeightPx: Float) -> Unit,
+    onDragMove: (deltaY: Float) -> Unit,
+    onDragEnd: (accumulativeY: Float) -> Unit,
+    onAddClick: (id: String) -> Unit,
+) {
+    val basePanelId = when (id) {
+        "body_controls_trunk", "body_controls_seats" -> "body_controls"
+        "presets", "lanes" -> "assist"
+        "drive_mode_offroad" -> "drive_mode"
+        else -> id
+    }
+    val isBasePanelAlreadyInAdas = basePanelId in primarySlots
+
+    val isDragging = draggingItemId == id
+    val showPlus = (isDragging || activeGreenPlusItemId == id) && !isBasePanelAlreadyInAdas
+    val slotHeight = if (id == "media_player") mediaPlayerHeightDp else 68.dp
+
+    var localTopPx by remember { mutableFloatStateOf(0f) }
+    var localHeightPx by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(slotHeight)
+            .zIndex(if (isDragging) 300f else 1f)
+            .onGloballyPositioned { coordinates ->
+                if (!isDragging) {
+                    val cardWindowTopPx = coordinates.positionInWindow().y
+                    localTopPx = cardWindowTopPx - containerWindowTopPx
+                    localHeightPx = coordinates.size.height.toFloat()
                 }
             }
+            .graphicsLayer {
+                translationY = if (isDragging) dragOffsetY else 0f
+                scaleX = if (isDragging) 1.03f else 1f
+                scaleY = if (isDragging) 1.03f else 1f
+            }
+            .then(
+                if (draggingItemId != null) {
+                    Modifier.border(2.dp, Color(0xFF06B6D4).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (isDragging) {
+                    Modifier
+                        .shadow(12.dp, RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(2.dp, Color(0xFF22C55E), RoundedCornerShape(10.dp))
+                } else {
+                    Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                }
+            )
+            .background(LauncherColors.LeftPanelCard)
+            .pointerInput(id) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downTime = SystemClock.uptimeMillis()
+                    var dragActive = false
+                    var accumulativeY = 0f
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                        if (!pointer.pressed) {
+                            if (dragActive) {
+                                pointer.consume()
+                                onDragEnd(accumulativeY)
+                            }
+                            break
+                        }
+
+                        val elapsed = SystemClock.uptimeMillis() - downTime
+                        if (!dragActive) {
+                            val totalDeltaY = abs(pointer.position.y - down.position.y)
+                            val totalDeltaX = abs(pointer.position.x - down.position.x)
+                            if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
+                                dragActive = true
+                                onDragStart(id, localTopPx, localHeightPx)
+                                accumulativeY = pointer.position.y - down.position.y
+                                onDragMove(accumulativeY)
+                                pointer.consume()
+                            } else if (elapsed >= 1000L) {
+                                dragActive = true
+                                onDragStart(id, localTopPx, localHeightPx)
+                                accumulativeY = 0f
+                                onDragMove(accumulativeY)
+                                pointer.consume()
+                            }
+                        } else {
+                            val frameDelta = pointer.position.y - pointer.previousPosition.y
+                            accumulativeY += frameDelta
+                            onDragMove(accumulativeY)
+                            pointer.consume()
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        when (id) {
+            "media_player" -> LauncherMediaMiniPlayer(
+                modifier = Modifier.fillMaxWidth(),
+                sourceId = "launcher_mini_player_quick",
+            )
+            "drive_mode" -> LauncherDriveModeBar(canViewModel = canViewModel, initialPage = 0, reportSubPanel = false, onModeSelected = {}, modifier = Modifier.fillMaxWidth())
+            "drive_mode_offroad" -> LauncherDriveModeBar(canViewModel = canViewModel, initialPage = 1, reportSubPanel = false, onModeSelected = {}, modifier = Modifier.fillMaxWidth())
+            "body_controls_trunk" -> LauncherTrunkAndWindowsBar(activeGear = activeGear, onShowTrunkParkWarning = {}, modifier = Modifier.fillMaxWidth())
+            "body_controls_seats" -> LauncherSeatMemoryAndAdjustmentBar(modifier = Modifier.fillMaxWidth())
+            "assist" -> LauncherAssistControlBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
+            "presets" -> LauncherCruisePresetControl(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
+            "lanes" -> LauncherLanesControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
+            "radars" -> LauncherRadarControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
+            "chassis" -> LauncherChassisControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
+            "lights" -> LauncherLightsControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
+            "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 68.dp)
         }
 
-        // Waiting for target overlay with high zIndex
-        if (waitingForTargetForAttach != null) {
+        if (showPlus) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(1000f)
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .clickable { waitingForTargetForAttach = null },
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(28.dp)
+                    .zIndex(300f)
+                    .clip(CircleShape)
+                    .background(Color(0xFF22C55E))
+                    .clickable {
+                        onAddClick(id)
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LauncherColors.LeftPanelCard)
-                        .padding(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.adas_quick_settings_select_target),
-                        color = LauncherColors.LeftTextPrimary,
-                    )
-                }
+                Text(
+                    text = "+",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
             }
         }
     }
@@ -559,7 +824,7 @@ private fun LauncherTrunkAndWindowsBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp),
+            .height(68.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -567,7 +832,7 @@ private fun LauncherTrunkAndWindowsBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(60.dp)
+                .height(68.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
                 .combinedClickable(
@@ -602,7 +867,7 @@ private fun LauncherTrunkAndWindowsBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(60.dp)
+                .height(68.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(windowsBg)
                 .then(
@@ -629,6 +894,40 @@ private fun LauncherTrunkAndWindowsBar(
                 ),
             )
         }
+
+        // Mirror Folding Button
+        val mirrorFoldVal = MirrorFoldLastCommandStore.readLastValue()
+        val isMirrorFolded = mirrorFoldVal == MIRROR_FOLD_SWITCH_VALUE_FOLD
+        val mirrorBg = if (isMirrorFolded) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+        val mirrorBorder = if (isMirrorFolded) activeGreen else Color.Transparent
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(68.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(mirrorBg)
+                .then(
+                    if (isMirrorFolded) {
+                        Modifier.border(1.dp, mirrorBorder, RoundedCornerShape(12.dp))
+                    } else {
+                        Modifier
+                    }
+                )
+                .clickable {
+                    sendToggleMirrorFold(context)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_mirror),
+                contentDescription = "Складывание зеркал",
+                modifier = Modifier.size(36.dp),
+                colorFilter = ColorFilter.tint(
+                    if (isMirrorFolded) activeGreen else LauncherColors.LeftTextPrimary,
+                ),
+            )
+        }
     }
 }
 
@@ -640,7 +939,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp),
+            .height(68.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -648,10 +947,10 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(60.dp)
+                .height(68.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
-                .clickable { SeatMemoryOverlayWindow.show(context) },
+                .clickable { launchSeatSettingsEmbedded(context) },
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -666,7 +965,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(60.dp)
+                .height(68.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
                 .clickable { PassengerSeatOverlayWindow.show(context) },

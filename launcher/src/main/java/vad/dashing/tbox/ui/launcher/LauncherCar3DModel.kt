@@ -160,6 +160,7 @@ fun LauncherCar3DModel(
             modifier = Modifier.fillMaxSize(),
             onClick = onClick,
             onLongClick = onLongClick,
+            onDoubleClick = onDoubleClick,
             onTrunkClick = onTrunkClick,
             onTrunkLongClick = onTrunkLongClick,
             modelRevision = modelRevision,
@@ -901,7 +902,7 @@ private fun LauncherCarFilamentContent(
                 )
             }
         }
-        if (onClick != null || onLongClick != null) {
+        if (onClick != null || onLongClick != null || onDoubleClick != null) {
             val tapDriveBlend = if (cameraAnimEnabled) {
                 FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
             } else {
@@ -936,6 +937,7 @@ private fun LauncherCarFilamentContent(
                     indication = null,
                     onClick = { onTrunkClick?.invoke() },
                     onLongClick = { onTrunkLongClick?.invoke() },
+                    onDoubleClick = { onDoubleClick?.invoke() },
                 )
 
                 Box(

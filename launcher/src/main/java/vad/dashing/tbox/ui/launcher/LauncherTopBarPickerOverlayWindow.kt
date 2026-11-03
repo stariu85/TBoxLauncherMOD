@@ -94,6 +94,7 @@ internal object LauncherTopBarDescriptors {
     val ALL_BUTTONS = listOf(
         LauncherTopBarItemDescriptor("headlights", "Переключатель фар", isButton = true, iconRes = R.drawable.ic_widget_headlights),
         LauncherTopBarItemDescriptor("trunk", "Багажник (двойной тап)", isButton = true, iconRes = R.drawable.ic_launcher_trunk),
+        LauncherTopBarItemDescriptor("hdc", "Помощь на спуске", isButton = true, iconRes = R.drawable.ic_launcher_hdc),
         LauncherTopBarItemDescriptor("theme", "Тема (День/Ночь)", isButton = true, iconRes = R.drawable.ic_theme_sun),
         LauncherTopBarItemDescriptor("mirrors", "Складывание зеркал", isButton = true, iconRes = R.drawable.ic_launcher_mirror),
         LauncherTopBarItemDescriptor("autohold", "Auto Hold", isButton = true),

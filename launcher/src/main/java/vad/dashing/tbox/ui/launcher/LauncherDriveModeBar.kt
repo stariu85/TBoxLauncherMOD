@@ -44,6 +44,8 @@ private val ButtonHeight = 60.dp
 fun LauncherDriveModeBar(
     canViewModel: CanDataViewModel,
     modifier: Modifier = Modifier,
+    initialPage: Int? = null,
+    reportSubPanel: Boolean = true,
     onModeSelected: ((String) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -94,11 +96,17 @@ fun LauncherDriveModeBar(
     val isMud = activeMode == "MUD" || activeMode == "ГРЯЗЬ"
     val isSand = activeMode == "SAND" || activeMode == "ПЕСОК"
 
-    val initialPage = if (isSnow || isMud || isSand) 1 else 0
-    val pagerState = rememberPagerState(initialPage = initialPage) { 2 }
+    val startPage = initialPage ?: (if (isSnow || isMud || isSand) 1 else 0)
+    val pagerState = rememberPagerState(initialPage = startPage) { 2 }
+    LaunchedEffect(pagerState.currentPage, reportSubPanel) {
+        if (reportSubPanel) {
+            val visibleSub = if (pagerState.currentPage == 1) "drive_mode_offroad" else "drive_mode"
+            LauncherAppConfigStore.setVisibleSubPanel("drive_mode", visibleSub)
+        }
+    }
 
     LaunchedEffect(isSnow, isMud, isSand) {
-        if (isSnow || isMud || isSand) {
+        if (initialPage == null && (isSnow || isMud || isSand)) {
             pagerState.animateScrollToPage(1)
         }
     }

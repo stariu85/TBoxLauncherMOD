@@ -2,6 +2,7 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import vad.dashing.tbox.ui.LaunchableAppEntry
@@ -344,6 +345,8 @@ internal object LauncherAppConfigStore {
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
     private val carModelDriveScaleRevision = MutableStateFlow(0)
     internal val carModelDriveScaleRevisionFlow: StateFlow<Int> = carModelDriveScaleRevision
+    private val carPaintRevision = MutableStateFlow(0)
+    internal val carPaintRevisionFlow: StateFlow<Int> = carPaintRevision
     private val sidebarWidthRevision = MutableStateFlow(0)
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
     private val cameraSwitchModeRevision = MutableStateFlow(0)
@@ -423,6 +426,61 @@ internal object LauncherAppConfigStore {
     private val edgeGesturesRevision = MutableStateFlow(0)
     internal val edgeGesturesRevisionFlow: StateFlow<Int> = edgeGesturesRevision
 
+    private const val KEY_QUICK_SETTINGS_TOP_PANELS = "quick_settings_top_panels"
+    private const val KEY_QUICK_SETTINGS_BOTTOM_PANELS = "quick_settings_bottom_panels"
+    private val quickSettingsPanelsRevision = MutableStateFlow(0)
+    internal val quickSettingsPanelsRevisionFlow: StateFlow<Int> = quickSettingsPanelsRevision
+
+    private val activeSubPanelsMap = mutableStateMapOf<String, String>()
+    private val activeSubPanelsRevision = MutableStateFlow(0)
+    internal val activeSubPanelsRevisionFlow: StateFlow<Int> = activeSubPanelsRevision
+
+    fun setVisibleSubPanel(slotPanelId: String, visibleSubPanelId: String) {
+        if (activeSubPanelsMap[slotPanelId] != visibleSubPanelId) {
+            activeSubPanelsMap[slotPanelId] = visibleSubPanelId
+            activeSubPanelsRevision.value++
+        }
+    }
+
+    fun getVisibleSubPanel(slotPanelId: String): String {
+        return activeSubPanelsMap[slotPanelId] ?: defaultSubPanel(slotPanelId)
+    }
+
+    fun defaultSubPanel(slotPanelId: String): String = when (slotPanelId) {
+        "body_controls" -> "body_controls_trunk"
+        "assist", "presets" -> "assist"
+        "drive_mode" -> "drive_mode"
+        else -> slotPanelId
+    }
+
+    val activeSubPanelsState: Map<String, String> get() = activeSubPanelsMap
+
+    fun quickSettingsTopPanels(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_QUICK_SETTINGS_TOP_PANELS, null)
+        if (raw != null) {
+            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        }
+        return emptyList()
+    }
+
+    fun quickSettingsBottomPanels(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_QUICK_SETTINGS_BOTTOM_PANELS, null)
+        if (raw != null) {
+            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        }
+        return emptyList()
+    }
+
+    fun setQuickSettingsPanelsLayout(context: Context, top: List<String>, bottom: List<String>) {
+        val cleanTop = top.distinct()
+        val cleanBottom = bottom.distinct().filter { it !in cleanTop }
+        prefs(context).edit()
+            .putString(KEY_QUICK_SETTINGS_TOP_PANELS, cleanTop.joinToString(","))
+            .putString(KEY_QUICK_SETTINGS_BOTTOM_PANELS, cleanBottom.joinToString(","))
+            .apply()
+        quickSettingsPanelsRevision.value++
+    }
+
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -473,6 +531,7 @@ internal object LauncherAppConfigStore {
 
     fun setCarPaintId(context: Context, paintId: String) {
         prefs(context).edit().putString(KEY_CAR_PAINT, paintId).apply()
+        carPaintRevision.value++
     }
 
     fun defaultMediaPackage(context: Context): String? =
@@ -1614,6 +1673,7 @@ internal object LauncherAppConfigStore {
         val list = mapStr.split(',').filter { it.isNotBlank() && !it.startsWith("$panelId:") }.toMutableList()
         list.add("$panelId:$targetId")
         prefs(context).edit().putString(KEY_PANEL_SWIPE_LEFT_MAP, list.joinToString(",")).apply()
+        adasPanelsRevision.value++
     }
 
     fun panelSwipeRight(context: Context, panelId: String): String? {
@@ -1626,5 +1686,6 @@ internal object LauncherAppConfigStore {
         val list = mapStr.split(',').filter { it.isNotBlank() && !it.startsWith("$panelId:") }.toMutableList()
         list.add("$panelId:$targetId")
         prefs(context).edit().putString(KEY_PANEL_SWIPE_RIGHT_MAP, list.joinToString(",")).apply()
+        adasPanelsRevision.value++
     }
 }

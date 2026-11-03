@@ -1372,11 +1372,6 @@ private fun AdasPanelToggle() {
 @Composable
 fun CruiseControlSettingsContent() {
     val context = LocalContext.current
-    val driveModeBarRevision by LauncherAppConfigStore.driveModeBarRevisionFlow
-        .collectAsStateWithLifecycle()
-    val driveModeBarVisible = remember(context, driveModeBarRevision) {
-        LauncherAppConfigStore.driveModeBarVisible(context)
-    }
     val driveModeGlowRevision by LauncherAppConfigStore.driveModeGlowRevisionFlow
         .collectAsStateWithLifecycle()
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
@@ -1384,56 +1379,6 @@ fun CruiseControlSettingsContent() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_drive_mode_bar_visible_title),
-            active = driveModeBarVisible,
-            onClick = {
-                LauncherAppConfigStore.setDriveModeBarVisible(context, !driveModeBarVisible)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_drive_mode_bar_visible_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-
-        val assistPanelRevision by LauncherAppConfigStore.assistPanelRevisionFlow
-            .collectAsStateWithLifecycle()
-        val assistPanelVisible = remember(context, assistPanelRevision) {
-            LauncherAppConfigStore.assistPanelVisible(context)
-        }
-
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_assist_panel_visible_title),
-            active = assistPanelVisible,
-            onClick = {
-                LauncherAppConfigStore.setAssistPanelVisible(context, !assistPanelVisible)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_assist_panel_visible_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-
-        val bodyControlsRevision by LauncherAppConfigStore.bodyControlsPanelRevisionFlow
-            .collectAsStateWithLifecycle()
-        val bodyControlsVisible = remember(context, bodyControlsRevision) {
-            LauncherAppConfigStore.bodyControlsPanelVisible(context)
-        }
-
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_body_controls_panel_visible_title),
-            active = bodyControlsVisible,
-            onClick = {
-                LauncherAppConfigStore.setBodyControlsPanelVisible(context, !bodyControlsVisible)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_body_controls_panel_visible_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
 
         val launcherSettingsOnDoubleTapRevision by LauncherAppConfigStore.launcherSettingsOnDoubleTapRevisionFlow
             .collectAsStateWithLifecycle()

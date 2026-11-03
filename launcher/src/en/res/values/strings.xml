@@ -193,8 +193,8 @@
     <string name="launcher_cruise_panel_visible_desc">Show ACC speed preset buttons in the left panel</string>
     <string name="launcher_drive_mode_bar_visible_title">Drive mode panel</string>
     <string name="launcher_drive_mode_bar_visible_desc">Show gear indicator and drive mode buttons (ECO, NOR, SPT) at the top of the left panel</string>
-    <string name="launcher_assist_panel_visible_title">Driver assist panel</string>
-    <string name="launcher_assist_panel_visible_desc">Show quick toggle panel for driver assist systems (ACC, NGP, LDW, LKA) in the left panel</string>
+    <string name="launcher_assist_panel_visible_title">Cruise Control Panel</string>
+    <string name="launcher_assist_panel_visible_desc">Show quick activation panel for cruise control (ACC &amp; NGP) in left zone</string>
     <string name="launcher_reset_adas_panels_layout_title">Reset ADAS panels layout</string>
     <string name="launcher_settings_on_double_tap_title">Launcher settings on double tap</string>
     <string name="launcher_settings_on_double_tap_desc">If enabled, quick settings panel opens on single tap on car model, and launcher settings on double tap</string>

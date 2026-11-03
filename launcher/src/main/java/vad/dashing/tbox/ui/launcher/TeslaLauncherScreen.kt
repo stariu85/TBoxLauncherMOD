@@ -71,8 +71,10 @@ fun TeslaLauncherScreen(
     var appDrawerVisible by remember { mutableStateOf(false) }
     var drawerEditMode by remember { mutableStateOf(false) }
     var configRevision by remember { mutableIntStateOf(0) }
-    var paintRevision by remember { mutableIntStateOf(0) }
-    var carPaintId by remember(context) { mutableStateOf(LauncherAppConfigStore.carPaintId(context)) }
+    val carPaintRevision by LauncherAppConfigStore.carPaintRevisionFlow.collectAsStateWithLifecycle()
+    val carPaintId = remember(context, carPaintRevision) {
+        LauncherAppConfigStore.carPaintId(context)
+    }
     var colorPickerVisible by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
@@ -134,7 +136,6 @@ fun TeslaLauncherScreen(
     }
 
     LaunchedEffect(configRevision, iconRevision) {
-        carPaintId = LauncherAppConfigStore.carPaintId(context)
     }
 
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
@@ -223,7 +224,7 @@ fun TeslaLauncherScreen(
                                 onOpenVehicleSettings = openVehicleSettings,
                                 modelRevision = 0,
                                 paintId = carPaintId,
-                                paintRevision = paintRevision,
+                                paintRevision = carPaintRevision,
                                 onCarBoundsChanged = {},
                                 colorPickerVisible = colorPickerVisible && !settingsOpen,
                                 roadVisible = !settingsOpen,
@@ -233,8 +234,7 @@ fun TeslaLauncherScreen(
                                 onColorPickerOpen = { colorPickerVisible = true },
                                 onColorPickerDismiss = { colorPickerVisible = false },
                                 onPaintChanged = { id ->
-                                    carPaintId = id
-                                    paintRevision++
+                                    LauncherAppConfigStore.setCarPaintId(context, id)
                                 },
                                 modifier = Modifier
                                     .width(sidebarWidth)

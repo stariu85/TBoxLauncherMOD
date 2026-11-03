@@ -107,6 +107,7 @@ import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
 import vad.dashing.tbox.ui.sendCycleHeadlightsSwitch
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
 import vad.dashing.tbox.ui.sendToggleAvh
+import vad.dashing.tbox.ui.sendToggleHdc
 import vad.dashing.tbox.ui.sendToggleMirrorFold
 import vad.dashing.tbox.ui.sendToggleParkingRadar
 import vad.dashing.tbox.ui.sendToggleRearFogLight
@@ -1109,6 +1110,35 @@ private fun RenderTopBarItemContent(
                     modifier = Modifier.size((buttonDiameterDp * 0.55f).dp),
                     colorFilter = ColorFilter.tint(
                         if (fogActive) Color.White else LauncherColors.TextPrimary
+                    ),
+                )
+            }
+        }
+        itemId == "hdc" -> {
+            val hdcActive = vehicleControls.hdc == true
+            val buttonCircleBg = if (hdcActive) {
+                if (isDark) Color(0xFF0369A1) else Color(0xFF38BDF8)
+            } else {
+                if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
+            }
+            val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
+            Box(
+                modifier = Modifier
+                    .size(buttonDiameterDp.dp)
+                    .clip(CircleShape)
+                    .background(buttonCircleBg)
+                    .border(1.dp, buttonCircleBorder, CircleShape)
+                    .clickable {
+                        sendToggleHdc(context)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_hdc),
+                    contentDescription = "Помощь на спуске",
+                    modifier = Modifier.size((buttonDiameterDp * 0.55f).dp),
+                    colorFilter = ColorFilter.tint(
+                        if (hdcActive) Color.White else LauncherColors.TextPrimary
                     ),
                 )
             }

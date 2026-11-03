@@ -15,6 +15,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,8 +36,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
+import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
+import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
+import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
+import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
+import vad.dashing.tbox.ui.sendSetMbCanProperty
 import vad.dashing.tbox.ui.sendToggleLaneMode
+import vad.dashing.tbox.ui.sendToggleParkingRadar
+import vad.dashing.tbox.ui.sendToggleRearFogLight
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val ButtonHeight = 60.dp
@@ -128,7 +140,7 @@ fun LauncherAssistControlBar(
 }
 
 /**
- * Left Page (Swipe Right from Main): LDW and LKA (2 large buttons)
+ * Safety Assist Panel: LDW, LKA, and FCW (3 buttons).
  */
 @Composable
 fun LauncherLanesControlBar(
@@ -136,33 +148,89 @@ fun LauncherLanesControlBar(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val lasModeRaw by UniversalCanRepository.lasModeRaw.collectAsStateWithLifecycle()
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
 
-    val currentMode = lasModeRaw ?: adas.lasMode
-    val isLasUnavailable = currentMode == -1 && !LauncherDevVehicleState.simulateEnabled
+    val currentLasMode = vehicleControls.lasMode ?: adas.lasMode
+    val currentLasSensitivity = vehicleControls.lasSensitivity
 
-    // 1. LDW State (Lane Departure Warning: mode 1)
-    val ldwState = when {
-        LauncherDevVehicleState.simulateEnabled -> {
-            if (LauncherDevVehicleState.adasLdwWarning || LauncherDevVehicleState.adasLanesActive) AssistChipState.Active else AssistChipState.Off
-        }
-        isLasUnavailable -> AssistChipState.Unavailable
-        currentMode == 1 -> {
-            if (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) AssistChipState.Active else AssistChipState.Standby
-        }
-        else -> AssistChipState.Off
+    val currentFcwSwitch = vehicleControls.fcw ?: adas.fcwActive
+    val currentFcwOption = vehicleControls.fcwOption
+
+    // 1. LDW Button Logic
+    val isLdwActive = currentLasMode == 1
+    val ldwColor = when {
+        !isLdwActive -> null // OFF
+        currentLasSensitivity == 3 -> Color(0xFFF97316) // Max sensitivity = Orange
+        else -> Color(0xFF10B981) // Min sensitivity = Green
     }
 
-    // 2. LKA State (Lane Keep Assist: mode 2)
-    val lkaState = when {
-        LauncherDevVehicleState.simulateEnabled -> {
-            if (LauncherDevVehicleState.adasLkaActive) AssistChipState.Active else AssistChipState.Off
+    val onLdwClick: () -> Unit = {
+        when {
+            !isLdwActive -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+            }
+            currentLasSensitivity != 3 -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 3)
+            }
+            else -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+            }
         }
-        isLasUnavailable -> AssistChipState.Unavailable
-        currentMode == 2 -> {
-            if (adas.leftLane != LauncherAdasLaneVisualization.Hidden || adas.rightLane != LauncherAdasLaneVisualization.Hidden) AssistChipState.Active else AssistChipState.Standby
+    }
+
+    // 2. LKA Button Logic
+    val isLkaActive = currentLasMode == 2
+    val lkaColor = when {
+        !isLkaActive -> null // OFF
+        currentLasSensitivity == 3 -> Color(0xFFF97316) // Max sensitivity = Orange
+        else -> Color(0xFF10B981) // Min sensitivity = Green
+    }
+
+    val onLkaClick: () -> Unit = {
+        when {
+            !isLkaActive -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+            }
+            currentLasSensitivity != 3 -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 3)
+            }
+            else -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+            }
         }
-        else -> AssistChipState.Off
+    }
+
+    // 3. FCW Button Logic
+    val isFcwActive = currentFcwSwitch
+    val fcwColor = when {
+        !isFcwActive -> null // OFF
+        currentFcwOption == 2 -> Color(0xFFF97316) // Medium = Orange
+        currentFcwOption == 3 -> Color(0xFFEF4444) // Close = Red
+        else -> Color(0xFF10B981) // Max distance = Green
+    }
+
+    val onFcwClick: () -> Unit = {
+        when {
+            !isFcwActive -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 1)
+            }
+            currentFcwOption == 1 || currentFcwOption == null -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 2)
+            }
+            currentFcwOption == 2 -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 3)
+            }
+            else -> {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 1)
+            }
+        }
     }
 
     Row(
@@ -173,44 +241,408 @@ fun LauncherLanesControlBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Slot 1: LDW Button
-        AssistButtonChip(
+        AssistColoredChip(
             label = "LDW",
             iconRes = R.drawable.ic_adas_lka,
-            state = ldwState,
-            onClick = {
-                if (ldwState == AssistChipState.Unavailable) return@AssistButtonChip
-                if (LauncherDevVehicleState.simulateEnabled) {
-                    LauncherDevVehicleState.toggleAdasLdwWarning()
-                } else {
-                    sendToggleLaneMode(context, 1)
-                }
-            },
-            iconSize = 22.dp,
-            fontSize = 19.sp,
+            activeColor = ldwColor,
+            onClick = onLdwClick,
             modifier = Modifier
                 .weight(1f)
                 .height(ButtonHeight),
         )
 
         // Slot 2: LKA Button
-        AssistButtonChip(
+        AssistColoredChip(
             label = "LKA",
             iconRes = R.drawable.ic_adas_lka,
-            state = lkaState,
-            onClick = {
-                if (lkaState == AssistChipState.Unavailable) return@AssistButtonChip
-                if (LauncherDevVehicleState.simulateEnabled) {
-                    LauncherDevVehicleState.toggleAdasLka()
-                } else {
-                    sendToggleLaneMode(context, 2)
-                }
-            },
-            iconSize = 22.dp,
-            fontSize = 19.sp,
+            activeColor = lkaColor,
+            onClick = onLkaClick,
             modifier = Modifier
                 .weight(1f)
                 .height(ButtonHeight),
         )
+
+        // Slot 3: FCW Button (Three Arcs Icon)
+        AssistColoredChip(
+            label = "FCW",
+            iconRes = R.drawable.ic_fcw_arcs,
+            activeColor = fcwColor,
+            onClick = onFcwClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+    }
+}
+
+/**
+ * Radar Panel: BSD, DOW, and PARK (Parktronic) (3 buttons).
+ */
+@Composable
+fun LauncherRadarControlBar(
+    adas: LauncherAdasState,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+
+    val activeGreen = Color(0xFF10B981)
+
+    // Local / simulated state fallbacks
+    var simBsd by remember { mutableStateOf(false) }
+    var simDow by remember { mutableStateOf(false) }
+
+    // 1. BSD State & Click
+    val bsdActive = vehicleControls.bsd ?: simBsd
+    val bsdColor = if (bsdActive) activeGreen else null
+    val onBsdClick: () -> Unit = {
+        val next = !bsdActive
+        simBsd = next
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.BSD_SWITCH,
+            if (next) 2 else 1,
+        )
+    }
+
+    // 2. DOW State & Click
+    val dowActive = vehicleControls.dow ?: simDow
+    val dowColor = if (dowActive) activeGreen else null
+    val onDowClick: () -> Unit = {
+        val next = !dowActive
+        simDow = next
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.DOW_SWITCH,
+            if (next) 2 else 1,
+        )
+    }
+
+    // 3. PARK (Parktronic) State & Click
+    val parkActive = vehicleControls.parkingRadar == true
+    val parkColor = if (parkActive) activeGreen else null
+    val onParkClick: () -> Unit = {
+        sendToggleParkingRadar(context)
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Slot 1: BSD Button
+        AssistColoredChip(
+            label = "BSD",
+            iconRes = R.drawable.ic_bsd_blindspot,
+            activeColor = bsdColor,
+            onClick = onBsdClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 2: DOW Button
+        AssistColoredChip(
+            label = "DOW",
+            iconRes = R.drawable.ic_dow_door,
+            activeColor = dowColor,
+            onClick = onDowClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 3: RAD (Parktronic) Button
+        AssistColoredChip(
+            label = "RAD",
+            iconRes = R.drawable.ic_widget_parking_radar,
+            activeColor = parkColor,
+            onClick = onParkClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+    }
+}
+
+/**
+ * Chassis / Brake & Stability Panel: ESC (ESP), HDC, and HOLD (3 buttons).
+ */
+@Composable
+fun LauncherChassisControlBar(
+    adas: LauncherAdasState,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+
+    val activeGreen = Color(0xFF10B981)
+    val disabledRed = Color(0xFFEF4444)
+
+    // Local / simulated state fallbacks
+    var simEscOff by remember { mutableStateOf(false) }
+    var simHdc by remember { mutableStateOf(false) }
+    var simHold by remember { mutableStateOf(false) }
+
+    // 1. ESC / ESP Button Logic:
+    // Green when ON (escOff == false), Red when OFF (escOff == true).
+    val isEscOff = vehicleControls.escOff ?: simEscOff
+    val escColor = if (isEscOff) disabledRed else activeGreen
+    val onEscClick: () -> Unit = {
+        val nextEscOff = !isEscOff
+        simEscOff = nextEscOff
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.ESC_OFF_SWITCH,
+            if (nextEscOff) 2 else 1, // 2 = ESC Off (Red), 1 = ESC On (Green)
+        )
+    }
+
+    // 2. HDC Button Logic:
+    // Green when ON, Grey when OFF.
+    val isHdcActive = vehicleControls.hdc ?: simHdc
+    val hdcColor = if (isHdcActive) activeGreen else null
+    val onHdcClick: () -> Unit = {
+        val nextHdc = !isHdcActive
+        simHdc = nextHdc
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.HDC_SWITCH,
+            if (nextHdc) 2 else 1,
+        )
+    }
+
+    // 3. HOLD (Auto Hold) Button Logic:
+    // Green when ON, Grey when OFF.
+    val isHoldActive = vehicleControls.avh ?: vehicleControls.accAutobrake ?: simHold
+    val holdColor = if (isHoldActive) activeGreen else null
+    val onHoldClick: () -> Unit = {
+        val nextHold = !isHoldActive
+        simHold = nextHold
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.AVH_SWITCH,
+            if (nextHold) 2 else 1,
+        )
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Slot 1: ESC / ESP Button
+        AssistColoredChip(
+            label = "ESC",
+            iconRes = R.drawable.ic_esp_icon,
+            activeColor = escColor,
+            onClick = onEscClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 2: HDC Button
+        AssistColoredChip(
+            label = "HDC",
+            iconRes = R.drawable.ic_launcher_hdc,
+            activeColor = hdcColor,
+            onClick = onHdcClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 3: HOLD Button
+        AssistColoredChip(
+            label = "HOLD",
+            iconRes = R.drawable.ic_hold_brake,
+            activeColor = holdColor,
+            onClick = onHoldClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+    }
+}
+
+/**
+ * Lights Panel: Headlights Mode, Auto High Beam (HMA), and Rear Fog Light (3 buttons).
+ */
+@Composable
+fun LauncherLightsControlBar(
+    adas: LauncherAdasState,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+
+    val activeGreen = Color(0xFF10B981)
+    val activeTurquoise = Color(0xFF06B6D4)
+    val activeBlue = Color(0xFF3B82F6)
+    val activeOrange = Color(0xFFF97316)
+
+    // Local / simulated state fallbacks
+    var simLightRaw by remember { mutableIntStateOf(LIGHT_CONTROL_AUTO) }
+    var simHma by remember { mutableStateOf(false) }
+    var simRearFog by remember { mutableStateOf(false) }
+
+    // 1. Headlights Button Logic:
+    // AUTO (Green) -> DRL/POS (Turquoise) -> LOW BEAM (Blue) -> OFF (Grey)
+    val currentLightRaw = vehicleControls.lightControlRaw ?: simLightRaw
+    val (lightIcon, lightColor) = when (currentLightRaw) {
+        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to activeGreen
+        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_position to activeTurquoise
+        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to activeBlue
+        else -> R.drawable.ic_headlights_off to null
+    }
+
+    val onLightClick: () -> Unit = {
+        val nextRaw = when (currentLightRaw) {
+            LIGHT_CONTROL_AUTO -> LIGHT_CONTROL_POSITION
+            LIGHT_CONTROL_POSITION -> LIGHT_CONTROL_LOW_BEAM
+            LIGHT_CONTROL_LOW_BEAM -> LIGHT_CONTROL_OFF
+            else -> LIGHT_CONTROL_AUTO
+        }
+        simLightRaw = nextRaw
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.LIGHT_CONTROL,
+            nextRaw,
+        )
+    }
+
+    // 2. Auto High Beam (HMA) Button Logic:
+    // OFF (Grey), ON (Green)
+    val isHmaActive = vehicleControls.hmaOn ?: (adas.hma == LauncherAdasAssistIcon.Active) ?: simHma
+    val hmaColor = if (isHmaActive) activeGreen else null
+    val onHmaClick: () -> Unit = {
+        val nextHma = !isHmaActive
+        simHma = nextHma
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.HMA_SWITCH,
+            if (nextHma) 2 else 1,
+        )
+    }
+
+    // 3. Rear Fog Light Button Logic:
+    // OFF (Grey), ON (Orange)
+    val isRearFogActive = vehicleControls.rearFogLight ?: simRearFog
+    val rearFogColor = if (isRearFogActive) activeOrange else null
+    val onRearFogClick: () -> Unit = {
+        val nextFog = !isRearFogActive
+        simRearFog = nextFog
+        sendToggleRearFogLight(context)
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Slot 1: Headlights Control (No text, 40dp icon centered)
+        AssistColoredChip(
+            label = "",
+            iconRes = lightIcon,
+            activeColor = lightColor,
+            onClick = onLightClick,
+            iconSize = 40.dp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 2: Auto High Beam (IHBC) (No text, 40dp icon centered)
+        AssistColoredChip(
+            label = "",
+            iconRes = R.drawable.ic_high_beam_auto,
+            activeColor = hmaColor,
+            onClick = onHmaClick,
+            iconSize = 40.dp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 3: Rear Fog Light (ПТФ) (No text, 40dp icon centered)
+        AssistColoredChip(
+            label = "",
+            iconRes = R.drawable.ic_launcher_rear_fog,
+            activeColor = rearFogColor,
+            onClick = onRearFogClick,
+            iconSize = 40.dp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+    }
+}
+
+@Composable
+private fun AssistColoredChip(
+    label: String,
+    activeColor: Color?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconRes: Int? = null,
+    iconSize: Dp = 22.dp,
+    fontSize: TextUnit = 19.sp,
+) {
+    val isOff = activeColor == null
+    val accentColor = activeColor ?: LauncherColors.LeftTextPrimary
+    val border = activeColor ?: Color.Transparent
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(LauncherColors.LeftPanelCard)
+            .then(
+                if (!isOff) {
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(12.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (label.isBlank()) {
+            if (iconRes != null) {
+                Image(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(iconSize),
+                    colorFilter = ColorFilter.tint(accentColor),
+                )
+            }
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (iconRes != null) {
+                    Image(
+                        painter = painterResource(iconRes),
+                        contentDescription = null,
+                        modifier = Modifier.size(iconSize),
+                        colorFilter = ColorFilter.tint(accentColor),
+                    )
+                }
+                Text(
+                    text = label,
+                    color = accentColor,
+                    fontSize = fontSize,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 

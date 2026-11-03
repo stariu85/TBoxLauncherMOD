@@ -1,29 +1,45 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -37,16 +53,37 @@ internal fun DraggableAdasPanel(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var isDragging by remember { mutableStateOf(false) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var initialPanelTopPx by remember { mutableFloatStateOf(0f) }
     var panelHeightPx by remember { mutableFloatStateOf(0f) }
+
+    var showRedMinus by remember { mutableStateOf(false) }
+    var hideMinusTimerJob by remember { mutableStateOf<Job?>(null) }
 
     val animatedScale by animateFloatAsState(
         targetValue = if (isDragging) 1.03f else 1.00f,
         animationSpec = tween(150),
         label = "adasPanelScale",
     )
+
+    fun removePanelFromAdas() {
+        val newTop = topPanels.filter { it != panelId }
+        val newBottom = bottomPanels.filter { it != panelId }
+
+        when (panelId) {
+            "media_player" -> LauncherAppConfigStore.setMediaMiniPlayerVisible(context, false)
+            "drive_mode" -> LauncherAppConfigStore.setDriveModeBarVisible(context, false)
+            "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, false)
+            "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, false)
+        }
+
+        LauncherAppConfigStore.setAdasPanelsLayout(context, newTop, newBottom)
+        Toast.makeText(context, "Панель удалена из зоны ADAS", Toast.LENGTH_SHORT).show()
+    }
 
     Box(
         modifier = modifier
@@ -112,6 +149,12 @@ internal fun DraggableAdasPanel(
                                 isDragging = false
                                 dragOffsetY = 0f
                                 onLayoutChanged(newLayout.first, newLayout.second)
+
+                                hideMinusTimerJob?.cancel()
+                                hideMinusTimerJob = scope.launch {
+                                    delay(5000L)
+                                    showRedMinus = false
+                                }
                             }
                             break
                         }
@@ -124,12 +167,16 @@ internal fun DraggableAdasPanel(
                             if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
                                 dragActive = true
                                 isDragging = true
+                                hideMinusTimerJob?.cancel()
+                                showRedMinus = true
                                 accumulativeDragY = pointer.position.y - down.position.y
                                 dragOffsetY = accumulativeDragY
                                 pointer.consume()
                             } else if (elapsed >= 350L) {
                                 dragActive = true
                                 isDragging = true
+                                hideMinusTimerJob?.cancel()
+                                showRedMinus = true
                                 accumulativeDragY = 0f
                                 pointer.consume()
                             }
@@ -144,10 +191,35 @@ internal fun DraggableAdasPanel(
             },
     ) {
         content()
+
+        if (showRedMinus) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(28.dp)
+                    .zIndex(350f)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEF4444))
+                    .clickable {
+                        removePanelFromAdas()
+                        hideMinusTimerJob?.cancel()
+                        showRedMinus = false
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "−",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            }
+        }
     }
 }
 
-private fun calculateNewPanelLayout(
+internal fun calculateNewPanelLayout(
     draggedPanelId: String,
     releasedCenterY: Float,
     containerHeightPx: Float,

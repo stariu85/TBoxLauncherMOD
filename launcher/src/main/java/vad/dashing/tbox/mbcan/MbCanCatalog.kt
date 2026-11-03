@@ -258,6 +258,14 @@ object MbCanKnownVehiclePropertyId {
     const val TJA_ICA_SWITCH = 23
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_SWTICH] — 1 off, 2 on. */
     const val FCW_SWITCH = 96
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_OPTION] — 1 max/far, 2 medium, 3 close. */
+    const val FCW_OPTION = 97
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_REAR_COLLISION_WARNING] — 1 off, 2 on. */
+    const val BSD_SWITCH = 14
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eDVD_RADARWARING] — 1 off, 2 on. */
+    const val DOW_SWITCH = 83
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SMART_HIGHBEAM_SWITCH] — 1 off, 2 on. */
+    const val HMA_SWITCH = 130
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_HDC_SWITCH] — 1 off, 2 on. */
     const val HDC_SWITCH = 143
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_ESCOFF_SWITCH] — 1 off, 2 on (ESC off active). */

@@ -18,6 +18,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,9 +37,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
+import vad.dashing.tbox.MirrorFoldLastCommandStore
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
+import vad.dashing.tbox.ui.sendToggleMirrorFold
 
 private val ButtonHeight = 60.dp
 
@@ -57,6 +61,7 @@ fun LauncherVehicleBodyControlsBar(
     activeGear: Char?,
     onShowTrunkParkWarning: () -> Unit,
     modifier: Modifier = Modifier,
+    reportSubPanel: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -64,6 +69,12 @@ fun LauncherVehicleBodyControlsBar(
     var isOperatingWindows by remember { mutableStateOf(false) }
 
     val pagerState = rememberPagerState { 2 }
+    LaunchedEffect(pagerState.currentPage, reportSubPanel) {
+        if (reportSubPanel) {
+            val visibleSub = if (pagerState.currentPage == 1) "body_controls_seats" else "body_controls_trunk"
+            LauncherAppConfigStore.setVisibleSubPanel("body_controls", visibleSub)
+        }
+    }
 
     fun triggerWindowsCommand(targetPercent: Int) {
         windowJob?.cancel()
@@ -163,6 +174,40 @@ fun LauncherVehicleBodyControlsBar(
                         ),
                     )
                 }
+
+                // Slot 3: Mirror Folding Button
+                val mirrorFoldVal = MirrorFoldLastCommandStore.readLastValue()
+                val isMirrorFolded = mirrorFoldVal == MIRROR_FOLD_SWITCH_VALUE_FOLD
+                val mirrorBg = if (isMirrorFolded) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+                val mirrorBorder = if (isMirrorFolded) activeGreen else Color.Transparent
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(mirrorBg)
+                        .then(
+                            if (isMirrorFolded) {
+                                Modifier.border(1.5.dp, mirrorBorder, RoundedCornerShape(12.dp))
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .clickable {
+                            sendToggleMirrorFold(context)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_launcher_mirror),
+                        contentDescription = "Складывание зеркал",
+                        modifier = Modifier.size(36.dp),
+                        colorFilter = ColorFilter.tint(
+                            if (isMirrorFolded) activeGreen else LauncherColors.LeftTextPrimary,
+                        ),
+                    )
+                }
             }
         } else {
             Row(
@@ -179,7 +224,7 @@ fun LauncherVehicleBodyControlsBar(
                         .height(ButtonHeight)
                         .clip(RoundedCornerShape(12.dp))
                         .background(LauncherColors.LeftPanelCard)
-                        .clickable { SeatMemoryOverlayWindow.show(context) },
+                        .clickable { launchSeatSettingsEmbedded(context) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(

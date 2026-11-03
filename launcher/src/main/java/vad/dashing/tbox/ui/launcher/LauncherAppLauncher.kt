@@ -217,6 +217,22 @@ internal fun launchAndroidSettings(context: Context) {
     }
 }
 
+internal fun launchSeatSettingsEmbedded(context: Context) {
+    val packageName = "com.mengbo.carsettings"
+    val activityName = "com.mengbo.carsettings.ui.activity_dialog.SeatDialogActivity"
+    val intent = Intent("com.mengbo.carsettings.seat_settings").apply {
+        setClassName(packageName, activityName)
+        addCategory(Intent.CATEGORY_DEFAULT)
+    }
+    startResolved(
+        context = context,
+        packageName = packageName,
+        intent = intent,
+        preferEmbedded = true,
+        forceFullscreen = false,
+    )
+}
+
 internal fun launchFirstResolvableApp(
     context: Context,
     packages: List<String>,

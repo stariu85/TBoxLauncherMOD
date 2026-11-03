@@ -217,11 +217,6 @@ internal fun goLauncherBack(
             LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed DockSlotPickerOverlay")
             return
         }
-        SeatMemoryOverlayWindow.isShowing() -> {
-            SeatMemoryOverlayWindow.hide()
-            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed SeatMemoryOverlay")
-            return
-        }
         PassengerSeatOverlayWindow.isShowing() -> {
             PassengerSeatOverlayWindow.hide()
             LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed PassengerSeatOverlay")

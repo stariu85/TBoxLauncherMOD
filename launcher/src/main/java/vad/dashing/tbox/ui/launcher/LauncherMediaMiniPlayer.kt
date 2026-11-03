@@ -85,6 +85,7 @@ private const val LAUNCHER_MEDIA_SOURCE_ID = "launcher_mini_player"
 @Composable
 fun LauncherMediaMiniPlayer(
     modifier: Modifier = Modifier,
+    sourceId: String = LAUNCHER_MEDIA_SOURCE_ID,
 ) {
     val context = LocalContext.current
     var defaultRevision by remember { mutableIntStateOf(0) }
@@ -148,12 +149,12 @@ fun LauncherMediaMiniPlayer(
         }
     }
 
-    DisposableEffect(context, monitorPackages) {
+    DisposableEffect(context, monitorPackages, sourceId) {
         if (monitorPackages.isNotEmpty()) {
-            SharedMediaControlService.updateSourceSelection(context, LAUNCHER_MEDIA_SOURCE_ID, monitorPackages)
+            SharedMediaControlService.updateSourceSelection(context, sourceId, monitorPackages)
         }
         onDispose {
-            SharedMediaControlService.clearSourceSelection(LAUNCHER_MEDIA_SOURCE_ID)
+            SharedMediaControlService.clearSourceSelection(sourceId)
         }
     }
 

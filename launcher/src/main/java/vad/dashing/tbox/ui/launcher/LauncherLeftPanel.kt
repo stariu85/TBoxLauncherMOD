@@ -490,7 +490,8 @@ fun LauncherLeftPanel(
                 "assist", "presets" -> assistPanelVisible
                 "body_controls" -> bodyControlsPanelVisible
                 "media_player" -> miniPlayerVisible
-                else -> false
+                "lanes" -> true
+                else -> true
             }
         }
 
@@ -540,6 +541,36 @@ fun LauncherLeftPanel(
                             )
                         }
                     }
+                    "lanes" -> {
+                        LauncherLanesControlBar(
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    "radars" -> {
+                        LauncherRadarControlBar(
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    "chassis" -> {
+                        LauncherChassisControlBar(
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    "lights" -> {
+                        LauncherLightsControlBar(
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    "car_color" -> {
+                        LauncherCarColorPickerBar(
+                            modifier = Modifier.fillMaxWidth(),
+                            heightDp = 60.dp,
+                        )
+                    }
                     "body_controls" -> {
                         LauncherVehicleBodyControlsBar(
                             activeGear = activeGear,
@@ -551,7 +582,10 @@ fun LauncherLeftPanel(
                     }
                     "media_player" -> {
                         if (miniPlayerVisible) {
-                            LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                            LauncherMediaMiniPlayer(
+                                modifier = Modifier.fillMaxWidth(),
+                                sourceId = "launcher_mini_player_main",
+                            )
                         }
                     }
                 }
@@ -961,6 +995,10 @@ private fun RenderSwipeGroupedPanel(
         val pages = listOfNotNull(leftPanel, panelId, rightPanel)
         val initialPageIndex = pages.indexOf(panelId).coerceAtLeast(0)
         val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = initialPageIndex) { pages.size }
+        LaunchedEffect(pagerState.currentPage, pages) {
+            val currentSub = pages.getOrNull(pagerState.currentPage) ?: panelId
+            LauncherAppConfigStore.setVisibleSubPanel(panelId, currentSub)
+        }
         androidx.compose.foundation.pager.HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxWidth(),
@@ -971,7 +1009,6 @@ private fun RenderSwipeGroupedPanel(
 }
 
 private enum class AssistPresetsTab {
-    Lanes,   // Page -1: LDW + LKA (Swipe Right from Main)
     Main,    // Page 0: ACC + NGP (Default Main Central Page)
     Presets, // Page 1: Speed Presets (Swipe Left from Main)
 }
@@ -984,6 +1021,14 @@ private fun LauncherAssistAndPresetsPanel(
 ) {
     var activeTab by remember { mutableStateOf(AssistPresetsTab.Main) }
     var totalDragAmount by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(activeTab) {
+        val visibleSub = when (activeTab) {
+            AssistPresetsTab.Main -> "assist"
+            AssistPresetsTab.Presets -> "presets"
+        }
+        LauncherAppConfigStore.setVisibleSubPanel("assist", visibleSub)
+    }
 
     // Auto-flip logic on cruise activation / deactivation
     val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
@@ -1019,19 +1064,11 @@ private fun LauncherAssistAndPresetsPanel(
                     },
                     onDragEnd = {
                         if (totalDragAmount < -30f) {
-                            // Swipe Left -> move right in pages
-                            activeTab = when (activeTab) {
-                                AssistPresetsTab.Lanes -> AssistPresetsTab.Main
-                                AssistPresetsTab.Main -> AssistPresetsTab.Presets
-                                AssistPresetsTab.Presets -> AssistPresetsTab.Presets
-                            }
+                            // Swipe Left -> move to Presets
+                            activeTab = AssistPresetsTab.Presets
                         } else if (totalDragAmount > 30f) {
-                            // Swipe Right -> move left in pages
-                            activeTab = when (activeTab) {
-                                AssistPresetsTab.Presets -> AssistPresetsTab.Main
-                                AssistPresetsTab.Main -> AssistPresetsTab.Lanes
-                                AssistPresetsTab.Lanes -> AssistPresetsTab.Lanes
-                            }
+                            // Swipe Right -> move to Main
+                            activeTab = AssistPresetsTab.Main
                         }
                         totalDragAmount = 0f
                     },
@@ -1057,10 +1094,6 @@ private fun LauncherAssistAndPresetsPanel(
             label = "assist_presets_swipe_transition",
         ) { tab ->
             when (tab) {
-                AssistPresetsTab.Lanes -> LauncherLanesControlBar(
-                    adas = adas,
-                    modifier = Modifier.fillMaxWidth(),
-                )
                 AssistPresetsTab.Main -> LauncherAssistControlBar(
                     canViewModel = canViewModel,
                     adas = adas,

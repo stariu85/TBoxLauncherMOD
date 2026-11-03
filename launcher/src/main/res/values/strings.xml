@@ -432,8 +432,8 @@
     <string name="launcher_cruise_panel_visible_desc">Отображать кнопки пресетов скорости ACC в левой зоне</string>
     <string name="launcher_drive_mode_bar_visible_title">Панель режимов движения</string>
     <string name="launcher_drive_mode_bar_visible_desc">Отображать передачи и выбор режима езды (ECO, NOR, SPT) вверху левой зоны</string>
-    <string name="launcher_assist_panel_visible_title">Панель ассистентов вождения</string>
-    <string name="launcher_assist_panel_visible_desc">Отображать панель быстрой активации ассистентов (ACC, NGP, LDW, LKA) в левой зоне</string>
+    <string name="launcher_assist_panel_visible_title">Панель круиз-контроля</string>
+    <string name="launcher_assist_panel_visible_desc">Отображать панель быстрой активации круиз-контроля (ACC и NGP) в левой зоне</string>
     <string name="launcher_reset_adas_panels_layout_title">Сбросить расположение панелей ADAS</string>
     <string name="launcher_settings_on_double_tap_title">Настройки лаунчера по двойному тапу</string>
     <string name="launcher_settings_on_double_tap_desc">Если включено, панель быстрых настроек открывается по одному тапу по модельке машины, а настройки лаунчера по двойному тапу</string>
