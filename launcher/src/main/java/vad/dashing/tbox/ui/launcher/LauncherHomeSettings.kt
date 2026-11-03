@@ -1399,6 +1399,25 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val carColorPanelRevision by LauncherAppConfigStore.carColorPanelRevisionFlow
+            .collectAsStateWithLifecycle()
+        val carColorPanelVisible = remember(context, carColorPanelRevision) {
+            LauncherAppConfigStore.carColorPanelVisible(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_car_color_panel_visible_title),
+            active = carColorPanelVisible,
+            onClick = {
+                LauncherAppConfigStore.setCarColorPanelVisible(context, !carColorPanelVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_car_color_panel_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()

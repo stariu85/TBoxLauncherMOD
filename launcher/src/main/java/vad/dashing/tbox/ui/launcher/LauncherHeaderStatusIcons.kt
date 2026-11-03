@@ -361,6 +361,7 @@ internal fun LauncherTopHeaderBar(
                                             tripCost = tripCost,
                                             displayTripDurationSec = displayTripDurationSec,
                                             fuelText = fuelText,
+                                            fuelPct = fuelPct,
                                             fuelShowsRange = fuelShowsRange,
                                             onFuelShowsRangeToggle = {
                                                 val next = !fuelShowsRange
@@ -412,6 +413,7 @@ internal fun LauncherTopHeaderBar(
                                     tripCost = tripCost,
                                     displayTripDurationSec = displayTripDurationSec,
                                     fuelText = fuelText,
+                                    fuelPct = fuelPct,
                                     fuelShowsRange = fuelShowsRange,
                                     onFuelShowsRangeToggle = {
                                         val next = !fuelShowsRange
@@ -512,6 +514,7 @@ private fun RenderTopBarItemContent(
     tripCost: Float? = null,
     displayTripDurationSec: Long? = null,
     fuelText: String,
+    fuelPct: UInt? = null,
     fuelShowsRange: Boolean,
     onFuelShowsRangeToggle: () -> Unit,
     voltageText: String,
@@ -789,6 +792,11 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "fuel" -> {
+            val fuelColor = when {
+                fuelPct != null && fuelPct < 10u -> LauncherColors.WarningRed
+                fuelPct != null && fuelPct < 15u -> LauncherColors.WarningAmber
+                else -> null
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -802,12 +810,12 @@ private fun RenderTopBarItemContent(
                     painter = painterResource(R.drawable.ic_launcher_fuel),
                     contentDescription = stringResource(R.string.launcher_vs_fuel),
                     modifier = Modifier.size(indicatorIconSizeDp),
-                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                    colorFilter = ColorFilter.tint(fuelColor ?: IndicatorIconTint),
                 )
                 Text(
                     text = fuelText,
                     style = MaterialTheme.typography.tboxCaption,
-                    color = LauncherColors.TextPrimary,
+                    color = fuelColor ?: LauncherColors.TextPrimary,
                     fontSize = indicatorFontSizeSp,
                     fontWeight = FontWeight.Light,
                 )
@@ -1277,6 +1285,13 @@ internal fun LauncherHeaderStatusIcons(
     val bluetoothConnected = rememberBluetoothConnected()
     val networkType = mobileNetworkTypeLabel(netState.netStatus)
 
+    val context = LocalContext.current
+    val networkTypeRevision by LauncherAppConfigStore.topBarCellularNetworkTypeVisibleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val networkTypeVisible = remember(context, networkTypeRevision) {
+        LauncherAppConfigStore.topBarCellularNetworkTypeVisible(context)
+    }
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -1312,7 +1327,7 @@ internal fun LauncherHeaderStatusIcons(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (networkType != null) {
+                if (networkTypeVisible && networkType != null) {
                     Text(
                         text = networkType,
                         color = StatusIconTint,

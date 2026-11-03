@@ -200,6 +200,7 @@ internal object LauncherAdasQuickSettingsWindow {
             setViewTreeViewModelStoreOwner(activity)
             setContent {
                 val density = LocalDensity.current
+                val windowHeightDp = with(density) { bounds.height().toDp() }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -235,6 +236,7 @@ internal object LauncherAdasQuickSettingsWindow {
                                 }
                                 LauncherAdasQuickSettingsContent(
                                     canViewModel = canViewModel,
+                                    windowHeightDp = windowHeightDp,
                                 )
                             }
                         }
@@ -279,6 +281,7 @@ internal object LauncherAdasQuickSettingsWindow {
 @Composable
 private fun LauncherAdasQuickSettingsContent(
     canViewModel: CanDataViewModel,
+    windowHeightDp: Dp = 0.dp,
 ) {
     val context = LocalContext.current
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
@@ -314,6 +317,11 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.bodyControlsPanelVisible(context)
     }
 
+    val carColorRevision by LauncherAppConfigStore.carColorPanelRevisionFlow.collectAsStateWithLifecycle()
+    val carColorPanelVisible = remember(context, carColorRevision) {
+        LauncherAppConfigStore.carColorPanelVisible(context)
+    }
+
     val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow.collectAsStateWithLifecycle()
     val adasTopPanels = remember(context, adasPanelsRevision) {
         LauncherAppConfigStore.adasTopPanels(context)
@@ -330,6 +338,7 @@ private fun LauncherAdasQuickSettingsContent(
         driveModeBarVisible,
         assistPanelVisible,
         bodyControlsPanelVisible,
+        carColorPanelVisible,
         adasTopPanels,
         adasBottomPanels,
     ) {
@@ -342,6 +351,7 @@ private fun LauncherAdasQuickSettingsContent(
                     "assist", "presets" -> assistPanelVisible
                     "body_controls" -> bodyControlsPanelVisible
                     "media_player" -> miniPlayerVisible
+                    "car_color" -> carColorPanelVisible
                     "lanes" -> true
                     else -> true
                 }
@@ -364,7 +374,7 @@ private fun LauncherAdasQuickSettingsContent(
         visibleSubPanels
     }
 
-    val availableItems = remember(directlyVisiblePanels) {
+    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible) {
         val allCandidates = listOf(
             "media_player",
             "drive_mode",
@@ -380,6 +390,7 @@ private fun LauncherAdasQuickSettingsContent(
             "car_color",
         )
         allCandidates.filter { candidate ->
+            if (candidate == "car_color" && !carColorPanelVisible) return@filter false
             candidate !in directlyVisiblePanels
         }
     }
@@ -482,6 +493,7 @@ private fun LauncherAdasQuickSettingsContent(
             "drive_mode" -> LauncherAppConfigStore.setDriveModeBarVisible(context, true)
             "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, true)
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, true)
+            "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, true)
         }
 
         // 3. Always add to bottom ADAS panels at index 0 and persist layout
@@ -504,132 +516,160 @@ private fun LauncherAdasQuickSettingsContent(
         expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 44.dp
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onGloballyPositioned { coordinates ->
-                quickContainerHeightPx = coordinates.size.height.toFloat()
-                containerWindowTopPx = coordinates.positionInWindow().y
-            },
-    ) {
-        if (quickTopPanels.isEmpty() && quickBottomPanels.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Все панели отображаются в зоне ADAS",
-                    color = LauncherColors.LeftTextSecondary,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        } else {
-            // TOP SECTION (snapped to top of window)
-            if (quickTopPanels.isNotEmpty()) {
+    val defaultScale = LauncherDevScaleState.scale
+    val totalTopHeight = quickTopPanels.sumOf { if (it == "media_player") mediaPlayerHeightDp.value.toDouble() else 60.0 }.toFloat()
+    val totalBottomHeight = quickBottomPanels.sumOf { if (it == "media_player") mediaPlayerHeightDp.value.toDouble() else 60.0 }.toFloat()
+    val totalTopSpacing = ((quickTopPanels.size - 1).coerceAtLeast(0)) * 10f
+    val totalBottomSpacing = ((quickBottomPanels.size - 1).coerceAtLeast(0)) * 10f
+    val gapBetweenSections = if (quickTopPanels.isNotEmpty() && quickBottomPanels.isNotEmpty()) 10f else 0f
+    val totalPaddingDp = 16f
+
+    val totalRequiredDp = totalTopHeight + totalBottomHeight + totalTopSpacing + totalBottomSpacing + gapBetweenSections + totalPaddingDp
+
+    val baseDensity = LocalDensity.current
+    val effectiveWindowHeightDp = if (windowHeightDp.value > 0f) {
+        windowHeightDp.value
+    } else if (quickContainerHeightPx > 0f) {
+        with(baseDensity) { quickContainerHeightPx.toDp().value }
+    } else {
+        600f
+    }
+
+    val requiredWithDefaultScale = totalRequiredDp * defaultScale
+    val effectiveScale = if (totalRequiredDp > 0f && requiredWithDefaultScale > effectiveWindowHeightDp) {
+        (effectiveWindowHeightDp / totalRequiredDp).coerceIn(0.45f, defaultScale)
+    } else {
+        defaultScale
+    }
+
+    LauncherCustomScaleProvider(scale = effectiveScale) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    quickContainerHeightPx = coordinates.size.height.toFloat()
+                    containerWindowTopPx = coordinates.positionInWindow().y
+                },
+        ) {
+            if (quickTopPanels.isEmpty() && quickBottomPanels.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(4.dp)
-                        .zIndex(200f),
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    Text(
+                        text = "Все панели отображаются в зоне ADAS",
+                        color = LauncherColors.LeftTextSecondary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                // TOP SECTION (snapped to top of window)
+                if (quickTopPanels.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(4.dp)
+                            .zIndex(200f),
                     ) {
-                        quickTopPanels.forEach { id ->
-                            RenderQuickPanelCard(
-                                id = id,
-                                activeGear = activeGear,
-                                adas = adas,
-                                canViewModel = canViewModel,
-                                primarySlots = primarySlots,
-                                draggingItemId = draggingItemId,
-                                dragOffsetY = dragOffsetY,
-                                activeGreenPlusItemId = activeGreenPlusItemId,
-                                mediaPlayerHeightDp = mediaPlayerHeightDp,
-                                containerWindowTopPx = containerWindowTopPx,
-                                onDragStart = { item, topPx, hPx ->
-                                    draggingItemId = item
-                                    activeGreenPlusItemId = item
-                                    initialPanelTopPx = topPx
-                                    panelHeightPx = hPx
-                                },
-                                onDragMove = { deltaY ->
-                                    dragOffsetY = deltaY
-                                },
-                                onDragEnd = { accumulativeY ->
-                                    val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
-                                    val newLayout = calculateNewPanelLayout(
-                                        draggedPanelId = id,
-                                        releasedCenterY = releasedCenterY,
-                                        containerHeightPx = quickContainerHeightPx,
-                                        currentTop = quickTopPanels,
-                                        currentBottom = quickBottomPanels,
-                                    )
-                                    draggingItemId = null
-                                    dragOffsetY = 0f
-                                    LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
-                                },
-                                onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
-                            )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            quickTopPanels.forEach { id ->
+                                RenderQuickPanelCard(
+                                    id = id,
+                                    activeGear = activeGear,
+                                    adas = adas,
+                                    canViewModel = canViewModel,
+                                    primarySlots = primarySlots,
+                                    draggingItemId = draggingItemId,
+                                    dragOffsetY = dragOffsetY,
+                                    activeGreenPlusItemId = activeGreenPlusItemId,
+                                    mediaPlayerHeightDp = mediaPlayerHeightDp,
+                                    containerWindowTopPx = containerWindowTopPx,
+                                    onDragStart = { item, topPx, hPx ->
+                                        draggingItemId = item
+                                        activeGreenPlusItemId = item
+                                        initialPanelTopPx = topPx
+                                        panelHeightPx = hPx
+                                    },
+                                    onDragMove = { deltaY ->
+                                        dragOffsetY = deltaY
+                                    },
+                                    onDragEnd = { accumulativeY ->
+                                        val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
+                                        val newLayout = calculateNewPanelLayout(
+                                            draggedPanelId = id,
+                                            releasedCenterY = releasedCenterY,
+                                            containerHeightPx = quickContainerHeightPx,
+                                            currentTop = quickTopPanels,
+                                            currentBottom = quickBottomPanels,
+                                        )
+                                        draggingItemId = null
+                                        dragOffsetY = 0f
+                                        LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+                                    },
+                                    onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            // BOTTOM SECTION (snapped to bottom of window)
-            if (quickBottomPanels.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(4.dp)
-                        .zIndex(200f),
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                // BOTTOM SECTION (snapped to bottom of window)
+                if (quickBottomPanels.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(4.dp)
+                            .zIndex(200f),
                     ) {
-                        quickBottomPanels.forEach { id ->
-                            RenderQuickPanelCard(
-                                id = id,
-                                activeGear = activeGear,
-                                adas = adas,
-                                canViewModel = canViewModel,
-                                primarySlots = primarySlots,
-                                draggingItemId = draggingItemId,
-                                dragOffsetY = dragOffsetY,
-                                activeGreenPlusItemId = activeGreenPlusItemId,
-                                mediaPlayerHeightDp = mediaPlayerHeightDp,
-                                containerWindowTopPx = containerWindowTopPx,
-                                onDragStart = { item, topPx, hPx ->
-                                    draggingItemId = item
-                                    activeGreenPlusItemId = item
-                                    initialPanelTopPx = topPx
-                                    panelHeightPx = hPx
-                                },
-                                onDragMove = { deltaY ->
-                                    dragOffsetY = deltaY
-                                },
-                                onDragEnd = { accumulativeY ->
-                                    val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
-                                    val newLayout = calculateNewPanelLayout(
-                                        draggedPanelId = id,
-                                        releasedCenterY = releasedCenterY,
-                                        containerHeightPx = quickContainerHeightPx,
-                                        currentTop = quickTopPanels,
-                                        currentBottom = quickBottomPanels,
-                                    )
-                                    draggingItemId = null
-                                    dragOffsetY = 0f
-                                    LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
-                                },
-                                onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
-                            )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            quickBottomPanels.forEach { id ->
+                                RenderQuickPanelCard(
+                                    id = id,
+                                    activeGear = activeGear,
+                                    adas = adas,
+                                    canViewModel = canViewModel,
+                                    primarySlots = primarySlots,
+                                    draggingItemId = draggingItemId,
+                                    dragOffsetY = dragOffsetY,
+                                    activeGreenPlusItemId = activeGreenPlusItemId,
+                                    mediaPlayerHeightDp = mediaPlayerHeightDp,
+                                    containerWindowTopPx = containerWindowTopPx,
+                                    onDragStart = { item, topPx, hPx ->
+                                        draggingItemId = item
+                                        activeGreenPlusItemId = item
+                                        initialPanelTopPx = topPx
+                                        panelHeightPx = hPx
+                                    },
+                                    onDragMove = { deltaY ->
+                                        dragOffsetY = deltaY
+                                    },
+                                    onDragEnd = { accumulativeY ->
+                                        val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
+                                        val newLayout = calculateNewPanelLayout(
+                                            draggedPanelId = id,
+                                            releasedCenterY = releasedCenterY,
+                                            containerHeightPx = quickContainerHeightPx,
+                                            currentTop = quickTopPanels,
+                                            currentBottom = quickBottomPanels,
+                                        )
+                                        draggingItemId = null
+                                        dragOffsetY = 0f
+                                        LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+                                    },
+                                    onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
+                                )
+                            }
                         }
                     }
                 }
@@ -666,7 +706,7 @@ private fun RenderQuickPanelCard(
 
     val isDragging = draggingItemId == id
     val showPlus = (isDragging || activeGreenPlusItemId == id) && !isBasePanelAlreadyInAdas
-    val slotHeight = if (id == "media_player") mediaPlayerHeightDp else 68.dp
+    val slotHeight = if (id == "media_player") mediaPlayerHeightDp else 60.dp
 
     var localTopPx by remember { mutableFloatStateOf(0f) }
     var localHeightPx by remember { mutableFloatStateOf(0f) }
@@ -769,7 +809,7 @@ private fun RenderQuickPanelCard(
             "radars" -> LauncherRadarControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
             "chassis" -> LauncherChassisControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
             "lights" -> LauncherLightsControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
-            "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 68.dp)
+            "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 60.dp)
         }
 
         if (showPlus) {
@@ -824,7 +864,7 @@ private fun LauncherTrunkAndWindowsBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp),
+            .height(60.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -832,7 +872,7 @@ private fun LauncherTrunkAndWindowsBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(68.dp)
+                .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
                 .combinedClickable(
@@ -867,7 +907,7 @@ private fun LauncherTrunkAndWindowsBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(68.dp)
+                .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(windowsBg)
                 .then(
@@ -904,7 +944,7 @@ private fun LauncherTrunkAndWindowsBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(68.dp)
+                .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(mirrorBg)
                 .then(
@@ -939,7 +979,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(68.dp),
+            .height(60.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -947,7 +987,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(68.dp)
+                .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
                 .clickable { launchSeatSettingsEmbedded(context) },
@@ -965,7 +1005,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(68.dp)
+                .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
                 .clickable { PassengerSeatOverlayWindow.show(context) },
@@ -996,4 +1036,20 @@ private suspend fun sendSequentialWindowCommands(percent: Int) {
         MbCanEngineFacade.setWindowPositions(activeTargets)
     }
     delay(2500L)
+}
+
+@Composable
+private fun LauncherCustomScaleProvider(
+    scale: Float,
+    content: @Composable () -> Unit,
+) {
+    val base = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
+            density = base.density * scale,
+            fontScale = base.fontScale * scale,
+        ),
+    ) {
+        content()
+    }
 }

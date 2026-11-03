@@ -93,7 +93,7 @@ class UpdateRepository(
                 throw IOException("Current version is below minSupportedVersionCode")
             }
             val releaseWithSize = withContext(Dispatchers.IO) {
-                resolveReleaseInfoSize(release, publicKey)
+                resolveReleaseInfoSize(release, publicKey, channel)
             }
             lastAvailableInfo = releaseWithSize
             _uiState.value = UpdateUiState.Available(releaseWithSize)
@@ -171,10 +171,10 @@ class UpdateRepository(
                         }
                         _uiState.value = UpdateUiState.Verifying
                         withContext(Dispatchers.IO) {
-                            verifyDownloadedApk(destination, info)
+                            verifyDownloadedApk(destination, info, channel)
                         }
                         preparedApkFile = destination
-                        val infoWithSize = info.withLocalApkSize(destination)
+                        val infoWithSize = info.withLocalApkSize(destination, channel)
                         lastAvailableInfo = infoWithSize
                         _uiState.value = UpdateUiState.ReadyToInstall(destination, infoWithSize)
                         return
@@ -300,7 +300,14 @@ class UpdateRepository(
         return File(updatesDir, info.apkFileName)
     }
 
-    private fun resolveReleaseInfoSize(release: UpdateReleaseInfo, publicKey: String): UpdateReleaseInfo {
+    private fun resolveReleaseInfoSize(
+        release: UpdateReleaseInfo,
+        publicKey: String,
+        channel: UpdateChannel,
+    ): UpdateReleaseInfo {
+        if (channel == UpdateChannel.DEVELOPMENT) {
+            return release
+        }
         if (release.apkSizeBytes != null && release.apkSizeBytes > 0L) {
             return release
         }
@@ -309,17 +316,21 @@ class UpdateRepository(
         }.getOrNull()?.let { release.copy(apkSizeBytes = it) } ?: release
     }
 
-    private fun UpdateReleaseInfo.withLocalApkSize(file: File): UpdateReleaseInfo {
+    private fun UpdateReleaseInfo.withLocalApkSize(file: File, channel: UpdateChannel): UpdateReleaseInfo {
+        if (channel == UpdateChannel.DEVELOPMENT) return this
         if (apkSizeBytes != null && apkSizeBytes > 0L) return this
         val size = file.length().takeIf { it > 0L } ?: return this
         return copy(apkSizeBytes = size)
     }
 
-    private fun verifyDownloadedApk(file: File, info: UpdateReleaseInfo) {
+    private fun verifyDownloadedApk(file: File, info: UpdateReleaseInfo, channel: UpdateChannel) {
         if (!file.exists() || file.length() <= 0L) {
             throw IOException("Downloaded APK is missing")
         }
-        if (info.sha256.isNotBlank() && !ApkVerifier.verifySha256(file, info.sha256)) {
+        if (channel != UpdateChannel.DEVELOPMENT &&
+            info.sha256.isNotBlank() &&
+            !ApkVerifier.verifySha256(file, info.sha256)
+        ) {
             file.delete()
             throw IOException("APK checksum mismatch")
         }

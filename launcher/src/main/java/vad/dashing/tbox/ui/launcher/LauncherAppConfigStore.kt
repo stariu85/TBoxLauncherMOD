@@ -229,6 +229,7 @@ private const val KEY_SWAP_TOP_BOTTOM_PANELS = "swap_top_bottom_panels"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
+private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
 private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
@@ -335,6 +336,8 @@ internal object LauncherAppConfigStore {
     internal val topBarItemsRevisionFlow: StateFlow<Int> = topBarItemsRevision
     private val topBarIndicatorsBorderRevision = MutableStateFlow(0)
     internal val topBarIndicatorsBorderRevisionFlow: StateFlow<Int> = topBarIndicatorsBorderRevision
+    private val topBarCellularNetworkTypeVisibleRevision = MutableStateFlow(0)
+    internal val topBarCellularNetworkTypeVisibleRevisionFlow: StateFlow<Int> = topBarCellularNetworkTypeVisibleRevision
     private val bottomBarHeightRevision = MutableStateFlow(0)
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
     private val floatingHomeSizeRevision = MutableStateFlow(0)
@@ -403,6 +406,8 @@ internal object LauncherAppConfigStore {
     internal val assistPanelRevisionFlow: StateFlow<Int> = assistPanelRevision
     private val bodyControlsPanelRevision = MutableStateFlow(0)
     internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
+    private val carColorPanelRevision = MutableStateFlow(0)
+    internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
     private val assistPresetsTabRevision = MutableStateFlow(0)
     internal val assistPresetsTabRevisionFlow: StateFlow<Int> = assistPresetsTabRevision
     private val adasPanelsRevision = MutableStateFlow(0)
@@ -619,6 +624,14 @@ internal object LauncherAppConfigStore {
     fun setTopBarLeftIndicatorsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE, visible).apply()
         topBarLeftIndicatorsRevision.value++
+    }
+
+    fun topBarCellularNetworkTypeVisible(context: Context): Boolean =
+        prefs(context).getBoolean("top_bar_cellular_network_type_visible", true)
+
+    fun setTopBarCellularNetworkTypeVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean("top_bar_cellular_network_type_visible", visible).apply()
+        topBarCellularNetworkTypeVisibleRevision.value++
     }
 
     fun topBarIndicatorsBorderEnabled(context: Context): Boolean =
@@ -1314,6 +1327,14 @@ internal object LauncherAppConfigStore {
         bodyControlsPanelRevision.value++
     }
 
+    fun carColorPanelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAR_COLOR_PANEL_VISIBLE, true)
+
+    fun setCarColorPanelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAR_COLOR_PANEL_VISIBLE, visible).apply()
+        carColorPanelRevision.value++
+    }
+
     fun assistPresetsActiveTab(context: Context): String =
         prefs(context).getString(KEY_ASSIST_PRESETS_ACTIVE_TAB, "assist") ?: "assist"
 
@@ -1613,6 +1634,7 @@ internal object LauncherAppConfigStore {
         topBarLeftIndicatorsRevision.value++
         topBarItemsRevision.value++
         topBarIndicatorsBorderRevision.value++
+        topBarCellularNetworkTypeVisibleRevision.value++
         bottomBarHeightRevision.value++
         floatingHomeSizeRevision.value++
         floatingHomeVisibleRevision.value++

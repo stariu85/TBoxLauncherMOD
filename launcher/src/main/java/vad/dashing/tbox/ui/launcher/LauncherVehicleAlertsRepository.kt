@@ -66,6 +66,7 @@ object LauncherVehicleAlertsRepository {
         pollJob = scope.launch {
             while (isActive) {
                 pollSeatBeltCache()
+                pollIcmFaultInfoCache()
                 publish()
                 delay(POLL_MS)
             }
@@ -229,6 +230,29 @@ object LauncherVehicleAlertsRepository {
         }
     }
 
+    private fun pollIcmFaultInfoCache() {
+        val fault = readCachedIcmFaultInfo() ?: return
+        pressBrake = byteActive(fault, "getICM_BrkPsd")
+        hvFaultStop = byteActive(fault, "getICM_HvSysFltStopReq")
+        chargeFault = byteActive(fault, "getICM_ChargeFault")
+        sysFault = byteActive(fault, "getICM_SysFault")
+        battFault = byteActive(fault, "getICM_BattFaultLampSts")
+        lowSoc = byteActive(fault, "getICM_LowSOC") || byteActive(fault, "getICM_SOCDisp")
+        packThermal = byteActive(fault, "getICM_PackThermalRunawayLight")
+        speeding = byteActive(fault, "getICM_Speeding")
+        highTemp = byteActive(fault, "getICM_HighTemperature")
+        lowFuel = byteActive(fault, "getICM_Fuel")
+        powerModeFail = byteActive(fault, "getICM_PowerModeChangeFail")
+    }
+
+    private fun readCachedIcmFaultInfo(): Any? {
+        if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
+        return runCatching {
+            val cls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmFaultInfo")
+            MbCanEngineFacade.getMbCanData(43, cls)
+        }.getOrNull()
+    }
+
     private fun readCachedChime(): Any? {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
         return runCatching {
@@ -251,6 +275,11 @@ object LauncherVehicleAlertsRepository {
     private fun publish() {
         val body = effectiveBody()
         val tires = LauncherTireRepository.state.value
+        val fuelPct = vad.dashing.tbox.CanDataRepository.fuelLevelPercentageFiltered.value
+            ?: vad.dashing.tbox.CanDataRepository.fuelLevelPercentage.value
+        val range = vad.dashing.tbox.CanDataRepository.distanceToFuelEmpty.value
+        val isLowFuel = lowFuel || (fuelPct != null && fuelPct <= 10u) || (range != null && range in 1u..50u)
+
         val list = buildList {
             fun add(id: LauncherAlertId, on: Boolean, severity: LauncherAlertSeverity) {
                 if (on) add(LauncherVehicleAlert(id, severity))
@@ -283,7 +312,7 @@ object LauncherVehicleAlertsRepository {
                 add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.TirePressure, tires.hasAttention, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.LowFuel, lowFuel, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.LowFuel, isLowFuel, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)
                 add(LauncherAlertId.PressBrake, pressBrake, LauncherAlertSeverity.Warning)

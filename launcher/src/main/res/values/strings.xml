@@ -293,6 +293,8 @@
     <string name="launcher_headlight_beams_mode_night_only">ВКЛ ночью</string>
     <string name="launcher_body_controls_panel_visible_title">Панель багажника и окон</string>
     <string name="launcher_body_controls_panel_visible_desc">Отображать панель с кнопками открытия багажника и управления окнами</string>
+    <string name="launcher_car_color_panel_visible_title">Панель выбора цвета авто</string>
+    <string name="launcher_car_color_panel_visible_desc">Отображать панель выбора цвета 3D-модели автомобиля в зоне ADAS и меню быстрого доступа</string>
     <string name="launcher_nav_buttons_title">Кнопки навигации</string>
     <string name="launcher_nav_buttons_desc">Отображать кнопки «Домой» и «Назад» на нижней панели</string>
     <string name="launcher_adas_distance_text_size_title">Размер текста дистанции ACC</string>

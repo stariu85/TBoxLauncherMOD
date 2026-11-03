@@ -120,11 +120,7 @@ object LauncherThemeState {
      * Also updates head unit system theme.
      */
     fun setDarkTheme(context: Context, enabled: Boolean) {
-        if (darkTheme == enabled) {
-            HeadUnitDayNightRepository.setSystemDark(context, enabled)
-            refocusYandexAppIfActive(context)
-            return
-        }
+        if (darkTheme == enabled) return
         darkTheme = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, enabled).apply()
@@ -179,15 +175,13 @@ object LauncherThemeState {
             if (coords != null) {
                 val (lat, lon) = coords
                 val isDaytime = SolarTwilightCalculator.isDaytime(latitude = lat, longitude = lon)
-                darkTheme = !isDaytime
-                HeadUnitDayNightRepository.setSystemDark(context, darkTheme)
+                setDarkTheme(context, !isDaytime)
             }
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_AUTO_SOLAR, autoThemeSolarEnabled)
             .putBoolean(KEY_AUTO_SYSTEM, autoThemeSystemEnabled)
-            .putBoolean(KEY_DARK, darkTheme)
             .apply()
     }
 }

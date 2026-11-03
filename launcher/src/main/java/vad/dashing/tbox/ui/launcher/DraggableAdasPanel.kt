@@ -79,6 +79,7 @@ internal fun DraggableAdasPanel(
             "drive_mode" -> LauncherAppConfigStore.setDriveModeBarVisible(context, false)
             "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, false)
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, false)
+            "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, false)
         }
 
         LauncherAppConfigStore.setAdasPanelsLayout(context, newTop, newBottom)

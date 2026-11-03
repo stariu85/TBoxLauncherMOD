@@ -307,12 +307,46 @@ internal fun LauncherTopBarPickerContent(
                 }
             }
 
-            // Toggle for indicators border
             val context = LocalContext.current
+            var cellular4gVisible by remember {
+                mutableStateOf(LauncherAppConfigStore.topBarCellularNetworkTypeVisible(context))
+            }
             var borderEnabled by remember {
                 mutableStateOf(LauncherAppConfigStore.topBarIndicatorsBorderEnabled(context))
             }
 
+            // Toggle for 4G network indicator (as the top item, above border toggle)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(cardBg)
+                    .clickable {
+                        val next = !cellular4gVisible
+                        cellular4gVisible = next
+                        LauncherAppConfigStore.setTopBarCellularNetworkTypeVisible(context, next)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Показатель 4G",
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Switch(
+                    checked = cellular4gVisible,
+                    onCheckedChange = { checked ->
+                        cellular4gVisible = checked
+                        LauncherAppConfigStore.setTopBarCellularNetworkTypeVisible(context, checked)
+                    },
+                    colors = launcherSwitchColors(),
+                )
+            }
+
+            // Toggle for indicators border
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

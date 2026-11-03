@@ -247,6 +247,11 @@ fun LauncherLeftPanel(
     val bodyControlsPanelVisible = remember(context, bodyControlsRevision) {
         LauncherAppConfigStore.bodyControlsPanelVisible(context)
     }
+    val carColorRevision by LauncherAppConfigStore.carColorPanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val carColorPanelVisible = remember(context, carColorRevision) {
+        LauncherAppConfigStore.carColorPanelVisible(context)
+    }
     val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow
         .collectAsStateWithLifecycle()
     val adasTopPanels = remember(context, adasPanelsRevision) {
@@ -490,12 +495,13 @@ fun LauncherLeftPanel(
                 "assist", "presets" -> assistPanelVisible
                 "body_controls" -> bodyControlsPanelVisible
                 "media_player" -> miniPlayerVisible
+                "car_color" -> carColorPanelVisible
                 "lanes" -> true
                 else -> true
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -511,7 +517,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = "assist" in activeTopPanels

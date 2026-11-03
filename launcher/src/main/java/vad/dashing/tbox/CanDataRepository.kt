@@ -462,6 +462,7 @@ object CanDataRepository {
 
     fun updateDistanceToFuelEmpty(newValue: UInt) {
         _distanceToFuelEmpty.setIfChanged(newValue)
+        vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository.refresh()
     }
 
     fun updateBreakingForce(newValue: UInt) {
@@ -471,11 +472,13 @@ object CanDataRepository {
     fun updateFuelLevelPercentage(newValue: UInt) {
         _fuelLevelPercentage.setIfChanged(newValue)
         recalculateLocalAverageFuelConsumption()
+        vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository.refresh()
     }
 
     fun updateFuelLevelPercentageFiltered(newValue: UInt) {
         _fuelLevelPercentageFiltered.setIfChanged(newValue)
         recalculateLocalAverageFuelConsumption()
+        vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository.refresh()
     }
 
     fun updateFuelLevelCalibratedLiters(newValue: Float?) {
