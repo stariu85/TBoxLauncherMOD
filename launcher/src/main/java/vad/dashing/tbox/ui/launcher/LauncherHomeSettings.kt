@@ -217,6 +217,8 @@ internal fun LauncherHomeSettingsContent() {
     ClimateControlsToggle()
     ClimateCardBgToggle()
     ClimateControlsScaleSlider()
+    DockSecondRowToggle()
+    DockColumnsSlider()
     ResetBottomSlotsButton()
     TopBarHeightSlider()
     TopBarLeftIndicatorsToggle()
@@ -1267,6 +1269,87 @@ private fun EdgeGestureActionPicker(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DockSecondRowToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.dockSecondRowRevisionFlow.collectAsStateWithLifecycle()
+    var enabled by remember(context, revision) {
+        mutableStateOf(LauncherAppConfigStore.dockSecondRowEnabled(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_dock_second_row_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = enabled,
+                onCheckedChange = { active ->
+                    enabled = active
+                    LauncherAppConfigStore.setDockSecondRowEnabled(context, active)
+                },
+                colors = launcherSwitchColors(),
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_dock_second_row_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun DockColumnsSlider() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.dockColumnsRevisionFlow.collectAsStateWithLifecycle()
+    var columns by remember(context, revision) {
+        mutableFloatStateOf(LauncherAppConfigStore.dockColumns(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_dock_columns_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${columns.roundToInt()}",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_dock_columns_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = columns,
+            onValueChange = { next ->
+                columns = next
+                LauncherAppConfigStore.setDockColumns(context, next.roundToInt())
+            },
+            valueRange = DOCK_COLUMNS_MIN.toFloat()..DOCK_COLUMNS_MAX.toFloat(),
+            steps = DOCK_COLUMNS_MAX - DOCK_COLUMNS_MIN - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
     }
 }
 

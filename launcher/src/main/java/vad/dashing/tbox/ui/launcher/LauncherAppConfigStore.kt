@@ -18,6 +18,7 @@ private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
+private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
@@ -78,6 +79,8 @@ private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
 private const val KEY_BOTTOM_SLOTS_UNIFIED = "bottom_slots_unified"
+private const val KEY_DOCK_SECOND_ROW_ENABLED = "dock_second_row_enabled"
+private const val KEY_DOCK_COLUMNS = "dock_columns"
 private const val KEY_ASSIST_PRESETS_ACTIVE_TAB = "assist_presets_active_tab"
 private const val KEY_GRID_COLUMNS = "home_grid_columns"
 private const val KEY_GRID_ROWS = "home_grid_rows"
@@ -139,6 +142,17 @@ enum class ExperimentalPlayerLaunchMode(val code: String) {
     }
 }
 
+enum class SeatAndMirrorLaunchMode(val code: String) {
+    EMBEDDED("embedded"),
+    FULLSCREEN("fullscreen"),
+    OVERLAY("overlay");
+
+    companion object {
+        fun fromCode(code: String?): SeatAndMirrorLaunchMode =
+            entries.firstOrNull { it.code == code } ?: EMBEDDED
+    }
+}
+
 enum class WallpaperScaleMode(val code: Int) {
     FILL_WIDTH(1),
     FILL_HEIGHT(2),
@@ -173,6 +187,9 @@ internal const val MEDIA_CARD_HEIGHT_SCALE_MAX = 1.00f
 internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
 internal const val DOCK_ICON_SCALE_MIN = 1.00f
 internal const val DOCK_ICON_SCALE_MAX = 2.00f
+internal const val DOCK_COLUMNS_DEFAULT = 20
+internal const val DOCK_COLUMNS_MIN = 10
+internal const val DOCK_COLUMNS_MAX = 20
 internal const val TOP_BAR_HEIGHT_DEFAULT = 32
 internal const val TOP_BAR_HEIGHT_MIN = 28
 internal const val TOP_BAR_HEIGHT_MAX = 72
@@ -326,6 +343,8 @@ internal object LauncherAppConfigStore {
     internal val showPlayerNameInWidgetRevisionFlow: StateFlow<Int> = showPlayerNameInWidgetRevision
     private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
+    private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
+    internal val seatMirrorLaunchModeRevisionFlow: StateFlow<Int> = seatMirrorLaunchModeRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
     internal val disableMediaCardCoverColorRevisionFlow: StateFlow<Int> = disableMediaCardCoverColorRevision
     private val dockIconScaleRevision = MutableStateFlow(0)
@@ -394,6 +413,10 @@ internal object LauncherAppConfigStore {
     internal val climateCardBgRevisionFlow: StateFlow<Int> = climateCardBgRevision
     private val bottomSlotsRevision = MutableStateFlow(0)
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
+    private val dockSecondRowRevision = MutableStateFlow(0)
+    internal val dockSecondRowRevisionFlow: StateFlow<Int> = dockSecondRowRevision
+    private val dockColumnsRevision = MutableStateFlow(0)
+    internal val dockColumnsRevisionFlow: StateFlow<Int> = dockColumnsRevision
     private val tirePressureConfigRevision = MutableStateFlow(0)
     internal val tirePressureConfigRevisionFlow: StateFlow<Int> = tirePressureConfigRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
@@ -592,6 +615,14 @@ internal object LauncherAppConfigStore {
     fun setExperimentalPlayerLaunchMode(context: Context, mode: ExperimentalPlayerLaunchMode) {
         prefs(context).edit().putString(KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE, mode.code).apply()
         experimentalPlayerLaunchModeRevision.value++
+    }
+
+    fun seatMirrorLaunchMode(context: Context): SeatAndMirrorLaunchMode =
+        SeatAndMirrorLaunchMode.fromCode(prefs(context).getString(KEY_SEAT_MIRROR_LAUNCH_MODE, null))
+
+    fun setSeatMirrorLaunchMode(context: Context, mode: SeatAndMirrorLaunchMode) {
+        prefs(context).edit().putString(KEY_SEAT_MIRROR_LAUNCH_MODE, mode.code).apply()
+        seatMirrorLaunchModeRevision.value++
     }
 
     fun disableMediaCardCoverColor(context: Context): Boolean =
@@ -1143,30 +1174,67 @@ internal object LauncherAppConfigStore {
         climateCardBgRevision.value++
     }
 
+    fun dockSecondRowEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DOCK_SECOND_ROW_ENABLED, false)
+
+    fun setDockSecondRowEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DOCK_SECOND_ROW_ENABLED, enabled).apply()
+        dockSecondRowRevision.value++
+        bottomSlotsRevision.value++
+    }
+
+    fun dockColumns(context: Context): Int =
+        prefs(context).getInt(KEY_DOCK_COLUMNS, DOCK_COLUMNS_DEFAULT)
+            .coerceIn(DOCK_COLUMNS_MIN, DOCK_COLUMNS_MAX)
+
+    fun setDockColumns(context: Context, columns: Int) {
+        val next = columns.coerceIn(DOCK_COLUMNS_MIN, DOCK_COLUMNS_MAX)
+        prefs(context).edit().putInt(KEY_DOCK_COLUMNS, next).apply()
+        dockColumnsRevision.value++
+        bottomSlotsRevision.value++
+    }
+
+    fun floatingHomeSlotIndex(context: Context): Int {
+        val cols = dockColumns(context)
+        return if (dockSecondRowEnabled(context)) cols else 0
+    }
+
     fun bottomSlotsUnified(context: Context): List<String?> {
         val raw = prefs(context).getString(KEY_BOTTOM_SLOTS_UNIFIED, null)
-        if (raw.isNullOrBlank()) return DEFAULT_BOTTOM_SLOTS_UNIFIED
+        val secondRow = dockSecondRowEnabled(context)
+        val cols = dockColumns(context)
+        val totalCount = if (secondRow) cols * 2 else cols
+        if (raw.isNullOrBlank()) {
+            val list = DEFAULT_BOTTOM_SLOTS_UNIFIED.toMutableList()
+            while (list.size < totalCount) list.add(null)
+            if (floatingHomeVisible(context)) {
+                val homeSlot = floatingHomeSlotIndex(context)
+                if (homeSlot < list.size) list[homeSlot] = null
+            }
+            return list.take(totalCount)
+        }
         var list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
-        if (list.size < GRID_SLOTS_TOTAL_COUNT) {
-            while (list.size < GRID_SLOTS_TOTAL_COUNT) list.add(null)
-        } else if (list.size > GRID_SLOTS_TOTAL_COUNT) {
-            list = list.take(GRID_SLOTS_TOTAL_COUNT).toMutableList()
+        if (list.size < totalCount) {
+            while (list.size < totalCount) list.add(null)
+        } else if (list.size > totalCount && !secondRow) {
+            list = list.take(totalCount).toMutableList()
         }
         if (floatingHomeVisible(context)) {
-            list[0] = null // Slot 0 blocked when floating Home button is ON
+            val homeSlot = floatingHomeSlotIndex(context)
+            if (homeSlot < list.size) list[homeSlot] = null
         }
         return list
     }
 
     fun setBottomSlotsUnified(context: Context, slots: List<String?>) {
-        val raw = slots.take(GRID_SLOTS_TOTAL_COUNT).joinToString(",") { it ?: "null" }
+        val raw = slots.joinToString(",") { it ?: "null" }
         prefs(context).edit().putString(KEY_BOTTOM_SLOTS_UNIFIED, raw).apply()
         bottomSlotsRevision.value++
     }
 
     fun saveBottomSlotsPreset(context: Context, presetKey: String) {
         val currentSlots = bottomSlotsUnified(context)
-        val raw = currentSlots.take(GRID_SLOTS_TOTAL_COUNT).joinToString(",") { it ?: "null" }
+        val raw = currentSlots.joinToString(",") { it ?: "null" }
         prefs(context).edit().putString("bottom_slots_preset_$presetKey", raw).apply()
         bottomSlotsRevision.value++
     }
@@ -1179,11 +1247,14 @@ internal object LauncherAppConfigStore {
     fun applyBottomSlotsPreset(context: Context, presetKey: String): Boolean {
         val raw = prefs(context).getString("bottom_slots_preset_$presetKey", null)
         if (raw.isNullOrBlank()) return false
+        val secondRow = dockSecondRowEnabled(context)
+        val cols = dockColumns(context)
+        val totalCount = if (secondRow) cols * 2 else cols
         var list = raw.split(',').map { if (it.trim() == "null" || it.isBlank()) null else it.trim() }.toMutableList()
-        if (list.size < GRID_SLOTS_TOTAL_COUNT) {
-            while (list.size < GRID_SLOTS_TOTAL_COUNT) list.add(null)
-        } else if (list.size > GRID_SLOTS_TOTAL_COUNT) {
-            list = list.take(GRID_SLOTS_TOTAL_COUNT).toMutableList()
+        if (list.size < totalCount) {
+            while (list.size < totalCount) list.add(null)
+        } else if (list.size > totalCount && !secondRow) {
+            list = list.take(totalCount).toMutableList()
         }
         setBottomSlotsUnified(context, list)
         return true
@@ -1191,11 +1262,17 @@ internal object LauncherAppConfigStore {
 
     fun setButtonInUnifiedSlot(context: Context, slotIndex: Int, buttonId: String?) {
         val slots = bottomSlotsUnified(context).toMutableList()
-        val minSlot = if (floatingHomeVisible(context)) 1 else 0
-        if (slotIndex in minSlot until GRID_SLOTS_TOTAL_COUNT) {
+        val secondRow = dockSecondRowEnabled(context)
+        val cols = dockColumns(context)
+        val totalCount = if (secondRow) cols * 2 else cols
+        val homeSlotBlocked = floatingHomeVisible(context)
+        val reservedSlot = floatingHomeSlotIndex(context)
+        if (slotIndex in 0 until totalCount && (!homeSlotBlocked || slotIndex != reservedSlot)) {
+            while (slots.size <= slotIndex) slots.add(null)
             slots[slotIndex] = buttonId
             val span = if (buttonId == "temp_driver" || buttonId == "temp_pass") 2 else 1
-            if (span > 1 && slotIndex + 1 < GRID_SLOTS_TOTAL_COUNT) {
+            if (span > 1 && slotIndex + 1 < totalCount) {
+                while (slots.size <= slotIndex + 1) slots.add(null)
                 slots[slotIndex + 1] = null
             }
             setBottomSlotsUnified(context, slots)
@@ -1210,18 +1287,27 @@ internal object LauncherAppConfigStore {
     ) {
         val slots = bottomSlotsUnified(context).toMutableList()
         val floatingHomeOn = floatingHomeVisible(context)
-        val minSlot = if (floatingHomeOn) 1 else 0
+        val reservedSlot = floatingHomeSlotIndex(context)
+        val secondRow = dockSecondRowEnabled(context)
+        val cols = dockColumns(context)
+        val totalCount = if (secondRow) cols * 2 else cols
         val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
-        val maxTarget = if (itemSpan > 1) GRID_SLOTS_TOTAL_COUNT - 2 else GRID_SLOTS_TOTAL_COUNT - 1
-        val validTarget = targetIndex.coerceIn(minSlot, maxTarget)
+        val maxTarget = if (itemSpan > 1) totalCount - 2 else totalCount - 1
+        var validTarget = targetIndex.coerceIn(0, maxTarget)
+        if (floatingHomeOn && validTarget == reservedSlot) {
+            validTarget = if (reservedSlot == 0) 1 else if (reservedSlot == cols) cols + 1 else validTarget
+        }
         if (validTarget == currentIndex) return
+
+        while (slots.size <= maxOf(currentIndex, validTarget)) slots.add(null)
 
         val targetOld = slots[validTarget]
         slots[currentIndex] = targetOld
         slots[validTarget] = itemId
 
-        if (itemSpan > 1 && validTarget + 1 < GRID_SLOTS_TOTAL_COUNT) {
-            val absorbedOld = slots[validTarget + 1]
+        if (itemSpan > 1 && validTarget + 1 < totalCount) {
+            val absorbedOld = slots.getOrNull(validTarget + 1)
+            while (slots.size <= validTarget + 1) slots.add(null)
             slots[validTarget + 1] = null
             if (absorbedOld != null && slots[currentIndex] == null) {
                 slots[currentIndex] = absorbedOld
@@ -1229,7 +1315,9 @@ internal object LauncherAppConfigStore {
         }
 
         if (floatingHomeOn) {
-            slots[0] = null
+            if (reservedSlot < slots.size) {
+                slots[reservedSlot] = null
+            }
         }
 
         setBottomSlotsUnified(context, slots)
@@ -1718,6 +1806,8 @@ internal object LauncherAppConfigStore {
         climateControlsRevision.value++
         climateCardBgRevision.value++
         bottomSlotsRevision.value++
+        dockSecondRowRevision.value++
+        dockColumnsRevision.value++
         tirePressureConfigRevision.value++
         cruisePresetsRevision.value++
         cruisePanelRevision.value++

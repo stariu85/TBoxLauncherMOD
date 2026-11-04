@@ -917,6 +917,40 @@ internal fun LauncherVehicleSettingsContent(
                     },
                 )
             }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.launcher_vs_exp_seat_mirror_launch_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.launcher_vs_exp_seat_mirror_launch_desc),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            val seatMirrorModeRevision by LauncherAppConfigStore.seatMirrorLaunchModeRevisionFlow
+                .collectAsStateWithLifecycle()
+            val currentSeatMirrorMode = remember(context, seatMirrorModeRevision) {
+                LauncherAppConfigStore.seatMirrorLaunchMode(context)
+            }
+            SeatAndMirrorLaunchMode.entries.forEach { mode ->
+                val label = when (mode) {
+                    SeatAndMirrorLaunchMode.EMBEDDED -> stringResource(R.string.launcher_exp_seat_mirror_mode_embedded)
+                    SeatAndMirrorLaunchMode.FULLSCREEN -> stringResource(R.string.launcher_exp_seat_mirror_mode_fullscreen)
+                    SeatAndMirrorLaunchMode.OVERLAY -> stringResource(R.string.launcher_exp_seat_mirror_mode_overlay)
+                }
+                LauncherSettingsToggleRow(
+                    label = label,
+                    active = currentSeatMirrorMode == mode,
+                    onClick = {
+                        val nextMode = if (currentSeatMirrorMode == mode) SeatAndMirrorLaunchMode.EMBEDDED else mode
+                        LauncherAppConfigStore.setSeatMirrorLaunchMode(context, nextMode)
+                    },
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_exp_welcome_lamp),

@@ -217,20 +217,63 @@ internal fun launchAndroidSettings(context: Context) {
     }
 }
 
+private fun launchSeatOrMirrorIntent(context: Context, packageName: String, intent: Intent) {
+    when (LauncherAppConfigStore.seatMirrorLaunchMode(context)) {
+        SeatAndMirrorLaunchMode.EMBEDDED -> {
+            startResolved(
+                context = context,
+                packageName = packageName,
+                intent = intent,
+                preferEmbedded = true,
+                forceFullscreen = false,
+            )
+        }
+        SeatAndMirrorLaunchMode.FULLSCREEN -> {
+            startResolved(
+                context = context,
+                packageName = packageName,
+                intent = intent,
+                preferEmbedded = false,
+                forceFullscreen = true,
+            )
+        }
+        SeatAndMirrorLaunchMode.OVERLAY -> {
+            val overlayIntent = Intent(intent).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching {
+                context.startActivity(overlayIntent)
+            }.onFailure { err ->
+                Log.w(TAG, "Failed to launch overlay intent for $packageName", err)
+                startResolved(
+                    context = context,
+                    packageName = packageName,
+                    intent = intent,
+                    preferEmbedded = true,
+                    forceFullscreen = false,
+                )
+            }
+        }
+    }
+}
+
 internal fun launchSeatSettingsEmbedded(context: Context) {
     val packageName = "com.mengbo.carsettings"
-    val activityName = "com.mengbo.carsettings.ui.activity_dialog.SeatDialogActivity"
-    val intent = Intent("com.mengbo.carsettings.seat_settings").apply {
+    val activityName = "com.mengbo.carsettings.ui.activity_dialog.SeatAdjustmentDialogActivity"
+    val intent = Intent().apply {
+        setClassName(packageName, activityName)
+    }
+    launchSeatOrMirrorIntent(context, packageName, intent)
+}
+
+internal fun launchMirrorAdjustSettingsEmbedded(context: Context) {
+    val packageName = "com.mengbo.carsettings"
+    val activityName = "com.mengbo.carsettings.ui.activity_dialog.RearviewMirrorAngleAdjustmentDialogActivity"
+    val intent = Intent("com.mengbo.carsettings.mirror_adjust").apply {
         setClassName(packageName, activityName)
         addCategory(Intent.CATEGORY_DEFAULT)
     }
-    startResolved(
-        context = context,
-        packageName = packageName,
-        intent = intent,
-        preferEmbedded = true,
-        forceFullscreen = false,
-    )
+    launchSeatOrMirrorIntent(context, packageName, intent)
 }
 
 internal fun launchFirstResolvableApp(

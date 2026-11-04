@@ -85,10 +85,11 @@ internal object LauncherOverlayBar {
         val initialButtonDiameterPx = (initialHomeSizeDp * density).toInt()
 
         val initSlot0 = LauncherEmbeddedBoundsState.slot0Bounds
+        val initCols = LauncherAppConfigStore.dockColumns(activity)
         val initX = if (initSlot0 != null && initSlot0.width() > 0) {
             initSlot0.centerX() - initialButtonDiameterPx / 2
         } else {
-            val slotUnitWidthPx = (screenW - (24 * density)) / 20f
+            val slotUnitWidthPx = (screenW - (24 * density)) / initCols.toFloat()
             ((12 * density) + (slotUnitWidthPx / 2f) - initialButtonDiameterPx / 2f).toInt()
         }
 
@@ -129,10 +130,11 @@ internal object LauncherOverlayBar {
                 val iconSizeDp = (currentHomeSizeDp * 0.52f).dp
 
                 val slot0State = LauncherEmbeddedBoundsState.slot0Bounds
+                val calcCols = LauncherAppConfigStore.dockColumns(context)
                 val calcX = if (slot0State != null && slot0State.width() > 0) {
                     slot0State.centerX() - buttonDiameterPx / 2
                 } else {
-                    val calcSlotUnitWidthPx = (screenW - (24 * density)) / 20f
+                    val calcSlotUnitWidthPx = (screenW - (24 * density)) / calcCols.toFloat()
                     ((12 * density) + (calcSlotUnitWidthPx / 2f) - buttonDiameterPx / 2f).toInt()
                 }
                 val calcY = if (slot0State != null && slot0State.height() > 0) {

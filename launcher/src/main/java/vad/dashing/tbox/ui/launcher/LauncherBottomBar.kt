@@ -59,6 +59,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -158,6 +159,7 @@ private const val SEAT_COMMAND_CONFIRM_TIMEOUT_MS = 2_500L
 private const val LIGHT_COMMAND_CONFIRM_TIMEOUT_MS = 1_200L
 
 private val LocalDockIconScale = compositionLocalOf { 1f }
+private val LocalDockSecondRowEnabled = compositionLocalOf { false }
 
 internal data class ParsedTbmAutoButton(
     val automationId: String,
@@ -224,6 +226,9 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("hvac_ac", "Кондиционер AC", R.drawable.ic_widget_hvac_ac),
     LauncherDockButtonDescriptor("hvac_auto", "Климат AUTO", null),
     LauncherDockButtonDescriptor("hvac_sync", "Синхронизация SYNC", null),
+    LauncherDockButtonDescriptor("temp_driver", "Температура водителя", null),
+    LauncherDockButtonDescriptor("temp_pass", "Температура пассажира", null),
+    LauncherDockButtonDescriptor("audio_volume", "Регулятор громкости", null),
     LauncherDockButtonDescriptor("hvac_pm25", "Очистка PM 2.5", R.drawable.ic_widget_pm25_on),
     LauncherDockButtonDescriptor("hvac_fan_speed", "Скорость вентилятора", R.drawable.ic_widget_fan),
     LauncherDockButtonDescriptor("hvac_fan_direction", "Направление обдува", R.drawable.ic_widget_fan_face_feet),
@@ -238,6 +243,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("windscreen_heat", "Подогрев лобового", R.drawable.ic_widget_front_windscreen_heat),
     LauncherDockButtonDescriptor("front_defrost", "Обдув лобового", R.drawable.ic_widget_hvac_defroster_front),
     LauncherDockButtonDescriptor("rear_defrost", "Обогрев заднего стекла", R.drawable.ic_widget_rear_window_mirrors_defrost),
+    LauncherDockButtonDescriptor("headlights", "Переключатель фар", R.drawable.ic_headlights_auto),
     LauncherDockButtonDescriptor("home_nav", "Кнопка Домой"),
     LauncherDockButtonDescriptor("back_nav", "Кнопка Назад", R.drawable.undo_24),
     LauncherDockButtonDescriptor("all_apps", "Все приложения", R.drawable.ic_all_apps_dock),
@@ -442,6 +448,20 @@ internal fun LauncherDockSlotPickerContent(
                                             text = if (btn.id == "hvac_sync") "SYNC" else "AUTO",
                                             color = pickerIconColor,
                                             fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    } else if (btn.id == "temp_driver" || btn.id == "temp_pass") {
+                                        Text(
+                                            text = if (btn.id == "temp_driver") "t° В" else "t° П",
+                                            color = pickerIconColor,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    } else if (btn.id == "audio_volume") {
+                                        Text(
+                                            text = "Vol",
+                                            color = pickerIconColor,
+                                            fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold,
                                         )
                                     } else if (btn.id == "hvac_pm25") {
@@ -735,7 +755,15 @@ fun LauncherBottomBar(
         LauncherAppConfigStore.floatingHomeVisible(context)
     }
     val bottomSlotsRevision by LauncherAppConfigStore.bottomSlotsRevisionFlow.collectAsStateWithLifecycle()
-    val slotsUnified = remember(context, bottomSlotsRevision) {
+    val dockSecondRowRevision by LauncherAppConfigStore.dockSecondRowRevisionFlow.collectAsStateWithLifecycle()
+    val dockColumnsRevision by LauncherAppConfigStore.dockColumnsRevisionFlow.collectAsStateWithLifecycle()
+    val secondRowEnabled = remember(context, dockSecondRowRevision, bottomSlotsRevision) {
+        LauncherAppConfigStore.dockSecondRowEnabled(context)
+    }
+    val dockColumns = remember(context, dockColumnsRevision, bottomSlotsRevision) {
+        LauncherAppConfigStore.dockColumns(context)
+    }
+    val slotsUnified = remember(context, bottomSlotsRevision, dockSecondRowRevision, dockColumnsRevision) {
         LauncherAppConfigStore.bottomSlotsUnified(context)
     }
 
@@ -795,107 +823,234 @@ fun LauncherBottomBar(
 
             var rowLeftX by remember { mutableFloatStateOf(0f) }
             var rowWidthPx by remember { mutableFloatStateOf(1f) }
+            var rowHeightPx by remember { mutableFloatStateOf(0f) }
 
             CompositionLocalProvider(
                 LocalDockIconScale provides (dockScale * climateScale),
                 LocalClimateCardBgVisible provides climateCardBgVisible,
+                LocalDockSecondRowEnabled provides secondRowEnabled,
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.CenterStart)
-                        .onGloballyPositioned { coordinates ->
-                            val bounds = coordinates.boundsInWindow()
-                            rowLeftX = bounds.left
-                            rowWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
-                        },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    var skipCount = 0
-                    for (index in 0 until GRID_SLOTS_TOTAL_COUNT) {
-                        if (skipCount > 0) {
-                            skipCount--
-                            continue
-                        }
-                        val itemId = slotsUnified.getOrNull(index)
-                        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
-                        if (itemSpan > 1) {
-                            skipCount = itemSpan - 1
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(itemSpan.toFloat())
-                                .height(bottomBarHeightDp.dp)
-                                .onGloballyPositioned { coordinates ->
-                                    if (index == 0) {
-                                        val bounds = coordinates.boundsInWindow()
-                                        LauncherEmbeddedBoundsState.slot0Bounds = Rect(
-                                            bounds.left.toInt(),
-                                            bounds.top.toInt(),
-                                            bounds.right.toInt(),
-                                            bounds.bottom.toInt(),
-                                        )
-                                    }
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (itemId != null) {
-                                LauncherDraggableUnifiedSlot(
-                                    itemId = itemId,
-                                    context = context,
-                                    canViewModel = canViewModel,
-                                    index = index,
-                                    rowLeftX = rowLeftX,
-                                    rowWidthPx = rowWidthPx,
-                                    onDragStateChange = { dragging ->
-                                        isDraggingAnySlot = dragging
-                                        if (dragging) {
-                                            isEditingBottomSlots = true
-                                            editingTimerJob?.cancel()
-                                        } else {
-                                            triggerEditingMode()
+                if (secondRowEnabled) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .align(Alignment.CenterStart),
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        repeat(2) { rowIndex ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onGloballyPositioned { coordinates ->
+                                        if (rowIndex == 0) {
+                                            val bounds = coordinates.boundsInWindow()
+                                            rowLeftX = bounds.left
+                                            rowWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
+                                            rowHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
                                         }
                                     },
-                                    onCloseVehicleSettings = onCloseVehicleSettings,
-                                    onOpenVehicleSettings = onOpenVehicleSettings,
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp, 36.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .combinedClickable(
-                                            onLongClick = {
-                                                val minSlot = if (floatingHomeVisible) 1 else 0
-                                                if (index >= minSlot) {
-                                                    triggerEditingMode()
-                                                    pickerSlotIndex = index
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                val startIdx = rowIndex * dockColumns
+                                val endIdx = startIdx + dockColumns
+                                var skipCount = 0
+                                val homeSlotIndex = if (secondRowEnabled) dockColumns else 0
+                                for (index in startIdx until endIdx) {
+                                    if (skipCount > 0) {
+                                        skipCount--
+                                        continue
+                                    }
+                                    val itemId = slotsUnified.getOrNull(index)
+                                    val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+                                    if (itemSpan > 1) {
+                                        skipCount = itemSpan - 1
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(itemSpan.toFloat())
+                                            .height((bottomBarHeightDp / 2f).dp)
+                                            .onGloballyPositioned { coordinates ->
+                                                if (index == homeSlotIndex) {
+                                                    val bounds = coordinates.boundsInWindow()
+                                                    LauncherEmbeddedBoundsState.slot0Bounds = Rect(
+                                                        bounds.left.toInt(),
+                                                        bounds.top.toInt(),
+                                                        bounds.right.toInt(),
+                                                        bounds.bottom.toInt(),
+                                                    )
                                                 }
                                             },
-                                            onClick = {},
-                                        )
-                                        .then(
-                                            if (slotBorderAlpha > 0.001f) {
-                                                Modifier.border(
-                                                    width = 1.dp,
-                                                    color = Color.White.copy(alpha = slotBorderAlpha),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                )
-                                            } else {
-                                                Modifier
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        if (itemId != null) {
+                                            LauncherDraggableUnifiedSlot(
+                                                itemId = itemId,
+                                                context = context,
+                                                canViewModel = canViewModel,
+                                                index = index,
+                                                rowLeftX = rowLeftX,
+                                                rowWidthPx = rowWidthPx,
+                                                rowHeightPx = rowHeightPx,
+                                                secondRowEnabled = true,
+                                                onDragStateChange = { dragging ->
+                                                    isDraggingAnySlot = dragging
+                                                    if (dragging) {
+                                                        isEditingBottomSlots = true
+                                                        editingTimerJob?.cancel()
+                                                    } else {
+                                                        triggerEditingMode()
+                                                    }
+                                                },
+                                                onCloseVehicleSettings = onCloseVehicleSettings,
+                                                onOpenVehicleSettings = onOpenVehicleSettings,
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp, 36.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .combinedClickable(
+                                                        onLongClick = {
+                                                            val isHomeReserved = floatingHomeVisible && index == homeSlotIndex
+                                                            if (!isHomeReserved) {
+                                                                triggerEditingMode()
+                                                                pickerSlotIndex = index
+                                                            }
+                                                        },
+                                                        onClick = {},
+                                                    )
+                                                    .then(
+                                                        if (slotBorderAlpha > 0.001f) {
+                                                            Modifier.border(
+                                                                width = 1.dp,
+                                                                color = Color.White.copy(alpha = slotBorderAlpha),
+                                                                shape = RoundedCornerShape(8.dp),
+                                                            )
+                                                        } else {
+                                                            Modifier
+                                                        }
+                                                    ),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                if (plusIconAlpha > 0.001f) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Add,
+                                                        contentDescription = "Добавить иконку",
+                                                        tint = Color.White.copy(alpha = plusIconAlpha),
+                                                        modifier = Modifier.size(14.dp),
+                                                    )
+                                                }
                                             }
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    if (plusIconAlpha > 0.001f) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Add,
-                                            contentDescription = "Добавить иконку",
-                                            tint = Color.White.copy(alpha = plusIconAlpha),
-                                            modifier = Modifier.size(14.dp),
-                                        )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.CenterStart)
+                            .onGloballyPositioned { coordinates ->
+                                val bounds = coordinates.boundsInWindow()
+                                rowLeftX = bounds.left
+                                rowWidthPx = coordinates.size.width.toFloat().coerceAtLeast(1f)
+                                rowHeightPx = coordinates.size.height.toFloat().coerceAtLeast(1f)
+                            },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        var skipCount = 0
+                        val homeSlotIndex = 0
+                        for (index in 0 until dockColumns) {
+                            if (skipCount > 0) {
+                                skipCount--
+                                continue
+                            }
+                            val itemId = slotsUnified.getOrNull(index)
+                            val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+                            if (itemSpan > 1) {
+                                skipCount = itemSpan - 1
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(itemSpan.toFloat())
+                                    .height(bottomBarHeightDp.dp)
+                                    .onGloballyPositioned { coordinates ->
+                                        if (index == homeSlotIndex) {
+                                            val bounds = coordinates.boundsInWindow()
+                                            LauncherEmbeddedBoundsState.slot0Bounds = Rect(
+                                                bounds.left.toInt(),
+                                                bounds.top.toInt(),
+                                                bounds.right.toInt(),
+                                                bounds.bottom.toInt(),
+                                            )
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (itemId != null) {
+                                    LauncherDraggableUnifiedSlot(
+                                        itemId = itemId,
+                                        context = context,
+                                        canViewModel = canViewModel,
+                                        index = index,
+                                        rowLeftX = rowLeftX,
+                                        rowWidthPx = rowWidthPx,
+                                        rowHeightPx = rowHeightPx,
+                                        secondRowEnabled = false,
+                                        onDragStateChange = { dragging ->
+                                            isDraggingAnySlot = dragging
+                                            if (dragging) {
+                                                isEditingBottomSlots = true
+                                                editingTimerJob?.cancel()
+                                            } else {
+                                                triggerEditingMode()
+                                            }
+                                        },
+                                        onCloseVehicleSettings = onCloseVehicleSettings,
+                                        onOpenVehicleSettings = onOpenVehicleSettings,
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp, 36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .combinedClickable(
+                                                onLongClick = {
+                                                    val isHomeReserved = floatingHomeVisible && index == homeSlotIndex
+                                                    if (!isHomeReserved) {
+                                                        triggerEditingMode()
+                                                        pickerSlotIndex = index
+                                                    }
+                                                },
+                                                onClick = {},
+                                            )
+                                            .then(
+                                                if (slotBorderAlpha > 0.001f) {
+                                                    Modifier.border(
+                                                        width = 1.dp,
+                                                        color = Color.White.copy(alpha = slotBorderAlpha),
+                                                        shape = RoundedCornerShape(8.dp),
+                                                    )
+                                                } else {
+                                                    Modifier
+                                                }
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        if (plusIconAlpha > 0.001f) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Add,
+                                                contentDescription = "Добавить иконку",
+                                                tint = Color.White.copy(alpha = plusIconAlpha),
+                                                modifier = Modifier.size(14.dp),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -963,6 +1118,8 @@ private fun LauncherDraggableUnifiedSlot(
     index: Int,
     rowLeftX: Float,
     rowWidthPx: Float,
+    rowHeightPx: Float = 0f,
+    secondRowEnabled: Boolean = false,
     onDragStateChange: (Boolean) -> Unit,
     onCloseVehicleSettings: () -> Unit,
     onOpenVehicleSettings: () -> Unit,
@@ -994,17 +1151,40 @@ private fun LauncherDraggableUnifiedSlot(
                     onDragEnd = {
                         isDragging = false
                         onDragStateChange(false)
-                        val minSlot = if (LauncherAppConfigStore.floatingHomeVisible(context)) 1 else 0
-                        if (offsetY < trashThresholdPx && index >= minSlot) {
+                        val homeSlotIndex = LauncherAppConfigStore.floatingHomeSlotIndex(context)
+                        val dockCols = LauncherAppConfigStore.dockColumns(context)
+                        val isHomeReserved = LauncherAppConfigStore.floatingHomeVisible(context) && index == homeSlotIndex
+                        if (offsetY < trashThresholdPx && !isHomeReserved) {
                             // Dragged UP out of bottom panel -> Remove icon from slot!
                             LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, null)
                         } else {
-                            val unitSlotWidthPx = (rowWidthPx / GRID_SLOTS_TOTAL_COUNT.toFloat()).coerceAtLeast(1f)
+                            val unitSlotWidthPx = (rowWidthPx / dockCols.toFloat()).coerceAtLeast(1f)
                             val droppedLeftX = itemLeftX + offsetX
-                            val maxTarget = if (itemSpan > 1) GRID_SLOTS_TOTAL_COUNT - 2 else GRID_SLOTS_TOTAL_COUNT - 1
-                            val targetSlot = ((droppedLeftX - rowLeftX + unitSlotWidthPx / 2f) / unitSlotWidthPx)
+
+                            val targetRow = if (secondRowEnabled) {
+                                val currentRow = index / dockCols
+                                val rowThreshold = (rowHeightPx * 0.75f).coerceAtLeast(20f)
+                                if (currentRow == 0 && offsetY > rowThreshold) {
+                                    1
+                                } else if (currentRow == 1 && offsetY < -rowThreshold) {
+                                    0
+                                } else {
+                                    currentRow
+                                }
+                            } else {
+                                0
+                            }
+
+                            val rowStartSlot = targetRow * dockCols
+                            val maxCol = if (itemSpan > 1) dockCols - 2 else dockCols - 1
+                            val reservedRow = homeSlotIndex / dockCols
+                            val minCol = if (targetRow == reservedRow && LauncherAppConfigStore.floatingHomeVisible(context)) 1 else 0
+
+                            val targetCol = ((droppedLeftX - rowLeftX + unitSlotWidthPx / 2f) / unitSlotWidthPx)
                                 .toInt()
-                                .coerceIn(minSlot, maxTarget)
+                                .coerceIn(minCol, maxCol)
+
+                            val targetSlot = rowStartSlot + targetCol
 
                             if (targetSlot != index) {
                                 LauncherAppConfigStore.reorderUnifiedSlot(
@@ -1104,8 +1284,9 @@ private fun LauncherBottomDockButtonContent(
                 Text(
                     text = "SYNC",
                     color = tint,
-                    fontSize = 13.sp,
+                    fontSize = dockSp(10.4f),
                     fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -1374,8 +1555,9 @@ private fun LauncherBottomDockButtonContent(
                 Text(
                     text = "AUTO",
                     color = tint,
-                    fontSize = 13.sp,
+                    fontSize = dockSp(10.4f),
                     fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -1632,6 +1814,7 @@ private fun LauncherTempStepper(
             color = LauncherColors.TextPrimary,
             fontSize = dockSp(19.2f),
             fontWeight = FontWeight.Light,
+            textAlign = TextAlign.Center,
             modifier = Modifier
                 .align(Alignment.Center)
                 .then(
@@ -1701,16 +1884,18 @@ private fun LauncherVolumeStepper(
             Text(
                 text = "−",
                 color = LauncherColors.TextSecondary,
-                fontSize = 22.sp,
+                fontSize = dockSp(22f),
                 fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
             )
         }
         Text(
             text = volumeText,
             style = MaterialTheme.typography.tboxCaption,
             color = LauncherColors.TextPrimary,
-            fontSize = 18.sp,
+            fontSize = dockSp(18f),
             fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 2.dp),
         )
         LauncherDockIcon(onClick = onUp) {
@@ -1823,6 +2008,7 @@ private fun LauncherSeatHeatIcon(
                     fontSize = dockSp(6.5f),
                     fontWeight = FontWeight.Bold,
                     lineHeight = dockSp(7f),
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                 )
             }

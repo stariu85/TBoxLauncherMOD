@@ -14,11 +14,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -148,6 +153,7 @@ fun LauncherLanesControlBar(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
 
     val currentLasMode = vehicleControls.lasMode ?: adas.lasMode
@@ -156,26 +162,53 @@ fun LauncherLanesControlBar(
     val currentFcwSwitch = vehicleControls.fcw ?: adas.fcwActive
     val currentFcwOption = vehicleControls.fcwOption
 
+    var ldwTapCount by remember { mutableIntStateOf(0) }
+    var lkaTapCount by remember { mutableIntStateOf(0) }
+    var sensitivityFallbackJob by remember { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(currentLasMode) {
+        if (currentLasMode != 1) ldwTapCount = 0
+        if (currentLasMode != 2) lkaTapCount = 0
+    }
+
     // 1. LDW Button Logic
     val isLdwActive = currentLasMode == 1
     val ldwColor = when {
         !isLdwActive -> null // OFF
-        currentLasSensitivity == 3 -> Color(0xFFF97316) // Max sensitivity = Orange
-        else -> Color(0xFF10B981) // Min sensitivity = Green
+        currentLasSensitivity == 3 -> Color(0xFFF97316) // Level 3 (Max / High) = Orange
+        currentLasSensitivity == 2 -> Color(0xFF06B6D4) // Level 2 (Med) = Cyan / Turquoise
+        else -> Color(0xFF10B981) // Level 1 (Min / Low) = Green
     }
 
     val onLdwClick: () -> Unit = {
-        when {
-            !isLdwActive -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+        if (!isLdwActive) {
+            val wasBothOff = currentLasMode != 2
+            // 1st tap: Turn ON LDW (Property 17 = 1). Button color reflects current sensitivity from CAN.
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
+            ldwTapCount = 1
+            lkaTapCount = 0
+
+            if (wasBothOff) {
+                sensitivityFallbackJob?.cancel()
+                sensitivityFallbackJob = scope.launch {
+                    delay(1000L)
+                    if (vehicleControls.lasSensitivity == null) {
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+                    }
+                }
             }
-            currentLasSensitivity != 3 -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 3)
-            }
-            else -> {
+        } else {
+            sensitivityFallbackJob?.cancel()
+            // LDW is active. Cycle sensitivity 2 times, on 4th tap turn OFF (Property 17 = 3).
+            val nextTap = ldwTapCount + 1
+            if (nextTap >= 4) {
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                ldwTapCount = 0
+            } else {
+                val currentSens = currentLasSensitivity ?: 1
+                val nextSens = if (currentSens >= 3) 1 else currentSens + 1
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, nextSens)
+                ldwTapCount = nextTap
             }
         }
     }
@@ -184,22 +217,40 @@ fun LauncherLanesControlBar(
     val isLkaActive = currentLasMode == 2
     val lkaColor = when {
         !isLkaActive -> null // OFF
-        currentLasSensitivity == 3 -> Color(0xFFF97316) // Max sensitivity = Orange
-        else -> Color(0xFF10B981) // Min sensitivity = Green
+        currentLasSensitivity == 3 -> Color(0xFFF97316) // Level 3 (Max / High) = Orange
+        currentLasSensitivity == 2 -> Color(0xFF06B6D4) // Level 2 (Med) = Cyan / Turquoise
+        else -> Color(0xFF10B981) // Level 1 (Min / Low) = Green
     }
 
     val onLkaClick: () -> Unit = {
-        when {
-            !isLkaActive -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+        if (!isLkaActive) {
+            val wasBothOff = currentLasMode != 1
+            // 1st tap: Turn ON LKA (Property 17 = 2). Button color reflects current sensitivity from CAN.
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
+            lkaTapCount = 1
+            ldwTapCount = 0
+
+            if (wasBothOff) {
+                sensitivityFallbackJob?.cancel()
+                sensitivityFallbackJob = scope.launch {
+                    delay(1000L)
+                    if (vehicleControls.lasSensitivity == null) {
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+                    }
+                }
             }
-            currentLasSensitivity != 3 -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 3)
-            }
-            else -> {
+        } else {
+            sensitivityFallbackJob?.cancel()
+            // LKA is active. Cycle sensitivity 2 times, on 4th tap turn OFF (Property 17 = 3).
+            val nextTap = lkaTapCount + 1
+            if (nextTap >= 4) {
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                ldwTapCount = 0
+            } else {
+                val currentSens = currentLasSensitivity ?: 1
+                val nextSens = if (currentSens >= 3) 1 else currentSens + 1
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, nextSens)
+                ldwTapCount = nextTap
             }
         }
     }
@@ -488,8 +539,14 @@ fun LauncherLightsControlBar(
 
     // Local / simulated state fallbacks
     var simLightRaw by remember { mutableIntStateOf(LIGHT_CONTROL_AUTO) }
-    var simHma by remember { mutableStateOf(false) }
+    var simHma by remember { mutableStateOf<Boolean?>(null) }
     var simRearFog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(vehicleControls.hmaOn) {
+        if (vehicleControls.hmaOn != null) {
+            simHma = vehicleControls.hmaOn
+        }
+    }
 
     // 1. Headlights Button Logic:
     // AUTO (Green) -> DRL/POS (Turquoise) -> LOW BEAM (Blue) -> OFF (Grey)
@@ -518,7 +575,7 @@ fun LauncherLightsControlBar(
 
     // 2. Auto High Beam (HMA) Button Logic:
     // OFF (Grey), ON (Green)
-    val isHmaActive = vehicleControls.hmaOn ?: (adas.hma == LauncherAdasAssistIcon.Active) ?: simHma
+    val isHmaActive = simHma ?: vehicleControls.hmaOn ?: (adas.hma == LauncherAdasAssistIcon.Active)
     val hmaColor = if (isHmaActive) activeGreen else null
     val onHmaClick: () -> Unit = {
         val nextHma = !isHmaActive

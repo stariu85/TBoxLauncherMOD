@@ -930,6 +930,30 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
         label = "collision_warning_alpha",
     )
 
+    if (isTakeover) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .zIndex(200f)
+                .graphicsLayer { alpha = animatedAlpha }
+                .clip(RoundedCornerShape(18.dp))
+                .background(bannerBgColor.copy(alpha = 0.95f))
+                .border(width = 2.5.dp, color = Color.White, shape = RoundedCornerShape(18.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_steering_wheel_v12ubmkkangi),
+                contentDescription = stringResource(R.string.launcher_adas_takeover),
+                modifier = Modifier.size(44.dp),
+                tint = contentColor,
+            )
+        }
+        return
+    }
+
     var fontScale by remember(warningText) { mutableFloatStateOf(1.0f) }
     var readyToDraw by remember(warningText) { mutableStateOf(false) }
 

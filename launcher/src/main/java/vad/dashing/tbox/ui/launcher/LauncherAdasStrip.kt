@@ -361,12 +361,12 @@ fun LauncherAdasStrip(
             )
         }
         if (adas.accTakeOver || adas.adasTakeOver || showAll) {
-            LauncherAdasAlertChip(
-                text = stringResource(R.string.launcher_adas_takeover),
-                fontSizeSp = chipFontSizeSp,
-                iconSizeDp = alertIconSizeDp,
-                paddingHDp = paddingHDp,
-                paddingVDp = paddingVDp,
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_takeover),
+                tint = Color(0xFFEF4444),
+                iconRes = R.drawable.ic_steering_wheel_v12ubmkkangi,
+                iconBoxSizeDp = iconBoxSizeDp,
+                innerIconSizeDp = innerIconSizeDp,
                 activationKey = "takeover",
                 activationTimeMs = activationTimes["takeover"] ?: 0L,
             )

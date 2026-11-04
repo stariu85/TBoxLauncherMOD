@@ -983,7 +983,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Seat Memory Button
+        // Driver Seat Memory / Adjustment Button
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -995,7 +995,25 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         ) {
             Image(
                 painter = painterResource(R.drawable.ic_seat_memory_btn),
-                contentDescription = "Память сидений",
+                contentDescription = "Регулировка водительского сиденья",
+                modifier = Modifier.size(32.dp),
+                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+            )
+        }
+
+        // Rearview Mirror Adjustment Button
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(LauncherColors.LeftPanelCard)
+                .clickable { launchMirrorAdjustSettingsEmbedded(context) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_rearview_mirror),
+                contentDescription = "Регулировка зеркал",
                 modifier = Modifier.size(40.dp),
                 colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
             )
@@ -1015,7 +1033,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
                 painter = painterResource(R.drawable.ic_seat_memory_btn),
                 contentDescription = "Регулировка пассажирского сиденья",
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(32.dp)
                     .graphicsLayer { scaleX = -1f },
                 colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
             )

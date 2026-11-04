@@ -42,6 +42,10 @@
     <string name="launcher_top_bar_height_desc">Automatically adjusts top boundary for freeform apps</string>
     <string name="launcher_bottom_bar_height_title">Bottom panel height</string>
     <string name="launcher_bottom_bar_height_desc">Automatically adjusts bottom boundary for freeform apps</string>
+    <string name="launcher_dock_second_row_title">Second dock row</string>
+    <string name="launcher_dock_second_row_desc">Add a second row of slots for shortcuts and controls in the bottom bar</string>
+    <string name="launcher_dock_columns_title">Dock slot count</string>
+    <string name="launcher_dock_columns_desc">Number of horizontal slots in the dock (10 to 20)</string>
     <string name="launcher_car_model_scale_title">3D Model scale (top view)</string>
     <string name="launcher_car_model_scale_desc">Size of the 3D car model on screen in top view</string>
     <string name="launcher_car_model_drive_scale_title">3D Model scale (rear view)</string>
@@ -1351,6 +1355,11 @@
     <string name="launcher_exp_player_mode_media_browser_service">2. MediaBrowserService connection</string>
     <string name="launcher_exp_player_mode_media_button_broadcast">3. Direct MediaButton broadcast (default)</string>
     <string name="launcher_exp_player_mode_no_animation_rapid_close">4. No animation + close after 300ms</string>
+    <string name="launcher_vs_exp_seat_mirror_launch_title">Experimental seat &amp; mirror window launch mode</string>
+    <string name="launcher_vs_exp_seat_mirror_launch_desc">Choose display mode for seat and side mirror adjustment dialogs</string>
+    <string name="launcher_exp_seat_mirror_mode_embedded">1. Embedded window in right panel (Embedded)</string>
+    <string name="launcher_exp_seat_mirror_mode_fullscreen">2. Fullscreen mode (Fullscreen)</string>
+    <string name="launcher_exp_seat_mirror_mode_overlay">3. System dialog popup (Overlay)</string>
     <string name="launcher_vs_section_lights">Lights</string>
     <string name="launcher_vs_section_lights_sub">Headlights and path illumination</string>
     <string name="launcher_vs_section_model">3D Model</string>

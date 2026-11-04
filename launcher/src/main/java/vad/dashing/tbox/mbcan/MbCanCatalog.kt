@@ -260,10 +260,10 @@ object MbCanKnownVehiclePropertyId {
     const val FCW_SWITCH = 96
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_OPTION] — 1 max/far, 2 medium, 3 close. */
     const val FCW_OPTION = 97
-    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_REAR_COLLISION_WARNING] — 1 off, 2 on. */
-    const val BSD_SWITCH = 14
-    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eDVD_RADARWARING] — 1 off, 2 on. */
-    const val DOW_SWITCH = 83
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_BLIND_AREA_DETECTION] — 1 off, 2 on. */
+    const val BSD_SWITCH = 15
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_DOOR_OPEN_WARNING] — 1 off, 2 on. */
+    const val DOW_SWITCH = 13
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SMART_HIGHBEAM_SWITCH] — 1 off, 2 on. */
     const val HMA_SWITCH = 130
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_HDC_SWITCH] — 1 off, 2 on. */
@@ -456,7 +456,8 @@ object MbCanCommandRegistry {
                 offValue = 1,
                 onValue = 2,
                 unknownFallbackValue = 2
-            )
+            ),
+            refreshSignal = MbCanSignal.HvacPm25
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION,
@@ -675,6 +676,10 @@ object MbCanCommandRegistry {
             policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3, 4)),
         ),
         MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.HMA_SWITCH,
+            policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
+        ),
+        MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT,
             policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
         ),
@@ -684,6 +689,18 @@ object MbCanCommandRegistry {
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.FCW_SWITCH,
+            policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.FCW_OPTION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.BSD_SWITCH,
+            policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.DOW_SWITCH,
             policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
         ),
         MbCanCommandSpec(

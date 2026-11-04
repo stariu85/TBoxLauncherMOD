@@ -393,7 +393,32 @@ internal fun sendToggleHvacPm25(context: Context) {
         if (now < hvacPm25ToggleBlockedUntilMs) return
         hvacPm25ToggleBlockedUntilMs = now + STEERING_HEAT_TOGGLE_LOCKOUT_MS
     }
-    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+    val currentState = UniversalCanRepository.hvacPm25State.value
+    val isOn = currentState is MbCanBinaryState.On
+    val targetValue = if (isOn) 1 else 2
+    val targetState = if (isOn) MbCanBinaryState.Off else MbCanBinaryState.On
+
+    MbCanRepository.updateHvacPm25StateFromCan(targetState)
+    Android10VhalRepository.updateHvacPm25StateFromCan(targetState)
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val written = MbCanEngineFacade.canSetVehicleParam(
+                MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
+                targetValue
+            )
+            if (written == null) {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING, targetValue)
+            } else {
+                UniversalCanRepository.execute(
+                    MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING, targetValue)
+                )
+            }
+            Log.i("DashboardAppNav", "sendToggleHvacPm25 targetValue=$targetValue result=$written")
+        } catch (e: Exception) {
+            Log.e("DashboardAppNav", "sendToggleHvacPm25 failed", e)
+        }
+    }
 }
 
 internal fun sendToggleHvacDefrosterFront(context: Context) {

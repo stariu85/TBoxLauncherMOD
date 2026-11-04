@@ -517,12 +517,12 @@ object LauncherBackupManager {
                 "assist_presets_active_tab", "tire_pressure_badge_shape", "wallpaper_dark_uri",
                 "wallpaper_light_uri", "car_paint_id", "default_media_package",
                 "edge_gesture_action_left", "edge_gesture_action_right", "edge_gesture_action_bottom",
-                "exp_player_launch_mode" -> PrefType.STRING
+                "exp_player_launch_mode", "seat_mirror_launch_mode" -> PrefType.STRING
 
                 "home_grid_columns", "home_grid_rows", "home_grid_row_spacing", "top_bar_height_dp",
                 "bottom_bar_height_dp", "floating_home_size_dp", "sidebar_width_dp", "camera_switch_mode",
                 "avm_camera_action", "pdc_visual_mode", "edge_gestures_width_dp", "adas_distance_text_size",
-                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode" -> PrefType.INT
+                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode", "dock_columns" -> PrefType.INT
 
                 "cruise_increase_interval", "cruise_decrease_interval" -> PrefType.LONG
 
@@ -542,7 +542,7 @@ object LauncherBackupManager {
                 "fuel_shows_range", "cruise_panel_visible", "swap_top_bottom_panels",
                 "drive_mode_bar_visible", "assist_panel_visible", "body_controls_panel_visible",
                 "drive_mode_glow_visible", "headlight_beams_visible", "ngp_enabled",
-                "launcher_settings_on_double_tap" -> PrefType.BOOLEAN
+                "launcher_settings_on_double_tap", "dock_second_row_enabled" -> PrefType.BOOLEAN
                 "panel_swipe_left_map", "panel_swipe_right_map" -> PrefType.STRING
 
                 else -> {

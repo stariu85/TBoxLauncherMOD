@@ -52,8 +52,9 @@ private val ButtonHeight = 60.dp
  *   1. Trunk Button (long-click opens/closes trunk if gear is 'P', else warns "Переключите передачу в P")
  *   2. Windows Button (single tap to close all, double tap to open all, sent sequentially with 1s delay)
  * Page 1 (Swipe Left):
- *   1. Driver Seat Memory Button (opens SeatMemoryDialog)
- *   2. Passenger Seat Adjustment Button (opens PassengerSeatAdjustDialog)
+ *   1. Driver Seat Memory Button (opens SeatAdjustmentDialogActivity)
+ *   2. Rearview Mirror Adjustment Button (opens RearviewMirrorAngleAdjustmentDialogActivity)
+ *   3. Passenger Seat Adjustment Button (opens PassengerSeatAdjustDialog)
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -229,13 +230,31 @@ fun LauncherVehicleBodyControlsBar(
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_seat_memory_btn),
-                        contentDescription = "Память сидений",
+                        contentDescription = "Регулировка водительского сиденья",
+                        modifier = Modifier.size(32.dp),
+                        colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                    )
+                }
+
+                // Slot 2: Rearview Mirror Adjustment Button
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(LauncherColors.LeftPanelCard)
+                        .clickable { launchMirrorAdjustSettingsEmbedded(context) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_rearview_mirror),
+                        contentDescription = "Регулировка зеркал",
                         modifier = Modifier.size(40.dp),
                         colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
                     )
                 }
 
-                // Slot 2: Passenger Seat Adjustment Button
+                // Slot 3: Passenger Seat Adjustment Button
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -249,7 +268,7 @@ fun LauncherVehicleBodyControlsBar(
                         painter = painterResource(R.drawable.ic_seat_memory_btn),
                         contentDescription = "Регулировка пассажирского сиденья",
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(32.dp)
                             .graphicsLayer { scaleX = -1f },
                         colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
                     )
