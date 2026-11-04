@@ -513,7 +513,7 @@ object LauncherBackupManager {
             return when (key) {
                 "hidden_packages", "fullscreen_packages", "full_width_packages" -> PrefType.STRING_SET
                 "grid_packages", "dock_packages", "home_items_json", "autostart_item_key",
-                "top_bar_items", "bottom_slots_unified", "cruise_presets", "cruise_panel_position",
+                "top_bar_items", "top_bar_right_items", "bottom_slots_unified", "cruise_presets", "cruise_panel_position",
                 "assist_presets_active_tab", "tire_pressure_badge_shape", "wallpaper_dark_uri",
                 "wallpaper_light_uri", "car_paint_id", "default_media_package",
                 "edge_gesture_action_left", "edge_gesture_action_right", "edge_gesture_action_bottom",

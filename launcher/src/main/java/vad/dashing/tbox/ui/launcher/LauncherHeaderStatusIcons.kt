@@ -21,6 +21,7 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -87,15 +88,22 @@ import androidx.compose.ui.zIndex
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
@@ -124,33 +132,194 @@ private val IndicatorIconTint: Color
 private fun isSpacer(itemId: String): Boolean = itemId == "spacer" || itemId.startsWith("spacer")
 private fun isSpacerSmall(itemId: String): Boolean = itemId == "spacer_small" || itemId.startsWith("spacer_small")
 
-private fun isIndicator(itemId: String): Boolean = itemId in setOf(
+private fun isTimeSignalIndicator(itemId: String): Boolean = itemId in setOf("time", "date", "connectivity")
+
+private fun isStandardIndicator(itemId: String): Boolean = itemId in setOf(
     "temp", "inside_temp", "combined_temp", "engine_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance"
 )
 
+private enum class TopBarGroupType {
+    StandardIndicator,
+    TimeSignalIndicator,
+    Button,
+}
+
+private fun getGroupType(itemId: String): TopBarGroupType = when {
+    isTimeSignalIndicator(itemId) -> TopBarGroupType.TimeSignalIndicator
+    isStandardIndicator(itemId) -> TopBarGroupType.StandardIndicator
+    else -> TopBarGroupType.Button
+}
+
+private suspend fun PointerInputScope.detectTopBarPickerLongPress(
+    topBarHeightDp: Int,
+    context: Context,
+    toRightSide: Boolean,
+) {
+    val cancelThresholdPx = with(density) { 30.dp.toPx() }
+    val holdDurationMs = 3000L
+
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val startPosition = down.position
+
+        var cancelledOrReleased = false
+        val result = withTimeoutOrNull(holdDurationMs) {
+            while (true) {
+                val event = awaitPointerEvent()
+                val currentChange = event.changes.firstOrNull { it.id == down.id }
+                if (currentChange == null || !currentChange.pressed) {
+                    cancelledOrReleased = true
+                    break
+                }
+                val dist = (currentChange.position - startPosition).getDistance()
+                if (dist > cancelThresholdPx) {
+                    cancelledOrReleased = true
+                    break
+                }
+            }
+        }
+
+        if (result == null && !cancelledOrReleased) {
+            LauncherTopBarPickerOverlayWindow.show(
+                context = context,
+                topBarHeightDp = topBarHeightDp,
+                onSelectItem = { itemId ->
+                    LauncherAppConfigStore.addTopBarItem(context, itemId, toRightSide = toRightSide)
+                },
+                onDismiss = {},
+            )
+        }
+    }
+}
+
+private suspend fun PointerInputScope.detectDraggableTopBarItem(
+    density: Density,
+    topBarHeightDp: Int,
+    context: Context,
+    index: Int,
+    totalCount: Int,
+    isRightSide: Boolean,
+    itemWidthPx: Float,
+    onDragStateChange: (Boolean) -> Unit,
+    onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
+    onMoveSide: () -> Unit,
+    onRemove: () -> Unit,
+    onOffsetChange: (Float, Float) -> Unit,
+) {
+    val cancelPickerThresholdPx = with(density) { 30.dp.toPx() }
+    val removeThresholdPx = with(density) { 20.dp.toPx() }
+    val dragStartSlopPx = with(density) { 8.dp.toPx() }
+    val holdDurationMs = 3000L
+
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val startTime = SystemClock.uptimeMillis()
+
+        var isDragging = false
+        var currentOffsetX = 0f
+        var currentOffsetY = 0f
+        var totalMovedDist = 0f
+        var pickerTriggered = false
+        var pickerCancelled = false
+
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id }
+            if (change == null || !change.pressed) {
+                break
+            }
+
+            val dragDelta = change.positionChange()
+            totalMovedDist += dragDelta.getDistance()
+
+            if (totalMovedDist > cancelPickerThresholdPx) {
+                pickerCancelled = true
+            }
+
+            if (!pickerTriggered && !pickerCancelled) {
+                val elapsed = SystemClock.uptimeMillis() - startTime
+                if (elapsed >= holdDurationMs) {
+                    pickerTriggered = true
+                    LauncherTopBarPickerOverlayWindow.show(
+                        context = context,
+                        topBarHeightDp = topBarHeightDp,
+                        onSelectItem = { itemId ->
+                            LauncherAppConfigStore.addTopBarItem(context, itemId, toRightSide = isRightSide)
+                        },
+                        onDismiss = {},
+                    )
+                }
+            }
+
+            if (!isDragging && totalMovedDist > dragStartSlopPx) {
+                isDragging = true
+                onDragStateChange(true)
+            }
+
+            if (isDragging) {
+                change.consume()
+                currentOffsetX += dragDelta.x
+                currentOffsetY += dragDelta.y
+                onOffsetChange(currentOffsetX, currentOffsetY)
+            }
+        }
+
+        if (isDragging) {
+            onDragStateChange(false)
+            val shouldRemove = currentOffsetY > removeThresholdPx
+            if (shouldRemove) {
+                onRemove()
+            } else {
+                val spacingPx = with(density) { 14.dp.toPx() }
+                val stepWidthPx = if (itemWidthPx > 0f) itemWidthPx + spacingPx else with(density) { 50.dp.toPx() }
+                val gapThresholdPx = with(density) { 150.dp.toPx() }
+
+                val shouldMoveSide = if (isRightSide) {
+                    val distToStartPx = index * stepWidthPx + gapThresholdPx
+                    currentOffsetX < -distToStartPx
+                } else {
+                    val distToEndPx = (totalCount - 1 - index) * stepWidthPx + gapThresholdPx
+                    currentOffsetX > distToEndPx
+                }
+
+                if (shouldMoveSide) {
+                    onMoveSide()
+                } else if (abs(currentOffsetX) > itemWidthPx * 0.3f) {
+                    val offsetSlots = (currentOffsetX / stepWidthPx).roundToInt()
+                    val targetIndex = (index + offsetSlots).coerceIn(0, totalCount - 1)
+                    if (targetIndex != index) {
+                        onReorder(index, targetIndex)
+                    }
+                }
+            }
+            onOffsetChange(0f, 0f)
+        }
+    }
+}
+
 private data class TopBarGroup(
-    val isIndicatorGroup: Boolean,
+    val type: TopBarGroupType,
     val items: List<Pair<Int, String>>,
 )
 
 private fun groupTopBarItems(items: List<String>): List<TopBarGroup> {
     if (items.isEmpty()) return emptyList()
     val result = mutableListOf<TopBarGroup>()
+    var currentType = getGroupType(items[0])
     var currentGroup = mutableListOf<Pair<Int, String>>()
-    var currentIsIndicator = isIndicator(items[0])
 
     items.forEachIndexed { index, itemId ->
-        val itemIsIndicator = isIndicator(itemId)
-        if (itemIsIndicator == currentIsIndicator) {
+        val itemType = getGroupType(itemId)
+        if (itemType == currentType) {
             currentGroup.add(index to itemId)
         } else {
-            result.add(TopBarGroup(currentIsIndicator, currentGroup))
+            result.add(TopBarGroup(currentType, currentGroup))
             currentGroup = mutableListOf(index to itemId)
-            currentIsIndicator = itemIsIndicator
+            currentType = itemType
         }
     }
     if (currentGroup.isNotEmpty()) {
-        result.add(TopBarGroup(currentIsIndicator, currentGroup))
+        result.add(TopBarGroup(currentType, currentGroup))
     }
     return result
 }
@@ -234,11 +403,19 @@ internal fun LauncherTopHeaderBar(
     val topBarItems = remember(context, topBarItemsRevision) {
         LauncherAppConfigStore.topBarItems(context)
     }
+    val topBarRightItems = remember(context, topBarItemsRevision) {
+        LauncherAppConfigStore.topBarRightItems(context)
+    }
 
     val borderRevision by LauncherAppConfigStore.topBarIndicatorsBorderRevisionFlow
         .collectAsStateWithLifecycle()
     val indicatorsBorderEnabled = remember(context, borderRevision) {
         LauncherAppConfigStore.topBarIndicatorsBorderEnabled(context)
+    }
+    val timeSignalBorderRevision by LauncherAppConfigStore.topBarTimeSignalBorderRevisionFlow
+        .collectAsStateWithLifecycle()
+    val timeSignalBorderEnabled = remember(context, timeSignalBorderRevision) {
+        LauncherAppConfigStore.topBarTimeSignalBorderEnabled(context)
     }
 
     val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
@@ -304,13 +481,218 @@ internal fun LauncherTopHeaderBar(
                 val borderColor = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
 
                 groups.forEach { group ->
-                    if (group.isIndicatorGroup) {
+                    when (group.type) {
+                        TopBarGroupType.StandardIndicator,
+                        TopBarGroupType.TimeSignalIndicator -> {
+                            val isBorderOn = if (group.type == TopBarGroupType.TimeSignalIndicator) {
+                                timeSignalBorderEnabled
+                            } else {
+                                indicatorsBorderEnabled
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .padding(vertical = 5.dp)
+                                    .then(
+                                        if (isBorderOn) {
+                                            Modifier
+                                                .clip(CircleShape)
+                                                .border(1.dp, borderColor, CircleShape)
+                                                .padding(horizontal = 12.dp)
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                ) {
+                                    group.items.forEachIndexed { itemIndex, (originalIndex, itemId) ->
+                                        if (itemIndex > 0) {
+                                            Text(
+                                                text = "·",
+                                                style = MaterialTheme.typography.tboxCaption,
+                                                color = LauncherColors.TextPrimary.copy(alpha = 0.5f),
+                                                fontSize = indicatorFontSizeSp,
+                                                modifier = Modifier.padding(horizontal = 8.dp),
+                                            )
+                                        }
+
+                                        LauncherDraggableTopBarItem(
+                                            itemId = itemId,
+                                            index = originalIndex,
+                                            totalCount = topBarItems.size,
+                                            isRightSide = false,
+                                            topBarHeightDp = topBarHeightDp,
+                                            context = context,
+                                            onDragStateChange = { dragging ->
+                                                isAnyItemDragging = dragging
+                                            },
+                                            onReorder = { fromIdx, toIdx ->
+                                                LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = false)
+                                            },
+                                            onMoveSide = {
+                                                LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = false, toRightSide = true)
+                                            },
+                                            onRemove = {
+                                                LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                                            },
+                                        ) {
+                                            RenderTopBarItemContent(
+                                                itemId = itemId,
+                                                outsideTemp = outsideTemp,
+                                                insideTemp = insideTemp,
+                                                engineTemp = engineTemp,
+                                                insideAirQuality = insideAirQuality,
+                                                outsideAirQuality = outsideAirQuality,
+                                                displayedAvgFuel = displayedAvgFuel,
+                                                tripCost = tripCost,
+                                                displayTripDurationSec = displayTripDurationSec,
+                                                fuelText = fuelText,
+                                                fuelPct = fuelPct,
+                                                fuelShowsRange = fuelShowsRange,
+                                                onFuelShowsRangeToggle = {
+                                                    val next = !fuelShowsRange
+                                                    fuelShowsRange = next
+                                                    LauncherAppConfigStore.setFuelShowsRange(context, next)
+                                                },
+                                                voltageText = voltageText,
+                                                voltageLow = voltageLow,
+                                                cpuUsage = cpuUsage,
+                                                ramUsage = ramUsage,
+                                                satInfo = satInfo,
+                                                maintenanceDistance = maintenanceDistance,
+                                                timeText = timeText,
+                                                dateText = dateText,
+                                                tboxViewModel = tboxViewModel,
+                                                headlightsRaw = headlightsRaw,
+                                                vehicleControls = vehicleControls,
+                                                buttonDiameterDp = buttonDiameterDp,
+                                                indicatorFontSizeSp = indicatorFontSizeSp,
+                                                indicatorIconSizeDp = indicatorIconSizeDp,
+                                                isSpacerHighlighted = isSpacerHighlighted,
+                                                context = context,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        TopBarGroupType.Button -> {
+                            group.items.forEach { (originalIndex, itemId) ->
+                                LauncherDraggableTopBarItem(
+                                    itemId = itemId,
+                                    index = originalIndex,
+                                    totalCount = topBarItems.size,
+                                    isRightSide = false,
+                                    topBarHeightDp = topBarHeightDp,
+                                    context = context,
+                                    onDragStateChange = { dragging ->
+                                        isAnyItemDragging = dragging
+                                    },
+                                    onReorder = { fromIdx, toIdx ->
+                                        LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = false)
+                                    },
+                                    onMoveSide = {
+                                        LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = false, toRightSide = true)
+                                    },
+                                    onRemove = {
+                                        LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                                    },
+                                ) {
+                                    RenderTopBarItemContent(
+                                        itemId = itemId,
+                                        outsideTemp = outsideTemp,
+                                        insideTemp = insideTemp,
+                                        engineTemp = engineTemp,
+                                        insideAirQuality = insideAirQuality,
+                                        outsideAirQuality = outsideAirQuality,
+                                        displayedAvgFuel = displayedAvgFuel,
+                                        tripCost = tripCost,
+                                        displayTripDurationSec = displayTripDurationSec,
+                                        fuelText = fuelText,
+                                        fuelPct = fuelPct,
+                                        fuelShowsRange = fuelShowsRange,
+                                        onFuelShowsRangeToggle = {
+                                            val next = !fuelShowsRange
+                                            fuelShowsRange = next
+                                            LauncherAppConfigStore.setFuelShowsRange(context, next)
+                                        },
+                                        voltageText = voltageText,
+                                        voltageLow = voltageLow,
+                                        cpuUsage = cpuUsage,
+                                        ramUsage = ramUsage,
+                                        satInfo = satInfo,
+                                        maintenanceDistance = maintenanceDistance,
+                                        timeText = timeText,
+                                        dateText = dateText,
+                                        tboxViewModel = tboxViewModel,
+                                        headlightsRaw = headlightsRaw,
+                                        vehicleControls = vehicleControls,
+                                        buttonDiameterDp = buttonDiameterDp,
+                                        indicatorFontSizeSp = indicatorFontSizeSp,
+                                        indicatorIconSizeDp = indicatorIconSizeDp,
+                                        isSpacerHighlighted = isSpacerHighlighted,
+                                        context = context,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Middle: EMPTY SPACE (3s long press triggers addition menu)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .pointerInput(topBarHeightDp) {
+                    detectTopBarPickerLongPress(
+                        topBarHeightDp = topBarHeightDp,
+                        context = context,
+                        toRightSide = false,
+                    )
+                },
+        )
+
+        // 3. Right side: Status icons + Time/Date (snapped right widgets)
+        Row(
+            modifier = Modifier
+                .padding(end = 10.dp)
+                .fillMaxHeight()
+                .pointerInput(topBarHeightDp) {
+                    detectTopBarPickerLongPress(
+                        topBarHeightDp = topBarHeightDp,
+                        context = context,
+                        toRightSide = true,
+                    )
+                },
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val rightGroups = remember(topBarRightItems) { groupTopBarItems(topBarRightItems) }
+            val isDark = LauncherThemeState.darkTheme
+            val borderColor = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
+
+            rightGroups.forEach { group ->
+                when (group.type) {
+                    TopBarGroupType.StandardIndicator,
+                    TopBarGroupType.TimeSignalIndicator -> {
+                        val isBorderOn = if (group.type == TopBarGroupType.TimeSignalIndicator) {
+                            timeSignalBorderEnabled
+                        } else {
+                            indicatorsBorderEnabled
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .padding(vertical = 5.dp)
                                 .then(
-                                    if (indicatorsBorderEnabled) {
+                                    if (isBorderOn) {
                                         Modifier
                                             .clip(CircleShape)
                                             .border(1.dp, borderColor, CircleShape)
@@ -339,12 +721,18 @@ internal fun LauncherTopHeaderBar(
                                     LauncherDraggableTopBarItem(
                                         itemId = itemId,
                                         index = originalIndex,
-                                        totalCount = topBarItems.size,
+                                        totalCount = topBarRightItems.size,
+                                        isRightSide = true,
+                                        topBarHeightDp = topBarHeightDp,
+                                        context = context,
                                         onDragStateChange = { dragging ->
                                             isAnyItemDragging = dragging
                                         },
                                         onReorder = { fromIdx, toIdx ->
-                                            LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx)
+                                            LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = true)
+                                        },
+                                        onMoveSide = {
+                                            LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = true, toRightSide = false)
                                         },
                                         onRemove = {
                                             LauncherAppConfigStore.removeTopBarItem(context, itemId)
@@ -374,6 +762,9 @@ internal fun LauncherTopHeaderBar(
                                             ramUsage = ramUsage,
                                             satInfo = satInfo,
                                             maintenanceDistance = maintenanceDistance,
+                                            timeText = timeText,
+                                            dateText = dateText,
+                                            tboxViewModel = tboxViewModel,
                                             headlightsRaw = headlightsRaw,
                                             vehicleControls = vehicleControls,
                                             buttonDiameterDp = buttonDiameterDp,
@@ -386,17 +777,24 @@ internal fun LauncherTopHeaderBar(
                                 }
                             }
                         }
-                    } else {
+                    }
+                    TopBarGroupType.Button -> {
                         group.items.forEach { (originalIndex, itemId) ->
                             LauncherDraggableTopBarItem(
                                 itemId = itemId,
                                 index = originalIndex,
-                                totalCount = topBarItems.size,
+                                totalCount = topBarRightItems.size,
+                                isRightSide = true,
+                                topBarHeightDp = topBarHeightDp,
+                                context = context,
                                 onDragStateChange = { dragging ->
                                     isAnyItemDragging = dragging
                                 },
                                 onReorder = { fromIdx, toIdx ->
-                                    LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx)
+                                    LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = true)
+                                },
+                                onMoveSide = {
+                                    LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = true, toRightSide = false)
                                 },
                                 onRemove = {
                                     LauncherAppConfigStore.removeTopBarItem(context, itemId)
@@ -425,6 +823,10 @@ internal fun LauncherTopHeaderBar(
                                     cpuUsage = cpuUsage,
                                     ramUsage = ramUsage,
                                     satInfo = satInfo,
+                                    maintenanceDistance = maintenanceDistance,
+                                    timeText = timeText,
+                                    dateText = dateText,
+                                    tboxViewModel = tboxViewModel,
                                     headlightsRaw = headlightsRaw,
                                     vehicleControls = vehicleControls,
                                     buttonDiameterDp = buttonDiameterDp,
@@ -438,66 +840,6 @@ internal fun LauncherTopHeaderBar(
                     }
                 }
             }
-        }
-
-        // 2. Middle: EMPTY SPACE (long press here triggers the addition menu)
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .pointerInput(topBarHeightDp) {
-                    detectTapGestures(
-                        onLongPress = {
-                            LauncherTopBarPickerOverlayWindow.show(
-                                context = context,
-                                topBarHeightDp = topBarHeightDp,
-                                onSelectItem = { itemId ->
-                                    LauncherAppConfigStore.addTopBarItem(context, itemId)
-                                },
-                                onDismiss = {},
-                            )
-                        },
-                    )
-                },
-        )
-
-        // 3. Right side: Status icons + Time/Date
-        Row(
-            modifier = Modifier
-                .padding(end = 10.dp)
-                .fillMaxHeight(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LauncherHeaderStatusIcons(
-                tboxViewModel = tboxViewModel,
-                showVehicleAlerts = false,
-            )
-            Text(
-                text = "·",
-                style = MaterialTheme.typography.tboxCaption,
-                color = LauncherColors.TextPrimary.copy(alpha = 0.5f),
-                fontSize = indicatorFontSizeSp,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
-            Text(
-                text = timeText,
-                color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Light,
-            )
-            Text(
-                text = "·",
-                style = MaterialTheme.typography.tboxCaption,
-                color = LauncherColors.TextPrimary.copy(alpha = 0.5f),
-                fontSize = indicatorFontSizeSp,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            )
-            Text(
-                text = dateText,
-                color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Light,
-            )
         }
     }
 }
@@ -523,6 +865,9 @@ private fun RenderTopBarItemContent(
     ramUsage: Int,
     satInfo: SatelliteInfo,
     maintenanceDistance: UInt? = null,
+    timeText: String = "",
+    dateText: String = "",
+    tboxViewModel: TboxViewModel? = null,
     headlightsRaw: Int,
     vehicleControls: LauncherVehicleControlSnapshot,
     buttonDiameterDp: Int,
@@ -557,6 +902,30 @@ private fun RenderTopBarItemContent(
                     .background(bgColor)
                     .border(1.dp, borderColor, RoundedCornerShape(8.dp)),
             )
+        }
+        itemId == "time" -> {
+            Text(
+                text = timeText,
+                color = LauncherColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Light,
+            )
+        }
+        itemId == "date" -> {
+            Text(
+                text = dateText,
+                color = LauncherColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Light,
+            )
+        }
+        itemId == "connectivity" -> {
+            if (tboxViewModel != null) {
+                LauncherHeaderStatusIcons(
+                    tboxViewModel = tboxViewModel,
+                    showVehicleAlerts = false,
+                )
+            }
         }
         itemId == "temp" -> {
             Row(
@@ -1181,8 +1550,12 @@ private fun LauncherDraggableTopBarItem(
     itemId: String,
     index: Int,
     totalCount: Int,
+    isRightSide: Boolean = false,
+    topBarHeightDp: Int = 48,
+    context: Context = LocalContext.current,
     onDragStateChange: (Boolean) -> Unit = {},
     onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
+    onMoveSide: () -> Unit = {},
     onRemove: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -1207,42 +1580,25 @@ private fun LauncherDraggableTopBarItem(
                 scaleX = if (isDragging) 1.10f else 1.0f
                 scaleY = if (isDragging) 1.10f else 1.0f
             }
-            .pointerInput(itemId, index, totalCount) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = {
-                        isDragging = true
-                        onDragStateChange(true)
-                        offsetX = 0f
-                        offsetY = 0f
+            .pointerInput(itemId, index, totalCount, isRightSide, topBarHeightDp) {
+                detectDraggableTopBarItem(
+                    density = density,
+                    topBarHeightDp = topBarHeightDp,
+                    context = context,
+                    index = index,
+                    totalCount = totalCount,
+                    isRightSide = isRightSide,
+                    itemWidthPx = itemWidthPx,
+                    onDragStateChange = { dragging ->
+                        isDragging = dragging
+                        onDragStateChange(dragging)
                     },
-                    onDragEnd = {
-                        val shouldRemove = offsetY > removeThresholdPx
-                        if (shouldRemove) {
-                            onRemove()
-                        } else if (abs(offsetX) > itemWidthPx * 0.3f) {
-                            val spacingPx = with(density) { 14.dp.toPx() }
-                            val stepWidthPx = if (itemWidthPx > 0f) itemWidthPx + spacingPx else with(density) { 50.dp.toPx() }
-                            val offsetSlots = (offsetX / stepWidthPx).roundToInt()
-                            val targetIndex = (index + offsetSlots).coerceIn(0, totalCount - 1)
-                            if (targetIndex != index) {
-                                onReorder(index, targetIndex)
-                            }
-                        }
-                        isDragging = false
-                        onDragStateChange(false)
-                        offsetX = 0f
-                        offsetY = 0f
-                    },
-                    onDragCancel = {
-                        isDragging = false
-                        onDragStateChange(false)
-                        offsetX = 0f
-                        offsetY = 0f
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        offsetX += dragAmount.x
-                        offsetY += dragAmount.y
+                    onReorder = onReorder,
+                    onMoveSide = onMoveSide,
+                    onRemove = onRemove,
+                    onOffsetChange = { dx, dy ->
+                        offsetX = dx
+                        offsetY = dy
                     },
                 )
             },

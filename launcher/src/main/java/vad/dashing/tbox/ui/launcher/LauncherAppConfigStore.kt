@@ -23,7 +23,9 @@ private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
 private const val KEY_TOP_BAR_ITEMS = "top_bar_items"
+private const val KEY_TOP_BAR_RIGHT_ITEMS = "top_bar_right_items"
 private val DEFAULT_TOP_BAR_ITEMS = listOf("temp", "fuel", "voltage", "cpu", "ram", "maintenance")
+private val DEFAULT_TOP_BAR_RIGHT_ITEMS = listOf("connectivity", "time", "date")
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_CAR_MODEL_DRIVE_SCALE = "car_model_drive_scale"
@@ -336,6 +338,8 @@ internal object LauncherAppConfigStore {
     internal val topBarItemsRevisionFlow: StateFlow<Int> = topBarItemsRevision
     private val topBarIndicatorsBorderRevision = MutableStateFlow(0)
     internal val topBarIndicatorsBorderRevisionFlow: StateFlow<Int> = topBarIndicatorsBorderRevision
+    private val topBarTimeSignalBorderRevision = MutableStateFlow(0)
+    internal val topBarTimeSignalBorderRevisionFlow: StateFlow<Int> = topBarTimeSignalBorderRevision
     private val topBarCellularNetworkTypeVisibleRevision = MutableStateFlow(0)
     internal val topBarCellularNetworkTypeVisibleRevisionFlow: StateFlow<Int> = topBarCellularNetworkTypeVisibleRevision
     private val bottomBarHeightRevision = MutableStateFlow(0)
@@ -642,6 +646,14 @@ internal object LauncherAppConfigStore {
         topBarIndicatorsBorderRevision.value++
     }
 
+    fun topBarTimeSignalBorderEnabled(context: Context): Boolean =
+        prefs(context).getBoolean("top_bar_time_signal_border_enabled", true)
+
+    fun setTopBarTimeSignalBorderEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean("top_bar_time_signal_border_enabled", enabled).apply()
+        topBarTimeSignalBorderRevision.value++
+    }
+
     fun topBarItems(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_TOP_BAR_ITEMS, null) ?: return DEFAULT_TOP_BAR_ITEMS
         if (raw.isBlank()) return emptyList()
@@ -654,33 +666,82 @@ internal object LauncherAppConfigStore {
         topBarItemsRevision.value++
     }
 
-    fun addTopBarItem(context: Context, itemId: String) {
-        val current = topBarItems(context).toMutableList()
+    fun topBarRightItems(context: Context): List<String> {
+        val raw = prefs(context).getString(KEY_TOP_BAR_RIGHT_ITEMS, null) ?: return DEFAULT_TOP_BAR_RIGHT_ITEMS
+        if (raw.isBlank()) return emptyList()
+        return raw.split('|').filter { it.isNotBlank() }
+    }
+
+    fun setTopBarRightItems(context: Context, items: List<String>) {
+        val encoded = items.joinToString("|")
+        prefs(context).edit().putString(KEY_TOP_BAR_RIGHT_ITEMS, encoded).apply()
+        topBarItemsRevision.value++
+    }
+
+    fun addTopBarItem(context: Context, itemId: String, toRightSide: Boolean = false) {
+        val currentLeft = topBarItems(context).toMutableList()
+        val currentRight = topBarRightItems(context).toMutableList()
+
         val finalId = if (itemId == "spacer_small" || itemId.startsWith("spacer_small")) {
             "spacer_small_${System.currentTimeMillis()}"
         } else if (itemId == "spacer" || itemId.startsWith("spacer")) {
             "spacer_${System.currentTimeMillis()}"
         } else {
-            if (current.contains(itemId)) return
+            if (currentLeft.contains(itemId) || currentRight.contains(itemId)) return
             itemId
         }
-        current.add(finalId)
-        setTopBarItems(context, current)
+
+        if (toRightSide) {
+            currentRight.add(finalId)
+            setTopBarRightItems(context, currentRight)
+        } else {
+            currentLeft.add(finalId)
+            setTopBarItems(context, currentLeft)
+        }
     }
 
     fun removeTopBarItem(context: Context, itemId: String) {
-        val current = topBarItems(context).toMutableList()
-        if (current.remove(itemId)) {
+        val currentLeft = topBarItems(context).toMutableList()
+        val currentRight = topBarRightItems(context).toMutableList()
+
+        if (currentLeft.remove(itemId)) {
+            setTopBarItems(context, currentLeft)
+        }
+        if (currentRight.remove(itemId)) {
+            setTopBarRightItems(context, currentRight)
+        }
+    }
+
+    fun reorderTopBarItem(context: Context, fromIndex: Int, toIndex: Int, isRightSide: Boolean = false) {
+        val current = (if (isRightSide) topBarRightItems(context) else topBarItems(context)).toMutableList()
+        if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
+        val item = current.removeAt(fromIndex)
+        current.add(toIndex, item)
+        if (isRightSide) {
+            setTopBarRightItems(context, current)
+        } else {
             setTopBarItems(context, current)
         }
     }
 
-    fun reorderTopBarItem(context: Context, fromIndex: Int, toIndex: Int) {
-        val current = topBarItems(context).toMutableList()
-        if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
-        val item = current.removeAt(fromIndex)
-        current.add(toIndex, item)
-        setTopBarItems(context, current)
+    fun moveTopBarItemSide(context: Context, itemId: String, fromRightSide: Boolean, toRightSide: Boolean) {
+        if (fromRightSide == toRightSide) return
+        val currentLeft = topBarItems(context).toMutableList()
+        val currentRight = topBarRightItems(context).toMutableList()
+
+        if (fromRightSide) {
+            if (currentRight.remove(itemId)) {
+                if (!currentLeft.contains(itemId)) currentLeft.add(itemId)
+                setTopBarItems(context, currentLeft)
+                setTopBarRightItems(context, currentRight)
+            }
+        } else {
+            if (currentLeft.remove(itemId)) {
+                if (!currentRight.contains(itemId)) currentRight.add(itemId)
+                setTopBarItems(context, currentLeft)
+                setTopBarRightItems(context, currentRight)
+            }
+        }
     }
 
     fun bottomBarHeightDp(context: Context): Int =

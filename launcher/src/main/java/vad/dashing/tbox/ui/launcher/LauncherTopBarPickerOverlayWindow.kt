@@ -75,6 +75,9 @@ internal data class LauncherTopBarItemDescriptor(
 
 internal object LauncherTopBarDescriptors {
     val ALL_INDICATORS = listOf(
+        LauncherTopBarItemDescriptor("time", "Время", isButton = false, iconRes = R.drawable.ic_launcher_trip_duration),
+        LauncherTopBarItemDescriptor("date", "Дата и день недели", isButton = false, iconRes = R.drawable.ic_notification),
+        LauncherTopBarItemDescriptor("connectivity", "Индикаторы связи", isButton = false, iconRes = R.drawable.ic_launcher_bluetooth),
         LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_up),
         LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
         LauncherTopBarItemDescriptor("combined_temp", "Температура внутри / снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_combined),
@@ -152,7 +155,7 @@ internal object LauncherTopBarPickerOverlayWindow {
 
         val metrics = activity.resources.displayMetrics
         val density = metrics.density
-        val topOffsetPx = ((topBarHeightDp + 10) * density).toInt()
+        val topOffsetPx = ((topBarHeightDp + 50) * density).toInt()
         val pickerWidthPx = ((500 * density).toInt()).coerceAtMost(metrics.widthPixels - (32 * density).toInt())
 
         val params = WindowManager.LayoutParams(
@@ -176,7 +179,7 @@ internal object LauncherTopBarPickerOverlayWindow {
             hide()
         }
 
-        val activeItems = LauncherAppConfigStore.topBarItems(activity)
+        val activeItems = LauncherAppConfigStore.topBarItems(activity) + LauncherAppConfigStore.topBarRightItems(activity)
 
         val view = ComposeView(activity).apply {
             isFocusable = true
@@ -314,6 +317,9 @@ internal fun LauncherTopBarPickerContent(
             var borderEnabled by remember {
                 mutableStateOf(LauncherAppConfigStore.topBarIndicatorsBorderEnabled(context))
             }
+            var timeSignalBorderEnabled by remember {
+                mutableStateOf(LauncherAppConfigStore.topBarTimeSignalBorderEnabled(context))
+            }
 
             // Toggle for 4G network indicator (as the top item, above border toggle)
             Row(
@@ -372,6 +378,37 @@ internal fun LauncherTopBarPickerContent(
                     onCheckedChange = { checked ->
                         borderEnabled = checked
                         LauncherAppConfigStore.setTopBarIndicatorsBorderEnabled(context, checked)
+                    },
+                    colors = launcherSwitchColors(),
+                )
+            }
+
+            // Toggle for time and signal border
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(cardBg)
+                    .clickable {
+                        val next = !timeSignalBorderEnabled
+                        timeSignalBorderEnabled = next
+                        LauncherAppConfigStore.setTopBarTimeSignalBorderEnabled(context, next)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Обводка у времени и сигнала",
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Switch(
+                    checked = timeSignalBorderEnabled,
+                    onCheckedChange = { checked ->
+                        timeSignalBorderEnabled = checked
+                        LauncherAppConfigStore.setTopBarTimeSignalBorderEnabled(context, checked)
                     },
                     colors = launcherSwitchColors(),
                 )
