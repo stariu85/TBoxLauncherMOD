@@ -193,9 +193,7 @@ fun LauncherDriveModeBar(
                 DriveModeChip(
                     label = "SNOW",
                     selected = isSnow,
-                    activeColor = Color(0xFFFFFFFF), // White background
-                    borderColor = Color(0xFF64748B), // Dark grey border
-                    textColorOverride = Color(0xFF334155), // Dark grey text
+                    activeColor = Color(0xFF38BDF8), // Bright blue
                     onClick = { onSelectMode("SNOW") },
                     modifier = Modifier
                         .weight(1f)

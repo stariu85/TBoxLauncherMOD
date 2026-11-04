@@ -430,6 +430,10 @@
     <string name="launcher_vs_auto_theme_solar_desc">Светлая тема днём, тёмная ночью по астрономическому времени</string>
     <string name="launcher_vs_theme_button_visible_title">Кнопка смены темы в левом углу</string>
     <string name="launcher_vs_theme_button_visible_desc">Отображать круглую кнопку быстрой смены темы в левом нижнем углу</string>
+    <string name="launcher_vs_winter_theme">Зимняя тема</string>
+    <string name="launcher_vs_winter_theme_desc">Включить падающие снежинки во всех режимах вождения</string>
+    <string name="launcher_vs_winter_theme_temp">Зимняя тема по температуре ниже 0°C</string>
+    <string name="launcher_vs_winter_theme_temp_desc">Включать снежинки автоматически при температуре ниже 0 °C</string>
     <string name="launcher_vs_ui_click_sounds">Звук клика UI</string>
     <string name="launcher_vs_ui_click_sounds_desc">Воспроизводить системный звук касания при нажатии на элементы интерфейса</string>
     <string name="launcher_vs_section_cruise">Зона ADAS</string>

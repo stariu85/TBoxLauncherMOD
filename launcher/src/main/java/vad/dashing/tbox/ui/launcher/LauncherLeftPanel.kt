@@ -402,7 +402,7 @@ fun LauncherLeftPanel(
         isEco -> Color(0xFF16A34A) // Green
         isNor -> Color(0xFF3B82F6) // Blue
         isSpt -> Color(0xFFEF4444) // Red
-        isSnow -> Color(0xFFFFFFFF) // White
+        isSnow -> Color(0xFF38BDF8) // Bright blue
         isMud -> Color(0xFFF97316) // Orange
         isSand -> Color(0xFFEAB308) // Yellow
         else -> Color.Transparent
@@ -455,10 +455,11 @@ fun LauncherLeftPanel(
         if (roadVisible) {
             LauncherVirtualRoad(
                 speedKmh = if (racing) effectiveSpeed * 0.45f else effectiveSpeed,
-                steerAngleDeg = 0f,
+                steerAngleDeg = if (racing) 0f else motion.steerAngleDeg,
                 adas = if (racing) LauncherAdasState() else adas,
                 steerPreview = steerPreview,
                 inDriveGear = showDriveView,
+                isSnow = isSnow,
                 modifier = Modifier.fillMaxSize(),
             )
         }

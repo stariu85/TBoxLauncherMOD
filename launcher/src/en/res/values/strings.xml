@@ -191,6 +191,10 @@
     <string name="launcher_vs_auto_theme_solar_desc">Light theme during the day, dark theme at night by solar time</string>
     <string name="launcher_vs_theme_button_visible_title">Theme toggle button in bottom-left corner</string>
     <string name="launcher_vs_theme_button_visible_desc">Show the round quick theme toggle button in the bottom-left corner</string>
+    <string name="launcher_vs_winter_theme">Winter Theme</string>
+    <string name="launcher_vs_winter_theme_desc">Enable falling snowflakes across all driving modes</string>
+    <string name="launcher_vs_winter_theme_temp">Winter Theme when temperature below 0°C</string>
+    <string name="launcher_vs_winter_theme_temp_desc">Enable snowflakes automatically when outside temperature is below 0 °C</string>
     <string name="launcher_vs_ui_click_sounds">UI click sound</string>
     <string name="launcher_vs_ui_click_sounds_desc">Play system click sound when tapping UI elements</string>
     <string name="launcher_vs_section_cruise">ADAS Zone</string>

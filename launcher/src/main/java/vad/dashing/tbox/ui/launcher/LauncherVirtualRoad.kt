@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import vad.dashing.tbox.CanDataRepository
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
@@ -70,20 +71,33 @@ import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+private data class Snowflake(
+    var x: Float,
+    var y: Float,
+    val speed: Float,
+    val size: Float,
+    val driftFreq: Float,
+    val driftAmplitude: Float,
+    val phase: Float,
+)
+
 private const val DASH_SPACING = 72f
 
 @Composable
 fun LauncherVirtualRoad(
     speedKmh: Float,
-    @Suppress("UNUSED_PARAMETER") steerAngleDeg: Float,
+    steerAngleDeg: Float,
     adas: LauncherAdasState = LauncherAdasState(),
     modifier: Modifier = Modifier,
     steerPreview: Boolean = false,
     /** Show road only in Drive (D), not when the engine merely starts. */
     inDriveGear: Boolean = false,
+    isSnow: Boolean = false,
 ) {
     val bsdLeftActive = inDriveGear && adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off
     val bsdRightActive = inDriveGear && adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off
+
+    val currentSteerDeg by rememberUpdatedState(steerAngleDeg)
 
     val bsdLeftProgress by animateFloatAsState(
         targetValue = if (bsdLeftActive) 1f else 0f,
@@ -97,6 +111,76 @@ fun LauncherVirtualRoad(
         label = "bsdRightProgress",
     )
 
+    val currentSpeedKmh by rememberUpdatedState(speedKmh)
+
+    val outsideTemp by CanDataRepository.outsideTemperature.collectAsStateWithLifecycle()
+    val winterEnabled = LauncherThemeState.winterThemeEnabled
+    val winterTempEnabled = LauncherThemeState.winterThemeTempBelowZeroEnabled
+    val tempBelowZero = outsideTemp != null && outsideTemp!! < 0f
+
+    val effectiveIsSnow = winterEnabled || (winterTempEnabled && tempBelowZero)
+
+    val snowflakes = remember {
+        val rng = kotlin.random.Random(1337)
+        List(40) {
+            Snowflake(
+                x = rng.nextFloat(),
+                y = rng.nextFloat() * 0.5f,
+                speed = 0.12f + rng.nextFloat() * 0.25f,
+                size = 2f + rng.nextFloat() * 3.5f,
+                driftFreq = 1f + rng.nextFloat() * 2f,
+                driftAmplitude = 0.015f + rng.nextFloat() * 0.02f,
+                phase = rng.nextFloat() * 6.28f,
+            )
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val snowPhaseState = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(effectiveIsSnow) {
+        if (!effectiveIsSnow) return@LaunchedEffect
+        var lastRoadFrameNs = 0L
+        while (isActive) {
+            withFrameNanos { frameNs ->
+                val started = lifecycleOwner.lifecycle.currentState
+                    .isAtLeast(Lifecycle.State.STARTED)
+                val hidden = LauncherWindowState.hiddenForExternalApp
+                if (!started || hidden) return@withFrameNanos
+
+                if (lastRoadFrameNs == 0L) {
+                    lastRoadFrameNs = frameNs
+                    return@withFrameNanos
+                }
+                val deltaNs = frameNs - lastRoadFrameNs
+                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.05f)
+                lastRoadFrameNs = frameNs
+
+                snowflakes.forEach { flake ->
+                    val spd = currentSpeedKmh
+                    val steer = currentSteerDeg
+                    val speedMultiplier = when {
+                        spd <= 0f -> 0.15f
+                        spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
+                        spd <= 150f -> 1.0f + ((spd - 100f) / 50f) * 0.5f
+                        else -> 1.5f
+                    }
+                    // Turning left (steer < 0) -> drift right (steerDrift > 0)
+                    val steerDrift = (-steer * 0.0006f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
+
+                    flake.y += flake.speed * speedMultiplier * dtSec
+                    flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
+                    if (flake.y > 0.5f) {
+                        flake.y = 0f
+                        flake.x = kotlin.random.Random.nextFloat()
+                    }
+                    if (flake.x < 0f) flake.x += 1f
+                    if (flake.x > 1f) flake.x -= 1f
+                }
+                snowPhaseState.floatValue += dtSec
+            }
+        }
+    }
+
     val driveTarget = when {
         inDriveGear -> 1f
         steerPreview -> 1f
@@ -109,10 +193,7 @@ fun LauncherVirtualRoad(
     )
 
     val roadPhaseState = remember { mutableFloatStateOf(0f) }
-    val currentSpeedKmh by rememberUpdatedState(speedKmh)
     val currentDriveBlend by rememberUpdatedState(driveBlend)
-    val lifecycleOwner = LocalLifecycleOwner.current
-
     var lastRoadFrameNs by remember { mutableLongStateOf(0L) }
 
     val isRoadAnimating = currentSpeedKmh > 0.5f && currentDriveBlend > 0.02f
@@ -188,12 +269,14 @@ fun LauncherVirtualRoad(
         label = "bsdRoadPulseValue",
     )
 
+    val snowPhase = snowPhaseState.floatValue
     if (driveBlend <= 0.01f) return
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .graphicsLayer { alpha = driveBlend },
     ) {
+        snowPhase.let {}
         drawVirtualRoad(
             roadPhase = roadPhaseState.floatValue,
             speedKmh = speedKmh,
@@ -209,6 +292,8 @@ fun LauncherVirtualRoad(
             bsdPulse = bsdRoadPulse,
             bsdLeftProgress = bsdLeftProgress,
             bsdRightProgress = bsdRightProgress,
+            isSnow = effectiveIsSnow,
+            snowflakes = snowflakes,
         )
     }
 }
@@ -447,6 +532,8 @@ private fun DrawScope.drawVirtualRoad(
     bsdPulse: Float = 1f,
     bsdLeftProgress: Float = 0f,
     bsdRightProgress: Float = 0f,
+    isSnow: Boolean = false,
+    snowflakes: List<Snowflake> = emptyList(),
 ) {
     val w = size.width
     val h = size.height
@@ -617,6 +704,32 @@ private fun DrawScope.drawVirtualRoad(
     }
 
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
+    drawSnowflakes(isSnow = isSnow, snowflakes = snowflakes)
+}
+
+private fun DrawScope.drawSnowflakes(
+    isSnow: Boolean,
+    snowflakes: List<Snowflake>,
+) {
+    if (!isSnow || snowflakes.isEmpty()) return
+    val w = size.width
+    val h = size.height
+    val dark = LauncherThemeState.darkTheme
+    val snowflakeColor = if (dark) Color.White else Color(0xFF38BDF8)
+
+    snowflakes.forEach { flake ->
+        val cx = flake.x * w
+        val cy = flake.y * h
+        val relY = flake.y / 0.5f // 0 at top, 1 at middle
+        val alpha = (1f - relY).coerceIn(0f, 1f)
+        if (alpha > 0.01f) {
+            drawCircle(
+                color = snowflakeColor.copy(alpha = alpha * (if (dark) 0.9f else 0.85f)),
+                radius = flake.size,
+                center = Offset(cx, cy),
+            )
+        }
+    }
 }
 
 /**

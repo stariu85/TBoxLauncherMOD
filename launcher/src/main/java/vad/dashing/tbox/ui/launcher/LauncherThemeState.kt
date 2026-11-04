@@ -73,6 +73,8 @@ object LauncherThemeState {
     private const val KEY_AUTO_SYSTEM = "auto_theme_system_enabled"
     private const val KEY_AUTO_SOLAR = "auto_theme_solar_enabled"
     private const val KEY_THEME_BUTTON_VISIBLE = "theme_button_visible"
+    private const val KEY_WINTER_THEME = "winter_theme_enabled"
+    private const val KEY_WINTER_TEMP_ZERO = "winter_theme_temp_zero_enabled"
 
     var darkTheme by mutableStateOf(true)
         private set
@@ -86,12 +88,20 @@ object LauncherThemeState {
     var themeButtonVisible by mutableStateOf(true)
         private set
 
+    var winterThemeEnabled by mutableStateOf(false)
+        private set
+
+    var winterThemeTempBelowZeroEnabled by mutableStateOf(false)
+        private set
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         darkTheme = prefs.getBoolean(KEY_DARK, true)
         autoThemeSystemEnabled = prefs.getBoolean(KEY_AUTO_SYSTEM, true)
         autoThemeSolarEnabled = prefs.getBoolean(KEY_AUTO_SOLAR, false)
         themeButtonVisible = prefs.getBoolean(KEY_THEME_BUTTON_VISIBLE, true)
+        winterThemeEnabled = prefs.getBoolean(KEY_WINTER_THEME, false)
+        winterThemeTempBelowZeroEnabled = prefs.getBoolean(KEY_WINTER_TEMP_ZERO, false)
 
         if (autoThemeSystemEnabled && autoThemeSolarEnabled) {
             autoThemeSolarEnabled = false
@@ -183,5 +193,19 @@ object LauncherThemeState {
             .putBoolean(KEY_AUTO_SOLAR, autoThemeSolarEnabled)
             .putBoolean(KEY_AUTO_SYSTEM, autoThemeSystemEnabled)
             .apply()
+    }
+
+    fun setWinterThemeEnabled(context: Context, enabled: Boolean) {
+        if (winterThemeEnabled == enabled) return
+        winterThemeEnabled = enabled
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_WINTER_THEME, enabled).apply()
+    }
+
+    fun setWinterThemeTempBelowZeroEnabled(context: Context, enabled: Boolean) {
+        if (winterThemeTempBelowZeroEnabled == enabled) return
+        winterThemeTempBelowZeroEnabled = enabled
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_WINTER_TEMP_ZERO, enabled).apply()
     }
 }

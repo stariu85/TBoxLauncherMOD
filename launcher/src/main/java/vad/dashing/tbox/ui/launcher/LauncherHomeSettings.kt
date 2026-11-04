@@ -116,6 +116,30 @@ fun ThemeSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_winter_theme),
+            active = LauncherThemeState.winterThemeEnabled,
+            onClick = {
+                LauncherThemeState.setWinterThemeEnabled(context, !LauncherThemeState.winterThemeEnabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_winter_theme_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_winter_theme_temp),
+            active = LauncherThemeState.winterThemeTempBelowZeroEnabled,
+            onClick = {
+                LauncherThemeState.setWinterThemeTempBelowZeroEnabled(context, !LauncherThemeState.winterThemeTempBelowZeroEnabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_vs_winter_theme_temp_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
         UiClickSoundsSettingToggle()
     }
 }
