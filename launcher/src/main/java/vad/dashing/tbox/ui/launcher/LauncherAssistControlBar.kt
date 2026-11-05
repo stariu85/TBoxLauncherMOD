@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import vad.dashing.tbox.ui.clickableWithSound
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataViewModel
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -667,7 +669,10 @@ private fun AssistColoredChip(
                     Modifier
                 }
             )
-            .clickable(onClick = onClick),
+            .clickableWithSound(onClickLabel = label.ifBlank { "Chip" }) {
+                DclLogRecorder.logUiClick("AssistColoredChip", label = label.ifBlank { iconRes?.toString() ?: "chip" })
+                onClick()
+            },
         contentAlignment = Alignment.Center,
     ) {
         if (label.isBlank()) {
@@ -751,7 +756,10 @@ private fun AssistButtonChip(
                     Modifier
                 }
             )
-            .clickable(onClick = onClick),
+            .clickableWithSound(onClickLabel = label) {
+                DclLogRecorder.logUiClick("AssistButtonChip", label = label)
+                onClick()
+            },
         contentAlignment = Alignment.Center,
     ) {
         Row(

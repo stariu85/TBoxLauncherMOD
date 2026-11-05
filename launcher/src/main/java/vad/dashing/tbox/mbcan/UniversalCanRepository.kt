@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.HeadUnitCanMode
 import vad.dashing.tbox.SettingsManager
 
@@ -397,6 +398,9 @@ object UniversalCanRepository {
     }
 
     suspend fun execute(command: MbCanCommand): MbCanCommandResult {
+        if (DclLogRecorder.isLoggingActive()) {
+            DclLogRecorder.log("CanCommand", "execute command=$command mode=${_mode.value}")
+        }
         return if (_mode.value == HeadUnitCanMode.Android9MbCan) {
             MbCanRepository.execute(command)
         } else {

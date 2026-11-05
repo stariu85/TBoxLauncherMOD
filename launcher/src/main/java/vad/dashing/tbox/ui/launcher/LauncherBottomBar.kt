@@ -1577,7 +1577,7 @@ private fun LauncherBottomDockButtonContent(
             Image(
                 painter = painterResource(recircRes),
                 contentDescription = null,
-                modifier = Modifier.size(dockDp(31.46f)),
+                modifier = Modifier.size(dockDp(34.606f)),
                 colorFilter = ColorFilter.tint(HvacOffColor),
             )
         }
@@ -1606,6 +1606,7 @@ private fun LauncherBottomDockButtonContent(
                 drawableRes = R.drawable.ic_widget_steering_wheel_heat,
                 active = steeringHeat is MbCanBinaryState.On,
                 activeColor = Color(0xFFF97316),
+                sizeDp = 24.7f,
             )
         }
         "windscreen_heat" -> LauncherDockIcon(onClick = { sendToggleFrontWindscreenHeat(context) }) {
@@ -2074,11 +2075,12 @@ private fun LauncherBinaryTintIcon(
     drawableRes: Int,
     active: Boolean,
     activeColor: Color = HvacOnColor,
+    sizeDp: Float = 26f,
 ) {
     Image(
         painter = painterResource(drawableRes),
         contentDescription = null,
-        modifier = Modifier.size(dockDp(26f)),
+        modifier = Modifier.size(dockDp(sizeDp)),
         colorFilter = ColorFilter.tint(if (active) activeColor else HvacOffColor),
     )
 }

@@ -32,6 +32,7 @@ enum class LauncherAlertId {
     HvFaultStop,
     PowerModeFail,
     LowBatterySoc,
+    KeyBatteryLow,
 }
 
 data class LauncherVehicleAlert(

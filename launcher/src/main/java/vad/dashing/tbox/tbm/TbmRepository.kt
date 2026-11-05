@@ -82,6 +82,9 @@ class TbmRepository(
     private val _modemSignalLevel = MutableStateFlow<Int?>(null)
     val modemSignalLevel: StateFlow<Int?> = _modemSignalLevel.asStateFlow()
 
+    private val _modemNetStatus = MutableStateFlow<String?>(null)
+    val modemNetStatus: StateFlow<String?> = _modemNetStatus.asStateFlow()
+
     private val _tboxConnectedSignal = MutableStateFlow<Boolean?>(null)
     val tboxConnectedSignal: StateFlow<Boolean?> = _tboxConnectedSignal.asStateFlow()
 
@@ -113,6 +116,11 @@ class TbmRepository(
         "active_trip_motor_hours",
         "motor_hours",
         "modem_signal_level",
+        "modem_signal",
+        "modem_net_status",
+        "net_status",
+        "modem_csq",
+        "csq",
         "tbox_connected",
         "locate_status",
         "geo_satellites_visible",
@@ -342,7 +350,10 @@ class TbmRepository(
         _activeTripDurationSeconds.value = map["active_trip_duration_s"]?.asLong()
         _motorHours.value = map["motor_hours"]?.asFloat()
         _gearboxOilTemperature.value = map["gear_box_oil_temperature"]?.asFloat()
-        _modemSignalLevel.value = map["modem_signal_level"]?.asInt()
+        _modemSignalLevel.value = (map["modem_signal_level"] ?: map["modem_signal"] ?: map["modem_csq"] ?: map["csq"])?.asInt()
+        _modemNetStatus.value = (map["modem_net_status"] ?: map["net_status"] ?: map["modem_network_type"] ?: map["network_type"])?.toString()?.takeIf {
+            it.isNotBlank() && !it.equals("null", ignoreCase = true)
+        }
         _tboxConnectedSignal.value = when (val v = map["tbox_connected"]) {
             is Boolean -> v
             "on" -> true

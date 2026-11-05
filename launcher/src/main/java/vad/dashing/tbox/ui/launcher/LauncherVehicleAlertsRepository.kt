@@ -47,6 +47,7 @@ object LauncherVehicleAlertsRepository {
     private var highTemp = false
     private var lowFuel = false
     private var powerModeFail = false
+    private var keyBatteryLow = false
 
     private val _state = MutableStateFlow(LauncherVehicleAlertsState())
     val state: StateFlow<LauncherVehicleAlertsState> = _state.asStateFlow()
@@ -61,12 +62,14 @@ object LauncherVehicleAlertsRepository {
                 "eMBCAN_SEAT_BELT_STATUS",
                 "eMBCAN_CHIME_STATUS",
                 "eMBCAN_VEHICLE_ICM_FAULT_INFO",
+                "eMBCAN_VEHICLE_ICM_DRIVE_INFO",
             ),
         )
         pollJob = scope.launch {
             while (isActive) {
                 pollSeatBeltCache()
                 pollIcmFaultInfoCache()
+                pollIcmDriverInfoCache()
                 publish()
                 delay(POLL_MS)
             }
@@ -245,11 +248,25 @@ object LauncherVehicleAlertsRepository {
         powerModeFail = byteActive(fault, "getICM_PowerModeChangeFail")
     }
 
+    private fun pollIcmDriverInfoCache() {
+        val driverInfo = readCachedIcmDriverInfo() ?: return
+        keyBatteryLow = byteActive(driverInfo, "getnICM_SmartSystemWarning3_1") ||
+                byteActive(driverInfo, "nICM_SmartSystemWarning3_1")
+    }
+
     private fun readCachedIcmFaultInfo(): Any? {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
         return runCatching {
             val cls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmFaultInfo")
             MbCanEngineFacade.getMbCanData(43, cls)
+        }.getOrNull()
+    }
+
+    private fun readCachedIcmDriverInfo(): Any? {
+        if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
+        return runCatching {
+            val cls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmDriverInfo")
+            MbCanEngineFacade.getMbCanData(44, cls)
         }.getOrNull()
     }
 
@@ -322,6 +339,7 @@ object LauncherVehicleAlertsRepository {
                 add(LauncherAlertId.HvFaultStop, hvFaultStop, LauncherAlertSeverity.Critical)
                 add(LauncherAlertId.PowerModeFail, powerModeFail, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.LowBatterySoc, lowSoc, LauncherAlertSeverity.Warning)
+                add(LauncherAlertId.KeyBatteryLow, keyBatteryLow || LauncherDevVehicleState.keyBatteryLow, LauncherAlertSeverity.Warning)
             }
         }
         _state.value = LauncherVehicleAlertsState(list)
@@ -352,14 +370,21 @@ object LauncherVehicleAlertsRepository {
         highTemp = false
         lowFuel = false
         powerModeFail = false
+        keyBatteryLow = false
     }
 
     private fun engineInstance(): Any? = runCatching {
         Class.forName(ENGINE_CLASS).getMethod("getInstance").invoke(null)
     }.getOrNull()
 
-    private fun byteActive(obj: Any, getter: String): Boolean =
+    private fun byteActive(obj: Any, getterOrField: String): Boolean =
         runCatching {
-            ((obj.javaClass.getMethod(getter).invoke(obj) as? Number)?.toInt() ?: 0) != 0
+            val num = try {
+                obj.javaClass.getMethod(getterOrField).invoke(obj) as? Number
+            } catch (_: Throwable) {
+                val field = obj.javaClass.getDeclaredField(getterOrField).apply { isAccessible = true }
+                field.get(obj) as? Number
+            }
+            (num?.toInt() ?: 0) != 0
         }.getOrDefault(false)
 }

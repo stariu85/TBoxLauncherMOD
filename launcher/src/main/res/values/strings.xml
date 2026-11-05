@@ -508,6 +508,7 @@
     <string name="launcher_alert_hv_fault">Высоковольтная ошибка</string>
     <string name="launcher_alert_power_mode">Режим недоступен</string>
     <string name="launcher_alert_low_soc">Низкий заряд</string>
+    <string name="launcher_alert_key_battery">Батарейка ключа</string>
     <string name="launcher_vs_steering_heat">Подогрев руля</string>
     <string name="launcher_vs_windscreen_heat">Обогрев стекла</string>
     <string name="launcher_vs_seat_left">Сиденье водителя</string>
@@ -574,6 +575,7 @@
     <string name="launcher_vs_sim_tailgate">Багажник</string>
     <string name="launcher_vs_sim_seatbelt_driver">Ремень водителя</string>
     <string name="launcher_vs_sim_seatbelt_passenger">Ремень пассажира</string>
+    <string name="launcher_vs_sim_key_battery">Батарейка смарт-ключа</string>
     <string name="launcher_vs_sim_speed">Скорость</string>
     <string name="launcher_vs_sim_steer">Угол руля</string>
     <string name="launcher_vs_sim_battery">Напряжение АКБ</string>

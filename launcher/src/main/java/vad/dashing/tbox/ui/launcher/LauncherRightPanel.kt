@@ -2525,6 +2525,7 @@ private val LauncherAlertId.detailDescription: String
         LauncherAlertId.HvFaultStop -> "Критический сбой высоковольтной системы HV. Требуется остановка и сервисная диагностика."
         LauncherAlertId.PowerModeFail -> "Ошибка переключения режимов питания Power Mode."
         LauncherAlertId.LowBatterySoc -> "Низкий уровень заряда аккумулятора (Low SOC)."
+        LauncherAlertId.KeyBatteryLow -> "Низкий уровень заряда батарейки смарт-ключа (CR2032). Требуется замена."
     }
 
 @Composable

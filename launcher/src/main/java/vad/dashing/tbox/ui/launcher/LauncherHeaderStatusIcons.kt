@@ -1634,18 +1634,43 @@ internal fun LauncherHeaderStatusIcons(
     modifier: Modifier = Modifier,
     showVehicleAlerts: Boolean = true,
 ) {
+    val context = LocalContext.current
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val netState by tboxViewModel.netState.collectAsStateWithLifecycle()
     val wifiConnected = rememberWifiConnected()
     val wifiLevel = rememberWifiLevel(wifiConnected)
     val bluetoothConnected = rememberBluetoothConnected()
-    val networkType = mobileNetworkTypeLabel(netState.netStatus)
 
-    val context = LocalContext.current
+    val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+    val tbmConnState by tbmRepo.connectionState.collectAsStateWithLifecycle()
+    val tbmModemSignalLevel by tbmRepo.modemSignalLevel.collectAsStateWithLifecycle()
+    val tbmModemNetStatus by tbmRepo.modemNetStatus.collectAsStateWithLifecycle()
+    val isTbmConnected = tbmConnState is TbmConnectionState.Connected
+
     val networkTypeRevision by LauncherAppConfigStore.topBarCellularNetworkTypeVisibleRevisionFlow
         .collectAsStateWithLifecycle()
     val networkTypeVisible = remember(context, networkTypeRevision) {
         LauncherAppConfigStore.topBarCellularNetworkTypeVisible(context)
+    }
+
+    val cellularInfo = remember(
+        tboxConnected,
+        netState.signalLevel,
+        netState.netStatus,
+        netState.csq,
+        isTbmConnected,
+        tbmModemSignalLevel,
+        tbmModemNetStatus,
+    ) {
+        resolveCellularSignalInfo(
+            tboxConnected = tboxConnected,
+            netStateSignalLevel = netState.signalLevel,
+            netStateNetStatus = netState.netStatus,
+            netStateCsq = netState.csq,
+            isTbmConnected = isTbmConnected,
+            tbmModemSignalLevel = tbmModemSignalLevel,
+            tbmModemNetStatus = tbmModemNetStatus,
+        )
     }
 
     Row(
@@ -1661,7 +1686,7 @@ internal fun LauncherHeaderStatusIcons(
                 .size(9.dp)
                 .clip(CircleShape)
                 .background(
-                    if (tboxConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
+                    if (tboxConnected || isTbmConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
                 ),
         )
         val bluetoothTint = if (bluetoothConnected) {
@@ -1678,20 +1703,20 @@ internal fun LauncherHeaderStatusIcons(
         if (wifiConnected) {
             WifiArcsIcon(level = wifiLevel.coerceIn(1, 4), tint = StatusIconTint, modifier = Modifier.size(18.dp))
         }
-        if (tboxConnected) {
+        if (cellularInfo.hasData && networkTypeVisible) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (networkTypeVisible && networkType != null) {
+                if (cellularInfo.networkType != null) {
                     Text(
-                        text = networkType,
+                        text = cellularInfo.networkType,
                         color = StatusIconTint,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
-                val signalRes = when (netState.signalLevel.coerceIn(0, 4)) {
+                val signalRes = when (cellularInfo.signalLevel.coerceIn(0, 4)) {
                     4 -> R.drawable.signal_4
                     3 -> R.drawable.signal_3
                     2 -> R.drawable.signal_2
@@ -1852,9 +1877,84 @@ private fun WifiArcsIcon(
     }
 }
 
-private fun mobileNetworkTypeLabel(netStatus: String): String? = when (netStatus.uppercase()) {
-    "2G", "3G", "4G", "5G", "LTE" -> netStatus.uppercase()
-    else -> null
+internal data class CellularSignalInfo(
+    val hasData: Boolean = false,
+    val signalLevel: Int = 0,
+    val networkType: String? = null,
+)
+
+internal fun resolveCellularSignalLevel(rawSignal: Int?): Int {
+    if (rawSignal == null) return 0
+    return when {
+        rawSignal in 0..4 -> rawSignal
+        rawSignal == 99 || rawSignal < 0 -> 0
+        rawSignal <= 7 -> 1
+        rawSignal <= 14 -> 2
+        rawSignal <= 19 -> 3
+        rawSignal <= 31 -> 4
+        else -> 4
+    }
+}
+
+internal fun resolveCellularSignalInfo(
+    tboxConnected: Boolean,
+    netStateSignalLevel: Int,
+    netStateNetStatus: String,
+    netStateCsq: Int,
+    isTbmConnected: Boolean,
+    tbmModemSignalLevel: Int?,
+    tbmModemNetStatus: String?,
+): CellularSignalInfo {
+    val directNetworkType = mobileNetworkTypeLabel(netStateNetStatus)
+    val hasDirectData = tboxConnected && (
+        (netStateCsq != 99 && netStateCsq >= 0) ||
+        netStateSignalLevel > 0 ||
+        directNetworkType != null ||
+        (netStateNetStatus.isNotBlank() &&
+            !netStateNetStatus.equals("нет сети", ignoreCase = true) &&
+            !netStateNetStatus.equals("-", ignoreCase = true))
+    )
+
+    if (hasDirectData) {
+        return CellularSignalInfo(
+            hasData = true,
+            signalLevel = netStateSignalLevel.coerceIn(0, 4),
+            networkType = directNetworkType,
+        )
+    }
+
+    val tbmNetworkType = mobileNetworkTypeLabel(tbmModemNetStatus ?: "")
+    val hasTbmSignal = tbmModemSignalLevel != null && tbmModemSignalLevel != 99 && tbmModemSignalLevel >= 0
+    val hasTbmData = isTbmConnected && (hasTbmSignal || tbmNetworkType != null)
+
+    if (hasTbmData) {
+        val resolvedLevel = resolveCellularSignalLevel(tbmModemSignalLevel)
+        val resolvedType = tbmNetworkType ?: "4G"
+        return CellularSignalInfo(
+            hasData = true,
+            signalLevel = resolvedLevel,
+            networkType = resolvedType,
+        )
+    }
+
+    return CellularSignalInfo(hasData = false)
+}
+
+private fun mobileNetworkTypeLabel(netStatus: String?): String? {
+    if (netStatus.isNullOrBlank()) return null
+    val upper = netStatus.uppercase().trim()
+    return when {
+        upper in setOf("2G", "3G", "4G", "5G", "LTE") -> upper
+        upper.contains("4G") || upper.contains("LTE") -> "4G"
+        upper.contains("3G") || upper.contains("HSPA") || upper.contains("UMTS") || upper.contains("WCDMA") -> "3G"
+        upper.contains("2G") || upper.contains("EDGE") || upper.contains("GPRS") || upper.contains("GSM") -> "2G"
+        upper.contains("5G") || upper.contains("NR") -> "5G"
+        upper == "4" -> "4G"
+        upper == "3" -> "3G"
+        upper == "2" -> "2G"
+        upper == "5" -> "5G"
+        else -> null
+    }
 }
 
 @Composable

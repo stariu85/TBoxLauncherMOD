@@ -122,26 +122,29 @@ fun Modifier.combinedClickableWithSound(
     onClick: () -> Unit,
 ): Modifier = composed {
     val play = rememberPlaySystemClickSound()
-    val wrappedOnClick = remember(onClick, play) {
+    val wrappedOnClick = remember(onClick, play, onClickLabel) {
         {
             play()
+            DclLogRecorder.logUiClick("CombinedOnClick", label = onClickLabel)
             onClick()
         }
     }
-    val wrappedOnDoubleClick = remember(onDoubleClick, play) {
+    val wrappedOnDoubleClick = remember(onDoubleClick, play, onClickLabel) {
         if (onDoubleClick == null) null
         else {
             {
                 play()
+                DclLogRecorder.logUiClick("CombinedOnDoubleClick", label = onClickLabel)
                 onDoubleClick()
             }
         }
     }
-    val wrappedOnLongClick = remember(onLongClick, play) {
+    val wrappedOnLongClick = remember(onLongClick, play, onLongClickLabel) {
         if (onLongClick == null) null
         else {
             {
                 play()
+                DclLogRecorder.logUiClick("CombinedOnLongClick", label = onLongClickLabel)
                 onLongClick()
             }
         }
@@ -170,26 +173,29 @@ fun Modifier.combinedClickableWithSound(
     onClick: () -> Unit,
 ): Modifier = composed {
     val play = rememberPlaySystemClickSound()
-    val wrappedOnClick = remember(onClick, play) {
+    val wrappedOnClick = remember(onClick, play, onClickLabel) {
         {
             play()
+            DclLogRecorder.logUiClick("CombinedOnClick", label = onClickLabel)
             onClick()
         }
     }
-    val wrappedOnDoubleClick = remember(onDoubleClick, play) {
+    val wrappedOnDoubleClick = remember(onDoubleClick, play, onClickLabel) {
         if (onDoubleClick == null) null
         else {
             {
                 play()
+                DclLogRecorder.logUiClick("CombinedOnDoubleClick", label = onClickLabel)
                 onDoubleClick()
             }
         }
     }
-    val wrappedOnLongClick = remember(onLongClick, play) {
+    val wrappedOnLongClick = remember(onLongClick, play, onLongClickLabel) {
         if (onLongClick == null) null
         else {
             {
                 play()
+                DclLogRecorder.logUiClick("CombinedOnLongClick", label = onLongClickLabel)
                 onLongClick()
             }
         }

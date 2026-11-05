@@ -208,6 +208,7 @@ internal val LauncherAlertId.labelRes: Int
         LauncherAlertId.HvFaultStop -> R.string.launcher_alert_hv_fault
         LauncherAlertId.PowerModeFail -> R.string.launcher_alert_power_mode
         LauncherAlertId.LowBatterySoc -> R.string.launcher_alert_low_soc
+        LauncherAlertId.KeyBatteryLow -> R.string.launcher_alert_key_battery
     }
 
 private val LauncherAlertId.iconRes: Int
@@ -230,5 +231,6 @@ private val LauncherAlertId.iconRes: Int
         LauncherAlertId.LowBatterySoc,
         LauncherAlertId.BattFault,
         -> R.drawable.ic_launcher_battery
+        LauncherAlertId.KeyBatteryLow -> R.drawable.ic_launcher_key_battery
         else -> R.drawable.ic_notification
     }

@@ -259,9 +259,10 @@ private fun launchSeatOrMirrorIntent(context: Context, packageName: String, inte
 
 internal fun launchSeatSettingsEmbedded(context: Context) {
     val packageName = "com.mengbo.carsettings"
-    val activityName = "com.mengbo.carsettings.ui.activity_dialog.SeatAdjustmentDialogActivity"
-    val intent = Intent().apply {
+    val activityName = "com.mengbo.carsettings.ui.activity_dialog.SeatDialogActivity"
+    val intent = Intent("com.mengbo.carsettings.seat_settings").apply {
         setClassName(packageName, activityName)
+        addCategory(Intent.CATEGORY_DEFAULT)
     }
     launchSeatOrMirrorIntent(context, packageName, intent)
 }

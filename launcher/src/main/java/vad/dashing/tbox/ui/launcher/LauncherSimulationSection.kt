@@ -154,6 +154,11 @@ fun SimulationSectionCard(
                     active = LauncherDevVehicleState.seatBeltPassenger,
                     onClick = { LauncherDevVehicleState.toggleSeatBeltPassenger() },
                 )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_key_battery),
+                    active = LauncherDevVehicleState.keyBatteryLow,
+                    onClick = { LauncherDevVehicleState.toggleKeyBatteryLow() },
+                )
 
                 Spacer(Modifier.height(4.dp))
                 SimulationSliderRow(

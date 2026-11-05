@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.LastAppTracker
 import vad.dashing.tbox.MainActivityIntentHelper
 import vad.dashing.tbox.MirrorFoldLastCommandStore
@@ -117,6 +118,9 @@ internal fun sendToggleFloatingPanelsEnabled(
 }
 
 internal fun sendToggleMbCanProperty(context: Context, propertyId: Int) {
+    if (DclLogRecorder.isLoggingActive()) {
+        DclLogRecorder.log("CanCmdSend", "sendToggleMbCanProperty propId=$propertyId")
+    }
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val result = UniversalCanRepository.execute(
@@ -661,6 +665,9 @@ internal fun sendOpenCloseTrunk(context: Context) {
 }
 
 internal fun sendSetMbCanProperty(context: Context, propertyId: Int, value: Int) {
+    if (DclLogRecorder.isLoggingActive()) {
+        DclLogRecorder.log("CanCmdSend", "sendSetMbCanProperty propId=$propertyId value=$value")
+    }
     try {
         context.startService(
             Intent(context, BackgroundService::class.java).apply {

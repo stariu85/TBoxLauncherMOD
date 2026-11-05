@@ -5,6 +5,7 @@ import android.os.Looper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.TboxRepository
 
 /**
@@ -32,6 +33,9 @@ object MbCanDiagnostics {
     }
 
     fun log(level: String, tag: String, message: String) {
+        if (DclLogRecorder.isLoggingActive()) {
+            DclLogRecorder.log("MbCanDiag", "[$level/$tag] $message")
+        }
         if (!_enabled.value) return
         
         synchronized(pendingLogs) {

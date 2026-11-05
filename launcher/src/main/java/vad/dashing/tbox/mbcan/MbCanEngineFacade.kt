@@ -5,6 +5,7 @@ import vad.dashing.tbox.mbcan.MbCanEngineFacade.canGetVehicleParam
 import vad.dashing.tbox.mbcan.MbCanEngineFacade.ensureInitialized
 import vad.dashing.tbox.mbcan.MbCanEngineFacade.syncVehicleCfgCmdListener
 import vad.dashing.tbox.CanDataRepository
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.ui.launcher.LauncherTireRepository
 import vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository
 import java.lang.reflect.InvocationHandler
@@ -190,6 +191,7 @@ object MbCanEngineFacade {
     fun canSetVehicleParam(propertyId: Int, value: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
         vad.dashing.tbox.DclLogRecorder.recordCanTx()
+        DclLogRecorder.log("CAN_TX", "canSetVehicleParam propId=$propertyId value=$value")
         return try {
             withNativeLock {
                 (canSetVehicleParamMethod?.invoke(engineInstance, propertyId, value) as? Int)
@@ -201,7 +203,8 @@ object MbCanEngineFacade {
 
     fun canSetAirCondition(airCondition: com.mengbo.mbCan.entity.MBAirCondition): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
-        vad.dashing.tbox.DclLogRecorder.recordCanTx()
+        DclLogRecorder.recordCanTx()
+        DclLogRecorder.log("CAN_TX", "canSetAirCondition $airCondition")
         return try {
             withNativeLock {
                 (canSetAirConditionMethod?.invoke(engineInstance, airCondition) as? Int)
@@ -403,6 +406,9 @@ object MbCanEngineFacade {
         val loader = iface.classLoader ?: return
         val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
             vad.dashing.tbox.DclLogRecorder.recordCanRx()
+            if (DclLogRecorder.isLoggingActive()) {
+                DclLogRecorder.log("CAN_RX_MBCAN", "event=${method.name}")
+            }
             when (method.name) {
                 "onCanVehicleSpeed" -> {
                     val fromArgs = runCatching {

@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.AppContextHolder
 import vad.dashing.tbox.DRIVE_MODE_WIDGET_DATA_KEY
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.FRONT_LEFT_SEAT_HEAT_VENT_SINGLE_WIDGET_DATA_KEY
 import vad.dashing.tbox.FRONT_RIGHT_SEAT_HEAT_VENT_SINGLE_WIDGET_DATA_KEY
 import vad.dashing.tbox.PARKING_RADAR_WIDGET_DATA_KEY
@@ -296,6 +297,9 @@ private class CarPropertyBridge(private val context: Context) {
                     val value = runCatching {
                         event.javaClass.getMethod("getValue").invoke(event)
                     }.getOrNull()
+                    if (DclLogRecorder.isLoggingActive()) {
+                        DclLogRecorder.log("CAN_RX_VHAL", "propId=$propertyId areaId=$areaId value=$value")
+                    }
                     onPushPropertyChanged?.invoke(propertyId, areaId, value)
                     null
                 }

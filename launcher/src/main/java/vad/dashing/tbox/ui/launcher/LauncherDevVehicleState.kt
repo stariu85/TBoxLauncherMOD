@@ -26,6 +26,7 @@ object LauncherDevVehicleState {
     var tailgateOpen by mutableStateOf(false)
     var seatBeltDriver by mutableStateOf(false)
     var seatBeltPassenger by mutableStateOf(false)
+    var keyBatteryLow by mutableStateOf(false)
     var tirePressureOverride by mutableStateOf<Map<LauncherWheelCorner, Float>>(emptyMap())
     var batteryVoltageOverride by mutableStateOf<Float?>(null)
     /** 'P'/'R'/'N'/'D' override; null = real gearbox state. */
@@ -448,6 +449,12 @@ object LauncherDevVehicleState {
         LauncherVehicleAlertsRepository.refresh()
     }
 
+    fun toggleKeyBatteryLow() {
+        simulateEnabled = true
+        keyBatteryLow = !keyBatteryLow
+        LauncherVehicleAlertsRepository.refresh()
+    }
+
     fun toggleDoorRl() {
         simulateEnabled = true
         doorRlOpen = !doorRlOpen
@@ -524,6 +531,7 @@ object LauncherDevVehicleState {
         tailgateOpen = false
         seatBeltDriver = false
         seatBeltPassenger = false
+        keyBatteryLow = false
         tirePressureOverride = emptyMap()
         batteryVoltageOverride = null
         gearSlotOverride = null
