@@ -780,7 +780,7 @@ object Android10VhalRepository {
             MbCanSignal.HvacAutoState -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE))
             MbCanSignal.HvacSync -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH))
             MbCanSignal.HvacDefrosterFront -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION))
-            MbCanSignal.HvacPm25 -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING))
+            MbCanSignal.HvacPm25 -> setOf(resolved(MbCanKnownVehiclePropertyId.HVAC_AQS), resolved(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING))
             MbCanSignal.AudioVolume -> setOf(resolved(MbCanKnownAudioPropertyId.VOLUME))
             MbCanSignal.AudioVolumeSpeed -> setOf(resolved(MbCanKnownAudioPropertyId.VOLUME_SPEED))
             MbCanSignal.CarSettingsVehicleParams -> setOf(
@@ -854,6 +854,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        MbCanKnownVehiclePropertyId.HVAC_AQS,
         MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
         MbCanKnownVehiclePropertyId.TJA_ICA -> true
         else -> false
@@ -871,6 +872,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        MbCanKnownVehiclePropertyId.HVAC_AQS,
         MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
         MbCanKnownVehiclePropertyId.TJA_ICA ->
             decodeVhalBinaryTwoIsOn(raw)
@@ -891,6 +893,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER,
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        MbCanKnownVehiclePropertyId.HVAC_AQS,
         MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
         MbCanKnownVehiclePropertyId.TJA_ICA ->
             if (targetOn) 2 else 1
@@ -911,6 +914,7 @@ object Android10VhalRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER -> _hvacAcPowerState.value
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE -> _hvacAutoState.value
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH -> _hvacSyncState.value
+        MbCanKnownVehiclePropertyId.HVAC_AQS,
         MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> _hvacPm25State.value
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION -> _hvacDefrosterFrontState.value
         MbCanKnownVehiclePropertyId.TJA_ICA -> _tjaIcaState.value
@@ -963,6 +967,7 @@ object Android10VhalRepository {
                 raw?.let {
                     stateEngine.applyHvacSyncCandidate(decodeVhalBinaryTwoIsOn(it))
                 }
+            resolved(MbCanKnownVehiclePropertyId.HVAC_AQS),
             resolved(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) ->
                 raw?.let {
                     val decoded = if (it == 2) MbCanBinaryState.On else if (it == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
@@ -1431,7 +1436,7 @@ object Android10VhalRepository {
                 val ok = bridge?.setIntProperty(effectivePropertyId, target) == true
                 logDebug("ToggleProperty result=$ok propertyId=$effectivePropertyId target=$target")
                 if (ok) {
-                    if (command.propertyId == MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) {
+                    if (command.propertyId == MbCanKnownVehiclePropertyId.HVAC_AQS || command.propertyId == MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING) {
                         val state = if (target == 2) MbCanBinaryState.On else MbCanBinaryState.Off
                         _hvacPm25State.value = state
                         MbCanRepository.updateHvacPm25StateFromCan(state)
@@ -1475,6 +1480,7 @@ object Android10VhalRepository {
                     when (command.propertyId) {
                         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = command.value
                         MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = command.value
+                        MbCanKnownVehiclePropertyId.HVAC_AQS,
                         MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> {
                             val state = if (command.value == 2) MbCanBinaryState.On else MbCanBinaryState.Off
                             _hvacPm25State.value = state

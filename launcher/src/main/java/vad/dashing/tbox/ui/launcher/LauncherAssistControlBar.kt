@@ -262,29 +262,15 @@ fun LauncherLanesControlBar(
     // 3. FCW Button Logic
     val isFcwActive = currentFcwSwitch
     val fcwColor = when {
-        !isFcwActive -> null // OFF
-        currentFcwOption == 2 -> Color(0xFFF97316) // Medium = Orange
-        currentFcwOption == 3 -> Color(0xFFEF4444) // Close = Red
-        else -> Color(0xFF10B981) // Max distance = Green
+        !isFcwActive -> null // State 0: OFF (серый по умолчанию)
+        currentFcwOption == 1 -> Color(0xFFEF4444) // State 1: Близко (красный)
+        currentFcwOption == 2 -> Color(0xFF3B82F6) // State 2: Средняя (синий)
+        currentFcwOption == 3 -> Color(0xFF10B981) // State 3: Дальняя (зеленый)
+        else -> Color(0xFFEF4444) // Fallback в активном состоянии: красный (близко)
     }
 
     val onFcwClick: () -> Unit = {
-        when {
-            !isFcwActive -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 1)
-            }
-            currentFcwOption == 1 || currentFcwOption == null -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 2)
-            }
-            currentFcwOption == 2 -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 3)
-            }
-            else -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 1)
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 0)
-            }
-        }
+        vad.dashing.tbox.ui.sendCycleFcw(context, isFcwActive, currentFcwOption)
     }
 
     Row(

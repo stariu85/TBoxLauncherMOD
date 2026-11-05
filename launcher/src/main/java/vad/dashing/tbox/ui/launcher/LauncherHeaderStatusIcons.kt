@@ -212,23 +212,52 @@ private suspend fun PointerInputScope.detectDraggableTopBarItem(
     onRemove: () -> Unit,
     onOffsetChange: (Float, Float) -> Unit,
 ) {
+    val dragHoldDurationMs = 1000L
+    val pickerHoldDurationMs = 3000L
+    val maxSlopBeforeHoldPx = with(density) { 10.dp.toPx() }
     val cancelPickerThresholdPx = with(density) { 30.dp.toPx() }
     val removeThresholdPx = with(density) { 20.dp.toPx() }
-    val dragStartSlopPx = with(density) { 8.dp.toPx() }
-    val holdDurationMs = 3000L
 
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         val startTime = SystemClock.uptimeMillis()
 
+        var isDragUnlocked = false
         var isDragging = false
-        var currentOffsetX = 0f
-        var currentOffsetY = 0f
-        var totalMovedDist = 0f
+        var holdCancelled = false
         var pickerTriggered = false
         var pickerCancelled = false
 
-        while (true) {
+        var currentOffsetX = 0f
+        var currentOffsetY = 0f
+        var totalMovedDist = 0f
+
+        val holdResult = withTimeoutOrNull(dragHoldDurationMs) {
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null || !change.pressed) {
+                    holdCancelled = true
+                    break
+                }
+
+                val dragDelta = change.positionChange()
+                totalMovedDist += dragDelta.getDistance()
+
+                if (totalMovedDist > maxSlopBeforeHoldPx) {
+                    holdCancelled = true
+                    break
+                }
+            }
+        }
+
+        if (holdResult == null && !holdCancelled) {
+            isDragUnlocked = true
+            isDragging = true
+            onDragStateChange(true)
+        }
+
+        while (isDragging || (!holdCancelled && !isDragUnlocked)) {
             val event = awaitPointerEvent()
             val change = event.changes.firstOrNull { it.id == down.id }
             if (change == null || !change.pressed) {
@@ -238,13 +267,32 @@ private suspend fun PointerInputScope.detectDraggableTopBarItem(
             val dragDelta = change.positionChange()
             totalMovedDist += dragDelta.getDistance()
 
-            if (totalMovedDist > cancelPickerThresholdPx) {
-                pickerCancelled = true
+            val elapsed = SystemClock.uptimeMillis() - startTime
+
+            if (!isDragUnlocked && totalMovedDist > maxSlopBeforeHoldPx) {
+                holdCancelled = true
+                break
             }
 
-            if (!pickerTriggered && !pickerCancelled) {
-                val elapsed = SystemClock.uptimeMillis() - startTime
-                if (elapsed >= holdDurationMs) {
+            if (!isDragUnlocked && !holdCancelled && elapsed >= dragHoldDurationMs) {
+                isDragUnlocked = true
+                isDragging = true
+                onDragStateChange(true)
+            }
+
+            if (isDragging) {
+                change.consume()
+                currentOffsetX += dragDelta.x
+                currentOffsetY += dragDelta.y
+                onOffsetChange(currentOffsetX, currentOffsetY)
+
+                if (totalMovedDist > cancelPickerThresholdPx || abs(currentOffsetX) > maxSlopBeforeHoldPx || abs(currentOffsetY) > maxSlopBeforeHoldPx) {
+                    pickerCancelled = true
+                }
+            }
+
+            if (!pickerTriggered && !pickerCancelled && !holdCancelled) {
+                if (elapsed >= pickerHoldDurationMs) {
                     pickerTriggered = true
                     LauncherTopBarPickerOverlayWindow.show(
                         context = context,
@@ -255,18 +303,6 @@ private suspend fun PointerInputScope.detectDraggableTopBarItem(
                         onDismiss = {},
                     )
                 }
-            }
-
-            if (!isDragging && totalMovedDist > dragStartSlopPx) {
-                isDragging = true
-                onDragStateChange(true)
-            }
-
-            if (isDragging) {
-                change.consume()
-                currentOffsetX += dragDelta.x
-                currentOffsetY += dragDelta.y
-                onOffsetChange(currentOffsetX, currentOffsetY)
             }
         }
 

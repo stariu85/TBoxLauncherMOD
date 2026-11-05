@@ -1525,6 +1525,28 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow
+            .collectAsStateWithLifecycle()
+        val accPresetsInQuickSettingsVisible = remember(context, accPresetsInQuickSettingsRevision) {
+            LauncherAppConfigStore.accPresetsInQuickSettingsVisible(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_acc_presets_in_quick_settings_visible_title),
+            active = accPresetsInQuickSettingsVisible,
+            onClick = {
+                LauncherAppConfigStore.setAccPresetsInQuickSettingsVisible(
+                    context,
+                    !accPresetsInQuickSettingsVisible,
+                )
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_acc_presets_in_quick_settings_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()

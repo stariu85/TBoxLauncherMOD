@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
@@ -809,7 +810,7 @@ fun LauncherLeftPanel(
                     LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
                 }
             }
-            if (colorPickerVisible) {
+            if (colorPickerVisible && carColorPanelVisible) {
                 LauncherCarColorPicker(
                     selectedId = paintId,
                     onSelect = { id ->
@@ -932,24 +933,24 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
     )
 
     if (isTakeover) {
+        val takeoverBgColor = Color(0xFFEAB308)
+        val takeoverContentColor = Color(0xFF18181B)
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
                 .zIndex(200f)
                 .graphicsLayer { alpha = animatedAlpha }
-                .clip(RoundedCornerShape(18.dp))
-                .background(bannerBgColor.copy(alpha = 0.95f))
-                .border(width = 2.5.dp, color = Color.White, shape = RoundedCornerShape(18.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .clip(CircleShape)
+                .background(takeoverBgColor.copy(alpha = 0.95f))
+                .border(width = 2.5.dp, color = Color.White, shape = CircleShape)
+                .padding(20.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_steering_wheel_v12ubmkkangi),
                 contentDescription = stringResource(R.string.launcher_adas_takeover),
-                modifier = Modifier.size(44.dp),
-                tint = contentColor,
+                modifier = Modifier.size(88.dp),
+                tint = takeoverContentColor,
             )
         }
         return

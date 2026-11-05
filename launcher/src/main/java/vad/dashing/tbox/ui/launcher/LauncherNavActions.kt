@@ -93,6 +93,12 @@ internal fun goLauncherHome(
         }
     }
     runCatching {
+        if (LauncherAdasQuickSettingsWindow.isShowing()) {
+            LauncherAdasQuickSettingsWindow.hide()
+            closedList += "AdasQuickSettings"
+        }
+    }
+    runCatching {
         if (MainActivity.isOpen()) {
             MainActivity.finishIfOpen()
             closedList += "MainActivity"
@@ -220,6 +226,11 @@ internal fun goLauncherBack(
         PassengerSeatOverlayWindow.isShowing() -> {
             PassengerSeatOverlayWindow.hide()
             LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed PassengerSeatOverlay")
+            return
+        }
+        LauncherAdasQuickSettingsWindow.isShowing() -> {
+            LauncherAdasQuickSettingsWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AdasQuickSettings")
             return
         }
         LauncherAppDrawerWindow.isShowing() -> {

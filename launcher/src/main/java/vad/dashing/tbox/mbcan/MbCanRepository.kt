@@ -260,6 +260,7 @@ object MbCanRepository {
         MbCanKnownVehiclePropertyId.HVAC_POWER -> _hvacAcPowerState.value
         MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE -> _hvacAutoState.value
         MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH -> _hvacSyncState.value
+        MbCanKnownVehiclePropertyId.HVAC_AQS,
         MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> _hvacPm25State.value
         MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION -> _hvacDefrosterFrontState.value
         MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH -> _wirelessChargingState.value
@@ -407,6 +408,7 @@ object MbCanRepository {
             MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
             MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION,
             MbCanKnownVehiclePropertyId.HVAC_FAN_SPEED,
+            MbCanKnownVehiclePropertyId.HVAC_AQS,
             MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
             MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE,
             MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE,
@@ -477,6 +479,7 @@ object MbCanRepository {
                         stateEngine.applyHvacSyncCandidate(
                             MbCanSignalStateEngine.decodeHvacSyncRaw(raw)
                         )
+                    MbCanKnownVehiclePropertyId.HVAC_AQS,
                     MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> {
                         val decoded = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
                         _hvacPm25State.value = decoded
@@ -817,6 +820,7 @@ object MbCanRepository {
                 MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE -> _carSettingsDriveMode.value = targetValue
                 MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET -> _carSettingsDriveMode6dctWet.value = targetValue
                 MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION -> updateLasModeRaw(targetValue)
+                MbCanKnownVehiclePropertyId.HVAC_AQS,
                 MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING -> {
                     val state = if (targetValue == 2) MbCanBinaryState.On else MbCanBinaryState.Off
                     _hvacPm25State.value = state
@@ -1260,7 +1264,8 @@ object MbCanRepository {
                 _hvacPm25State.value = MbCanBinaryState.Unknown
                 return@withContext
             }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AQS)
+                ?: MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
             val decoded = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
             _hvacPm25State.value = decoded
             MbCanDiagnostics.log("DEBUG", "refreshHvacPm25 raw=$raw state=$decoded")

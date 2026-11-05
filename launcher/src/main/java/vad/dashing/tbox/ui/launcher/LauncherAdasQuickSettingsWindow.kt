@@ -320,6 +320,11 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.carColorPanelVisible(context)
     }
 
+    val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow.collectAsStateWithLifecycle()
+    val accPresetsInQuickSettingsVisible = remember(context, accPresetsInQuickSettingsRevision) {
+        LauncherAppConfigStore.accPresetsInQuickSettingsVisible(context)
+    }
+
     val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow.collectAsStateWithLifecycle()
     val adasTopPanels = remember(context, adasPanelsRevision) {
         LauncherAppConfigStore.adasTopPanels(context)
@@ -372,7 +377,7 @@ private fun LauncherAdasQuickSettingsContent(
         visibleSubPanels
     }
 
-    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible) {
+    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible) {
         val allCandidates = listOf(
             "media_player",
             "drive_mode",
@@ -390,6 +395,7 @@ private fun LauncherAdasQuickSettingsContent(
         )
         allCandidates.filter { candidate ->
             if (candidate == "car_color" && !carColorPanelVisible) return@filter false
+            if (candidate == "presets" && !accPresetsInQuickSettingsVisible) return@filter false
             candidate !in directlyVisiblePanels
         }
     }
@@ -512,7 +518,7 @@ private fun LauncherAdasQuickSettingsContent(
     val mediaPlayerHeightDp = remember(mediaHeightScale) {
         val expandedVerticalPadding = (12.dp * mediaHeightScale).coerceAtLeast(2.dp)
         val expandedItemSpacing = (10.dp * ((mediaHeightScale - 0.5f) / 0.5f)).coerceAtLeast(0.dp)
-        expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 44.dp
+        expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 50.6.dp
     }
 
     val defaultScale = LauncherDevScaleState.scale
@@ -983,43 +989,45 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Driver Seat Memory / Adjustment Button
+        // Combined Button (Weight 2f): Sliders + Driver Seat + Mirror -> Opens Mirror Adjustment Settings
         Box(
             modifier = Modifier
-                .weight(1f)
-                .height(60.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(LauncherColors.LeftPanelCard)
-                .clickable { launchSeatSettingsEmbedded(context) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.ic_seat_memory_btn),
-                contentDescription = "Регулировка водительского сиденья",
-                modifier = Modifier.size(32.dp),
-                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-            )
-        }
-
-        // Rearview Mirror Adjustment Button
-        Box(
-            modifier = Modifier
-                .weight(1f)
+                .weight(2f)
                 .height(60.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(LauncherColors.LeftPanelCard)
                 .clickable { launchMirrorAdjustSettingsEmbedded(context) },
             contentAlignment = Alignment.Center,
         ) {
-            Image(
-                painter = painterResource(R.drawable.ic_rearview_mirror),
-                contentDescription = "Регулировка зеркал",
-                modifier = Modifier.size(40.dp),
-                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_settings_sliders),
+                    contentDescription = "Настройки",
+                    modifier = Modifier.size(28.dp),
+                    colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                )
+                Image(
+                    painter = painterResource(R.drawable.ic_seat_memory_btn),
+                    contentDescription = "Регулировка водительского сиденья",
+                    modifier = Modifier.size(30.dp),
+                    colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                )
+                Image(
+                    painter = painterResource(R.drawable.ic_rearview_mirror),
+                    contentDescription = "Регулировка зеркал",
+                    modifier = Modifier.size(36.dp),
+                    colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                )
+            }
         }
 
-        // Passenger Seat Adjustment Button
+        // Passenger Seat Adjustment Button (Weight 1f)
         Box(
             modifier = Modifier
                 .weight(1f)

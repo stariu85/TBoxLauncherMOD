@@ -274,7 +274,7 @@ fun LauncherMediaMiniPlayer(
     val expanded = title.isNotBlank() || isPlaying || albumArtBitmap != null
     val expandedVerticalPadding = (12.dp * mediaHeightScale).coerceAtLeast(2.dp)
     val expandedItemSpacing = (10.dp * ((mediaHeightScale - 0.5f) / 0.5f)).coerceAtLeast(0.dp)
-    val activePlayerHeight = expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 44.dp
+    val activePlayerHeight = expandedVerticalPadding * 2 + 52.dp + expandedItemSpacing + 50.6.dp
 
     if (expanded) {
         Column(
@@ -532,7 +532,7 @@ private fun LauncherMediaTransportRow(
 
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LauncherMediaIconButton(
@@ -542,8 +542,8 @@ private fun LauncherMediaTransportRow(
         )
         LauncherMediaIconButton(
             iconRes = if (isPlaying) R.drawable.pause else R.drawable.play,
-            iconSize = 28.dp,
-            buttonSize = 44.dp,
+            iconSize = 32.2.dp,
+            buttonSize = 50.6.dp,
             enabled = playEnabled,
             onClick = onPlayPause,
         )
@@ -555,7 +555,7 @@ private fun LauncherMediaTransportRow(
         if (showLike) {
             IconButton(
                 onClick = onLike,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(46.dp),
             ) {
                 Icon(
                     painter = painterResource(
@@ -564,7 +564,7 @@ private fun LauncherMediaTransportRow(
                     ),
                     contentDescription = null,
                     tint = if (isLiked) likedColor else primaryTextColor,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(25.3.dp),
                 )
             }
         }
@@ -576,8 +576,8 @@ private fun LauncherMediaIconButton(
     iconRes: Int,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    iconSize: Dp = 24.dp,
-    buttonSize: Dp = 40.dp,
+    iconSize: Dp = 27.6.dp,
+    buttonSize: Dp = 46.dp,
 ) {
     val isDark = LauncherThemeState.darkTheme
     val activeColor = if (isDark) LauncherColors.LeftTextPrimary else Color(0xFF111827)

@@ -299,6 +299,8 @@
     <string name="launcher_body_controls_panel_visible_desc">Отображать панель с кнопками открытия багажника и управления окнами</string>
     <string name="launcher_car_color_panel_visible_title">Панель выбора цвета авто</string>
     <string name="launcher_car_color_panel_visible_desc">Отображать панель выбора цвета 3D-модели автомобиля в зоне ADAS и меню быстрого доступа</string>
+    <string name="launcher_acc_presets_in_quick_settings_visible_title">Панель пресетов скорости ACC в меню быстрых настроек</string>
+    <string name="launcher_acc_presets_in_quick_settings_visible_desc">Отображать панель пресетов скорости ACC в меню быстрых настроек зоны ADAS</string>
     <string name="launcher_nav_buttons_title">Кнопки навигации</string>
     <string name="launcher_nav_buttons_desc">Отображать кнопки «Домой» и «Назад» на нижней панели</string>
     <string name="launcher_adas_distance_text_size_title">Размер текста дистанции ACC</string>

@@ -75,6 +75,7 @@ internal object PassengerSeatOverlayWindow {
         onDismiss: () -> Unit = {},
     ): Boolean {
         hide()
+        LauncherAdasQuickSettingsWindow.hide()
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false

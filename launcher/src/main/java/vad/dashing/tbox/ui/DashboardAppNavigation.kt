@@ -413,14 +413,14 @@ internal fun sendToggleHvacPm25(context: Context) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val written = MbCanEngineFacade.canSetVehicleParam(
-                MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
+                MbCanKnownVehiclePropertyId.HVAC_AQS,
                 targetValue
             )
             if (written == null) {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING, targetValue)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HVAC_AQS, targetValue)
             } else {
                 UniversalCanRepository.execute(
-                    MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING, targetValue)
+                    MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.HVAC_AQS, targetValue)
                 )
             }
             Log.i("DashboardAppNav", "sendToggleHvacPm25 targetValue=$targetValue result=$written")
@@ -559,8 +559,8 @@ internal suspend fun refreshHvacTemperaturesFromMbCan() = withContext(Dispatcher
         MbCanEngineFacade
             .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
             ?.let { UniversalCanRepository.updateHvacFanDirectionRaw(it) }
-        MbCanEngineFacade
-            .canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+        (MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AQS)
+            ?: MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING))
             ?.let { raw ->
                 val state = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
                 MbCanRepository.updateHvacPm25StateFromCan(state)
@@ -733,14 +733,28 @@ internal fun sendAdjustAudioVolume(context: Context, delta: Int) {
 internal fun sendToggleMirrorReverseTurn(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_REVERSE_TURN)
 
-internal fun sendToggleFcw(context: Context, isCurrentlyOn: Boolean = false) {
-    if (isCurrentlyOn) {
-        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 1)
-        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 0)
-    } else {
-        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
-        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 1)
+internal fun sendCycleFcw(context: Context, isCurrentlyOn: Boolean, currentOption: Int? = null) {
+    when {
+        !isCurrentlyOn -> {
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 1)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.SAFE_DISTANCE_WARNING, 2)
+        }
+        currentOption == 1 || currentOption == null -> {
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 2)
+        }
+        currentOption == 2 -> {
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 3)
+        }
+        else -> {
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 1)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 0)
+        }
     }
+}
+
+internal fun sendToggleFcw(context: Context, isCurrentlyOn: Boolean = false, currentOption: Int? = null) {
+    sendCycleFcw(context, isCurrentlyOn, currentOption)
 }
 
 internal fun sendToggleAccAutobrake(context: Context) =

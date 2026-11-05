@@ -78,7 +78,6 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("time", "Время", isButton = false, iconRes = R.drawable.ic_launcher_trip_duration),
         LauncherTopBarItemDescriptor("date", "Дата и день недели", isButton = false, iconRes = R.drawable.ic_notification),
         LauncherTopBarItemDescriptor("connectivity", "Индикаторы связи", isButton = false, iconRes = R.drawable.ic_launcher_bluetooth),
-        LauncherTopBarItemDescriptor("modem_cellular", "Сотовая связь модема (TBM)", isButton = false, iconRes = R.drawable.signal_4),
         LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_up),
         LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
         LauncherTopBarItemDescriptor("combined_temp", "Температура внутри / снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_combined),

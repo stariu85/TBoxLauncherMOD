@@ -73,13 +73,11 @@ internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val hasCritical = simShowAll ||
             alerts.any { it.severity == LauncherAlertSeverity.Critical } ||
             effectiveTires.hasAttention ||
-            adas.fcwActive || adas.aebHint || adas.accTakeOver || adas.adasTakeOver ||
             adas.srrSystem == LauncherSrrSystemState.Fault
 
     if (hasCritical) return LauncherVehicleHealthStatus.Error
 
-    val hasWarning = alerts.any { it.severity == LauncherAlertSeverity.Warning } ||
-            adas.hasAnyAlert || adas.rearThreats.hasAny || adas.speedLimitWarning
+    val hasWarning = alerts.any { it.severity == LauncherAlertSeverity.Warning }
 
     if (hasWarning) return LauncherVehicleHealthStatus.Warning
 
@@ -164,52 +162,12 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
             }
         }
 
-        if (adas.fcwActive || adas.distanceWarning) {
-            add(
-                LauncherVehicleStatusDetailItem(
-                    title = "Риск лобового столкновения (FCW)",
-                    description = "Обнаружено опасное сближение с объектом впереди.",
-                    severity = LauncherAlertSeverity.Critical,
-                )
-            )
-        }
-
-        if (adas.aebHint) {
-            add(
-                LauncherVehicleStatusDetailItem(
-                    title = "Экстренное торможение (AEB)",
-                    description = "Задействовано автоматическое экстренное торможение.",
-                    severity = LauncherAlertSeverity.Critical,
-                )
-            )
-        }
-
-        if (adas.accTakeOver || adas.adasTakeOver) {
-            add(
-                LauncherVehicleStatusDetailItem(
-                    title = "Требование вмешательства водителя",
-                    description = "Возьмите рулевое управление и задействуйте тормоз.",
-                    severity = LauncherAlertSeverity.Critical,
-                )
-            )
-        }
-
         if (adas.srrSystem == LauncherSrrSystemState.Fault) {
             add(
                 LauncherVehicleStatusDetailItem(
                     title = "Ошибка боковых радаров (SRR)",
                     description = "Неисправность или перекрытие датчиков слепых зон.",
                     severity = LauncherAlertSeverity.Critical,
-                )
-            )
-        }
-
-        if (adas.rearThreats.hasAny) {
-            add(
-                LauncherVehicleStatusDetailItem(
-                    title = "Помеха в слепой зоне (BSD / RCTA)",
-                    description = "Фиксируется транспортное средство в слепой зоне или при поперечном выезде.",
-                    severity = LauncherAlertSeverity.Warning,
                 )
             )
         }

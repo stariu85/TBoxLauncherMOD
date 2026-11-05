@@ -249,6 +249,7 @@ private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
+private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
 private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
@@ -435,6 +436,8 @@ internal object LauncherAppConfigStore {
     internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
     private val carColorPanelRevision = MutableStateFlow(0)
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
+    private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
+    internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
     private val assistPresetsTabRevision = MutableStateFlow(0)
     internal val assistPresetsTabRevisionFlow: StateFlow<Int> = assistPresetsTabRevision
     private val adasPanelsRevision = MutableStateFlow(0)
@@ -479,7 +482,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun defaultSubPanel(slotPanelId: String): String = when (slotPanelId) {
-        "body_controls" -> "body_controls_trunk"
+        "body_controls" -> "body_controls_seat_memory"
         "assist", "presets" -> "assist"
         "drive_mode" -> "drive_mode"
         else -> slotPanelId
@@ -1493,6 +1496,14 @@ internal object LauncherAppConfigStore {
     fun setCarColorPanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CAR_COLOR_PANEL_VISIBLE, visible).apply()
         carColorPanelRevision.value++
+    }
+
+    fun accPresetsInQuickSettingsVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, true)
+
+    fun setAccPresetsInQuickSettingsVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, visible).apply()
+        accPresetsInQuickSettingsRevision.value++
     }
 
     fun assistPresetsActiveTab(context: Context): String =

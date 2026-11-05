@@ -84,6 +84,8 @@
     <string name="launcher_body_controls_panel_visible_desc">Display panel with trunk open and windows control buttons</string>
     <string name="launcher_car_color_panel_visible_title">Car color panel</string>
     <string name="launcher_car_color_panel_visible_desc">Display 3D car model color selector panel in ADAS zone and quick access menu</string>
+    <string name="launcher_acc_presets_in_quick_settings_visible_title">ACC speed presets panel in quick settings</string>
+    <string name="launcher_acc_presets_in_quick_settings_visible_desc">Display ACC speed presets panel in ADAS quick settings menu</string>
     <string name="launcher_headlight_beams_visible_title">Headlight beams visualization</string>
     <string name="launcher_headlight_beams_visible_desc">Display low and high beam cones in front of the 3D car model</string>
     <string name="launcher_nav_buttons_title">Navigation buttons</string>

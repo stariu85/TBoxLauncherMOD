@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -76,13 +77,14 @@ fun LauncherVehicleBodyControlsBar(
     var windowJob by remember { mutableStateOf<Job?>(null) }
     var isOperatingWindows by remember { mutableStateOf(false) }
 
-    val pagerState = rememberPagerState { 3 }
+    val pagerState = rememberPagerState(initialPage = 1) { 3 }
     LaunchedEffect(pagerState.currentPage, reportSubPanel) {
         if (reportSubPanel) {
             val visibleSub = when (pagerState.currentPage) {
-                2 -> "body_controls_seat_memory"
-                1 -> "body_controls_seats"
-                else -> "body_controls_trunk"
+                0 -> "body_controls_trunk"
+                1 -> "body_controls_seat_memory"
+                2 -> "body_controls_seats"
+                else -> "body_controls_seat_memory"
             }
             LauncherAppConfigStore.setVisibleSubPanel("body_controls", visibleSub)
         }
@@ -108,6 +110,7 @@ fun LauncherVehicleBodyControlsBar(
     ) { page ->
         when (page) {
             0 -> {
+                // Page 0 (Swipe Right from Central): Trunk & Windows buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -224,6 +227,11 @@ fun LauncherVehicleBodyControlsBar(
                 }
             }
             1 -> {
+                // Page 1 (Central): Driver seat memory presets
+                LauncherSeatMemoryPresetsBar(modifier = Modifier.fillMaxWidth())
+            }
+            else -> {
+                // Page 2 (Swipe Left from Central): Seat & Mirror adjustment buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -231,43 +239,45 @@ fun LauncherVehicleBodyControlsBar(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Slot 1: Driver Seat Memory Button
+                    // Combined Button (Weight 2f): Sliders + Driver Seat + Mirror -> Opens Mirror Adjustment Settings
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(ButtonHeight)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(LauncherColors.LeftPanelCard)
-                            .clickable { launchSeatSettingsEmbedded(context) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_seat_memory_btn),
-                            contentDescription = "Регулировка водительского сиденья",
-                            modifier = Modifier.size(32.dp),
-                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-                        )
-                    }
-
-                    // Slot 2: Rearview Mirror Adjustment Button
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
+                            .weight(2f)
                             .height(ButtonHeight)
                             .clip(RoundedCornerShape(12.dp))
                             .background(LauncherColors.LeftPanelCard)
                             .clickable { launchMirrorAdjustSettingsEmbedded(context) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_rearview_mirror),
-                            contentDescription = "Регулировка зеркал",
-                            modifier = Modifier.size(40.dp),
-                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_settings_sliders),
+                                contentDescription = "Настройки",
+                                modifier = Modifier.size(28.dp),
+                                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                            )
+                            Image(
+                                painter = painterResource(R.drawable.ic_seat_memory_btn),
+                                contentDescription = "Регулировка водительского сиденья",
+                                modifier = Modifier.size(30.dp),
+                                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                            )
+                            Image(
+                                painter = painterResource(R.drawable.ic_rearview_mirror),
+                                contentDescription = "Регулировка зеркал",
+                                modifier = Modifier.size(36.dp),
+                                colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                            )
+                        }
                     }
 
-                    // Slot 3: Passenger Seat Adjustment Button
+                    // Button 2 (Weight 1f): Passenger Seat Adjustment Button
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -287,9 +297,6 @@ fun LauncherVehicleBodyControlsBar(
                         )
                     }
                 }
-            }
-            else -> {
-                LauncherSeatMemoryPresetsBar(modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -353,40 +360,28 @@ fun LauncherSeatMemoryPresetsBar(
                             Modifier
                         }
                     )
-                    .pointerInput(slot) {
-                        detectTapGestures(
-                            onTap = {
-                                recallSlot(slot)
-                            },
-                            onDoubleTap = {
-                                if (slot == 3) {
-                                    launchMirrorAdjustSettingsEmbedded(context)
-                                    SeatMemorySlot3SaveOverlayWindow.show(context)
-                                } else {
-                                    recallSlot(slot)
-                                }
-                            },
-                        )
+                    .clickable {
+                        recallSlot(slot)
                     },
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.ic_seat_memory_btn),
-                        contentDescription = "Память $slot",
-                        modifier = Modifier.size(26.dp),
+                        painter = painterResource(R.drawable.ic_seat_memory_profile),
+                        contentDescription = "DRV$slot",
+                        modifier = Modifier.size(22.dp),
                         colorFilter = ColorFilter.tint(
                             if (isActive) activeGreen else LauncherColors.LeftTextPrimary
                         ),
                     )
                     Text(
-                        text = "М$slot",
+                        text = "DRV$slot",
                         color = if (isActive) activeGreen else LauncherColors.LeftTextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
+                        fontSize = 15.sp,
                     )
                 }
             }

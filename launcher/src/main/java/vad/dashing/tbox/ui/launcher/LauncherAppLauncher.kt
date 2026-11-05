@@ -218,6 +218,7 @@ internal fun launchAndroidSettings(context: Context) {
 }
 
 private fun launchSeatOrMirrorIntent(context: Context, packageName: String, intent: Intent) {
+    LauncherAdasQuickSettingsWindow.hide()
     when (LauncherAppConfigStore.seatMirrorLaunchMode(context)) {
         SeatAndMirrorLaunchMode.EMBEDDED -> {
             startResolved(

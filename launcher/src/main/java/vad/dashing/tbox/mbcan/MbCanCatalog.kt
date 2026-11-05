@@ -156,6 +156,8 @@ object MbCanKnownVehiclePropertyId {
     const val HVAC_AUTO_STATE = 110
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eSYNCSWTICH_REQ] — dual/sync mode; 1 off, 2 on. */
     const val HVAC_SYNC_SWITCH = 94
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_HVAC_AQS] — AQS / PM2.5 air purifier switch; 1 off, 2 on. */
+    const val HVAC_AQS = 42
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PM25_MONITORING] — PM2.5 air purifier switch; 1 off, 2 on. */
     const val HVAC_PM25_MONITORING = 166
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_HVAC_FAN_DIRECTION] — blow mode. */
@@ -260,8 +262,10 @@ object MbCanKnownVehiclePropertyId {
     const val TJA_ICA_SWITCH = 23
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_SWTICH] — 1 off, 2 on. */
     const val FCW_SWITCH = 96
-    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_OPTION] — 1 max/far, 2 medium, 3 close. */
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_OPTION] — 1 near, 2 medium, 3 far. */
     const val FCW_OPTION = 97
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_SAFE_DISTANCE_WARNING] — 1 off, 2 on. */
+    const val SAFE_DISTANCE_WARNING = 22
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_BLIND_AREA_DETECTION] — 1 off, 2 on. */
     const val BSD_SWITCH = 15
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_DOOR_OPEN_WARNING] — 1 off, 2 on. */
@@ -455,7 +459,7 @@ object MbCanCommandRegistry {
             refreshSignal = MbCanSignal.HvacSync
         ),
         MbCanCommandSpec(
-            propertyId = MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING,
+            propertyId = MbCanKnownVehiclePropertyId.HVAC_AQS,
             policy = MbCanCommandPolicy.ToggleBinary(
                 offValue = 1,
                 onValue = 2,
