@@ -22,6 +22,12 @@ import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -135,7 +141,7 @@ private fun isSpacerSmall(itemId: String): Boolean = itemId == "spacer_small" ||
 private fun isTimeSignalIndicator(itemId: String): Boolean = itemId in setOf("time", "date", "connectivity")
 
 private fun isStandardIndicator(itemId: String): Boolean = itemId in setOf(
-    "temp", "inside_temp", "combined_temp", "engine_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance"
+    "temp", "inside_temp", "combined_temp", "engine_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance", "vehicle_status"
 )
 
 private enum class TopBarGroupType {
@@ -1308,6 +1314,54 @@ private fun RenderTopBarItemContent(
                     style = MaterialTheme.typography.tboxCaption,
                     color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
                     fontSize = (indicatorFontSizeSp / 2f),
+                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "vehicle_status" -> {
+            val status = rememberVehicleHealthStatus()
+            val (labelText, statusTint) = when (status) {
+                LauncherVehicleHealthStatus.Ok -> "Good" to IndicatorIconTint
+                LauncherVehicleHealthStatus.Warning -> "Warning" to Color(0xFFF59E0B)
+                LauncherVehicleHealthStatus.Error -> "Error" to Color(0xFFEF4444)
+            }
+            val pulseAlpha = if (status == LauncherVehicleHealthStatus.Error) {
+                val infiniteTransition = rememberInfiniteTransition(label = "vehicle_status_pulse")
+                val animatedAlpha by infiniteTransition.animateFloat(
+                    initialValue = 1.0f,
+                    targetValue = 0.25f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 450, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "vehicle_status_alpha",
+                )
+                animatedAlpha
+            } else {
+                1.0f
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .graphicsLayer { alpha = pulseAlpha }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { LauncherVehicleStatusDialogState.show() },
+                    ),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_vehicle_status),
+                    contentDescription = stringResource(R.string.launcher_vehicle_status_label),
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(statusTint),
+                )
+                Text(
+                    text = labelText,
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = statusTint,
+                    fontSize = indicatorFontSizeSp,
                     fontWeight = FontWeight.Light,
                 )
             }
