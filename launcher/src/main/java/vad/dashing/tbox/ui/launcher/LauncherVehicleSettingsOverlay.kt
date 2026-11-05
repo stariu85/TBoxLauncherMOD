@@ -730,7 +730,7 @@ internal fun LauncherVehicleSettingsContent(
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_fcw),
                 active = vehicleControls.fcw == true,
-                onClick = { sendToggleFcw(context) },
+                onClick = { sendToggleFcw(context, vehicleControls.fcw == true) },
             )
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_acc_autobrake),

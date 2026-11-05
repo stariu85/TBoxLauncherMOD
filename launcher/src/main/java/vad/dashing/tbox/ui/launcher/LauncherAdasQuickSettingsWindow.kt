@@ -32,10 +32,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
@@ -381,6 +379,7 @@ private fun LauncherAdasQuickSettingsContent(
             "drive_mode_offroad",
             "body_controls_trunk",
             "body_controls_seats",
+            "body_controls_seat_memory",
             "assist",
             "presets",
             "lanes",
@@ -405,7 +404,7 @@ private fun LauncherAdasQuickSettingsContent(
 
     val (quickTopPanels, quickBottomPanels) = remember(availableItems, savedQuickTop, savedQuickBottom) {
         fun familyOf(id: String): String = when (id) {
-            "body_controls_trunk", "body_controls_seats" -> "body_controls"
+            "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
             "drive_mode", "drive_mode_offroad" -> "drive_mode"
             "presets" -> "assist"
             else -> id
@@ -458,7 +457,7 @@ private fun LauncherAdasQuickSettingsContent(
 
     fun addPanelToAdas(targetId: String) {
         fun canonicalPanelId(id: String): String = when (id) {
-            "body_controls_trunk", "body_controls_seats" -> "body_controls"
+            "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
             "drive_mode_offroad" -> "drive_mode"
             "presets" -> "assist"
             else -> id
@@ -697,7 +696,7 @@ private fun RenderQuickPanelCard(
     onAddClick: (id: String) -> Unit,
 ) {
     val basePanelId = when (id) {
-        "body_controls_trunk", "body_controls_seats" -> "body_controls"
+        "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
         "presets", "lanes" -> "assist"
         "drive_mode_offroad" -> "drive_mode"
         else -> id
@@ -803,6 +802,7 @@ private fun RenderQuickPanelCard(
             "drive_mode_offroad" -> LauncherDriveModeBar(canViewModel = canViewModel, initialPage = 1, reportSubPanel = false, onModeSelected = {}, modifier = Modifier.fillMaxWidth())
             "body_controls_trunk" -> LauncherTrunkAndWindowsBar(activeGear = activeGear, onShowTrunkParkWarning = {}, modifier = Modifier.fillMaxWidth())
             "body_controls_seats" -> LauncherSeatMemoryAndAdjustmentBar(modifier = Modifier.fillMaxWidth())
+            "body_controls_seat_memory" -> LauncherSeatMemoryPresetsBar(modifier = Modifier.fillMaxWidth())
             "assist" -> LauncherAssistControlBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
             "presets" -> LauncherCruisePresetControl(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
             "lanes" -> LauncherLanesControlBar(adas = adas, modifier = Modifier.fillMaxWidth())

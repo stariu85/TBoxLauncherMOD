@@ -177,16 +177,16 @@ fun LauncherLanesControlBar(
     val isLdwActive = currentLasMode == 1
     val ldwColor = when {
         !isLdwActive -> null // OFF
-        currentLasSensitivity == 3 -> Color(0xFFF97316) // Level 3 (Max / High) = Orange
-        currentLasSensitivity == 2 -> Color(0xFF06B6D4) // Level 2 (Med) = Cyan / Turquoise
-        else -> Color(0xFF10B981) // Level 1 (Min / Low) = Green
+        currentLasSensitivity == 1 -> Color(0xFFF97316) // Level 1 (High) = Orange
+        else -> Color(0xFF10B981) // Level 0 (Min / Low) = Green
     }
 
     val onLdwClick: () -> Unit = {
         if (!isLdwActive) {
             val wasBothOff = currentLasMode != 2
-            // 1st tap: Turn ON LDW (Property 17 = 1). Button color reflects current sensitivity from CAN.
+            // 1st tap: Turn ON LDW (Property 17 = 1, Property 80 = 2). Button color reflects current sensitivity from CAN.
             sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 2)
             ldwTapCount = 1
             lkaTapCount = 0
 
@@ -195,20 +195,21 @@ fun LauncherLanesControlBar(
                 sensitivityFallbackJob = scope.launch {
                     delay(1000L)
                     if (vehicleControls.lasSensitivity == null) {
-                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
                     }
                 }
             }
         } else {
             sensitivityFallbackJob?.cancel()
-            // LDW is active. Cycle sensitivity 2 times, on 4th tap turn OFF (Property 17 = 3).
+            // LDW is active. Cycle sensitivity 1 time, on 3rd tap turn OFF (Property 17 = 3, Property 80 = 1).
             val nextTap = ldwTapCount + 1
-            if (nextTap >= 4) {
+            if (nextTap >= 3) {
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 1)
                 ldwTapCount = 0
             } else {
-                val currentSens = currentLasSensitivity ?: 1
-                val nextSens = if (currentSens >= 3) 1 else currentSens + 1
+                val currentSens = currentLasSensitivity ?: 0
+                val nextSens = if (currentSens >= 1) 0 else 1
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, nextSens)
                 ldwTapCount = nextTap
             }
@@ -219,16 +220,16 @@ fun LauncherLanesControlBar(
     val isLkaActive = currentLasMode == 2
     val lkaColor = when {
         !isLkaActive -> null // OFF
-        currentLasSensitivity == 3 -> Color(0xFFF97316) // Level 3 (Max / High) = Orange
-        currentLasSensitivity == 2 -> Color(0xFF06B6D4) // Level 2 (Med) = Cyan / Turquoise
-        else -> Color(0xFF10B981) // Level 1 (Min / Low) = Green
+        currentLasSensitivity == 1 -> Color(0xFFF97316) // Level 1 (High) = Orange
+        else -> Color(0xFF10B981) // Level 0 (Min / Low) = Green
     }
 
     val onLkaClick: () -> Unit = {
         if (!isLkaActive) {
             val wasBothOff = currentLasMode != 1
-            // 1st tap: Turn ON LKA (Property 17 = 2). Button color reflects current sensitivity from CAN.
+            // 1st tap: Turn ON LKA (Property 17 = 2, Property 80 = 2). Button color reflects current sensitivity from CAN.
             sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 2)
             lkaTapCount = 1
             ldwTapCount = 0
 
@@ -237,22 +238,23 @@ fun LauncherLanesControlBar(
                 sensitivityFallbackJob = scope.launch {
                     delay(1000L)
                     if (vehicleControls.lasSensitivity == null) {
-                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
                     }
                 }
             }
         } else {
             sensitivityFallbackJob?.cancel()
-            // LKA is active. Cycle sensitivity 2 times, on 4th tap turn OFF (Property 17 = 3).
+            // LKA is active. Cycle sensitivity 1 time, on 3rd tap turn OFF (Property 17 = 3, Property 80 = 1).
             val nextTap = lkaTapCount + 1
-            if (nextTap >= 4) {
+            if (nextTap >= 3) {
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
-                ldwTapCount = 0
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 1)
+                lkaTapCount = 0
             } else {
-                val currentSens = currentLasSensitivity ?: 1
-                val nextSens = if (currentSens >= 3) 1 else currentSens + 1
+                val currentSens = currentLasSensitivity ?: 0
+                val nextSens = if (currentSens >= 1) 0 else 1
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, nextSens)
-                ldwTapCount = nextTap
+                lkaTapCount = nextTap
             }
         }
     }
@@ -273,15 +275,14 @@ fun LauncherLanesControlBar(
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 1)
             }
             currentFcwOption == 1 || currentFcwOption == null -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 2)
             }
             currentFcwOption == 2 -> {
-                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 3)
             }
             else -> {
                 sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 1)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 0)
             }
         }
     }

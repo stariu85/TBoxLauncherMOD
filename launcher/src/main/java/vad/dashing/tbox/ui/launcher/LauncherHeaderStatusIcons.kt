@@ -927,6 +927,12 @@ private fun RenderTopBarItemContent(
                 )
             }
         }
+        itemId == "modem_cellular" -> {
+            LauncherTopBarModemCellularWidget(
+                indicatorIconSizeDp = indicatorIconSizeDp,
+                indicatorFontSizeSp = indicatorFontSizeSp,
+            )
+        }
         itemId == "temp" -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1647,26 +1653,38 @@ internal fun LauncherHeaderStatusIcons(
     val tbmModemNetStatus by tbmRepo.modemNetStatus.collectAsStateWithLifecycle()
     val isTbmConnected = tbmConnState is TbmConnectionState.Connected
 
-    val networkTypeRevision by LauncherAppConfigStore.topBarCellularNetworkTypeVisibleRevisionFlow
+    val tboxCellularRevision by LauncherAppConfigStore.topBarCellularNetworkTypeVisibleRevisionFlow
         .collectAsStateWithLifecycle()
-    val networkTypeVisible = remember(context, networkTypeRevision) {
+    val tboxCellularVisible = remember(context, tboxCellularRevision) {
         LauncherAppConfigStore.topBarCellularNetworkTypeVisible(context)
     }
 
-    val cellularInfo = remember(
+    val modemCellularRevision by LauncherAppConfigStore.topBarModemCellularVisibleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val modemCellularVisible = remember(context, modemCellularRevision) {
+        LauncherAppConfigStore.topBarModemCellularVisible(context)
+    }
+
+    val tboxCellularInfo = remember(
         tboxConnected,
         netState.signalLevel,
         netState.netStatus,
         netState.csq,
-        isTbmConnected,
-        tbmModemSignalLevel,
-        tbmModemNetStatus,
     ) {
-        resolveCellularSignalInfo(
+        resolveTboxCellularSignalInfo(
             tboxConnected = tboxConnected,
             netStateSignalLevel = netState.signalLevel,
             netStateNetStatus = netState.netStatus,
             netStateCsq = netState.csq,
+        )
+    }
+
+    val tbmCellularInfo = remember(
+        isTbmConnected,
+        tbmModemSignalLevel,
+        tbmModemNetStatus,
+    ) {
+        resolveTbmCellularSignalInfo(
             isTbmConnected = isTbmConnected,
             tbmModemSignalLevel = tbmModemSignalLevel,
             tbmModemNetStatus = tbmModemNetStatus,
@@ -1703,20 +1721,48 @@ internal fun LauncherHeaderStatusIcons(
         if (wifiConnected) {
             WifiArcsIcon(level = wifiLevel.coerceIn(1, 4), tint = StatusIconTint, modifier = Modifier.size(18.dp))
         }
-        if (cellularInfo.hasData && networkTypeVisible) {
+        if (tbmCellularInfo.hasData && modemCellularVisible) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (cellularInfo.networkType != null) {
+                if (tbmCellularInfo.networkType != null) {
                     Text(
-                        text = cellularInfo.networkType,
+                        text = tbmCellularInfo.networkType,
                         color = StatusIconTint,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
-                val signalRes = when (cellularInfo.signalLevel.coerceIn(0, 4)) {
+                val signalRes = when (tbmCellularInfo.signalLevel.coerceIn(0, 4)) {
+                    4 -> R.drawable.signal_4
+                    3 -> R.drawable.signal_3
+                    2 -> R.drawable.signal_2
+                    1 -> R.drawable.signal_1
+                    else -> R.drawable.signal_0
+                }
+                Image(
+                    painter = painterResource(signalRes),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    colorFilter = ColorFilter.tint(StatusIconTint),
+                )
+            }
+        }
+        if (tboxCellularInfo.hasData && tboxCellularVisible) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (tboxCellularInfo.networkType != null) {
+                    Text(
+                        text = tboxCellularInfo.networkType,
+                        color = StatusIconTint,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                val signalRes = when (tboxCellularInfo.signalLevel.coerceIn(0, 4)) {
                     4 -> R.drawable.signal_4
                     3 -> R.drawable.signal_3
                     2 -> R.drawable.signal_2
@@ -1896,48 +1942,101 @@ internal fun resolveCellularSignalLevel(rawSignal: Int?): Int {
     }
 }
 
-internal fun resolveCellularSignalInfo(
+internal fun resolveTboxCellularSignalInfo(
     tboxConnected: Boolean,
     netStateSignalLevel: Int,
     netStateNetStatus: String,
     netStateCsq: Int,
-    isTbmConnected: Boolean,
-    tbmModemSignalLevel: Int?,
-    tbmModemNetStatus: String?,
 ): CellularSignalInfo {
-    val directNetworkType = mobileNetworkTypeLabel(netStateNetStatus)
-    val hasDirectData = tboxConnected && (
+    val networkType = mobileNetworkTypeLabel(netStateNetStatus)
+    val hasData = tboxConnected && (
         (netStateCsq != 99 && netStateCsq >= 0) ||
         netStateSignalLevel > 0 ||
-        directNetworkType != null ||
+        networkType != null ||
         (netStateNetStatus.isNotBlank() &&
             !netStateNetStatus.equals("нет сети", ignoreCase = true) &&
             !netStateNetStatus.equals("-", ignoreCase = true))
     )
 
-    if (hasDirectData) {
-        return CellularSignalInfo(
+    return if (hasData) {
+        CellularSignalInfo(
             hasData = true,
             signalLevel = netStateSignalLevel.coerceIn(0, 4),
-            networkType = directNetworkType,
+            networkType = networkType,
         )
+    } else {
+        CellularSignalInfo(hasData = false)
     }
+}
 
+internal fun resolveTbmCellularSignalInfo(
+    isTbmConnected: Boolean,
+    tbmModemSignalLevel: Int?,
+    tbmModemNetStatus: String?,
+): CellularSignalInfo {
     val tbmNetworkType = mobileNetworkTypeLabel(tbmModemNetStatus ?: "")
     val hasTbmSignal = tbmModemSignalLevel != null && tbmModemSignalLevel != 99 && tbmModemSignalLevel >= 0
-    val hasTbmData = isTbmConnected && (hasTbmSignal || tbmNetworkType != null)
+    val hasData = isTbmConnected && (hasTbmSignal || tbmNetworkType != null)
 
-    if (hasTbmData) {
+    return if (hasData) {
         val resolvedLevel = resolveCellularSignalLevel(tbmModemSignalLevel)
         val resolvedType = tbmNetworkType ?: "4G"
-        return CellularSignalInfo(
+        CellularSignalInfo(
             hasData = true,
             signalLevel = resolvedLevel,
             networkType = resolvedType,
         )
+    } else {
+        CellularSignalInfo(hasData = false)
+    }
+}
+
+@Composable
+internal fun LauncherTopBarModemCellularWidget(
+    indicatorIconSizeDp: Dp,
+    indicatorFontSizeSp: TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+    val tbmConnState by tbmRepo.connectionState.collectAsStateWithLifecycle()
+    val tbmModemSignalLevel by tbmRepo.modemSignalLevel.collectAsStateWithLifecycle()
+    val tbmModemNetStatus by tbmRepo.modemNetStatus.collectAsStateWithLifecycle()
+    val isTbmConnected = tbmConnState is TbmConnectionState.Connected
+
+    val cellularInfo = remember(isTbmConnected, tbmModemSignalLevel, tbmModemNetStatus) {
+        resolveTbmCellularSignalInfo(isTbmConnected, tbmModemSignalLevel, tbmModemNetStatus)
     }
 
-    return CellularSignalInfo(hasData = false)
+    if (cellularInfo.hasData) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (cellularInfo.networkType != null) {
+                Text(
+                    text = cellularInfo.networkType,
+                    color = LauncherColors.TextPrimary,
+                    fontSize = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            val signalRes = when (cellularInfo.signalLevel.coerceIn(0, 4)) {
+                4 -> R.drawable.signal_4
+                3 -> R.drawable.signal_3
+                2 -> R.drawable.signal_2
+                1 -> R.drawable.signal_1
+                else -> R.drawable.signal_0
+            }
+            Image(
+                painter = painterResource(signalRes),
+                contentDescription = "Сотовая связь модема",
+                modifier = Modifier.size(indicatorIconSizeDp),
+                colorFilter = ColorFilter.tint(IndicatorIconTint),
+            )
+        }
+    }
 }
 
 private fun mobileNetworkTypeLabel(netStatus: String?): String? {

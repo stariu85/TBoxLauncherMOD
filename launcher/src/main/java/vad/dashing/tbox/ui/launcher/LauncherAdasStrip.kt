@@ -130,7 +130,7 @@ fun LauncherAdasStrip(
 
     val showLowBeam = isLowBeamBurning && !isAutoMode
     val showAutoMode = isAutoMode
-    val showHmaMode = isHmaOn && isAutoMode
+    val showHmaMode = isHmaOn
     val showManualHighBeam = !isAutoMode && isHighBeamBurning
     val showHeadlights = showLowBeam || showAutoMode || showHmaMode || showManualHighBeam || showAll
 
@@ -227,10 +227,7 @@ fun LauncherAdasStrip(
             )
         }
         if (showHmaMode || showAll) {
-            val hmaTint = when {
-                isHighBeamBurning || adas.hma == LauncherAdasAssistIcon.Active -> Color(0xFF22C55E)
-                else -> LauncherColors.TextMuted
-            }
+            val hmaTint = Color(0xFF22C55E)
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_hma),
                 tint = hmaTint,

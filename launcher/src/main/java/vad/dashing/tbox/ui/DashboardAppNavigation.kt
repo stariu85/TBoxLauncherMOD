@@ -220,6 +220,11 @@ internal fun sendToggleLaneMode(context: Context, targetMode: Int) {
         propertyId = MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION,
         value = writeValue,
     )
+    sendSetMbCanProperty(
+        context = context,
+        propertyId = MbCanKnownVehiclePropertyId.LDW_SWITCH,
+        value = if (writeValue == MbCanKnownVehiclePropertyId.LAS_MODE_OFF) 1 else 2,
+    )
 }
 
 internal fun sendToggleRearWindowMirrorsDefrost(context: Context) {
@@ -728,8 +733,15 @@ internal fun sendAdjustAudioVolume(context: Context, delta: Int) {
 internal fun sendToggleMirrorReverseTurn(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.MIRROR_REVERSE_TURN)
 
-internal fun sendToggleFcw(context: Context) =
-    sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH)
+internal fun sendToggleFcw(context: Context, isCurrentlyOn: Boolean = false) {
+    if (isCurrentlyOn) {
+        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 1)
+        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 0)
+    } else {
+        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_SWITCH, 2)
+        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.FCW_OPTION, 1)
+    }
+}
 
 internal fun sendToggleAccAutobrake(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.ACC_AUTOBRAKE_SW)
@@ -774,12 +786,11 @@ internal fun sendCycleFrontSeatVent(context: Context, propertyId: Int, currentRa
 internal fun sendToggleRearFogLight(context: Context) =
     sendToggleMbCanProperty(context, MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)
 
-/** Cycle LKA sensitivity 1→2→3→1. */
+/** Cycle LKA sensitivity 0→1→0. */
 internal fun sendCycleLasSensitivity(context: Context, current: Int?) {
     val next = when (current) {
-        1 -> 2
-        2 -> 3
-        else -> 1
+        0 -> 1
+        else -> 0
     }
     sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, next)
 }

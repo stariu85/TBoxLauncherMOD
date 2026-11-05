@@ -149,7 +149,7 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
         rearFogLight = onOff12(get(MbCanKnownVehiclePropertyId.REAR_FOG_LIGHT)),
         parkingRadar = onOff12(get(MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH)),
         homelightDelay = get(MbCanKnownVehiclePropertyId.HEADLIGHTS_HOMELIGHT_DELAY)?.takeIf { it in 0..3 },
-        lasSensitivity = get(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL)?.takeIf { it in 1..3 },
+        lasSensitivity = get(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL)?.takeIf { it in 0..1 },
         lasMode = get(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION)?.takeIf { it in 1..3 },
         fcwOption = get(MbCanKnownVehiclePropertyId.FCW_OPTION)?.takeIf { it in 1..3 },
         bsd = onOff12(get(MbCanKnownVehiclePropertyId.BSD_SWITCH)),

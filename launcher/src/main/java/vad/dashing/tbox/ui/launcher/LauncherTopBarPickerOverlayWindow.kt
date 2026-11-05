@@ -78,6 +78,7 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("time", "Время", isButton = false, iconRes = R.drawable.ic_launcher_trip_duration),
         LauncherTopBarItemDescriptor("date", "Дата и день недели", isButton = false, iconRes = R.drawable.ic_notification),
         LauncherTopBarItemDescriptor("connectivity", "Индикаторы связи", isButton = false, iconRes = R.drawable.ic_launcher_bluetooth),
+        LauncherTopBarItemDescriptor("modem_cellular", "Сотовая связь модема (TBM)", isButton = false, iconRes = R.drawable.signal_4),
         LauncherTopBarItemDescriptor("temp", "Температура снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_up),
         LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
         LauncherTopBarItemDescriptor("combined_temp", "Температура внутри / снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_combined),
@@ -314,6 +315,9 @@ internal fun LauncherTopBarPickerContent(
             var cellular4gVisible by remember {
                 mutableStateOf(LauncherAppConfigStore.topBarCellularNetworkTypeVisible(context))
             }
+            var modemCellularVisible by remember {
+                mutableStateOf(LauncherAppConfigStore.topBarModemCellularVisible(context))
+            }
             var borderEnabled by remember {
                 mutableStateOf(LauncherAppConfigStore.topBarIndicatorsBorderEnabled(context))
             }
@@ -321,7 +325,7 @@ internal fun LauncherTopBarPickerContent(
                 mutableStateOf(LauncherAppConfigStore.topBarTimeSignalBorderEnabled(context))
             }
 
-            // Toggle for 4G network indicator (as the top item, above border toggle)
+            // Toggle for 4G network indicator TBox
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -337,7 +341,7 @@ internal fun LauncherTopBarPickerContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Показатель 4G",
+                    text = "Показатель 4G (TBox)",
                     color = LauncherColors.TextPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
@@ -347,6 +351,37 @@ internal fun LauncherTopBarPickerContent(
                     onCheckedChange = { checked ->
                         cellular4gVisible = checked
                         LauncherAppConfigStore.setTopBarCellularNetworkTypeVisible(context, checked)
+                    },
+                    colors = launcherSwitchColors(),
+                )
+            }
+
+            // Toggle for 4G network indicator Wi-Fi modem (TBM API)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(cardBg)
+                    .clickable {
+                        val next = !modemCellularVisible
+                        modemCellularVisible = next
+                        LauncherAppConfigStore.setTopBarModemCellularVisible(context, next)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Показатель 4G (Wi-Fi модем TBM)",
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Switch(
+                    checked = modemCellularVisible,
+                    onCheckedChange = { checked ->
+                        modemCellularVisible = checked
+                        LauncherAppConfigStore.setTopBarModemCellularVisible(context, checked)
                     },
                     colors = launcherSwitchColors(),
                 )

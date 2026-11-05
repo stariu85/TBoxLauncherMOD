@@ -1,6 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
-import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,14 +34,20 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
 import vad.dashing.tbox.MirrorFoldLastCommandStore
 import vad.dashing.tbox.R
+import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
+import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
+import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.sendOpenCloseTrunk
 import vad.dashing.tbox.ui.sendToggleMirrorFold
 
@@ -69,10 +76,14 @@ fun LauncherVehicleBodyControlsBar(
     var windowJob by remember { mutableStateOf<Job?>(null) }
     var isOperatingWindows by remember { mutableStateOf(false) }
 
-    val pagerState = rememberPagerState { 2 }
+    val pagerState = rememberPagerState { 3 }
     LaunchedEffect(pagerState.currentPage, reportSubPanel) {
         if (reportSubPanel) {
-            val visibleSub = if (pagerState.currentPage == 1) "body_controls_seats" else "body_controls_trunk"
+            val visibleSub = when (pagerState.currentPage) {
+                2 -> "body_controls_seat_memory"
+                1 -> "body_controls_seats"
+                else -> "body_controls_trunk"
+            }
             LauncherAppConfigStore.setVisibleSubPanel("body_controls", visibleSub)
         }
     }
@@ -95,182 +106,287 @@ fun LauncherVehicleBodyControlsBar(
             .fillMaxWidth()
             .height(ButtonHeight),
     ) { page ->
-        if (page == 0) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(ButtonHeight),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Slot 1: Trunk Button (Long press to open/close trunk)
-                Box(
+        when (page) {
+            0 -> {
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LauncherColors.LeftPanelCard)
-                        .combinedClickable(
-                            onClick = {
-                                if (activeGear != 'P') {
-                                    onShowTrunkParkWarning()
-                                }
-                            },
-                            onLongClick = {
-                                if (activeGear == 'P') {
-                                    sendOpenCloseTrunk(context)
+                        .fillMaxWidth()
+                        .height(ButtonHeight),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Slot 1: Trunk Button (Long press to open/close trunk)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LauncherColors.LeftPanelCard)
+                            .combinedClickable(
+                                onClick = {
+                                    if (activeGear != 'P') {
+                                        onShowTrunkParkWarning()
+                                    }
+                                },
+                                onLongClick = {
+                                    if (activeGear == 'P') {
+                                        sendOpenCloseTrunk(context)
+                                    } else {
+                                        onShowTrunkParkWarning()
+                                    }
+                                },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_launcher_trunk),
+                            contentDescription = "Багажник",
+                            modifier = Modifier.size(40.dp),
+                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                        )
+                    }
+
+                    // Slot 2: Windows Button (Single tap to close all, double tap to open all)
+                    val activeGreen = Color(0xFF10B981)
+                    val windowsBg = if (isOperatingWindows) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+                    val windowsBorder = if (isOperatingWindows) activeGreen else Color.Transparent
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(windowsBg)
+                            .then(
+                                if (isOperatingWindows) {
+                                    Modifier.border(1.5.dp, windowsBorder, RoundedCornerShape(12.dp))
                                 } else {
-                                    onShowTrunkParkWarning()
+                                    Modifier
                                 }
-                            },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_launcher_trunk),
-                        contentDescription = "Багажник",
-                        modifier = Modifier.size(40.dp),
-                        colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-                    )
-                }
-
-                // Slot 2: Windows Button (Single tap to close all, double tap to open all)
-                val activeGreen = Color(0xFF10B981)
-                val windowsBg = if (isOperatingWindows) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
-                val windowsBorder = if (isOperatingWindows) activeGreen else Color.Transparent
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(windowsBg)
-                        .then(
-                            if (isOperatingWindows) {
-                                Modifier.border(1.5.dp, windowsBorder, RoundedCornerShape(12.dp))
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    // Single tap -> Close all windows (0%)
-                                    triggerWindowsCommand(0)
-                                },
-                                onDoubleTap = {
-                                    // Double tap -> Open all windows fully (100%)
-                                    triggerWindowsCommand(100)
-                                },
                             )
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_widget_side_window),
-                        contentDescription = "Окна",
-                        modifier = Modifier.size(40.dp),
-                        colorFilter = ColorFilter.tint(
-                            if (isOperatingWindows) activeGreen else LauncherColors.LeftTextPrimary,
-                        ),
-                    )
-                }
-
-                // Slot 3: Mirror Folding Button
-                val mirrorFoldVal = MirrorFoldLastCommandStore.readLastValue()
-                val isMirrorFolded = mirrorFoldVal == MIRROR_FOLD_SWITCH_VALUE_FOLD
-                val mirrorBg = if (isMirrorFolded) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
-                val mirrorBorder = if (isMirrorFolded) activeGreen else Color.Transparent
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(mirrorBg)
-                        .then(
-                            if (isMirrorFolded) {
-                                Modifier.border(1.5.dp, mirrorBorder, RoundedCornerShape(12.dp))
-                            } else {
-                                Modifier
-                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        // Single tap -> Close all windows (0%)
+                                        triggerWindowsCommand(0)
+                                    },
+                                    onDoubleTap = {
+                                        // Double tap -> Open all windows fully (100%)
+                                        triggerWindowsCommand(100)
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_widget_side_window),
+                            contentDescription = "Окна",
+                            modifier = Modifier.size(40.dp),
+                            colorFilter = ColorFilter.tint(
+                                if (isOperatingWindows) activeGreen else LauncherColors.LeftTextPrimary,
+                            ),
                         )
-                        .clickable {
-                            sendToggleMirrorFold(context)
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_launcher_mirror),
-                        contentDescription = "Складывание зеркал",
-                        modifier = Modifier.size(36.dp),
-                        colorFilter = ColorFilter.tint(
-                            if (isMirrorFolded) activeGreen else LauncherColors.LeftTextPrimary,
-                        ),
-                    )
+                    }
+
+                    // Slot 3: Mirror Folding Button
+                    val mirrorFoldVal = MirrorFoldLastCommandStore.readLastValue()
+                    val isMirrorFolded = mirrorFoldVal == MIRROR_FOLD_SWITCH_VALUE_FOLD
+                    val mirrorBg = if (isMirrorFolded) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+                    val mirrorBorder = if (isMirrorFolded) activeGreen else Color.Transparent
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(mirrorBg)
+                            .then(
+                                if (isMirrorFolded) {
+                                    Modifier.border(1.5.dp, mirrorBorder, RoundedCornerShape(12.dp))
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable {
+                                sendToggleMirrorFold(context)
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_launcher_mirror),
+                            contentDescription = "Складывание зеркал",
+                            modifier = Modifier.size(36.dp),
+                            colorFilter = ColorFilter.tint(
+                                if (isMirrorFolded) activeGreen else LauncherColors.LeftTextPrimary,
+                            ),
+                        )
+                    }
                 }
             }
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(ButtonHeight),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Slot 1: Driver Seat Memory Button
-                Box(
+            1 -> {
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LauncherColors.LeftPanelCard)
-                        .clickable { launchSeatSettingsEmbedded(context) },
-                    contentAlignment = Alignment.Center,
+                        .fillMaxWidth()
+                        .height(ButtonHeight),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_seat_memory_btn),
-                        contentDescription = "Регулировка водительского сиденья",
-                        modifier = Modifier.size(32.dp),
-                        colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-                    )
-                }
-
-                // Slot 2: Rearview Mirror Adjustment Button
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LauncherColors.LeftPanelCard)
-                        .clickable { launchMirrorAdjustSettingsEmbedded(context) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_rearview_mirror),
-                        contentDescription = "Регулировка зеркал",
-                        modifier = Modifier.size(40.dp),
-                        colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
-                    )
-                }
-
-                // Slot 3: Passenger Seat Adjustment Button
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(LauncherColors.LeftPanelCard)
-                        .clickable { PassengerSeatOverlayWindow.show(context) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_seat_memory_btn),
-                        contentDescription = "Регулировка пассажирского сиденья",
+                    // Slot 1: Driver Seat Memory Button
+                    Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .graphicsLayer { scaleX = -1f },
-                        colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                            .weight(1f)
+                            .height(ButtonHeight)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LauncherColors.LeftPanelCard)
+                            .clickable { launchSeatSettingsEmbedded(context) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_seat_memory_btn),
+                            contentDescription = "Регулировка водительского сиденья",
+                            modifier = Modifier.size(32.dp),
+                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                        )
+                    }
+
+                    // Slot 2: Rearview Mirror Adjustment Button
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LauncherColors.LeftPanelCard)
+                            .clickable { launchMirrorAdjustSettingsEmbedded(context) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_rearview_mirror),
+                            contentDescription = "Регулировка зеркал",
+                            modifier = Modifier.size(40.dp),
+                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                        )
+                    }
+
+                    // Slot 3: Passenger Seat Adjustment Button
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(LauncherColors.LeftPanelCard)
+                            .clickable { PassengerSeatOverlayWindow.show(context) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_seat_memory_btn),
+                            contentDescription = "Регулировка пассажирского сиденья",
+                            modifier = Modifier
+                                .size(32.dp)
+                                .graphicsLayer { scaleX = -1f },
+                            colorFilter = ColorFilter.tint(LauncherColors.LeftTextPrimary),
+                        )
+                    }
+                }
+            }
+            else -> {
+                LauncherSeatMemoryPresetsBar(modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+fun LauncherSeatMemoryPresetsBar(
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var activeSlot by remember { mutableStateOf<Int?>(null) }
+    var resetJob by remember { mutableStateOf<Job?>(null) }
+
+    fun recallSlot(slot: Int) {
+        activeSlot = slot
+        resetJob?.cancel()
+        Toast.makeText(context, "Применение памяти: Слот $slot", Toast.LENGTH_SHORT).show()
+        resetJob = scope.launch(Dispatchers.IO) {
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION, slot)
+            )
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ, slot)
+            )
+            delay(1000L)
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION, 0)
+            )
+            UniversalCanRepository.execute(
+                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ, 0)
+            )
+            delay(1500L)
+            activeSlot = null
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val activeGreen = Color(0xFF10B981)
+        for (slot in 1..3) {
+            val isActive = activeSlot == slot
+            val bg = if (isActive) activeGreen.copy(alpha = 0.25f) else LauncherColors.LeftPanelCard
+            val border = if (isActive) activeGreen else Color.Transparent
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(ButtonHeight)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(bg)
+                    .then(
+                        if (isActive) {
+                            Modifier.border(1.5.dp, border, RoundedCornerShape(12.dp))
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .pointerInput(slot) {
+                        detectTapGestures(
+                            onTap = {
+                                recallSlot(slot)
+                            },
+                            onDoubleTap = {
+                                if (slot == 3) {
+                                    launchMirrorAdjustSettingsEmbedded(context)
+                                    SeatMemorySlot3SaveOverlayWindow.show(context)
+                                } else {
+                                    recallSlot(slot)
+                                }
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_seat_memory_btn),
+                        contentDescription = "Память $slot",
+                        modifier = Modifier.size(26.dp),
+                        colorFilter = ColorFilter.tint(
+                            if (isActive) activeGreen else LauncherColors.LeftTextPrimary
+                        ),
+                    )
+                    Text(
+                        text = "М$slot",
+                        color = if (isActive) activeGreen else LauncherColors.LeftTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
                     )
                 }
             }

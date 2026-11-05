@@ -238,7 +238,9 @@ object MbCanKnownVehiclePropertyId {
     const val LAS_MODE_LDW = 1
     const val LAS_MODE_LKA = 2
     const val LAS_MODE_OFF = 3
-    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_LAS_SENSITIVITY_LEVEL] — 1–3. */
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eDVD_LDWSWITCH] — 1 off, 2 on. */
+    const val LDW_SWITCH = 80
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_LAS_SENSITIVITY_LEVEL] — 0–1. */
     const val LAS_SENSITIVITY_LEVEL = 16
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_ID_HEADLIGHTS_SWITCH] — 0–3. */
     const val HEADLIGHTS_SWITCH = 19
@@ -265,7 +267,7 @@ object MbCanKnownVehiclePropertyId {
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_DOOR_OPEN_WARNING] — 1 off, 2 on. */
     const val DOW_SWITCH = 13
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SMART_HIGHBEAM_SWITCH] — 1 off, 2 on. */
-    const val HMA_SWITCH = 130
+    const val HMA_SWITCH = 19
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_HDC_SWITCH] — 1 off, 2 on. */
     const val HDC_SWITCH = 143
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_ESCOFF_SWITCH] — 1 off, 2 on (ESC off active). */
@@ -296,6 +298,8 @@ object MbCanKnownVehiclePropertyId {
     const val STATIC_EFFECT = 169
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_WELCOME_SEAT] — 1 off, 2 on. */
     const val WELCOME_SEAT = 190
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_MIRROR_SET_DRIVER_MIRROR_LOCATION] — driver mirror / seat location preset slot (1..3, 0 stop). */
+    const val MIRROR_SET_DRIVER_MIRROR_LOCATION = 198
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SEAT_POSITION_STOREREQ] — store preset slot (1..3). */
     const val SEAT_POSITION_STOREREQ = 270
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SEAT_POSITION_CALLOUTREQ] — callout preset slot (1..3). */
@@ -488,6 +492,10 @@ object MbCanCommandRegistry {
             refreshSignal = MbCanSignal.WirelessChargingSwitch
         ),
         MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1, 2, 3)),
+        ),
+        MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.SEAT_POSITION_STOREREQ,
             policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3)),
         ),
@@ -664,8 +672,16 @@ object MbCanCommandRegistry {
             policy = MbCanCommandPolicy.SetExact(allowedValues = (0..3).toSet()),
         ),
         MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3)),
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.LDW_SWITCH,
+            policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
+        ),
+        MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL,
-            policy = MbCanCommandPolicy.SetExact(allowedValues = (1..3).toSet()),
+            policy = MbCanCommandPolicy.SetExact(allowedValues = (0..1).toSet()),
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.HEADLIGHTS_SWITCH,
@@ -693,7 +709,7 @@ object MbCanCommandRegistry {
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.FCW_OPTION,
-            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3)),
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(0, 1, 2, 3)),
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.BSD_SWITCH,

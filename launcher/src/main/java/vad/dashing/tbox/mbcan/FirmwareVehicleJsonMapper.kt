@@ -68,6 +68,7 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH to 289415344, // T_0203_SET_RRSeatHeatVentSwReq
         MbCanKnownVehiclePropertyId.SEAT_POSITION_STOREREQ to MbCanKnownVehiclePropertyId.SEAT_POSITION_STOREREQ,
         MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ to MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ,
+        MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION,
         // Mirror location controls
         MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_LR_LOCATION,
         MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION to MbCanKnownVehiclePropertyId.MIRROR_SET_LMIRROR_UD_LOCATION,
@@ -81,6 +82,8 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.TJA_ICA to 289415939, // T_0B01_IHU_8_TJA_ICA_ON_OFF
         // MBVehicleProperty.eVEHICLE_PROPERTY_LAS_MODE_SELECTION
         MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION to 289415946, // T_0B01_IHU_8_LDWLKA_LaneAssit_TypeReq
+        // MBVehicleProperty.eVEHICLE_SMART_HIGHBEAM_SWITCH
+        MbCanKnownVehiclePropertyId.HMA_SWITCH to 289412671, // T_0401_IHU_1_DVD_SET_HeadlightSwitch
         // Audio
         MbCanKnownAudioPropertyId.VOLUME to 557849090, // AUDIO_CURRENT_MAIN_VOLUME
         MbCanKnownAudioPropertyId.VOLUME_SPEED to 557849227, // AUDIO_VOL_VSC_MOD_REQ
@@ -120,6 +123,8 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.TJA_ICA to 289415939, // T_0B01_IHU_8_TJA_ICA_ON_OFF
         // MBVehicleProperty.eVEHICLE_PROPERTY_LAS_MODE_SELECTION
         MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION to 289415706, // R_0B00_FCM_2_LDWLKA_LaneAssitfeedback
+        // MBVehicleProperty.eVEHICLE_SMART_HIGHBEAM_SWITCH
+        MbCanKnownVehiclePropertyId.HMA_SWITCH to 289412103, // R_0400_RBCM_IHU_1_HeadlightSwitchSts
         // Audio
         MbCanKnownAudioPropertyId.VOLUME to 557849090, // AUDIO_CURRENT_MAIN_VOLUME
         MbCanKnownAudioPropertyId.VOLUME_SPEED to 557849227, // AUDIO_VOL_VSC_MOD_REQ

@@ -661,12 +661,23 @@ internal object LauncherAppConfigStore {
         topBarLeftIndicatorsRevision.value++
     }
 
+    private val topBarModemCellularVisibleRevision = MutableStateFlow(0)
+    internal val topBarModemCellularVisibleRevisionFlow: StateFlow<Int> = topBarModemCellularVisibleRevision
+
     fun topBarCellularNetworkTypeVisible(context: Context): Boolean =
         prefs(context).getBoolean("top_bar_cellular_network_type_visible", true)
 
     fun setTopBarCellularNetworkTypeVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean("top_bar_cellular_network_type_visible", visible).apply()
         topBarCellularNetworkTypeVisibleRevision.value++
+    }
+
+    fun topBarModemCellularVisible(context: Context): Boolean =
+        prefs(context).getBoolean("top_bar_modem_cellular_visible", true)
+
+    fun setTopBarModemCellularVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean("top_bar_modem_cellular_visible", visible).apply()
+        topBarModemCellularVisibleRevision.value++
     }
 
     fun topBarIndicatorsBorderEnabled(context: Context): Boolean =
