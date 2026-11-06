@@ -250,6 +250,7 @@ private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
 private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
+private const val KEY_SMART_PANEL_ENABLED = "smart_panel_enabled"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
 private const val KEY_ADAS_BOTTOM_PANELS = "adas_bottom_panels"
 private const val KEY_DRIVE_MODE_GLOW_VISIBLE = "drive_mode_glow_visible"
@@ -438,6 +439,8 @@ internal object LauncherAppConfigStore {
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
     private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
+    private val smartPanelRevision = MutableStateFlow(0)
+    internal val smartPanelRevisionFlow: StateFlow<Int> = smartPanelRevision
     private val assistPresetsTabRevision = MutableStateFlow(0)
     internal val assistPresetsTabRevisionFlow: StateFlow<Int> = assistPresetsTabRevision
     private val adasPanelsRevision = MutableStateFlow(0)
@@ -1504,6 +1507,14 @@ internal object LauncherAppConfigStore {
     fun setAccPresetsInQuickSettingsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, visible).apply()
         accPresetsInQuickSettingsRevision.value++
+    }
+
+    fun smartPanelEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SMART_PANEL_ENABLED, false)
+
+    fun setSmartPanelEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SMART_PANEL_ENABLED, enabled).apply()
+        smartPanelRevision.value++
     }
 
     fun assistPresetsActiveTab(context: Context): String =

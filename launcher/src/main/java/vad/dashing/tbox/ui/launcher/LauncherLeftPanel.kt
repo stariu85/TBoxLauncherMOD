@@ -253,6 +253,11 @@ fun LauncherLeftPanel(
     val carColorPanelVisible = remember(context, carColorRevision) {
         LauncherAppConfigStore.carColorPanelVisible(context)
     }
+    val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val smartPanelEnabled = remember(context, smartPanelRevision) {
+        LauncherAppConfigStore.smartPanelEnabled(context)
+    }
     val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow
         .collectAsStateWithLifecycle()
     val adasTopPanels = remember(context, adasPanelsRevision) {
@@ -498,12 +503,13 @@ fun LauncherLeftPanel(
                 "body_controls" -> bodyControlsPanelVisible
                 "media_player" -> miniPlayerVisible
                 "car_color" -> carColorPanelVisible
+                "smart_panel" -> smartPanelEnabled
                 "lanes" -> true
                 else -> true
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -519,8 +525,11 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible) {
-            val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled) {
+            val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }.toMutableList()
+            if (smartPanelEnabled && "smart_panel" !in activeTopPanels && "smart_panel" !in filtered) {
+                filtered.add(0, "smart_panel")
+            }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = "assist" in activeTopPanels
             for (p in filtered) {
@@ -577,6 +586,17 @@ fun LauncherLeftPanel(
                         LauncherCarColorPickerBar(
                             modifier = Modifier.fillMaxWidth(),
                             heightDp = 60.dp,
+                        )
+                    }
+                    "smart_panel" -> {
+                        LauncherSmartPanel(
+                            activeGear = activeGear,
+                            canViewModel = canViewModel,
+                            adas = adas,
+                            onShowTrunkParkWarning = {
+                                trunkParkWarningUntilMs = SystemClock.uptimeMillis() + 3000L
+                            },
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     "body_controls" -> {
@@ -1046,7 +1066,7 @@ private enum class AssistPresetsTab {
 }
 
 @Composable
-private fun LauncherAssistAndPresetsPanel(
+internal fun LauncherAssistAndPresetsPanel(
     canViewModel: CanDataViewModel,
     adas: LauncherAdasState,
     modifier: Modifier = Modifier,

@@ -1547,6 +1547,28 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
+            .collectAsStateWithLifecycle()
+        val smartPanelEnabled = remember(context, smartPanelRevision) {
+            LauncherAppConfigStore.smartPanelEnabled(context)
+        }
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_smart_panel_title),
+            active = smartPanelEnabled,
+            onClick = {
+                LauncherAppConfigStore.setSmartPanelEnabled(
+                    context,
+                    !smartPanelEnabled,
+                )
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_smart_panel_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()

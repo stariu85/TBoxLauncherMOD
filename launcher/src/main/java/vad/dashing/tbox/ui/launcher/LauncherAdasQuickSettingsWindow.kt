@@ -325,6 +325,8 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.accPresetsInQuickSettingsVisible(context)
     }
 
+
+
     val adasPanelsRevision by LauncherAppConfigStore.adasPanelsRevisionFlow.collectAsStateWithLifecycle()
     val adasTopPanels = remember(context, adasPanelsRevision) {
         LauncherAppConfigStore.adasTopPanels(context)
@@ -394,6 +396,7 @@ private fun LauncherAdasQuickSettingsContent(
             "car_color",
         )
         allCandidates.filter { candidate ->
+            if (candidate == "smart_panel") return@filter false
             if (candidate == "car_color" && !carColorPanelVisible) return@filter false
             if (candidate == "presets" && !accPresetsInQuickSettingsVisible) return@filter false
             candidate !in directlyVisiblePanels
