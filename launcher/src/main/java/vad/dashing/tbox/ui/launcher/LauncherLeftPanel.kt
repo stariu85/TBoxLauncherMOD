@@ -582,6 +582,11 @@ fun LauncherLeftPanel(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
+                    "wipers" -> {
+                        LauncherWiperControlBar(
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     "car_color" -> {
                         LauncherCarColorPickerBar(
                             modifier = Modifier.fillMaxWidth(),

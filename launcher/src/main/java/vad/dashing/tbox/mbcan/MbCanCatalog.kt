@@ -126,6 +126,8 @@ object MbCanKnownVehiclePropertyId {
     const val STEERING_WHEEL_HEAT_SWITCH = 188
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_WIPER_MAINTENANCE_SWITCH]. */
     const val WIPER_MAINTENANCE_SWITCH = 185
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_WIPER_SENSITIVITY]. */
+    const val WIPER_SENSITIVITY = 191
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_SET_PAS_SWITCH]. */
     const val PARKING_RADAR_SWITCH = 218
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVHEICEL_FRONTWINDSCREEN_HEAT] */

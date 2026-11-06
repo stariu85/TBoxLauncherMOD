@@ -263,10 +263,10 @@ fun LauncherLanesControlBar(
     val isFcwActive = currentFcwSwitch
     val fcwColor = when {
         !isFcwActive -> null // State 0: OFF (серый по умолчанию)
-        currentFcwOption == 1 -> Color(0xFFEF4444) // State 1: Близко (красный)
-        currentFcwOption == 2 -> Color(0xFF3B82F6) // State 2: Средняя (синий)
-        currentFcwOption == 3 -> Color(0xFF10B981) // State 3: Дальняя (зеленый)
-        else -> Color(0xFFEF4444) // Fallback в активном состоянии: красный (близко)
+        currentFcwOption == 1 -> Color(0xFF10B981) // State 1: Близко (зеленый)
+        currentFcwOption == 2 -> Color(0xFF3B82F6) // State 2: Средний (синий)
+        currentFcwOption == 3 -> Color(0xFFEF4444) // State 3: Дальний (красный)
+        else -> Color(0xFF10B981) // Fallback в активном состоянии: зеленый (близко)
     }
 
     val onFcwClick: () -> Unit = {
@@ -497,9 +497,9 @@ fun LauncherChassisControlBar(
                 .height(ButtonHeight),
         )
 
-        // Slot 3: HOLD Button
+        // Slot 3: HLD Button
         AssistColoredChip(
-            label = "HOLD",
+            label = "HLD",
             iconRes = R.drawable.ic_hold_brake,
             activeColor = holdColor,
             onClick = onHoldClick,
@@ -769,5 +769,76 @@ private fun AssistButtonChip(
                 fontWeight = FontWeight.Bold,
             )
         }
+    }
+}
+
+/**
+ * Wipers Panel: Service Mode & Auto Sensitivity (2 buttons).
+ */
+@Composable
+fun LauncherWiperControlBar(
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+    val wiperMaintenance by UniversalCanRepository.wiperMaintenanceState.collectAsStateWithLifecycle()
+
+    val isMaintenanceActive = wiperMaintenance is MbCanBinaryState.On
+    val maintenanceColor = if (isMaintenanceActive) LauncherColors.AccentCyan else null
+
+    val onMaintenanceClick: () -> Unit = {
+        vad.dashing.tbox.ui.sendToggleWiperMaintenance(context)
+    }
+
+    val currentSens = vehicleControls.wiperSensitivity ?: 1
+    val sensitivityColor = when (currentSens) {
+        1 -> Color(0xFFEF4444) // Red
+        2 -> Color(0xFFEAB308) // Yellow
+        3 -> Color(0xFF3B82F6) // Blue
+        4 -> Color(0xFF22C55E) // Green
+        else -> Color(0xFFEF4444)
+    }
+
+    val onSensitivityClick: () -> Unit = {
+        val nextSens = if (currentSens >= 4) 1 else currentSens + 1
+        sendSetMbCanProperty(
+            context,
+            MbCanKnownVehiclePropertyId.WIPER_SENSITIVITY,
+            nextSens,
+        )
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Button 1: Service Mode
+        AssistColoredChip(
+            label = "Сервис",
+            iconRes = R.drawable.ic_wiper,
+            activeColor = maintenanceColor,
+            onClick = onMaintenanceClick,
+            iconSize = 22.dp,
+            fontSize = 16.sp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Button 2: Auto Sensitivity
+        AssistColoredChip(
+            label = "Авто $currentSens",
+            iconRes = R.drawable.ic_windshield,
+            activeColor = sensitivityColor,
+            onClick = onSensitivityClick,
+            iconSize = 22.dp,
+            fontSize = 16.sp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
     }
 }

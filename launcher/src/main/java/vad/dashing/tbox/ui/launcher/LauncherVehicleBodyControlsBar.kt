@@ -374,9 +374,9 @@ fun LauncherTrunkWindowsMirrorFoldBar(
             contentAlignment = Alignment.Center,
         ) {
             Image(
-                painter = painterResource(R.drawable.ic_widget_side_window),
+                painter = painterResource(R.drawable.ic_car_window),
                 contentDescription = "Окна",
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(36.dp),
                 colorFilter = ColorFilter.tint(
                     if (isOperatingWindows) activeGreen else LauncherColors.LeftTextPrimary,
                 ),

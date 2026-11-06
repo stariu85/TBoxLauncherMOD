@@ -1224,6 +1224,7 @@ private fun LauncherDraggableUnifiedSlot(
         Box(contentAlignment = Alignment.Center) {
             LauncherBottomDockButtonContent(
                 buttonId = itemId,
+                index = index,
                 context = context,
                 canViewModel = canViewModel,
                 onCloseVehicleSettings = onCloseVehicleSettings,
@@ -1253,6 +1254,7 @@ private fun LauncherDraggableUnifiedSlot(
 @Composable
 private fun LauncherBottomDockButtonContent(
     buttonId: String,
+    index: Int,
     context: Context,
     canViewModel: CanDataViewModel,
     onCloseVehicleSettings: () -> Unit,
@@ -1561,9 +1563,14 @@ private fun LauncherBottomDockButtonContent(
                 )
             }
         }
-        "seat_heat_left" -> LauncherDockIcon(onClick = {
-            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
-        }) {
+        "seat_heat_left" -> LauncherDockIcon(
+            onClick = {
+                sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
+            },
+            onDoubleClick = {
+                LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_rear_left")
+            },
+        ) {
             LauncherSeatHeatIcon(raw = leftRaw)
         }
         "seat_vent_left" -> LauncherDockIcon(onClick = {
@@ -1581,9 +1588,14 @@ private fun LauncherBottomDockButtonContent(
                 colorFilter = ColorFilter.tint(HvacOffColor),
             )
         }
-        "seat_heat_right" -> LauncherDockIcon(onClick = {
-            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
-        }) {
+        "seat_heat_right" -> LauncherDockIcon(
+            onClick = {
+                sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
+            },
+            onDoubleClick = {
+                LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_rear_right")
+            },
+        ) {
             LauncherSeatHeatIcon(raw = rightRaw, mirrored = true)
         }
         "seat_vent_right" -> LauncherDockIcon(onClick = {
@@ -1591,14 +1603,24 @@ private fun LauncherBottomDockButtonContent(
         }) {
             LauncherSeatVentIcon(raw = rightRaw, mirrored = true)
         }
-        "seat_heat_rear_left" -> LauncherDockIcon(onClick = {
-            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH, rearLeftRaw)
-        }) {
+        "seat_heat_rear_left" -> LauncherDockIcon(
+            onClick = {
+                sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH, rearLeftRaw)
+            },
+            onDoubleClick = {
+                LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_left")
+            },
+        ) {
             LauncherSeatHeatIcon(raw = rearLeftRaw, badgeText = "REAR")
         }
-        "seat_heat_rear_right" -> LauncherDockIcon(onClick = {
-            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, rearRightRaw)
-        }) {
+        "seat_heat_rear_right" -> LauncherDockIcon(
+            onClick = {
+                sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, rearRightRaw)
+            },
+            onDoubleClick = {
+                LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_right")
+            },
+        ) {
             LauncherSeatHeatIcon(raw = rearRightRaw, mirrored = true, badgeText = "REAR")
         }
         "steering_heat" -> LauncherDockIcon(onClick = { sendToggleSteeringWheelHeat(context) }) {

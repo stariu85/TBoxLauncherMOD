@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.ui.theme.tboxCaption
+import kotlin.math.abs
 
 private val ButtonHeight = 60.dp
 
@@ -75,7 +76,7 @@ fun LauncherCruisePresetControl(
         }
     }
 
-    val currentTargetSpeed = pendingTargetSpeed ?: activeSpeed ?: lastSpeed
+
 
     val chipState = when {
         LauncherDevVehicleState.simulateEnabled -> {
@@ -89,7 +90,8 @@ fun LauncherCruisePresetControl(
     LauncherCruiseSpeedPresetsPanel(
         presets = presets,
         chipState = chipState,
-        currentTargetSpeed = currentTargetSpeed,
+        activeSpeed = activeSpeed,
+        pendingTargetSpeed = pendingTargetSpeed,
         adjustingTargetSpeed = adjustingTargetSpeed,
         onPresetSelected = { kmh ->
             pendingTargetSpeed = kmh
@@ -110,7 +112,8 @@ fun LauncherCruisePresetControl(
 internal fun LauncherCruiseSpeedPresetsPanel(
     presets: List<Int>,
     chipState: CruiseChipState,
-    currentTargetSpeed: Int?,
+    activeSpeed: Int?,
+    pendingTargetSpeed: Int?,
     adjustingTargetSpeed: Int?,
     onPresetSelected: (Int) -> Unit,
     onPresetLongClick: () -> Unit,
@@ -140,7 +143,17 @@ internal fun LauncherCruiseSpeedPresetsPanel(
         ) {
             presets.forEach { kmh ->
                 val isAdjusting = adjustingTargetSpeed == kmh
-                val isSelected = (chipState != CruiseChipState.Off && currentTargetSpeed == kmh) || isAdjusting
+                val isPending = pendingTargetSpeed == kmh
+                val inRange = activeSpeed != null && activeSpeed >= kmh - 2 && activeSpeed <= kmh + 12
+                val matchingPreset = presets.minByOrNull { p ->
+                    val speed = activeSpeed
+                    if (speed != null && speed >= p - 2 && speed <= p + 12) {
+                        abs(p - speed)
+                    } else {
+                        Int.MAX_VALUE
+                    }
+                }
+                val isSelected = isAdjusting || isPending || (chipState != CruiseChipState.Off && inRange && matchingPreset == kmh)
                 val activeChipState = if (isAdjusting) CruiseChipState.Active else chipState
                 CruisePresetChip(
                     label = kmh.toString(),

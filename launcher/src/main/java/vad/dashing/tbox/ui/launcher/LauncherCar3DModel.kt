@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
+import vad.dashing.tbox.ui.rememberPlaySystemClickSound
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.lifecycle.Lifecycle
@@ -309,13 +310,27 @@ private fun LauncherCarFilamentContent(
     lowPowerPreview: Boolean = false,
 ) {
     val context = LocalContext.current
+    val playSound = rememberPlaySystemClickSound()
     val interactionModifier = if (onClick != null || onLongClick != null || onDoubleClick != null) {
         Modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
-            onClick = { onClick?.invoke() },
-            onLongClick = { onLongClick?.invoke() },
-            onDoubleClick = { onDoubleClick?.invoke() },
+            onClick = {
+                playSound()
+                onClick?.invoke()
+            },
+            onLongClick = onLongClick?.let { lc ->
+                {
+                    playSound()
+                    lc()
+                }
+            },
+            onDoubleClick = onDoubleClick?.let { dc ->
+                {
+                    playSound()
+                    dc()
+                }
+            },
         )
     } else {
         Modifier

@@ -393,6 +393,7 @@ private fun LauncherAdasQuickSettingsContent(
             "radars",
             "chassis",
             "lights",
+            "wipers",
             "car_color",
         )
         allCandidates.filter { candidate ->
@@ -818,6 +819,7 @@ private fun RenderQuickPanelCard(
             "radars" -> LauncherRadarControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
             "chassis" -> LauncherChassisControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
             "lights" -> LauncherLightsControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
+            "wipers" -> LauncherWiperControlBar(modifier = Modifier.fillMaxWidth())
             "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 60.dp)
         }
 
