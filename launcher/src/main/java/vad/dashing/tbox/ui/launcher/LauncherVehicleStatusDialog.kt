@@ -192,7 +192,7 @@ internal fun LauncherVehicleStatusDialog(
                 Text(
                     text = "Состояние систем авто",
                     color = LauncherColors.TextPrimary,
-                    fontSize = 17.sp,
+                    fontSize = 34.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 when (status) {
@@ -200,7 +200,7 @@ internal fun LauncherVehicleStatusDialog(
                         Text(
                             text = "Good",
                             color = Color(0xFF9CA3AF),
-                            fontSize = 13.sp,
+                            fontSize = 26.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
@@ -208,7 +208,7 @@ internal fun LauncherVehicleStatusDialog(
                         Text(
                             text = "Warning",
                             color = Color(0xFFF59E0B),
-                            fontSize = 13.sp,
+                            fontSize = 26.sp,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
@@ -216,8 +216,8 @@ internal fun LauncherVehicleStatusDialog(
                         Text(
                             text = "Error",
                             color = Color(0xFFEF4444),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }
@@ -227,24 +227,24 @@ internal fun LauncherVehicleStatusDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 380.dp)
+                    .heightIn(max = 500.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (items.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 20.dp),
+                            .padding(vertical = 30.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(60.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFF22C55E).copy(alpha = 0.16f)),
                                 contentAlignment = Alignment.Center,
@@ -252,14 +252,14 @@ internal fun LauncherVehicleStatusDialog(
                                 Text(
                                     text = "✓",
                                     color = Color(0xFF22C55E),
-                                    fontSize = 20.sp,
+                                    fontSize = 40.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                             }
                             Text(
                                 text = "Тут нечего смотреть, у Дашки всё отлично!",
                                 color = LauncherColors.TextPrimary,
-                                fontSize = 15.sp,
+                                fontSize = 30.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 textAlign = TextAlign.Center,
                             )
@@ -274,15 +274,15 @@ internal fun LauncherVehicleStatusDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(LauncherColors.SurfaceDark)
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalAlignment = Alignment.Top,
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
                                     .background(tint.copy(alpha = 0.16f)),
                                 contentAlignment = Alignment.Center,
@@ -290,24 +290,24 @@ internal fun LauncherVehicleStatusDialog(
                                 Icon(
                                     imageVector = Icons.Filled.Warning,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(22.dp),
                                     tint = tint,
                                 )
                             }
                             Column(
                                 modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
                                     text = item.title,
                                     color = tint,
-                                    fontSize = 14.sp,
+                                    fontSize = 28.sp,
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
                                     text = item.description,
                                     color = LauncherColors.TextPrimary,
-                                    fontSize = 12.sp,
+                                    fontSize = 24.sp,
                                     fontWeight = FontWeight.Normal,
                                 )
                             }
@@ -318,7 +318,12 @@ internal fun LauncherVehicleStatusDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismissRequest) {
-                Text(stringResource(R.string.action_close), color = LauncherColors.AccentCyan)
+                Text(
+                    stringResource(R.string.action_close),
+                    color = LauncherColors.AccentCyan,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         },
     )

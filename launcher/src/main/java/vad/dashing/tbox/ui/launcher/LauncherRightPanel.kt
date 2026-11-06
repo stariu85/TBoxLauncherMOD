@@ -972,6 +972,9 @@ fun LauncherRightPanel(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    LauncherVehicleStatusSquareCard(
+                        onClick = { LauncherVehicleStatusDialogState.show() },
+                    )
                     LauncherOdometerMetricCard(
                         odometerValue = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
                         tripValue = displayTripDistanceKm?.let { "${valueToString(it, 1)} ${stringResource(R.string.unit_km)}" } ?: "—",
@@ -987,8 +990,7 @@ fun LauncherRightPanel(
                         outsideTemp = outsideTemp?.let { "${valueToString(it, 1)}°" } ?: "—",
                         modifier = Modifier.weight(1f),
                     )
-                    LauncherVehicleStatusCard(
-                        onClick = { LauncherVehicleStatusDialogState.show() },
+                    LauncherVehicleSettingsButtonsCard(
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -2251,7 +2253,7 @@ private fun LauncherRangeMetricCard(
                 shape = RoundedCornerShape(12.dp),
             )
             .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
@@ -2334,7 +2336,7 @@ private fun LauncherTempMetricCard(
                 shape = RoundedCornerShape(12.dp),
             )
             .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
@@ -2462,11 +2464,10 @@ private fun LauncherFooterIconPill(
 
 
 @Composable
-private fun LauncherVehicleStatusCard(
+private fun LauncherVehicleStatusSquareCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val status = rememberVehicleHealthStatus()
     val isDark = LauncherThemeState.darkTheme
     val cardBg = if (isDark) {
@@ -2479,7 +2480,65 @@ private fun LauncherVehicleStatusCard(
     } else {
         Color.Black.copy(alpha = 0.15f)
     }
-    val labelColor = LauncherColors.LeftTextSecondary
+
+    Box(
+        modifier = modifier
+            .size(60.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(cardBg)
+            .border(
+                width = 1.dp,
+                color = cardBorder,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (status) {
+            LauncherVehicleHealthStatus.Ok -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_status_checked),
+                    contentDescription = "Good",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color(0xFF22C55E),
+                )
+            }
+            LauncherVehicleHealthStatus.Warning -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_status_warning),
+                    contentDescription = "Warning",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Unspecified,
+                )
+            }
+            LauncherVehicleHealthStatus.Error -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_status_error),
+                    contentDescription = "Error",
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Unspecified,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherVehicleSettingsButtonsCard(
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val isDark = LauncherThemeState.darkTheme
+    val cardBg = if (isDark) {
+        LauncherColors.CardDarkElevated.copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.75f)
+    }
+    val cardBorder = if (isDark) {
+        LauncherColors.TextMuted.copy(alpha = 0.25f)
+    } else {
+        Color.Black.copy(alpha = 0.15f)
+    }
     val valueColor = LauncherColors.LeftTextPrimary
 
     Row(
@@ -2492,194 +2551,101 @@ private fun LauncherVehicleStatusCard(
                 color = cardBorder,
                 shape = RoundedCornerShape(12.dp),
             )
-            .padding(start = 10.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left side: Vehicle status label and status indicator
-        Column(
+        val btnBg = if (isDark) {
+            LauncherColors.CardDarkElevated.copy(alpha = 0.70f)
+        } else {
+            Color.White.copy(alpha = 0.90f)
+        }
+        val btnBorder = if (isDark) {
+            LauncherColors.TextMuted.copy(alpha = 0.35f)
+        } else {
+            Color.Black.copy(alpha = 0.20f)
+        }
+        val btnSize = 38.dp
+        val iconSize = 18.dp
+
+        // Button 1: Car settings
+        Box(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onClick),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.Start,
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(btnBg)
+                .border(1.dp, btnBorder, CircleShape)
+                .clickable {
+                    launchLauncherAppEmbedded(context, "com.mengbo.carsettings")
+                },
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(R.string.launcher_vehicle_status_label),
-                style = MaterialTheme.typography.tboxCaption,
-                color = labelColor,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Image(
+                painter = painterResource(R.drawable.ic_widget_settings_car),
+                contentDescription = stringResource(R.string.launcher_settings_car_btn),
+                modifier = Modifier.size(iconSize),
+                colorFilter = ColorFilter.tint(valueColor),
             )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            when (status) {
-                LauncherVehicleHealthStatus.Ok -> {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF9CA3AF)),
-                        )
-                        Text(
-                            text = "Good",
-                            color = Color(0xFF9CA3AF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                LauncherVehicleHealthStatus.Warning -> {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Warning,
-                            contentDescription = null,
-                            modifier = Modifier.size(11.dp),
-                            tint = Color(0xFFF59E0B),
-                        )
-                        Text(
-                            text = "Warning",
-                            color = Color(0xFFF59E0B),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                LauncherVehicleHealthStatus.Error -> {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .border(width = 1.dp, color = Color(0xFFEF4444), shape = RoundedCornerShape(4.dp))
-                            .background(Color(0xFFEF4444).copy(alpha = 0.16f))
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Error",
-                            color = Color(0xFFEF4444),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
         }
 
-        Spacer(modifier = Modifier.width(4.dp))
-
-        // Right side: 4 circular buttons (Car, System, DCL, Android settings)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxHeight(),
+        // Button 2: System settings
+        Box(
+            modifier = Modifier
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(btnBg)
+                .border(1.dp, btnBorder, CircleShape)
+                .clickable {
+                    launchLauncherAppEmbedded(context, "com.mengbo.systemsettings")
+                },
+            contentAlignment = Alignment.Center,
         ) {
-            val btnBg = if (isDark) {
-                LauncherColors.CardDarkElevated.copy(alpha = 0.70f)
-            } else {
-                Color.White.copy(alpha = 0.90f)
-            }
-            val btnBorder = if (isDark) {
-                LauncherColors.TextMuted.copy(alpha = 0.35f)
-            } else {
-                Color.Black.copy(alpha = 0.20f)
-            }
-            val btnSize = 38.dp
-            val iconSize = 18.dp
+            Image(
+                painter = painterResource(R.drawable.ic_widget_settings_system),
+                contentDescription = stringResource(R.string.launcher_settings_system_btn),
+                modifier = Modifier.size(iconSize),
+                colorFilter = ColorFilter.tint(valueColor),
+            )
+        }
 
-            // Button 1: Car settings (icon)
-            Box(
-                modifier = Modifier
-                    .size(btnSize)
-                    .clip(CircleShape)
-                    .background(btnBg)
-                    .border(1.dp, btnBorder, CircleShape)
-                    .clickable {
-                        launchLauncherAppEmbedded(context, "com.mengbo.carsettings")
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_widget_settings_car),
-                    contentDescription = stringResource(R.string.launcher_settings_car_btn),
-                    modifier = Modifier.size(iconSize),
-                    colorFilter = ColorFilter.tint(valueColor),
-                )
-            }
+        // Button 3: Launcher settings (DCL)
+        Box(
+            modifier = Modifier
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(btnBg)
+                .border(1.dp, btnBorder, CircleShape)
+                .clickable {
+                    launchVehicleSettingsWindow(context)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "DCL",
+                color = valueColor,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
 
-            // Button 2: System settings (icon)
-            Box(
-                modifier = Modifier
-                    .size(btnSize)
-                    .clip(CircleShape)
-                    .background(btnBg)
-                    .border(1.dp, btnBorder, CircleShape)
-                    .clickable {
-                        launchLauncherAppEmbedded(context, "com.mengbo.systemsettings")
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_widget_settings_system),
-                    contentDescription = stringResource(R.string.launcher_settings_system_btn),
-                    modifier = Modifier.size(iconSize),
-                    colorFilter = ColorFilter.tint(valueColor),
-                )
-            }
-
-            // Button 3: Launcher settings (DCL)
-            Box(
-                modifier = Modifier
-                    .size(btnSize)
-                    .clip(CircleShape)
-                    .background(btnBg)
-                    .border(1.dp, btnBorder, CircleShape)
-                    .clickable {
-                        launchVehicleSettingsWindow(context)
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "DCL",
-                    color = valueColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-
-            // Button 4: Android settings (icon)
-            Box(
-                modifier = Modifier
-                    .size(btnSize)
-                    .clip(CircleShape)
-                    .background(btnBg)
-                    .border(1.dp, btnBorder, CircleShape)
-                    .clickable {
-                        launchAndroidSettings(context)
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_widget_settings_android),
-                    contentDescription = stringResource(R.string.launcher_settings_android_btn),
-                    modifier = Modifier.size(iconSize),
-                    colorFilter = ColorFilter.tint(valueColor),
-                )
-            }
+        // Button 4: Android settings
+        Box(
+            modifier = Modifier
+                .size(btnSize)
+                .clip(CircleShape)
+                .background(btnBg)
+                .border(1.dp, btnBorder, CircleShape)
+                .clickable {
+                    launchAndroidSettings(context)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_widget_settings_android),
+                contentDescription = stringResource(R.string.launcher_settings_android_btn),
+                modifier = Modifier.size(iconSize),
+                colorFilter = ColorFilter.tint(valueColor),
+            )
         }
     }
 }
