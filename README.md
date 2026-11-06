@@ -19,9 +19,9 @@
 
 ```properties
 sdk.dir=C:\\path\\to\\android-sdk
-# Публичные ссылки Яндекс.Диска для OTA-каналов:
-launcher.update.devPublicKey=https://disk.yandex.ru/d/...
-launcher.update.releasePublicKey=https://disk.yandex.ru/d/...
+# Публичные ссылки Облака Mail.ru для OTA-каналов:
+launcher.update.devPublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
+launcher.update.releasePublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
 # OAuth-токен для автозаливки OTA (только на машине сборки):
 yandex.disk.oauth=...
 yandex.disk.launcher.devPath=/dashing/launcher-dev

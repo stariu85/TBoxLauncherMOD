@@ -571,21 +571,47 @@ private fun UpdateReleaseDetails(info: UpdateReleaseInfo) {
 
 @Composable
 private fun resolveUpdateErrorMessage(raw: String): String = when {
-    raw == "network_unavailable" ||
-        raw == "Update source URL is not configured" ||
-        raw.contains("Unable to resolve host", ignoreCase = true) ||
-        raw.contains("Failed to connect", ignoreCase = true) ||
-        raw.contains("timeout", ignoreCase = true) ||
-        raw.contains("ConnectException", ignoreCase = true) ||
-        raw.contains("UnknownHostException", ignoreCase = true) ||
-        raw.contains("SocketTimeoutException", ignoreCase = true) ||
-        raw.contains("IOException", ignoreCase = true) ||
-        raw.contains("HTTP", ignoreCase = true) -> stringResource(R.string.update_error_network)
+    raw == "network_unavailable" ->
+        "Ошибка сети: нет подключения к интернету на устройстве"
 
-    raw == "APK checksum mismatch" -> stringResource(R.string.update_error_verify_checksum)
-    raw == "APK package name mismatch" -> stringResource(R.string.update_error_verify_package)
-    raw == "APK signing certificate mismatch" -> stringResource(R.string.update_error_verify_signature)
-    else -> stringResource(R.string.update_error_generic, raw)
+    raw == "Update source URL is not configured" ->
+        "Ошибка конфигурации: URL источника обновлений не настроен"
+
+    raw == "APK checksum mismatch" ->
+        stringResource(R.string.update_error_verify_checksum)
+
+    raw == "APK package name mismatch" ->
+        stringResource(R.string.update_error_verify_package)
+
+    raw == "APK signing certificate mismatch" ->
+        stringResource(R.string.update_error_verify_signature)
+
+    raw.startsWith("No update entry for flavor", ignoreCase = true) ->
+        "На сервере нет данных для версии: ${raw.substringAfter("flavor ").trim()}"
+
+    raw.contains("UnknownHostException", ignoreCase = true) ||
+        raw.contains("Unable to resolve host", ignoreCase = true) ->
+        "Ошибка подключения: не удалось разрешить имя сервера (${raw.substringAfter(": ").ifEmpty { raw }})"
+
+    raw.contains("SocketTimeoutException", ignoreCase = true) ||
+        raw.contains("timeout", ignoreCase = true) ->
+        "Ошибка подключения: превышено время ожидания сервера ($raw)"
+
+    raw.contains("ConnectException", ignoreCase = true) ||
+        raw.contains("Failed to connect", ignoreCase = true) ->
+        "Ошибка подключения: не удалось соединиться с сервером ($raw)"
+
+    raw.contains("HTTP 404", ignoreCase = true) ->
+        "Ошибка сервера: файл не найден (HTTP 404). Проверьте наличие version.json в Облаке Mail.ru"
+
+    raw.contains("HTTP 403", ignoreCase = true) ->
+        "Ошибка сервера: доступ к папке запрещён (HTTP 403)"
+
+    raw.contains("HTTP", ignoreCase = true) ->
+        "Ошибка сервера: $raw"
+
+    else ->
+        stringResource(R.string.update_error_generic, raw)
 }
 
 @Composable

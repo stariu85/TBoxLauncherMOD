@@ -13,7 +13,8 @@ val localProperties = Properties().apply {
 }
 
 fun otaPublicKey(propertyName: String): String =
-    localProperties.getProperty(propertyName).orEmpty().trim()
+    localProperties.getProperty(propertyName)?.trim().takeUnless { it.isNullOrBlank() }
+        ?: "https://cloud.mail.ru/public/yT4V/JC5C1FwA9"
 
 android {
     namespace = "vad.dashing.tbox"
@@ -29,9 +30,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TBOX_PROXY_VERSION", "\"${libs.versions.tboxProxy.get()}\"")
-        // Separate Yandex Disk folders from Monitor. Set in local.properties:
-        //   launcher.update.releasePublicKey=https://disk.yandex.ru/d/...
-        //   launcher.update.devPublicKey=https://disk.yandex.ru/d/...
+        // Set in local.properties (Mail.ru Cloud or Yandex Disk public link):
+        //   launcher.update.releasePublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
+        //   launcher.update.devPublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
         buildConfigField(
             "String",
             "UPDATE_RELEASE_PUBLIC_KEY",

@@ -9,9 +9,9 @@
   <repo>/ota-out/launcher-dev
   <repo>/ota-out/launcher-release
 
-Публичные ссылки Яндекс.Диска (чтение с ГУ) в local.properties:
-  launcher.update.devPublicKey=https://disk.yandex.ru/d/8qGY7Q30hmWQ6g
-  launcher.update.releasePublicKey=https://disk.yandex.ru/d/Qc8nJhuVIcvIFA
+Публичные ссылки Облака Mail.ru (чтение с ГУ) в local.properties:
+  launcher.update.devPublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
+  launcher.update.releasePublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
 
 Автозагрузка на Диск (--upload) — OAuth + пути записи:
   yandex.disk.oauth=AQAAAA...

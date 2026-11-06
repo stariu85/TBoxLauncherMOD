@@ -34,23 +34,14 @@ adb install -r launcher/build/outputs/apk/ru/debug/launcher-ru-debug.apk
 
 ### Публичные папки (чтение с ГУ)
 
-| Канал | Ссылка |
-|-------|--------|
-| Dev | https://disk.yandex.ru/d/8qGY7Q30hmWQ6g |
-| Release | https://disk.yandex.ru/d/Qc8nJhuVIcvIFA |
-
 В `local.properties`:
 
 ```
-launcher.update.devPublicKey=https://disk.yandex.ru/d/8qGY7Q30hmWQ6g
-launcher.update.releasePublicKey=https://disk.yandex.ru/d/Qc8nJhuVIcvIFA
-yandex.disk.launcher.devPath=/dashing/launcher-dev
-yandex.disk.launcher.releasePath=/dashing/launcher-release
-yandex.disk.oauth=<OAuth токен>
+launcher.update.devPublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
+launcher.update.releasePublicKey=https://cloud.mail.ru/public/yT4V/JC5C1FwA9
 ```
 
-Публичные ссылки — **только чтение**. Запись — через OAuth API (`tools/yandex_disk.py`).
-Пути на Диске: `/dashing/launcher-dev` и `/dashing/launcher-release` (не в корне).
+Публичные ссылки — **только чтение**.
 ### Токен (один раз)
 
 1. Создать приложение на https://oauth.yandex.ru/ (доступ к Диску: write + read).
