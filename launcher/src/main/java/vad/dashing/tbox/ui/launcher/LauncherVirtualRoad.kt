@@ -56,6 +56,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -63,6 +64,15 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.isActive
 import vad.dashing.tbox.LauncherWindowState
@@ -459,7 +469,7 @@ private fun rememberLeadObjectSprites(): LeadObjectSprites {
 
 @Composable
 internal fun rememberRaceOncomingSprites(): RaceOncomingSprites {
-    val res = LocalContext.current.resources
+    val res = LocalResources.current
     return remember(res) {
         fun load(id: Int) = ImageBitmap.imageResource(res, id)
         RaceOncomingSprites(
@@ -643,7 +653,14 @@ private fun DrawScope.drawVirtualRoad(
 
     val now = android.os.SystemClock.uptimeMillis()
     val showDistanceSteps = beamProgress > 0.05f && (adas.timeGapFlashUntilMs > now)
-    val timeGapLevel = (adas.timeGapLevel?.takeIf { it in 1..3 } ?: storedTimeGap).coerceIn(1, 3)
+    val rawTimeGap = adas.timeGapLevel
+    val mappedTimeGap = when (rawTimeGap) {
+        0 -> 1
+        1 -> 2
+        2 -> 3
+        else -> rawTimeGap
+    }
+    val timeGapLevel = (mappedTimeGap?.takeIf { it in 1..3 } ?: storedTimeGap).coerceIn(1, 3)
 
     val frontDistance = leadVisual?.distanceM ?: adas.frontObject.displayDistanceM
     if (leadVisual != null) {
@@ -1403,8 +1420,35 @@ fun LauncherSpeedLimitOverlay(
     onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val limit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
     if (limit == null) return
+
+    val enabledRevision by LauncherAppConfigStore.adasAccBySpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+    val offsetRevision by LauncherAppConfigStore.adasAccSpeedOffsetRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, enabledRevision) {
+        LauncherAppConfigStore.adasAccBySpeedLimitEnabled(context)
+    }
+    val offset = remember(context, offsetRevision) {
+        LauncherAppConfigStore.adasAccSpeedOffset(context)
+    }
+
+    var lastAppliedLimit by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(limit, enabled, offset) {
+        if (enabled && limit != lastAppliedLimit) {
+            val cruiseState = LauncherCruisePresetController.currentAccCruiseState()
+            if (cruiseState == AccCruiseState.Active) {
+                lastAppliedLimit = limit
+                val targetSpeed = limit + offset
+                LauncherCruisePresetController.applyPreset(context, targetSpeed)
+            }
+        }
+    }
+    LaunchedEffect(enabled) {
+        if (!enabled) {
+            lastAppliedLimit = null
+        }
+    }
 
     var isDragging by remember { mutableStateOf(false) }
 
@@ -1454,6 +1498,12 @@ fun LauncherSpeedLimitOverlay(
                         }
                         isDragging = false
                         onDragEnd()
+                    } else if (!isDragging) {
+                        if (enabled) {
+                            lastAppliedLimit = limit
+                            val targetSpeed = limit + offset
+                            LauncherCruisePresetController.applyPreset(context, targetSpeed)
+                        }
                     }
                 }
             },
@@ -1464,7 +1514,25 @@ fun LauncherSpeedLimitOverlay(
                 limitKmh = limit,
                 warning = adas.speedLimitWarning,
                 accent = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
+                active = enabled,
             )
+        }
+        if (enabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = (-2).dp, y = (-2).dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(LauncherColors.AccentCyan)
+                    .padding(horizontal = 3.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    text = "+$offset",
+                    color = Color.Black,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
@@ -1473,10 +1541,11 @@ private fun DrawScope.drawSpeedLimitSign(
     limitKmh: Int,
     warning: Boolean,
     accent: Color = if (warning) Color(0xFFEF4444) else Color(0xFFE11D48),
+    active: Boolean = false,
 ) {
     val cx = size.width / 2f
     val cy = size.height / 2f
-    val radius = minOf(cx, cy) - 3f
+    val radius = minOf(cx, cy) - (if (active) 5f else 3f)
     drawCircle(color = Color.White.copy(alpha = 0.92f), radius = radius, center = Offset(cx, cy))
     drawCircle(
         color = accent,
@@ -1484,6 +1553,14 @@ private fun DrawScope.drawSpeedLimitSign(
         center = Offset(cx, cy),
         style = Stroke(width = 4.5f),
     )
+    if (active) {
+        drawCircle(
+            color = LauncherColors.AccentCyan,
+            radius = minOf(cx, cy) - 1.5f,
+            center = Offset(cx, cy),
+            style = Stroke(width = 3f),
+        )
+    }
     val paint = Paint().apply {
         isAntiAlias = true
         color = Color(0xFF111827).toArgb()

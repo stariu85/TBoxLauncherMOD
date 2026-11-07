@@ -309,6 +309,12 @@
     <string name="launcher_adas_distance_text_size_desc">Размер шрифта на метке расстояния до ведущей машины</string>
     <string name="launcher_adas_distance_offset_title">Позиция метки дистанции ACC</string>
     <string name="launcher_adas_distance_offset_desc">Смещение метки от бампера ведущей машины (0%) до вашей машины (100%)</string>
+    <string name="launcher_adas_icon_scale_title">Масштаб иконок систем</string>
+    <string name="launcher_adas_icon_scale_desc">Размер иконок статусов систем и ошибок справа и слева в зоне ADAS</string>
+    <string name="launcher_adas_acc_by_speed_limit_title">Скорость АСС по ограничению скорости</string>
+    <string name="launcher_adas_acc_by_speed_limit_desc">Тап по знаку ограничения скорости выставляет скорость АСС + выставленное значение</string>
+    <string name="launcher_adas_acc_speed_offset_title">Прибавка скорости к ограничению</string>
+    <string name="launcher_adas_acc_speed_offset_desc">Значение (км/ч), добавляемое к знаку ограничения скорости при тапе или авто-установке</string>
     <string name="launcher_climate_visible_title">Кнопки климат-контроля</string>
     <string name="launcher_climate_visible_desc">Отображать панель климат-контроля и подогревов на нижней панели</string>
     <string name="launcher_climate_scale_title">Размер кнопок климата</string>

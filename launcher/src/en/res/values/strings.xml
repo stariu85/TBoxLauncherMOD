@@ -96,6 +96,12 @@
     <string name="launcher_adas_distance_text_size_desc">Font size of the lead vehicle distance badge</string>
     <string name="launcher_adas_distance_offset_title">ACC distance label position</string>
     <string name="launcher_adas_distance_offset_desc">Offset of the badge from lead car bumper (0%) to ego car bumper (100%)</string>
+    <string name="launcher_adas_icon_scale_title">System Icons Scale</string>
+    <string name="launcher_adas_icon_scale_desc">Size of system status and error icons on the left and right in the ADAS zone</string>
+    <string name="launcher_adas_acc_by_speed_limit_title">ACC speed by speed limit</string>
+    <string name="launcher_adas_acc_by_speed_limit_desc">Tapping speed limit sign sets ACC speed to limit + offset</string>
+    <string name="launcher_adas_acc_speed_offset_title">Speed limit offset</string>
+    <string name="launcher_adas_acc_speed_offset_desc">Offset (km/h) added to speed limit on tap or auto-set</string>
     <string name="launcher_climate_visible_title">Climate controls</string>
     <string name="launcher_climate_visible_desc">Show climate and seat heating controls on the bottom panel</string>
     <string name="launcher_climate_scale_title">Climate buttons size</string>

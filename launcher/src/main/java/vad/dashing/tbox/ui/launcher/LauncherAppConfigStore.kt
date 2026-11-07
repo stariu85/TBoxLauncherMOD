@@ -58,6 +58,9 @@ private const val KEY_CLIMATE_CARD_BG_VISIBLE = "climate_card_bg_visible"
 private const val KEY_FLOATING_HOME_VISIBLE = "floating_home_visible"
 private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
+private const val KEY_ADAS_ICON_SCALE = "adas_icon_scale"
+private const val KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED = "adas_acc_by_speed_limit_enabled"
+private const val KEY_ADAS_ACC_SPEED_OFFSET = "adas_acc_speed_offset"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
 private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
@@ -218,6 +221,12 @@ internal const val AVM_CAMERA_ACTION_DEFAULT = AVM_CAMERA_ACTION_MINIMIZE_APPS
 internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
 internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
 internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
+internal const val ADAS_ICON_SCALE_DEFAULT = 100
+internal const val ADAS_ICON_SCALE_MIN = 100
+internal const val ADAS_ICON_SCALE_MAX = 200
+internal const val ADAS_ACC_SPEED_OFFSET_DEFAULT = 10
+internal const val ADAS_ACC_SPEED_OFFSET_MIN = 0
+internal const val ADAS_ACC_SPEED_OFFSET_MAX = 20
 internal const val ADAS_DISTANCE_LABEL_OFFSET_DEFAULT = 0.50f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MIN = 0.00f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
@@ -391,6 +400,12 @@ internal object LauncherAppConfigStore {
     internal val navButtonsRevisionFlow: StateFlow<Int> = navButtonsRevision
     private val adasDistanceTextSizeRevision = MutableStateFlow(0)
     internal val adasDistanceTextSizeRevisionFlow: StateFlow<Int> = adasDistanceTextSizeRevision
+    private val adasIconScaleRevision = MutableStateFlow(0)
+    internal val adasIconScaleRevisionFlow: StateFlow<Int> = adasIconScaleRevision
+    private val adasAccBySpeedLimitRevision = MutableStateFlow(0)
+    internal val adasAccBySpeedLimitRevisionFlow: StateFlow<Int> = adasAccBySpeedLimitRevision
+    private val adasAccSpeedOffsetRevision = MutableStateFlow(0)
+    internal val adasAccSpeedOffsetRevisionFlow: StateFlow<Int> = adasAccSpeedOffsetRevision
     private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
     private val adasPanelVisibleRevision = MutableStateFlow(0)
@@ -928,6 +943,34 @@ internal object LauncherAppConfigStore {
         val next = sizeSp.coerceIn(ADAS_DISTANCE_TEXT_SIZE_MIN, ADAS_DISTANCE_TEXT_SIZE_MAX)
         prefs(context).edit().putInt(KEY_ADAS_DISTANCE_TEXT_SIZE, next).apply()
         adasDistanceTextSizeRevision.value++
+    }
+
+    fun adasIconScale(context: Context): Int =
+        prefs(context).getInt(KEY_ADAS_ICON_SCALE, ADAS_ICON_SCALE_DEFAULT)
+            .coerceIn(ADAS_ICON_SCALE_MIN, ADAS_ICON_SCALE_MAX)
+
+    fun setAdasIconScale(context: Context, scalePercent: Int) {
+        val next = scalePercent.coerceIn(ADAS_ICON_SCALE_MIN, ADAS_ICON_SCALE_MAX)
+        prefs(context).edit().putInt(KEY_ADAS_ICON_SCALE, next).apply()
+        adasIconScaleRevision.value++
+    }
+
+    fun adasAccBySpeedLimitEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED, false)
+
+    fun setAdasAccBySpeedLimitEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED, enabled).apply()
+        adasAccBySpeedLimitRevision.value++
+    }
+
+    fun adasAccSpeedOffset(context: Context): Int =
+        prefs(context).getInt(KEY_ADAS_ACC_SPEED_OFFSET, ADAS_ACC_SPEED_OFFSET_DEFAULT)
+            .coerceIn(ADAS_ACC_SPEED_OFFSET_MIN, ADAS_ACC_SPEED_OFFSET_MAX)
+
+    fun setAdasAccSpeedOffset(context: Context, offset: Int) {
+        val next = offset.coerceIn(ADAS_ACC_SPEED_OFFSET_MIN, ADAS_ACC_SPEED_OFFSET_MAX)
+        prefs(context).edit().putInt(KEY_ADAS_ACC_SPEED_OFFSET, next).apply()
+        adasAccSpeedOffsetRevision.value++
     }
 
     fun adasDistanceLabelOffset(context: Context): Float =

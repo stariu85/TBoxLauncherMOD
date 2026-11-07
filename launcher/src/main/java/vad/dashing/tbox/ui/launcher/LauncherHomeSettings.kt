@@ -1448,6 +1448,126 @@ private fun AdasDistanceTextSizeSlider() {
     }
 }
 
+@Composable
+private fun AdasIconScaleSlider() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.adasIconScaleRevisionFlow.collectAsStateWithLifecycle()
+    var scalePercent by remember(context, revision) {
+        mutableFloatStateOf(LauncherAppConfigStore.adasIconScale(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_adas_icon_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${scalePercent.roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_adas_icon_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scalePercent,
+            onValueChange = { next ->
+                val snapped = ((next / 10f).roundToInt() * 10f).coerceIn(
+                    ADAS_ICON_SCALE_MIN.toFloat(),
+                    ADAS_ICON_SCALE_MAX.toFloat()
+                )
+                scalePercent = snapped
+                LauncherAppConfigStore.setAdasIconScale(context, snapped.roundToInt())
+            },
+            valueRange = ADAS_ICON_SCALE_MIN.toFloat()..ADAS_ICON_SCALE_MAX.toFloat(),
+            steps = ((ADAS_ICON_SCALE_MAX - ADAS_ICON_SCALE_MIN) / 10) - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun AdasAccBySpeedLimitToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.adasAccBySpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.adasAccBySpeedLimitEnabled(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_adas_acc_by_speed_limit_title),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_adas_acc_by_speed_limit_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun AdasAccSpeedOffsetSlider() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.adasAccSpeedOffsetRevisionFlow.collectAsStateWithLifecycle()
+    var offsetKm by remember(context, revision) {
+        mutableFloatStateOf(LauncherAppConfigStore.adasAccSpeedOffset(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_adas_acc_speed_offset_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "+${offsetKm.roundToInt()} km/h",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_adas_acc_speed_offset_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = offsetKm,
+            onValueChange = { next ->
+                val snapped = next.roundToInt().coerceIn(ADAS_ACC_SPEED_OFFSET_MIN, ADAS_ACC_SPEED_OFFSET_MAX)
+                offsetKm = snapped.toFloat()
+                LauncherAppConfigStore.setAdasAccSpeedOffset(context, snapped)
+            },
+            valueRange = ADAS_ACC_SPEED_OFFSET_MIN.toFloat()..ADAS_ACC_SPEED_OFFSET_MAX.toFloat(),
+            steps = ADAS_ACC_SPEED_OFFSET_MAX - ADAS_ACC_SPEED_OFFSET_MIN - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
 
 
 @Composable

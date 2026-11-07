@@ -106,11 +106,16 @@ fun LauncherAdasStrip(
     modifier: Modifier = Modifier,
     isVertical: Boolean = false,
 ) {
-    val iconBoxSizeDp = 30
-    val innerIconSizeDp = 19
+    val context = LocalContext.current
+    val iconScaleRevision by LauncherAppConfigStore.adasIconScaleRevisionFlow.collectAsStateWithLifecycle()
+    val iconScale = remember(context, iconScaleRevision) {
+        LauncherAppConfigStore.adasIconScale(context) / 100f
+    }
+    val iconBoxSizeDp = (30f * iconScale).roundToInt()
+    val innerIconSizeDp = (19f * iconScale).roundToInt()
     val speedFontSizeSp = 12
     val chipFontSizeSp = 11
-    val alertIconSizeDp = 13
+    val alertIconSizeDp = (13f * iconScale).roundToInt()
     val paddingHDp = 8
     val paddingVDp = 4
     val spacingDp = 6

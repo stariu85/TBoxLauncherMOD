@@ -31,6 +31,7 @@ import androidx.compose.ui.window.DialogProperties
 private fun isOverlayMode(): Boolean {
     return LauncherAboutOverlayWindow.isShowing() ||
             LauncherVehicleSettingsOverlayWindow.isShowing() ||
+            LauncherVehicleStatusOverlayWindow.isShowing() ||
             LauncherAppPickerOverlayWindow.isShowing() ||
             LauncherDockSlotPickerOverlayWindow.isShowing() ||
             LauncherAppDrawerWindow.isShowing() ||

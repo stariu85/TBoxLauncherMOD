@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import android.view.SoundEffectConstants
 import androidx.compose.ui.res.painterResource
@@ -88,6 +89,7 @@ fun LauncherMediaMiniPlayer(
     sourceId: String = LAUNCHER_MEDIA_SOURCE_ID,
 ) {
     val context = LocalContext.current
+    val res = LocalResources.current
     var defaultRevision by remember { mutableIntStateOf(0) }
     var pickerVisible by remember { mutableStateOf(false) }
     var pickerFallback by remember { mutableStateOf(false) }
@@ -158,14 +160,14 @@ fun LauncherMediaMiniPlayer(
         }
     }
 
-    val mediaPickerApps = remember(context, mediaPackages) {
+    val mediaPickerApps = remember(context, res, mediaPackages) {
         val pm = context.packageManager
         mediaPackages.mapNotNull { pkg ->
             runCatching {
                 val info = pm.getApplicationInfo(pkg, 0)
                 val label = pm.getApplicationLabel(info).toString()
                 val icon = runCatching {
-                    val sizePx = (64f * context.resources.displayMetrics.density).toInt().coerceIn(96, 256)
+                    val sizePx = (64f * res.displayMetrics.density).toInt().coerceIn(96, 256)
                     val drawable = pm.getApplicationIcon(info)
                     if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) {
                         drawable.setBounds(0, 0, sizePx, sizePx)

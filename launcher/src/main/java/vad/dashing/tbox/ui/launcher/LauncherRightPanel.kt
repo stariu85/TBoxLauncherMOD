@@ -973,7 +973,7 @@ fun LauncherRightPanel(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     LauncherVehicleStatusSquareCard(
-                        onClick = { LauncherVehicleStatusDialogState.show() },
+                        onClick = { LauncherVehicleStatusDialogState.show(context) },
                     )
                     LauncherOdometerMetricCard(
                         odometerValue = odometer?.let { "${valueToString(it, 0)} ${stringResource(R.string.unit_km)}" } ?: "—",
@@ -2551,7 +2551,7 @@ private fun LauncherVehicleSettingsButtonsCard(
                 color = cardBorder,
                 shape = RoundedCornerShape(12.dp),
             )
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2565,8 +2565,8 @@ private fun LauncherVehicleSettingsButtonsCard(
         } else {
             Color.Black.copy(alpha = 0.20f)
         }
-        val btnSize = 38.dp
-        val iconSize = 18.dp
+        val btnSize = 44.dp
+        val iconSize = 21.dp
 
         // Button 1: Car settings
         Box(
@@ -2623,7 +2623,7 @@ private fun LauncherVehicleSettingsButtonsCard(
             Text(
                 text = "DCL",
                 color = valueColor,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
             )
         }

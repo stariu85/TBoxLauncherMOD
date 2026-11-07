@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ import vad.dashing.tbox.ui.launcher.LauncherRightPanelOverlayWindow
 import vad.dashing.tbox.ui.launcher.PassengerSeatOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
+import vad.dashing.tbox.ui.launcher.LauncherVehicleStatusOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
 import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
@@ -91,6 +93,13 @@ class LauncherHomeActivity : ComponentActivity() {
             delay(2000L)
             vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
         }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.notifyBackPressed()
+                vad.dashing.tbox.ui.launcher.goLauncherBack(this@LauncherHomeActivity, source = "onBackPressedDispatcher")
+            }
+        })
 
         setContent {
             DisposableEffect(Unit) {
@@ -152,9 +161,9 @@ class LauncherHomeActivity : ComponentActivity() {
         super.onPause()
     }
 
-    @SuppressLint("BackPressed")
+    @SuppressLint("BackPressed", "GestureBackNavigation")
     @Deprecated("Deprecated in Java")
-    @Suppress("MissingSuperCall", "DEPRECATION", "OVERRIDE_DEPRECATION")
+    @Suppress("MissingSuperCall", "DEPRECATION", "OVERRIDE_DEPRECATION", "GestureBackNavigation")
     override fun onBackPressed() {
         vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.notifyBackPressed()
         if (onBackPressedDispatcher.hasEnabledCallbacks()) {
@@ -182,6 +191,7 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherAppDrawerWindow.hide()
         LauncherAppPickerOverlayWindow.hide()
         LauncherVehicleSettingsOverlayWindow.hide()
+        LauncherVehicleStatusOverlayWindow.hide()
         LauncherAboutOverlayWindow.hide()
         PassengerSeatOverlayWindow.hide()
         LauncherOverlayBar.hide()

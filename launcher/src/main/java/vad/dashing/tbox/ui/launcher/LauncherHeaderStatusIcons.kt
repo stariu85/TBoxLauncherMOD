@@ -1385,7 +1385,7 @@ private fun RenderTopBarItemContent(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { LauncherVehicleStatusDialogState.show() },
+                        onClick = { LauncherVehicleStatusDialogState.show(context) },
                     ),
             ) {
                 Image(

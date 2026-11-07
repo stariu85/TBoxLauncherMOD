@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,6 +61,7 @@ fun LauncherBackupSection(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val res = LocalResources.current
     val scope = rememberCoroutineScope()
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
@@ -131,7 +133,7 @@ fun LauncherBackupSection(
                         LauncherBackupManager.createBackup(context)
                             .onSuccess { file ->
                                 isError = false
-                                statusMessage = context.getString(
+                                statusMessage = res.getString(
                                     R.string.settings_backup_created_success,
                                     file.name,
                                 )
@@ -193,6 +195,7 @@ fun RestoreBackupDialog(
     onRestoreSuccess: () -> Unit,
 ) {
     val context = LocalContext.current
+    val res = LocalResources.current
     val scope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -409,6 +412,7 @@ fun RestoredRebootDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val res = LocalResources.current
     val rebootAction = rememberHuRebootActionEnabled()
     val rebootEnabled = rebootAction.enabled
     val onRebootUsed = rebootAction.onUsed

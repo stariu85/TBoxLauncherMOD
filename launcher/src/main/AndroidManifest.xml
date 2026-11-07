@@ -126,6 +126,7 @@
         <package android:name="com.google.android.wallpaper" />
         <package android:name="com.android.settings" />
         <package android:name="vad.dashing.tbox" />
+        <provider android:authorities="vad.dashing.tbox.localaccess" />
         <provider android:authorities="com.wt.launcher3" />
     </queries>
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -48,7 +49,12 @@ fun LauncherVehicleAlertsStrip(
     modifier: Modifier = Modifier,
     isVertical: Boolean = false,
 ) {
-    val iconSizeDp = 19
+    val context = LocalContext.current
+    val iconScaleRevision by LauncherAppConfigStore.adasIconScaleRevisionFlow.collectAsStateWithLifecycle()
+    val iconScale = remember(context, iconScaleRevision) {
+        LauncherAppConfigStore.adasIconScale(context) / 100f
+    }
+    val iconSizeDp = (19f * iconScale).roundToInt()
     val paddingDp = 5
     val cornerRadiusDp = 8
     val spacingDp = 6

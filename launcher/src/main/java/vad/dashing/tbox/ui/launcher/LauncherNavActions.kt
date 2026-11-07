@@ -81,6 +81,12 @@ internal fun goLauncherHome(
         }
     }
     runCatching {
+        if (LauncherVehicleStatusOverlayWindow.isShowing()) {
+            LauncherVehicleStatusOverlayWindow.hide()
+            closedList += "VehicleStatusOverlay"
+        }
+    }
+    runCatching {
         if (LauncherAppDrawerWindow.isShowing()) {
             LauncherAppDrawerWindow.hide()
             closedList += "AppDrawer"
@@ -218,6 +224,11 @@ internal fun goLauncherBack(
             LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed AppPickerOverlay")
             return
         }
+        LauncherVehicleStatusOverlayWindow.isShowing() -> {
+            LauncherVehicleStatusOverlayWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed VehicleStatusOverlay")
+            return
+        }
         LauncherDockSlotPickerOverlayWindow.isShowing() -> {
             LauncherDockSlotPickerOverlayWindow.hide()
             LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed DockSlotPickerOverlay")
@@ -268,7 +279,8 @@ internal fun dispatchPhysicalBack(source: String = "unknown") {
             MainActivity.isOpen() ||
             LauncherAboutOverlayWindow.isShowing() ||
             LauncherAppDrawerWindow.isShowing() ||
-            LauncherAppPickerOverlayWindow.isShowing()
+            LauncherAppPickerOverlayWindow.isShowing() ||
+            LauncherVehicleStatusOverlayWindow.isShowing()
         if (!hasOverlays) {
             Log.w(TAG, "dispatchPhysicalBack: ignored on root desktop source=$source")
             LauncherNavLogger.logNavAction("BACK_DELIVER", source, result = "Ignored on root desktop")

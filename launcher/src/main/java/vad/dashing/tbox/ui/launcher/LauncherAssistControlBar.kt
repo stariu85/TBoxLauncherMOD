@@ -790,7 +790,15 @@ fun LauncherWiperControlBar(
         vad.dashing.tbox.ui.sendToggleWiperMaintenance(context)
     }
 
-    val currentSens = vehicleControls.wiperSensitivity ?: 1
+    var simSensitivity by remember { mutableIntStateOf(1) }
+
+    LaunchedEffect(vehicleControls.wiperSensitivity) {
+        if (vehicleControls.wiperSensitivity != null) {
+            simSensitivity = vehicleControls.wiperSensitivity
+        }
+    }
+
+    val currentSens = vehicleControls.wiperSensitivity ?: simSensitivity
     val sensitivityColor = when (currentSens) {
         1 -> Color(0xFFEF4444) // Red
         2 -> Color(0xFFEAB308) // Yellow
@@ -801,6 +809,7 @@ fun LauncherWiperControlBar(
 
     val onSensitivityClick: () -> Unit = {
         val nextSens = if (currentSens >= 4) 1 else currentSens + 1
+        simSensitivity = nextSens
         sendSetMbCanProperty(
             context,
             MbCanKnownVehiclePropertyId.WIPER_SENSITIVITY,

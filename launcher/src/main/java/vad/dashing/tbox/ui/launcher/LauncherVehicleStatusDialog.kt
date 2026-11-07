@@ -41,12 +41,15 @@ internal object LauncherVehicleStatusDialogState {
     var isVisible by mutableStateOf(false)
         private set
 
-    fun show() {
-        isVisible = true
+    fun show(context: android.content.Context? = vad.dashing.tbox.LauncherHomeActivityHolder.instance) {
+        if (context == null || !LauncherVehicleStatusOverlayWindow.show(context)) {
+            isVisible = true
+        }
     }
 
     fun hide() {
         isVisible = false
+        LauncherVehicleStatusOverlayWindow.hide()
     }
 }
 
