@@ -74,6 +74,12 @@ object LauncherCar3DModelTrigger {
     private val _previousAppPressedEvent = MutableStateFlow(0L)
     val previousAppPressedEvent: StateFlow<Long> = _previousAppPressedEvent.asStateFlow()
 
+    private val _quickSettingsClosedEvent = MutableStateFlow(0L)
+    val quickSettingsClosedEvent: StateFlow<Long> = _quickSettingsClosedEvent.asStateFlow()
+
+    private val _paintChangedEvent = MutableStateFlow(0L)
+    val paintChangedEvent: StateFlow<Long> = _paintChangedEvent.asStateFlow()
+
     fun notifyHomePressed() {
         _homePressedEvent.value = SystemClock.uptimeMillis()
     }
@@ -84,6 +90,14 @@ object LauncherCar3DModelTrigger {
 
     fun notifyPreviousAppPressed() {
         _previousAppPressedEvent.value = SystemClock.uptimeMillis()
+    }
+
+    fun notifyQuickSettingsClosed() {
+        _quickSettingsClosedEvent.value = SystemClock.uptimeMillis()
+    }
+
+    fun notifyPaintChanged() {
+        _paintChangedEvent.value = SystemClock.uptimeMillis()
     }
 }
 
@@ -373,6 +387,8 @@ private fun LauncherCarFilamentContent(
     val homePressedEvent by LauncherCar3DModelTrigger.homePressedEvent.collectAsStateWithLifecycle()
     val backPressedEvent by LauncherCar3DModelTrigger.backPressedEvent.collectAsStateWithLifecycle()
     val previousAppPressedEvent by LauncherCar3DModelTrigger.previousAppPressedEvent.collectAsStateWithLifecycle()
+    val quickSettingsClosedEvent by LauncherCar3DModelTrigger.quickSettingsClosedEvent.collectAsStateWithLifecycle()
+    val paintChangedEvent by LauncherCar3DModelTrigger.paintChangedEvent.collectAsStateWithLifecycle()
     val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
         LauncherAppConfigStore.cameraAnimationEnabled(context)
@@ -447,13 +463,26 @@ private fun LauncherCarFilamentContent(
 
     val isTriggerActive = bodyActive || cameraSwitching || orbitInteracting || isInitializing
 
-    LaunchedEffect(isTriggerActive, isAvmActive, carHidden, homePressedEvent, backPressedEvent, previousAppPressedEvent) {
-        if (isAvmActive || carHidden) {
+    LaunchedEffect(
+        isTriggerActive,
+        isAvmActive,
+        carHidden,
+        homePressedEvent,
+        backPressedEvent,
+        previousAppPressedEvent,
+        quickSettingsClosedEvent,
+        paintChangedEvent,
+    ) {
+        val nowMs = SystemClock.uptimeMillis()
+        val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
+
+        if (isAvmActive || (carHidden && !isPaintChangeRecent)) {
             customSceneLifecycleOwner.pauseScene()
         } else {
-            // Resume scene immediately when exiting camera/settings, when triggers fire, or when Home/Back/PreviousApp is pressed
+            // Resume scene immediately when exiting camera/settings, when triggers fire,
+            // or when Home/Back/PreviousApp/QuickSettingsClosed/PaintChanged is pressed/triggered
             customSceneLifecycleOwner.resumeScene()
-            if (!isTriggerActive) {
+            if (!isTriggerActive && !isPaintChangeRecent) {
                 // Keep rendering active for 2 seconds after camera/settings exit, action completion, or Home/Back/PreviousApp press
                 delay(2_000L)
                 customSceneLifecycleOwner.pauseScene()
@@ -543,7 +572,11 @@ private fun LauncherCarFilamentContent(
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     runCatching {
-                        if (isAvmRef.value || carHiddenRef.value) {
+                        val nowMs = SystemClock.uptimeMillis()
+                        val paintChangedEventMs = LauncherCar3DModelTrigger.paintChangedEvent.value
+                        val isPaintChangeRecent = (nowMs - paintChangedEventMs) < 2000L
+
+                        if (isAvmRef.value || (carHiddenRef.value && !isPaintChangeRecent)) {
                             val node = modelNodeRef.get()
                             if (node != null && node.isVisible) {
                                 node.isVisible = false
@@ -588,10 +621,12 @@ private fun LauncherCarFilamentContent(
                         val homeEventMs = LauncherCar3DModelTrigger.homePressedEvent.value
                         val backEventMs = LauncherCar3DModelTrigger.backPressedEvent.value
                         val prevAppEventMs = LauncherCar3DModelTrigger.previousAppPressedEvent.value
-                        val nowMs = SystemClock.uptimeMillis()
+                        val quickSettingsClosedEventMs = LauncherCar3DModelTrigger.quickSettingsClosedEvent.value
                         val isActionRecent = (nowMs - homeEventMs) < 2000L ||
                             (nowMs - backEventMs) < 2000L ||
-                            (nowMs - prevAppEventMs) < 2000L
+                            (nowMs - prevAppEventMs) < 2000L ||
+                            (nowMs - quickSettingsClosedEventMs) < 2000L ||
+                            isPaintChangeRecent
 
                         val wasDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
 

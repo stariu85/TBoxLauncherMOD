@@ -14,6 +14,7 @@ import vad.dashing.tbox.mbcan.MbCanAvailability
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.VehicleBodyState
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
 /**
@@ -377,13 +378,21 @@ object LauncherVehicleAlertsRepository {
         Class.forName(ENGINE_CLASS).getMethod("getInstance").invoke(null)
     }.getOrNull()
 
+    private val memberCache = java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, java.lang.reflect.AccessibleObject>()
+
     private fun byteActive(obj: Any, getterOrField: String): Boolean =
         runCatching {
-            val num = try {
-                obj.javaClass.getMethod(getterOrField).invoke(obj) as? Number
-            } catch (_: Throwable) {
-                val field = obj.javaClass.getDeclaredField(getterOrField).apply { isAccessible = true }
-                field.get(obj) as? Number
+            val clazz = obj.javaClass
+            val key = clazz to getterOrField
+            val member = memberCache.getOrPut(key) {
+                runCatching {
+                    clazz.getMethod(getterOrField)
+                }.getOrNull() ?: clazz.getDeclaredField(getterOrField).apply { isAccessible = true }
+            }
+            val num = when (member) {
+                is Method -> member.invoke(obj) as? Number
+                is java.lang.reflect.Field -> member.get(obj) as? Number
+                else -> null
             }
             (num?.toInt() ?: 0) != 0
         }.getOrDefault(false)

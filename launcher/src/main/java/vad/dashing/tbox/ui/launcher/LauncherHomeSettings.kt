@@ -240,6 +240,7 @@ internal fun LauncherHomeSettingsContent() {
     EdgeGesturesSettings()
     ClimateControlsToggle()
     ClimateCardBgToggle()
+    ClimateTempColorIndicationToggle()
     ClimateControlsScaleSlider()
     DockSecondRowToggle()
     DockColumnsSlider()
@@ -1067,6 +1068,41 @@ private fun ClimateCardBgToggle() {
 }
 
 @Composable
+private fun ClimateTempColorIndicationToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.climateTempColorIndicationRevisionFlow.collectAsStateWithLifecycle()
+    var enabledState by remember(context, revision) {
+        mutableStateOf(LauncherAppConfigStore.climateTempColorIndication(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_climate_temp_color_indication_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = enabledState,
+                onCheckedChange = { enabled ->
+                    enabledState = enabled
+                    LauncherAppConfigStore.setClimateTempColorIndication(context, enabled)
+                },
+                colors = launcherSwitchColors(),
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_climate_temp_color_indication_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
 private fun FloatingHomeSizeSlider() {
     val context = LocalContext.current
     val sizeRevision by LauncherAppConfigStore.floatingHomeSizeRevisionFlow.collectAsStateWithLifecycle()
@@ -1746,6 +1782,9 @@ fun CruiseControlSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+
+        AdasAccBySpeedLimitToggle()
+        AdasAccSpeedOffsetSlider()
 
         CruisePresetsSettings()
     }

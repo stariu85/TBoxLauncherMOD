@@ -535,7 +535,7 @@ object LauncherBackupManager {
                 "media_mini_player_visible", "show_player_name_in_widget", "disable_media_card_cover_color",
                 "floating_home_visible", "camera_animation_enabled", "trunk_long_press_enabled",
                 "edge_gestures_enabled", "nav_buttons_visible", "climate_controls_visible",
-                "climate_card_bg_visible", "adas_panel_visible", "adas_alerts_in_left_panel",
+                "climate_card_bg_visible", "climate_temp_color_indication", "adas_panel_visible", "adas_alerts_in_left_panel",
                 "adas_bsd_alert_overlay_enabled", "tire_pressure_on_car_enabled",
                 "tire_pressure_only_low", "tire_pressure_only_top_view", "tire_pressure_always_in_settings",
                 "tire_pressure_inertia_animation_enabled", "tire_pressure_persist_enabled",

@@ -35,12 +35,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
@@ -48,6 +50,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
@@ -59,6 +63,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -98,6 +103,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.em
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -228,14 +234,16 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("hvac_sync", "Синхронизация SYNC", null),
     LauncherDockButtonDescriptor("temp_driver", "Температура водителя", null),
     LauncherDockButtonDescriptor("temp_pass", "Температура пассажира", null),
+    LauncherDockButtonDescriptor("hvac_heater_level", "Уровень печки", null),
     LauncherDockButtonDescriptor("audio_volume", "Регулятор громкости", null),
+    LauncherDockButtonDescriptor("screen_brightness", "Яркость экрана", null),
     LauncherDockButtonDescriptor("hvac_pm25", "Очистка PM 2.5", R.drawable.ic_widget_pm25_on),
     LauncherDockButtonDescriptor("hvac_fan_speed", "Скорость вентилятора", R.drawable.ic_widget_fan),
     LauncherDockButtonDescriptor("hvac_fan_direction", "Направление обдува", R.drawable.ic_widget_fan_face_feet),
     LauncherDockButtonDescriptor("seat_heat_left", "Подогрев водителя", R.drawable.ic_widget_seat_heat_left),
-    LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_3),
+    LauncherDockButtonDescriptor("seat_vent_left", "Вентиляция водителя", R.drawable.ic_widget_seat_vent_left),
     LauncherDockButtonDescriptor("seat_heat_right", "Подогрев пассажира", R.drawable.ic_widget_seat_heat_right),
-    LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_3),
+    LauncherDockButtonDescriptor("seat_vent_right", "Вентиляция пассажира", R.drawable.ic_widget_seat_vent_right),
     LauncherDockButtonDescriptor("seat_heat_rear_left", "Подогрев зад. лев.", R.drawable.ic_widget_seat_heat_left),
     LauncherDockButtonDescriptor("seat_heat_rear_right", "Подогрев зад. прав.", R.drawable.ic_widget_seat_heat_right),
     LauncherDockButtonDescriptor("recirc", "Рециркуляция", R.drawable.ic_widget_hvac_air_recirculation),
@@ -457,12 +465,26 @@ internal fun LauncherDockSlotPickerContent(
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold,
                                         )
-                                    } else if (btn.id == "audio_volume") {
+                                    } else if (btn.id == "hvac_heater_level") {
                                         Text(
-                                            text = "Vol",
+                                            text = "Печка",
                                             color = pickerIconColor,
-                                            fontSize = 15.sp,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold,
+                                        )
+                                    } else if (btn.id == "audio_volume") {
+                                        Image(
+                                            painter = painterResource(R.drawable.ic_speaker_plus),
+                                            contentDescription = null,
+                                            colorFilter = ColorFilter.tint(pickerIconColor),
+                                            modifier = Modifier.size(31.8.dp),
+                                        )
+                                    } else if (btn.id == "screen_brightness") {
+                                        Image(
+                                            painter = painterResource(R.drawable.ic_brightness_plus),
+                                            contentDescription = null,
+                                            colorFilter = ColorFilter.tint(pickerIconColor),
+                                            modifier = Modifier.size(28.9.dp),
                                         )
                                     } else if (btn.id == "hvac_pm25") {
                                         Image(
@@ -750,6 +772,10 @@ fun LauncherBottomBar(
     val climateCardBgVisible = remember(context, climateCardBgRevision) {
         LauncherAppConfigStore.climateCardBgVisible(context)
     }
+    val tempColorIndicationRevision by LauncherAppConfigStore.climateTempColorIndicationRevisionFlow.collectAsStateWithLifecycle()
+    val tempColorIndication = remember(context, tempColorIndicationRevision) {
+        LauncherAppConfigStore.climateTempColorIndication(context)
+    }
     val floatingHomeVisibleRevision by LauncherAppConfigStore.floatingHomeVisibleRevisionFlow.collectAsStateWithLifecycle()
     val floatingHomeVisible = remember(context, floatingHomeVisibleRevision) {
         LauncherAppConfigStore.floatingHomeVisible(context)
@@ -862,7 +888,7 @@ fun LauncherBottomBar(
                                         continue
                                     }
                                     val itemId = slotsUnified.getOrNull(index)
-                                    val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+                                    val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "hvac_heater_level" || itemId == "audio_volume" || itemId == "screen_brightness") 2 else 1
                                     if (itemSpan > 1) {
                                         skipCount = itemSpan - 1
                                     }
@@ -971,7 +997,7 @@ fun LauncherBottomBar(
                                 continue
                             }
                             val itemId = slotsUnified.getOrNull(index)
-                            val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+                            val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "hvac_heater_level" || itemId == "audio_volume" || itemId == "screen_brightness") 2 else 1
                             if (itemSpan > 1) {
                                 skipCount = itemSpan - 1
                             }
@@ -1132,7 +1158,7 @@ private fun LauncherDraggableUnifiedSlot(
     val density = LocalDensity.current
     val trashThresholdPx = remember(density) { with(density) { -36.dp.toPx() } }
     val isTrashThreshold = isDragging && offsetY < trashThresholdPx
-    val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+    val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "hvac_heater_level" || itemId == "audio_volume" || itemId == "screen_brightness") 2 else 1
 
     Box(
         modifier = Modifier
@@ -1266,6 +1292,10 @@ private fun LauncherBottomDockButtonContent(
     val steeringHeat by UniversalCanRepository.steeringWheelHeatState.collectAsStateWithLifecycle()
     val windscreenHeat by UniversalCanRepository.frontWindscreenHeatState.collectAsStateWithLifecycle()
     val rearDefrost by UniversalCanRepository.hvacDefrosterState.collectAsStateWithLifecycle()
+    val tempColorIndicationRevision by LauncherAppConfigStore.climateTempColorIndicationRevisionFlow.collectAsStateWithLifecycle()
+    val tempColorIndication = remember(context, tempColorIndicationRevision) {
+        LauncherAppConfigStore.climateTempColorIndication(context)
+    }
     val leftSeatMode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
     val rightSeatMode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
     val rearLeftSeatMode by UniversalCanRepository.rearLeftSeatModeState.collectAsStateWithLifecycle()
@@ -1534,13 +1564,31 @@ private fun LauncherBottomDockButtonContent(
             onDown = { sendAdjustHvacTemperature(context, driverTemp, -0.5f, HvacTempZone.Driver) },
             onUp = { sendAdjustHvacTemperature(context, driverTemp, 0.5f, HvacTempZone.Driver) },
             onTextClick = { launchClimateApp(context) },
+            useTempColorIndication = tempColorIndication,
+            celsius = driverTemp,
         )
         "temp_pass" -> LauncherTempStepper(
             tempText = formatHvacSetTempAnnotated(passTemp),
             onDown = { sendAdjustHvacTemperature(context, passTemp, -0.5f, HvacTempZone.Passenger) },
             onUp = { sendAdjustHvacTemperature(context, passTemp, 0.5f, HvacTempZone.Passenger) },
             onTextClick = { launchClimateApp(context) },
+            useTempColorIndication = tempColorIndication,
+            celsius = passTemp,
         )
+        "hvac_heater_level" -> {
+            val currentTemp = driverTemp
+            val heaterLevel = if (currentTemp != null) {
+                ((currentTemp - 16f).roundToInt() + 1).coerceIn(1, 15)
+            } else {
+                8
+            }
+            LauncherHeaterLevelStepper(
+                level = heaterLevel,
+                onDown = { sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver) },
+                onUp = { sendAdjustHvacTemperature(context, driverTemp, 1.0f, HvacTempZone.Driver) },
+                onTextClick = { launchClimateApp(context) },
+            )
+        }
         "audio_volume" -> {
             val systemVolume = rememberSystemMediaVolume(context)
 
@@ -1548,6 +1596,24 @@ private fun LauncherBottomDockButtonContent(
                 volumeText = systemVolume.toString(),
                 onDown = { sendAdjustAudioVolume(context, -1) },
                 onUp = { sendAdjustAudioVolume(context, 1) },
+            )
+        }
+        "screen_brightness" -> {
+            val systemSettings = rememberLauncherSystemSettings(context)
+            val brightnessPercent = (systemSettings.brightnessNorm * 100f).roundToInt()
+
+            LauncherBrightnessStepper(
+                brightnessText = brightnessPercent.toString(),
+                onDown = {
+                    val currentPercent = (systemSettings.brightnessNorm * 100f).roundToInt()
+                    val targetPercent = (currentPercent - 10).coerceIn(0, 100)
+                    systemSettings.applyBrightnessNorm(targetPercent / 100f)
+                },
+                onUp = {
+                    val currentPercent = (systemSettings.brightnessNorm * 100f).roundToInt()
+                    val targetPercent = (currentPercent + 10).coerceIn(0, 100)
+                    systemSettings.applyBrightnessNorm(targetPercent / 100f)
+                },
             )
         }
         "hvac_auto" -> {
@@ -1790,14 +1856,29 @@ private fun LauncherTempStepper(
     onDown: () -> Unit,
     onUp: () -> Unit,
     onTextClick: (() -> Unit)? = null,
+    useTempColorIndication: Boolean = false,
+    celsius: Float? = null,
 ) {
     val density = LocalDensity.current
     val thresholdPx = remember(density) { with(density) { 18.dp.toPx() } }
     var totalDragY by remember { mutableFloatStateOf(0f) }
 
-    Box(
+    val blueColor = Color(0xFF3B82F6)
+    val redColor = Color(0xFFEF4444)
+
+    val downTint = if (useTempColorIndication) blueColor else LauncherColors.TextSecondary
+    val upTint = if (useTempColorIndication) redColor else LauncherColors.TextSecondary
+
+    val textColor = if (useTempColorIndication) {
+        val fraction = if (celsius != null) ((celsius - 16f) / 14f).coerceIn(0f, 1f) else 0.5f
+        lerp(blueColor, redColor, fraction)
+    } else {
+        LauncherColors.TextPrimary
+    }
+
+    Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = { totalDragY = 0f },
@@ -1816,51 +1897,159 @@ private fun LauncherTempStepper(
                     }
                 )
             },
-        contentAlignment = Alignment.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Box(
-            modifier = Modifier.align(Alignment.CenterStart),
+            modifier = Modifier
+                .width(dockDp(30f))
+                .fillMaxHeight()
+                .clickable(onClick = onDown),
             contentAlignment = Alignment.Center,
         ) {
-            LauncherDockIcon(onClick = onDown) {
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    null,
-                    tint = LauncherColors.TextSecondary,
-                    modifier = Modifier.size(dockDp(26.4f)),
-                )
-            }
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                null,
+                tint = downTint,
+                modifier = Modifier.size(dockDp(24f)),
+            )
         }
-        Text(
-            text = tempText,
-            style = MaterialTheme.typography.tboxCaption,
-            color = LauncherColors.TextPrimary,
-            fontSize = dockSp(19.2f),
-            fontWeight = FontWeight.Light,
-            textAlign = TextAlign.Center,
+
+        Box(
             modifier = Modifier
-                .align(Alignment.Center)
+                .weight(1f)
+                .fillMaxHeight()
                 .then(
                     if (onTextClick != null) {
                         Modifier.clickable(onClick = onTextClick)
                     } else {
                         Modifier
                     }
-                )
-                .padding(horizontal = 1.dp),
-        )
-        Box(
-            modifier = Modifier.align(Alignment.CenterEnd),
+                ),
             contentAlignment = Alignment.Center,
         ) {
-            LauncherDockIcon(onClick = onUp) {
-                Icon(
-                    Icons.Filled.KeyboardArrowUp,
-                    null,
-                    tint = LauncherColors.TextSecondary,
-                    modifier = Modifier.size(dockDp(26.4f)),
+            Text(
+                text = tempText,
+                style = MaterialTheme.typography.tboxCaption,
+                color = textColor,
+                fontSize = dockSp(18.5f),
+                fontWeight = FontWeight.Light,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .width(dockDp(30f))
+                .fillMaxHeight()
+                .clickable(onClick = onUp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.KeyboardArrowUp,
+                null,
+                tint = upTint,
+                modifier = Modifier.size(dockDp(24f)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherHeaterLevelStepper(
+    level: Int,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+    onTextClick: (() -> Unit)? = null,
+) {
+    val density = LocalDensity.current
+    val thresholdPx = remember(density) { with(density) { 18.dp.toPx() } }
+    var totalDragY by remember { mutableFloatStateOf(0f) }
+
+    val blueColor = Color(0xFF3B82F6)
+    val redColor = Color(0xFFEF4444)
+    val fraction = (level.coerceIn(1, 15) - 1) / 14f
+    val levelColor = lerp(blueColor, redColor, fraction)
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { totalDragY = 0f },
+                    onDragEnd = { totalDragY = 0f },
+                    onDragCancel = { totalDragY = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragY += dragAmount
+                        if (totalDragY <= -thresholdPx) {
+                            onUp()
+                            totalDragY = 0f
+                        } else if (totalDragY >= thresholdPx) {
+                            onDown()
+                            totalDragY = 0f
+                        }
+                    }
                 )
-            }
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(dockDp(30f))
+                .fillMaxHeight()
+                .clickable(onClick = onDown),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                null,
+                tint = blueColor,
+                modifier = Modifier.size(dockDp(24f)),
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .then(
+                    if (onTextClick != null) {
+                        Modifier.clickable(onClick = onTextClick)
+                    } else {
+                        Modifier
+                    }
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = level.toString(),
+                style = MaterialTheme.typography.tboxCaption,
+                color = levelColor,
+                fontSize = dockSp(18.5f),
+                fontWeight = FontWeight.Light,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .width(dockDp(30f))
+                .fillMaxHeight()
+                .clickable(onClick = onUp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null,
+                tint = redColor,
+                modifier = Modifier.size(dockDp(24f)),
+            )
         }
     }
 }
@@ -1904,12 +2093,11 @@ private fun LauncherVolumeStepper(
         horizontalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         LauncherDockIcon(onClick = onDown) {
-            Text(
-                text = "−",
-                color = LauncherColors.TextSecondary,
-                fontSize = dockSp(22f),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
+            Image(
+                painter = painterResource(R.drawable.ic_speaker_minus),
+                contentDescription = "Уменьшить громкость",
+                colorFilter = ColorFilter.tint(LauncherColors.TextSecondary),
+                modifier = Modifier.size(dockDp(20.57f)),
             )
         }
         Text(
@@ -1922,11 +2110,49 @@ private fun LauncherVolumeStepper(
             modifier = Modifier.padding(horizontal = 2.dp),
         )
         LauncherDockIcon(onClick = onUp) {
-            Icon(
-                Icons.Filled.Add,
+            Image(
+                painter = painterResource(R.drawable.ic_speaker_plus),
                 contentDescription = "Увеличить громкость",
-                tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(dockDp(22f)),
+                colorFilter = ColorFilter.tint(LauncherColors.TextSecondary),
+                modifier = Modifier.size(dockDp(20.57f)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherBrightnessStepper(
+    brightnessText: String,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        LauncherDockIcon(onClick = onDown) {
+            Image(
+                painter = painterResource(R.drawable.ic_brightness_minus),
+                contentDescription = "Уменьшить яркость",
+                colorFilter = ColorFilter.tint(LauncherColors.TextSecondary),
+                modifier = Modifier.size(dockDp(18.7f)),
+            )
+        }
+        Text(
+            text = brightnessText,
+            style = MaterialTheme.typography.tboxCaption,
+            color = LauncherColors.TextPrimary,
+            fontSize = dockSp(18f),
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        )
+        LauncherDockIcon(onClick = onUp) {
+            Image(
+                painter = painterResource(R.drawable.ic_brightness_plus),
+                contentDescription = "Увеличить яркость",
+                colorFilter = ColorFilter.tint(LauncherColors.TextSecondary),
+                modifier = Modifier.size(dockDp(18.7f)),
             )
         }
     }

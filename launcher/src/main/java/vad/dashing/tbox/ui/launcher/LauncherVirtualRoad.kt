@@ -71,6 +71,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -1433,15 +1435,20 @@ fun LauncherSpeedLimitOverlay(
         LauncherAppConfigStore.adasAccSpeedOffset(context)
     }
 
+    val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
+    val cruiseState = LauncherCruisePresetController.currentAccCruiseState()
+    val showSmartUi = enabled && isSmartActive && cruiseState == AccCruiseState.Active
+
     var lastAppliedLimit by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(limit, enabled, offset) {
-        if (enabled && limit != lastAppliedLimit) {
-            val cruiseState = LauncherCruisePresetController.currentAccCruiseState()
-            if (cruiseState == AccCruiseState.Active) {
-                lastAppliedLimit = limit
-                val targetSpeed = limit + offset
-                LauncherCruisePresetController.applyPreset(context, targetSpeed)
-            }
+    LaunchedEffect(limit, enabled, offset, isSmartActive, cruiseState) {
+        if (!enabled || cruiseState != AccCruiseState.Active || !isSmartActive) {
+            lastAppliedLimit = null
+            return@LaunchedEffect
+        }
+        if (limit != lastAppliedLimit) {
+            lastAppliedLimit = limit
+            val targetSpeed = limit + offset
+            LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
         }
     }
     LaunchedEffect(enabled) {
@@ -1502,7 +1509,7 @@ fun LauncherSpeedLimitOverlay(
                         if (enabled) {
                             lastAppliedLimit = limit
                             val targetSpeed = limit + offset
-                            LauncherCruisePresetController.applyPreset(context, targetSpeed)
+                            LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
                         }
                     }
                 }
@@ -1514,23 +1521,27 @@ fun LauncherSpeedLimitOverlay(
                 limitKmh = limit,
                 warning = adas.speedLimitWarning,
                 accent = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
-                active = enabled,
+                active = showSmartUi,
             )
         }
-        if (enabled) {
+        if (showSmartUi) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(x = (-2).dp, y = (-2).dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(3.dp))
                     .background(LauncherColors.AccentCyan)
-                    .padding(horizontal = 3.dp, vertical = 1.dp),
+                    .padding(horizontal = 3.dp, vertical = 2.dp),
             ) {
                 Text(
                     text = "+$offset",
                     color = Color.Black,
                     fontSize = 9.sp,
+                    lineHeight = 9.sp,
                     fontWeight = FontWeight.Bold,
+                    style = TextStyle(
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
                 )
             }
         }

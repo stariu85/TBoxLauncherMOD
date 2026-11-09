@@ -132,6 +132,9 @@ fun TeslaLauncherScreen(
     }
 
     LaunchedEffect(appDrawerVisible) {
+        if (appDrawerVisible) {
+            closeVehicleSettings()
+        }
         LauncherOverlayElevator.setHoldSource("main_overlay", appDrawerVisible)
     }
 

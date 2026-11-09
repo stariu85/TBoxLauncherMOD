@@ -103,6 +103,9 @@ internal object LauncherAppDrawerWindow {
         onConfigChanged: () -> Unit,
     ): Boolean {
         if (isShowing()) return true
+        closeVehicleSettingsOverlay()
+        LauncherAboutOverlayWindow.hide()
+        LauncherAdasQuickSettingsWindow.hide()
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false

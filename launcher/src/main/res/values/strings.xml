@@ -321,6 +321,8 @@
     <string name="launcher_climate_scale_desc">Масштаб значков климат-контроля и температуры</string>
     <string name="launcher_climate_card_bg_title">Подложка кнопок климата</string>
     <string name="launcher_climate_card_bg_desc">Отображать тёмный фон-карточку вокруг кнопок климата</string>
+    <string name="launcher_climate_temp_color_indication_title">Цветовая индикация температуры ACC</string>
+    <string name="launcher_climate_temp_color_indication_desc">Окрашивать стрелки и цифры температуры климата в зависимости от градусов (от синего к красному)</string>
     <string name="launcher_floating_home_visible_title">Плавающая кнопка Домой</string>
     <string name="launcher_floating_home_visible_desc">Отображать круглую кнопку «Домой» в левом нижнем углу поверх всех окон. При выключении освобождает крайний левый слот для иконок</string>
     <string name="launcher_floating_home_size_title">Размер плавающей кнопки Домой</string>

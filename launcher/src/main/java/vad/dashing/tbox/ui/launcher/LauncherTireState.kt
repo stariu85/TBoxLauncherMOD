@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.runtime.Immutable
 import vad.dashing.tbox.Wheels
 
 /**
@@ -19,6 +20,7 @@ enum class LauncherWheelCorner(val index: Int) {
  * OEM “abnormal” = [warningSts] != 0; pressure `-1` means calibrating / invalid
  * (shown as `---/--` in carsettings).
  */
+@Immutable
 data class LauncherTireWheelState(
     val pressureBar: Float? = null,
     val temperatureC: Int? = null,
@@ -40,6 +42,7 @@ data class LauncherTireWheelState(
     }
 }
 
+@Immutable
 data class LauncherTireState(
     val fl: LauncherTireWheelState = LauncherTireWheelState(),
     val fr: LauncherTireWheelState = LauncherTireWheelState(),

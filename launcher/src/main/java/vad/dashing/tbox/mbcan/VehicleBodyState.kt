@@ -1,6 +1,9 @@
 package vad.dashing.tbox.mbcan
 
+import androidx.compose.runtime.Immutable
+
 /** Door / tailgate state for launcher and vehicle UI. */
+@Immutable
 data class VehicleBodyState(
     val doorFlOpen: Boolean = false,
     val doorFrOpen: Boolean = false,

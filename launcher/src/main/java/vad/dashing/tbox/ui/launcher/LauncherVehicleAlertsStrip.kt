@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +63,11 @@ fun LauncherVehicleAlertsStrip(
     val state by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val showAll = LauncherDevVehicleState.showAllIndicators
     // Body open statuses are shown as badges on the car, not next to ADAS (unless showAll is active).
-    val alerts = if (showAll) state.alerts else state.alerts.filterNot { it.id.isBodyOpenAlert }
+    val alerts by remember(state.alerts, showAll) {
+        derivedStateOf {
+            if (showAll) state.alerts else state.alerts.filterNot { it.id.isBodyOpenAlert }
+        }
+    }
     if (alerts.isEmpty()) return
 
     val activeAlertIds = remember(alerts) { alerts.map { it.id }.toSet() }

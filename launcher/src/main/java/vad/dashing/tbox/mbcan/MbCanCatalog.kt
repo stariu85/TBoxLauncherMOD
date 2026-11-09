@@ -698,6 +698,10 @@ object MbCanCommandRegistry {
             policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3, 4)),
         ),
         MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.WIPER_SENSITIVITY,
+            policy = MbCanCommandPolicy.SetExact(allowedValues = setOf(1, 2, 3, 4)),
+        ),
+        MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.HMA_SWITCH,
             policy = MbCanCommandPolicy.ToggleBinary(offValue = 1, onValue = 2, unknownFallbackValue = 2),
         ),

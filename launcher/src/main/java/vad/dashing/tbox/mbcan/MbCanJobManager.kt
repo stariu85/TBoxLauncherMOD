@@ -9,7 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 object MbCanJobManager {
-    private const val NORMAL_POLL_MS = 30_000L
+    private const val NORMAL_POLL_MS = 60_000L
     private const val BURST_POLL_MS = 1_500L
     private const val BURST_DURATION_MS = 15_000L
 

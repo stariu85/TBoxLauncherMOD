@@ -635,10 +635,11 @@ fun LauncherLeftPanel(
                 .padding(top = 52.dp, bottom = 60.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow.collectAsStateWithLifecycle()
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
             val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
-            val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen
+            val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen
             val showCarInComposition = cameraAnimEnabled || !carHidden
             if (showCarInComposition) {
                 LauncherCar3DModel(

@@ -55,6 +55,7 @@ private const val KEY_NAV_BUTTONS_VISIBLE = "nav_buttons_visible"
 private const val KEY_CLIMATE_VISIBLE = "climate_controls_visible"
 private const val KEY_CLIMATE_SCALE = "climate_controls_scale"
 private const val KEY_CLIMATE_CARD_BG_VISIBLE = "climate_card_bg_visible"
+private const val KEY_CLIMATE_TEMP_COLOR_INDICATION = "climate_temp_color_indication"
 private const val KEY_FLOATING_HOME_VISIBLE = "floating_home_visible"
 private const val KEY_FLOATING_HOME_SIZE = "floating_home_size_dp"
 private const val KEY_ADAS_DISTANCE_TEXT_SIZE = "adas_distance_text_size"
@@ -428,6 +429,8 @@ internal object LauncherAppConfigStore {
     internal val climateControlsRevisionFlow: StateFlow<Int> = climateControlsRevision
     private val climateCardBgRevision = MutableStateFlow(0)
     internal val climateCardBgRevisionFlow: StateFlow<Int> = climateCardBgRevision
+    private val climateTempColorIndicationRevision = MutableStateFlow(0)
+    internal val climateTempColorIndicationRevisionFlow: StateFlow<Int> = climateTempColorIndicationRevision
     private val bottomSlotsRevision = MutableStateFlow(0)
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
     private val dockSecondRowRevision = MutableStateFlow(0)
@@ -585,6 +588,7 @@ internal object LauncherAppConfigStore {
     fun setCarPaintId(context: Context, paintId: String) {
         prefs(context).edit().putString(KEY_CAR_PAINT, paintId).apply()
         carPaintRevision.value++
+        LauncherCar3DModelTrigger.notifyPaintChanged()
     }
 
     fun defaultMediaPackage(context: Context): String? =
@@ -1234,6 +1238,14 @@ internal object LauncherAppConfigStore {
         climateCardBgRevision.value++
     }
 
+    fun climateTempColorIndication(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLIMATE_TEMP_COLOR_INDICATION, false)
+
+    fun setClimateTempColorIndication(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLIMATE_TEMP_COLOR_INDICATION, enabled).apply()
+        climateTempColorIndicationRevision.value++
+    }
+
     fun dockSecondRowEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_DOCK_SECOND_ROW_ENABLED, false)
 
@@ -1330,7 +1342,7 @@ internal object LauncherAppConfigStore {
         if (slotIndex in 0 until totalCount && (!homeSlotBlocked || slotIndex != reservedSlot)) {
             while (slots.size <= slotIndex) slots.add(null)
             slots[slotIndex] = buttonId
-            val span = if (buttonId == "temp_driver" || buttonId == "temp_pass") 2 else 1
+            val span = if (buttonId == "temp_driver" || buttonId == "temp_pass" || buttonId == "hvac_heater_level" || buttonId == "audio_volume" || buttonId == "screen_brightness") 2 else 1
             if (span > 1 && slotIndex + 1 < totalCount) {
                 while (slots.size <= slotIndex + 1) slots.add(null)
                 slots[slotIndex + 1] = null
@@ -1351,7 +1363,7 @@ internal object LauncherAppConfigStore {
         val secondRow = dockSecondRowEnabled(context)
         val cols = dockColumns(context)
         val totalCount = if (secondRow) cols * 2 else cols
-        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "audio_volume") 2 else 1
+        val itemSpan = if (itemId == "temp_driver" || itemId == "temp_pass" || itemId == "hvac_heater_level" || itemId == "audio_volume" || itemId == "screen_brightness") 2 else 1
         val maxTarget = if (itemSpan > 1) totalCount - 2 else totalCount - 1
         var validTarget = targetIndex.coerceIn(0, maxTarget)
         if (floatingHomeOn && validTarget == reservedSlot) {

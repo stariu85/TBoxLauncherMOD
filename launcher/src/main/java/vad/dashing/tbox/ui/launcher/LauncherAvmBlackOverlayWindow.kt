@@ -2,7 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler

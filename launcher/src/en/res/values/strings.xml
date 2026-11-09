@@ -108,6 +108,8 @@
     <string name="launcher_climate_scale_desc">Scale of climate control and temperature icons</string>
     <string name="launcher_climate_card_bg_title">Climate buttons background</string>
     <string name="launcher_climate_card_bg_desc">Show dark card background behind climate buttons</string>
+    <string name="launcher_climate_temp_color_indication_title">ACC temperature color indication</string>
+    <string name="launcher_climate_temp_color_indication_desc">Colorize climate temperature arrows and values depending on degrees (blue to red)</string>
     <string name="launcher_floating_home_visible_title">Floating Home button</string>
     <string name="launcher_floating_home_visible_desc">Show circular Home button in the bottom-left corner over all windows. Unblocks leftmost slot when disabled</string>
     <string name="launcher_floating_home_size_title">Floating Home button size</string>

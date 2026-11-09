@@ -421,6 +421,7 @@ object MbCanRepository {
             else -> return
         }
         synchronized(pendingCfgPushes) {
+            if (pendingCfgPushes[item] == value) return
             pendingCfgPushes[item] = value
         }
         recordPushDebugEvent("cfg_vehicle/$item", "raw=$value")
@@ -545,6 +546,7 @@ object MbCanRepository {
             else -> return
         }
         synchronized(pendingAudioPushes) {
+            if (pendingAudioPushes[item] == value) return
             pendingAudioPushes[item] = value
         }
         recordPushDebugEvent("cfg_audio/$item", "raw=$value")
@@ -559,8 +561,10 @@ object MbCanRepository {
      * Called from [MbCanEngineFacade.registerSettingsTelemetryBridge] push callback.
      */
     fun scheduleEngineRpmPush(rpm: Float?) {
+        val next = rpm?.coerceAtLeast(0f)
         synchronized(telemetryPushLock) {
-            pendingTelemetryPushes[MbCanSignal.EngineRpm] = rpm?.coerceAtLeast(0f)
+            if (pendingTelemetryPushes[MbCanSignal.EngineRpm] == next) return
+            pendingTelemetryPushes[MbCanSignal.EngineRpm] = next
             if (!telemetryPushFlushScheduled) {
                 telemetryPushFlushScheduled = true
                 cfgPushHandler.postDelayed(flushTelemetryPushesRunnable, PUSH_STATE_COALESCE_MS)
@@ -574,6 +578,7 @@ object MbCanRepository {
      */
     fun scheduleEngineTemperaturePush(temperature: Float?) {
         synchronized(telemetryPushLock) {
+            if (pendingTelemetryPushes[MbCanSignal.EngineTemperature] == temperature) return
             pendingTelemetryPushes[MbCanSignal.EngineTemperature] = temperature
             if (!telemetryPushFlushScheduled) {
                 telemetryPushFlushScheduled = true
@@ -587,8 +592,10 @@ object MbCanRepository {
      * Called from [MbCanEngineFacade.registerSettingsTelemetryBridge] push callback.
      */
     fun scheduleCarSpeedPush(speed: Float?) {
+        val next = speed?.coerceAtLeast(0f)
         synchronized(telemetryPushLock) {
-            pendingTelemetryPushes[MbCanSignal.CarSpeed] = speed?.coerceAtLeast(0f)
+            if (pendingTelemetryPushes[MbCanSignal.CarSpeed] == next) return
+            pendingTelemetryPushes[MbCanSignal.CarSpeed] = next
             if (!telemetryPushFlushScheduled) {
                 telemetryPushFlushScheduled = true
                 cfgPushHandler.postDelayed(flushTelemetryPushesRunnable, PUSH_STATE_COALESCE_MS)
@@ -1623,7 +1630,9 @@ object MbCanRepository {
             val availability = MbCanEngineFacade.availability
             _availability.value = availability
             if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshCarSettingsVehicleParams unavailable=$availability")
+                if (MbCanDiagnostics.enabled.value) {
+                    MbCanDiagnostics.log("WARN", "refreshCarSettingsVehicleParams unavailable=$availability")
+                }
                 clearCarSettingsIntParamFlows()
                 return@withContext
             }
@@ -1632,9 +1641,13 @@ object MbCanRepository {
                 MbCanEngineFacade.canGetVehicleParam(id)?.let { decodeCarSettingsIntZeroToSix(it) }
 
             _carSettingsEpsMode.value = readInt(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_EPS_MODE)
+            kotlinx.coroutines.yield()
             _carSettingsDriveMode.value = readInt(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE)
+            kotlinx.coroutines.yield()
             _carSettingsDriveMode6dctWet.value = readInt(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET)
-            MbCanDiagnostics.log("DEBUG", "refreshCarSettingsVehicleParams refreshed")
+            if (MbCanDiagnostics.enabled.value) {
+                MbCanDiagnostics.log("DEBUG", "refreshCarSettingsVehicleParams refreshed")
+            }
         }
     }
 }

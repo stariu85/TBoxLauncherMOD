@@ -26,8 +26,9 @@ object LauncherTireRepository {
     }
 
     fun applyFromMbCan(tires: Any?, context: Context? = null) {
-        val ctx = context ?: applicationContext
         val parsed = parseLauncherTireState(tires)
+        if (parsed == _state.value) return
+        val ctx = context ?: applicationContext
         _state.value = parsed
         if (ctx != null && parsed.hasAvailableData) {
             LauncherAppConfigStore.saveTirePressures(ctx, parsed)
@@ -36,6 +37,7 @@ object LauncherTireRepository {
     }
 
     fun updateFromCan(newState: LauncherTireState, context: Context? = null) {
+        if (newState == _state.value) return
         val ctx = context ?: applicationContext
         _state.value = newState
         if (ctx != null && newState.hasAvailableData) {

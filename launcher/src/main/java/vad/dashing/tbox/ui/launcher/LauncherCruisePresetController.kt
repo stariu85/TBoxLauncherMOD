@@ -49,6 +49,9 @@ internal object LauncherCruisePresetController {
     private val _adjustingTargetSpeed = MutableStateFlow<Int?>(null)
     val adjustingTargetSpeed: StateFlow<Int?> = _adjustingTargetSpeed.asStateFlow()
 
+    private val _isSmartSpeedLimitActive = MutableStateFlow(false)
+    val isSmartSpeedLimitActive: StateFlow<Boolean> = _isSmartSpeedLimitActive.asStateFlow()
+
     private var rememberedSetpointKmh: Int? = null
 
     fun currentAccCruiseState(): AccCruiseState {
@@ -112,7 +115,9 @@ internal object LauncherCruisePresetController {
         targetKmh: Int,
         increaseIntervalMs: Long = LauncherAppConfigStore.cruiseIncreaseIntervalMs(context),
         decreaseIntervalMs: Long = LauncherAppConfigStore.cruiseDecreaseIntervalMs(context),
+        isFromSpeedLimit: Boolean = false,
     ) {
+        _isSmartSpeedLimitActive.value = isFromSpeedLimit
         val target = targetKmh.coerceIn(30, 160)
         val ngpOn = UniversalCanRepository.tjaIcaState.value is MbCanBinaryState.On
         val ngpConfig = LauncherAppConfigStore.ngpEnabled(context)
@@ -233,6 +238,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchStatusSingleTap(context: Context) {
+        _isSmartSpeedLimitActive.value = false
         if (LauncherDevVehicleState.simulateEnabled) {
             val active = LauncherDevVehicleState.adasCruiseActive
             if (active) {
@@ -276,6 +282,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchNgpWithSetMinus(context: Context) {
+        _isSmartSpeedLimitActive.value = false
         if (LauncherDevVehicleState.simulateEnabled) {
             LauncherDevVehicleState.toggleAdasLanes()
             LauncherDevVehicleState.adasCruiseActive = LauncherDevVehicleState.adasLanesActive
@@ -312,6 +319,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchStatusSwipeUp(context: Context) {
+        _isSmartSpeedLimitActive.value = false
         if (LauncherDevVehicleState.simulateEnabled) {
             val current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
             val next = (current + 1).coerceIn(30, 160)
@@ -343,6 +351,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchStatusSwipeDown(context: Context) {
+        _isSmartSpeedLimitActive.value = false
         if (LauncherDevVehicleState.simulateEnabled) {
             val current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
             val next = (current - 1).coerceIn(30, 160)
@@ -376,6 +385,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchFullOff(context: Context) {
+        _isSmartSpeedLimitActive.value = false
         adjustJob?.cancel()
         _adjustingTargetSpeed.value = null
         LauncherAdasRepository.clearTimeGapFlash()
@@ -395,7 +405,13 @@ internal object LauncherCruisePresetController {
     }
 
     fun applyPreset(context: Context, targetKmh: Int) {
-        launchEngageToTarget(context, targetKmh)
+        _isSmartSpeedLimitActive.value = false
+        launchEngageToTarget(context, targetKmh, isFromSpeedLimit = false)
+    }
+
+    fun applySpeedLimitPreset(context: Context, targetKmh: Int) {
+        _isSmartSpeedLimitActive.value = true
+        launchEngageToTarget(context, targetKmh, isFromSpeedLimit = true)
     }
 
     fun setNgpEnabled(context: Context, enabled: Boolean) {

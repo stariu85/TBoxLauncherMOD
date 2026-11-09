@@ -1,5 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Vehicle telltales / reminders for the launcher strip.
  * Active when the corresponding OEM status byte is non-zero (same rule as ICM/chime widgets).
@@ -35,11 +37,13 @@ enum class LauncherAlertId {
     KeyBatteryLow,
 }
 
+@Immutable
 data class LauncherVehicleAlert(
     val id: LauncherAlertId,
     val severity: LauncherAlertSeverity,
 )
 
+@Immutable
 data class LauncherVehicleAlertsState(
     val alerts: List<LauncherVehicleAlert> = emptyList(),
 ) {

@@ -11,6 +11,9 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -96,6 +99,9 @@ internal object LauncherAdasQuickSettingsWindow {
     private var composeView: ComposeView? = null
     private var lifecycleOwner: MyLifecycleOwner? = null
     private var windowManager: WindowManager? = null
+
+    private val _isShowingFlow = MutableStateFlow(false)
+    val isShowingFlow: StateFlow<Boolean> = _isShowingFlow.asStateFlow()
 
     fun isShowing(): Boolean = composeView != null
 
@@ -248,12 +254,14 @@ internal object LauncherAdasQuickSettingsWindow {
             windowManager = wm
             wm.addView(view, params)
             composeView = view
+            _isShowingFlow.value = true
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
             LauncherEdgeGestureOverlay.bringToFront()
             true
         }.onFailure {
             Log.e(TAG, "Unable to add adas quick settings overlay", it)
+            _isShowingFlow.value = false
             lifecycleOwner = null
             windowManager = null
             owner.setCurrentState(Lifecycle.State.DESTROYED)
@@ -264,6 +272,8 @@ internal object LauncherAdasQuickSettingsWindow {
     fun hide() {
         val view = composeView ?: return
         composeView = null
+        _isShowingFlow.value = false
+        LauncherCar3DModelTrigger.notifyQuickSettingsClosed()
         runCatching { windowManager?.removeViewImmediate(view) }
             .onFailure { Log.w(TAG, "Unable to remove adas quick settings overlay", it) }
         windowManager = null

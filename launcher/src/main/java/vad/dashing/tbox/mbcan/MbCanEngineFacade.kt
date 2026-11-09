@@ -56,6 +56,32 @@ object MbCanEngineFacade {
     private var hardKeyListenerProxy: Any? = null
     private var initialized = false
 
+    private val reflectionMethodCache = java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, Method>()
+    private val lastVehicleCfgValues = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    private val lastAudioCfgValues = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+
+    @Volatile
+    private var lastSpeed: Float? = null
+    @Volatile
+    private var lastEngineRpm: Float? = null
+    @Volatile
+    private var lastEngineTemp: Float? = null
+    @Volatile
+    private var lastBcmLightKey: Int? = null
+
+    private fun getCachedZeroArgMethod(clazz: Class<*>, methodName: String): Method? {
+        val key = clazz to methodName
+        val cached = reflectionMethodCache[key]
+        if (cached != null) return cached
+        val method = runCatching {
+            clazz.getMethod(methodName)
+        }.getOrNull() ?: clazz.methods.firstOrNull { it.name == methodName && it.parameterCount == 0 }
+        if (method != null) {
+            reflectionMethodCache[key] = method
+        }
+        return method
+    }
+
     /**
      * Vendor native mbCAN (`MBCan_Vehicle_Get` / `getMbCanData`) is not thread-safe:
      * concurrent calls abort with `stack corruption detected` / SIGBUS.
@@ -415,26 +441,41 @@ object MbCanEngineFacade {
                         when (val raw = args?.getOrNull(0)) {
                             is Number -> raw.toFloat()
                             else -> {
-                                val getter = raw?.javaClass?.methods?.firstOrNull { it.name == "getSpeed" && it.parameterCount == 0 }
-                                (getter?.invoke(raw) as? Number)?.toFloat()
+                                if (raw == null) null
+                                else {
+                                    val getter = getCachedZeroArgMethod(raw.javaClass, "getSpeed")
+                                    (getter?.invoke(raw) as? Number)?.toFloat()
+                                }
                             }
                         }
                     }.getOrNull()
                     val speed = fromArgs ?: readVehicleSpeed()
+                    val prev = lastSpeed
+                    if (prev != null && speed != null && Math.abs(speed - prev) < 0.05f) {
+                        return@InvocationHandler null
+                    }
+                    lastSpeed = speed
                     MbCanRepository.scheduleCarSpeedPush(speed)
                 }
                 "onVehicleEngineStatusChange" -> {
                     val engine = args?.getOrNull(0)
-                    val rpm = runCatching {
-                        val getter = engine?.javaClass?.getMethod("getfSpeed")
-                        (getter?.invoke(engine) as? Number)?.toFloat()
-                    }.getOrNull()
-                    val temperature = runCatching {
-                        val getter = engine?.javaClass?.getMethod("getfTemperture")
-                        (getter?.invoke(engine) as? Number)?.toFloat()
-                    }.getOrNull()
-                    MbCanRepository.scheduleEngineRpmPush(rpm)
-                    MbCanRepository.scheduleEngineTemperaturePush(temperature)
+                    if (engine != null) {
+                        val rpm = runCatching {
+                            val getter = getCachedZeroArgMethod(engine.javaClass, "getfSpeed")
+                            (getter?.invoke(engine) as? Number)?.toFloat()
+                        }.getOrNull()
+                        val temperature = runCatching {
+                            val getter = getCachedZeroArgMethod(engine.javaClass, "getfTemperture")
+                            (getter?.invoke(engine) as? Number)?.toFloat()
+                        }.getOrNull()
+                        if (rpm == lastEngineRpm && temperature == lastEngineTemp) {
+                            return@InvocationHandler null
+                        }
+                        lastEngineRpm = rpm
+                        lastEngineTemp = temperature
+                        MbCanRepository.scheduleEngineRpmPush(rpm)
+                        MbCanRepository.scheduleEngineTemperaturePush(temperature)
+                    }
                 }
                 "onCanVehicleTires" -> {
                     // Same push as OEM carsettings MBTiresView (WarningSts / pressure / temp).
@@ -447,17 +488,28 @@ object MbCanEngineFacade {
                     val bcm = args?.getOrNull(0)
                     if (bcm != null) {
                         val lightSts = runCatching {
-                            bcm.javaClass.getMethod("getLightStatus").invoke(bcm)
+                            getCachedZeroArgMethod(bcm.javaClass, "getLightStatus")?.invoke(bcm)
                         }.getOrNull()
-                        val low = runCatching {
-                            (lightSts?.javaClass?.getMethod("getLowBeamSts")?.invoke(lightSts) as? Number)?.toInt()
-                        }.getOrNull() ?: 0
-                        val high = runCatching {
-                            (lightSts?.javaClass?.getMethod("getHighBeamSts")?.invoke(lightSts) as? Number)?.toInt()
-                        }.getOrNull() ?: 0
+                        val low = if (lightSts != null) {
+                            runCatching {
+                                (getCachedZeroArgMethod(lightSts.javaClass, "getLowBeamSts")?.invoke(lightSts) as? Number)?.toInt()
+                            }.getOrNull() ?: 0
+                        } else 0
+                        val high = if (lightSts != null) {
+                            runCatching {
+                                (getCachedZeroArgMethod(lightSts.javaClass, "getHighBeamSts")?.invoke(lightSts) as? Number)?.toInt()
+                            }.getOrNull() ?: 0
+                        } else 0
                         val hmaVal = runCatching {
-                            (bcm.javaClass.getMethod("getHMA_Status").invoke(bcm) as? Number)?.toInt()
+                            (getCachedZeroArgMethod(bcm.javaClass, "getHMA_Status")?.invoke(bcm) as? Number)?.toInt()
                         }.getOrNull() ?: 0
+
+                        val key = (if (low > 0) 1 else 0) or (if (high > 0) 2 else 0) or (if (hmaVal > 0) 4 else 0)
+                        if (lastBcmLightKey == key) {
+                            return@InvocationHandler null
+                        }
+                        lastBcmLightKey = key
+
                         MbCanRepository.scheduleBcmLightPush(
                             lowBeam = low > 0,
                             highBeam = high > 0,
@@ -590,10 +642,17 @@ object MbCanEngineFacade {
                 val rev = (args[1] as Number).toInt() and 0xFF
                 val item = (args[2] as Number).toInt() and 0xFFFF
                 val value = (args[3] as Number).toInt()
-                MbCanDiagnostics.log(
-                    "DEBUG",
-                    "cfgVehiclePush modular=$modular rev=$rev item=$item value=$value"
-                )
+                val prev = lastVehicleCfgValues[item]
+                if (prev != null && prev == value) {
+                    return@InvocationHandler null
+                }
+                lastVehicleCfgValues[item] = value
+                if (DclLogRecorder.isLoggingActive() || MbCanDiagnostics.enabled.value) {
+                    MbCanDiagnostics.log(
+                        "DEBUG",
+                        "cfgVehiclePush modular=$modular rev=$rev item=$item value=$value"
+                    )
+                }
                 MbCanRepository.scheduleVehicleCfgPush(modular, item, value)
             }
             null
@@ -647,10 +706,17 @@ object MbCanEngineFacade {
                 val rev = (args[1] as Number).toInt() and 0xFF
                 val item = (args[2] as Number).toInt() and 0xFFFF
                 val value = (args[3] as Number).toInt()
-                MbCanDiagnostics.log(
-                    "DEBUG",
-                    "cfgAudioPush modular=$modular rev=$rev item=$item value=$value"
-                )
+                val prev = lastAudioCfgValues[item]
+                if (prev != null && prev == value) {
+                    return@InvocationHandler null
+                }
+                lastAudioCfgValues[item] = value
+                if (DclLogRecorder.isLoggingActive() || MbCanDiagnostics.enabled.value) {
+                    MbCanDiagnostics.log(
+                        "DEBUG",
+                        "cfgAudioPush modular=$modular rev=$rev item=$item value=$value"
+                    )
+                }
                 MbCanRepository.scheduleAudioCfgPush(modular, item, value)
             }
             null

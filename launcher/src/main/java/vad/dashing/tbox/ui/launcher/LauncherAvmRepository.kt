@@ -94,9 +94,11 @@ object LauncherAvmRepository {
                             goLauncherHome(appCtx)
                         }
                         AVM_CAMERA_ACTION_MINIMIZE_APPS -> {
-                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> starting blank activity to pause foreign apps")
+                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> capturing home snapshot & starting blank activity to pause foreign apps")
                             targetBeforeAvm = null
-                            LauncherAvmBlankActivity.show(appCtx)
+                            LauncherHomeSnapshotHolder.captureSnapshot(LauncherHomeActivityHolder.instance) {
+                                LauncherAvmBlankActivity.show(appCtx)
+                            }
                         }
                     }
                 } else {

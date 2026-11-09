@@ -33,10 +33,14 @@ object MbCanDiagnostics {
     }
 
     fun log(level: String, tag: String, message: String) {
-        if (DclLogRecorder.isLoggingActive()) {
+        val loggingActive = DclLogRecorder.isLoggingActive()
+        val diagEnabled = _enabled.value
+        if (!loggingActive && !diagEnabled) return
+
+        if (loggingActive) {
             DclLogRecorder.log("MbCanDiag", "[$level/$tag] $message")
         }
-        if (!_enabled.value) return
+        if (!diagEnabled) return
         
         synchronized(pendingLogs) {
             val key = "$level/$tag"

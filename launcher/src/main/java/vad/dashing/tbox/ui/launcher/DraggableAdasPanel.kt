@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -105,6 +106,7 @@ internal fun DraggableAdasPanel(
                 scaleX = animatedScale
                 scaleY = animatedScale
                 alpha = if (isDragging) 0.92f else 1.0f
+                compositingStrategy = CompositingStrategy.Auto
             }
             .then(
                 if (isDragging) {
