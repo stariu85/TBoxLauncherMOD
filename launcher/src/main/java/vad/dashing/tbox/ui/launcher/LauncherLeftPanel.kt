@@ -253,6 +253,11 @@ fun LauncherLeftPanel(
     val carColorPanelVisible = remember(context, carColorRevision) {
         LauncherAppConfigStore.carColorPanelVisible(context)
     }
+    val yandexNavWidgetRevision by LauncherAppConfigStore.yandexNavWidgetRevisionFlow
+        .collectAsStateWithLifecycle()
+    val yandexNavWidgetVisible = remember(context, yandexNavWidgetRevision) {
+        LauncherAppConfigStore.yandexNavWidgetVisible(context)
+    }
     val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
         .collectAsStateWithLifecycle()
     val smartPanelEnabled = remember(context, smartPanelRevision) {
@@ -278,6 +283,28 @@ fun LauncherLeftPanel(
         LauncherAppConfigStore.launcherSettingsOnDoubleTap(context)
     }
     val isDarkTheme = LauncherThemeState.darkTheme
+
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
+    val baseLeftPanelBg = LauncherColors.LeftPanelBg
+
+    val targetAdasNavBg = remember(yandexNavWidgetVisible, navState, isDarkTheme, baseLeftPanelBg) {
+        if (!yandexNavWidgetVisible && !navState.isNavigating) {
+            baseLeftPanelBg
+        } else {
+            when (navState.trafficLightColor?.lowercase()) {
+                "red", "dark_red" -> if (isDarkTheme) Color(0xFF381014) else Color(0xFFFEE2E2)
+                "yellow", "orange" -> if (isDarkTheme) Color(0xFF35200B) else Color(0xFFFEF3C7)
+                "green" -> if (isDarkTheme) Color(0xFF0C2B1D) else Color(0xFFD1FAE5)
+                else -> baseLeftPanelBg
+            }
+        }
+    }
+
+    val animatedAdasNavBg by animateColorAsState(
+        targetValue = targetAdasNavBg,
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+        label = "animatedAdasNavBg",
+    )
     val solarDaytime = rememberSolarDaytimeState()
     val isNight = if (solarDaytime != null) !solarDaytime else {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
@@ -456,7 +483,7 @@ fun LauncherLeftPanel(
                 vad.dashing.tbox.DclLogRecorder.log("LeftPanel", "onGloballyPositioned leftPanelBounds=$boundsRect carModelScale=$carModelScale")
                 onCarBoundsChanged(rect)
             }
-            .background(LauncherColors.LeftPanelBg),
+            .background(animatedAdasNavBg),
     ) {
         if (roadVisible) {
             LauncherVirtualRoad(
@@ -504,12 +531,13 @@ fun LauncherLeftPanel(
                 "media_player" -> miniPlayerVisible
                 "car_color" -> carColorPanelVisible
                 "smart_panel" -> smartPanelEnabled
+                "yandex_nav" -> yandexNavWidgetVisible
                 "lanes" -> true
                 else -> true
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -525,7 +553,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }.toMutableList()
             if (smartPanelEnabled && "smart_panel" !in activeTopPanels && "smart_panel" !in filtered) {
                 filtered.add(0, "smart_panel")
@@ -618,6 +646,13 @@ fun LauncherLeftPanel(
                             LauncherMediaMiniPlayer(
                                 modifier = Modifier.fillMaxWidth(),
                                 sourceId = "launcher_mini_player_main",
+                            )
+                        }
+                    }
+                    "yandex_nav" -> {
+                        if (yandexNavWidgetVisible) {
+                            LauncherYandexNavWidget(
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -1067,8 +1102,9 @@ private fun RenderSwipeGroupedPanel(
 }
 
 private enum class AssistPresetsTab {
-    Main,    // Page 0: ACC + NGP (Default Main Central Page)
-    Presets, // Page 1: Speed Presets (Swipe Left from Main)
+    Main,         // Page 0: ACC + NGP (Default Main Central Page)
+    Presets,      // Page 1: Speed Presets (Swipe Left from Main)
+    SmartControl, // Page 2: Smart ACC & DIST (Swipe Left from Presets)
 }
 
 @Composable
@@ -1084,6 +1120,7 @@ internal fun LauncherAssistAndPresetsPanel(
         val visibleSub = when (activeTab) {
             AssistPresetsTab.Main -> "assist"
             AssistPresetsTab.Presets -> "presets"
+            AssistPresetsTab.SmartControl -> "smart_control"
         }
         LauncherAppConfigStore.setVisibleSubPanel("assist", visibleSub)
     }
@@ -1122,11 +1159,19 @@ internal fun LauncherAssistAndPresetsPanel(
                     },
                     onDragEnd = {
                         if (totalDragAmount < -30f) {
-                            // Swipe Left -> move to Presets
-                            activeTab = AssistPresetsTab.Presets
+                            // Swipe Left -> next page
+                            activeTab = when (activeTab) {
+                                AssistPresetsTab.Main -> AssistPresetsTab.Presets
+                                AssistPresetsTab.Presets -> AssistPresetsTab.SmartControl
+                                AssistPresetsTab.SmartControl -> AssistPresetsTab.SmartControl
+                            }
                         } else if (totalDragAmount > 30f) {
-                            // Swipe Right -> move to Main
-                            activeTab = AssistPresetsTab.Main
+                            // Swipe Right -> previous page
+                            activeTab = when (activeTab) {
+                                AssistPresetsTab.SmartControl -> AssistPresetsTab.Presets
+                                AssistPresetsTab.Presets -> AssistPresetsTab.Main
+                                AssistPresetsTab.Main -> AssistPresetsTab.Main
+                            }
                         }
                         totalDragAmount = 0f
                     },
@@ -1158,6 +1203,11 @@ internal fun LauncherAssistAndPresetsPanel(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 AssistPresetsTab.Presets -> LauncherCruisePresetControl(
+                    canViewModel = canViewModel,
+                    adas = adas,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AssistPresetsTab.SmartControl -> LauncherSmartAccAndDistControl(
                     canViewModel = canViewModel,
                     adas = adas,
                     modifier = Modifier.fillMaxWidth(),

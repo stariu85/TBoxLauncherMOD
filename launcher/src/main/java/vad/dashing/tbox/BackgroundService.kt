@@ -25,6 +25,7 @@ import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
 import vad.dashing.tbox.ui.launcher.LauncherOemDelegate
 import vad.dashing.tbox.ui.launcher.LauncherOemFullscreenPolicy
+import vad.dashing.tbox.ui.launcher.YandexNavRepository
 import vad.dashing.tbox.ui.launcher.isFreeformEnabled
 import vad.dashing.tbox.ui.launcher.tryLaunchIntentInBounds
 
@@ -44,6 +45,7 @@ class BackgroundService : Service() {
         vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(applicationContext)
         vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper.ensureNavBackServiceEnabled(applicationContext)
         startAsForeground()
+        YandexNavRepository.start(applicationContext)
         MbCanEngineFacade.ensureInitialized()
         scope.launch {
             UniversalCanRepository.bind(scope)

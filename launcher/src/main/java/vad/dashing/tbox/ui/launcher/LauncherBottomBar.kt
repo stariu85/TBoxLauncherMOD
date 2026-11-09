@@ -260,6 +260,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("dcl_log", "Запись лога (5 мин)", R.drawable.menu_icon_log),
     LauncherDockButtonDescriptor("car_dialer", "Телефон", R.drawable.ic_widget_phone),
     LauncherDockButtonDescriptor("radio_app", "Радио", R.drawable.radio_vtkb246z55e9),
+    LauncherDockButtonDescriptor("avm_camera", "Камеры 360", R.drawable.ic_launcher_avm),
 )
 
 @Composable
@@ -1557,6 +1558,18 @@ private fun LauncherBottomDockButtonContent(
                 contentDescription = "Радио",
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(28f)),
+            )
+        }
+        "avm_camera", "avm", "camera_360", "cameras", "com.mengbo.avm" -> LauncherDockIcon(
+            onClick = {
+                launchLauncherAppEmbedded(context, "com.mengbo.avm")
+            },
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher_avm),
+                contentDescription = "Камеры 360",
+                colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
+                modifier = Modifier.size(dockDp(26f)),
             )
         }
         "temp_driver" -> LauncherTempStepper(

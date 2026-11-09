@@ -132,6 +132,8 @@ fun LauncherVirtualRoad(
 
     val effectiveIsSnow = winterEnabled || (winterTempEnabled && tempBelowZero)
 
+    val context = LocalContext.current
+
     val snowflakes = remember {
         val rng = kotlin.random.Random(1337)
         List(40) {
@@ -238,7 +240,6 @@ fun LauncherVirtualRoad(
         }
     }
 
-    val context = LocalContext.current
     val density = LocalDensity.current.density
     val presetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow.collectAsStateWithLifecycle()
     val storedTimeGap = remember(context, presetsRevision) {

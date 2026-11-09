@@ -445,7 +445,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun setTimeGap(context: Context, level: Int) {
-        val validLevel = level.coerceIn(1, 3)
+        val validLevel = level.coerceIn(0, 3)
         LauncherAppConfigStore.setTimeGapLevel(context, validLevel)
         LauncherDevVehicleState.adasTimeGapLevel = validLevel
         LauncherDevVehicleState.triggerTimeGapFlash(3000L)

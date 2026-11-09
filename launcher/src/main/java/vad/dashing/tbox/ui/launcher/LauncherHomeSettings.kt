@@ -233,6 +233,7 @@ internal fun LauncherHomeSettingsContent() {
     PdcVisualModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
+    YandexNavWidgetToggle()
     AdasDistanceTextSizeSlider()
     NavButtonsToggle()
     FloatingHomeToggle()
@@ -1630,6 +1631,30 @@ private fun AdasPanelToggle() {
     }
 }
 
+@Composable
+private fun YandexNavWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.yandexNavWidgetRevisionFlow
+        .collectAsStateWithLifecycle()
+    val visible = remember(context, revision) {
+        LauncherAppConfigStore.yandexNavWidgetVisible(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_yandex_nav_widget_visible_title),
+            active = visible,
+            onClick = {
+                LauncherAppConfigStore.setYandexNavWidgetVisible(context, !visible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_yandex_nav_widget_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
 
 
 @Composable
@@ -1680,6 +1705,8 @@ fun CruiseControlSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+
+        YandexNavWidgetToggle()
 
         val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow
             .collectAsStateWithLifecycle()

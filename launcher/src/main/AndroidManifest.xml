@@ -51,6 +51,10 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <permission
+        android:name="ras.dashing.tbox.launcher.permission.CALL_LAUNCHER_API"
+        android:protectionLevel="normal" />
     <uses-permission
         android:name="android.car.permission.CAR_INFO"
         tools:ignore="ProtectedPermissions" />
@@ -247,6 +251,12 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/launcher_nav_accessibility_service" />
         </service>
+
+        <provider
+            android:name="vad.dashing.tbox.api.DclLauncherApiProvider"
+            android:authorities="ras.dashing.tbox.launcher.api"
+            android:exported="true"
+            android:permission="ras.dashing.tbox.launcher.permission.CALL_LAUNCHER_API" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

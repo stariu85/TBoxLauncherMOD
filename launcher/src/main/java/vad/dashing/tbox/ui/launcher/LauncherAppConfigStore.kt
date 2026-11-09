@@ -259,6 +259,7 @@ private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
+private const val KEY_YANDEX_NAV_WIDGET_VISIBLE = "yandex_nav_widget_visible"
 private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
 private const val KEY_SMART_PANEL_ENABLED = "smart_panel_enabled"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
@@ -455,6 +456,8 @@ internal object LauncherAppConfigStore {
     internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
     private val carColorPanelRevision = MutableStateFlow(0)
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
+    private val yandexNavWidgetRevision = MutableStateFlow(0)
+    internal val yandexNavWidgetRevisionFlow: StateFlow<Int> = yandexNavWidgetRevision
     private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
     private val smartPanelRevision = MutableStateFlow(0)
@@ -1556,6 +1559,26 @@ internal object LauncherAppConfigStore {
         carColorPanelRevision.value++
     }
 
+    fun yandexNavWidgetVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_YANDEX_NAV_WIDGET_VISIBLE, false)
+
+    fun setYandexNavWidgetVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_YANDEX_NAV_WIDGET_VISIBLE, visible).apply()
+        yandexNavWidgetRevision.value++
+        if (visible) {
+            val top = adasTopPanels(context).toMutableList()
+            val bottom = adasBottomPanels(context).toMutableList()
+            if ("yandex_nav" !in top && "yandex_nav" !in bottom) {
+                top.add("yandex_nav")
+                setAdasPanelsLayout(context, top, bottom)
+            } else {
+                adasPanelsRevision.value++
+            }
+        } else {
+            adasPanelsRevision.value++
+        }
+    }
+
     fun accPresetsInQuickSettingsVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, true)
 
@@ -1582,11 +1605,18 @@ internal object LauncherAppConfigStore {
 
     fun adasTopPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_TOP_PANELS, null)
-        if (raw != null) {
-            val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
-            return list.map { if (it == "presets") "assist" else it }.distinct()
+        val list = if (raw != null) {
+            raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+                .map { if (it == "presets") "assist" else it }.distinct().toMutableList()
+        } else {
+            mutableListOf("drive_mode")
         }
-        return listOf("drive_mode")
+        val rawBottom = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
+        val hasBottom = rawBottom?.contains("yandex_nav") == true
+        if (yandexNavWidgetVisible(context) && "yandex_nav" !in list && !hasBottom) {
+            list.add("yandex_nav")
+        }
+        return list
     }
 
     fun adasBottomPanels(context: Context): List<String> {

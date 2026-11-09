@@ -81,6 +81,7 @@ internal fun DraggableAdasPanel(
             "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, false)
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, false)
             "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, false)
+            "yandex_nav" -> LauncherAppConfigStore.setYandexNavWidgetVisible(context, false)
         }
 
         LauncherAppConfigStore.setAdasPanelsLayout(context, newTop, newBottom)

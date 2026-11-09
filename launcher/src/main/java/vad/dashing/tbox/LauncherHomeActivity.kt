@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.ui.disposeAppLauncherPickerIconCache
 import vad.dashing.tbox.ui.launcher.LauncherAboutOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
@@ -153,6 +154,7 @@ class LauncherHomeActivity : ComponentActivity() {
         }
         LauncherOverlayBar.ensureShowing(this)
         LauncherEdgeGestureOverlay.ensureShowing(this)
+        DclUiStateNotifier.notifyUiStateChanged(this)
     }
 
     override fun onPause() {

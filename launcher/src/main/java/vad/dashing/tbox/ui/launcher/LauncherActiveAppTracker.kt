@@ -1,6 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
 import android.util.Log
+import vad.dashing.tbox.api.DclUiStateNotifier
 
 private const val TAG = "ActiveAppTracker"
 
@@ -57,6 +59,7 @@ internal object LauncherActiveAppTracker {
     ) {
         onAppLaunched(packageName, topActivityClass = topActivityClass)
         val appCtx = context.applicationContext
+        DclUiStateNotifier.notifyUiStateChanged(appCtx)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             runCatching {
                 val am = appCtx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
@@ -69,7 +72,7 @@ internal object LauncherActiveAppTracker {
         }, 250L)
     }
 
-    fun onHomePressed() {
+    fun onHomePressed(context: android.content.Context? = null) {
         val activePkg = currentAppPackage
         if (!activePkg.isNullOrBlank()) {
             previousAppPackage = activePkg
@@ -77,6 +80,7 @@ internal object LauncherActiveAppTracker {
             previousTopClass = currentTopClass
         }
         Log.w(TAG, "onHomePressed activePkg=$activePkg previousPkg=$previousAppPackage")
+        context?.let { DclUiStateNotifier.notifyUiStateChanged(it) }
     }
 
     fun hasActiveApp(): Boolean {
@@ -102,11 +106,12 @@ internal object LauncherActiveAppTracker {
         )
     }
 
-    fun clearActiveApp() {
+    fun clearActiveApp(context: Context? = null) {
         Log.w(TAG, "clearActiveApp wasPkg=$currentAppPackage")
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
+        context?.let { DclUiStateNotifier.notifyUiStateChanged(it) }
     }
 
     fun clearAll() {

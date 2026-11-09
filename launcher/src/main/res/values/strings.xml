@@ -284,6 +284,8 @@
     <string name="launcher_pdc_visual_mode_off">Выключено</string>
     <string name="launcher_adas_panel_title">Левая панель ADAS / 3D-модели</string>
     <string name="launcher_adas_panel_desc">Отображать левую панель с 3D-моделью авто. Если отключено, приложения растягиваются на весь экран</string>
+    <string name="launcher_yandex_nav_widget_visible_title">Показывать виджет навигатора</string>
+    <string name="launcher_yandex_nav_widget_visible_desc">Отображать виджет со всей информацией из Навигатора в зоне ADAS</string>
     <string name="launcher_adas_alerts_placement_title">Расположение ADAS и предупреждений</string>
     <string name="launcher_adas_alerts_placement_desc">Отображать в левой панели вокруг 3D-модели (вместо верхней панели)</string>
     <string name="launcher_cruise_panel_position_title">Панель пресетов скорости ACC сверху</string>

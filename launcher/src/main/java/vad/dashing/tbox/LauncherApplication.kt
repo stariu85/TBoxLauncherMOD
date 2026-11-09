@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.launcher.YandexNavRepository
 
 /**
  * Standalone HOME launcher process — no TBox UDP / trips / fuel pipeline.
@@ -22,6 +23,7 @@ class LauncherApplication : Application() {
         DclLogRecorder.stopLogging("Launcher restarted")
         DiagFileLog.install(this)
         val settings = SettingsManager(this)
+        YandexNavRepository.start(this)
         appScope.launch {
             runCatching { clearCacheOnAppUpdate(settings) }
                 .onFailure { Log.w(TAG, "App cache clear on update failed", it) }
