@@ -330,14 +330,6 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.carColorPanelVisible(context)
     }
 
-    val navManeuverRevision by LauncherAppConfigStore.navManeuverRevisionFlow.collectAsStateWithLifecycle()
-    val navManeuverVisible = remember(context, navManeuverRevision) {
-        LauncherAppConfigStore.navManeuverVisible(context)
-    }
-    val navStreetRevision by LauncherAppConfigStore.navStreetRevisionFlow.collectAsStateWithLifecycle()
-    val navStreetVisible = remember(context, navStreetRevision) {
-        LauncherAppConfigStore.navStreetVisible(context)
-    }
     val navSpeedRevision by LauncherAppConfigStore.navSpeedRevisionFlow.collectAsStateWithLifecycle()
     val navSpeedVisible = remember(context, navSpeedRevision) {
         LauncherAppConfigStore.navSpeedVisible(context)
@@ -369,8 +361,6 @@ private fun LauncherAdasQuickSettingsContent(
         assistPanelVisible,
         bodyControlsPanelVisible,
         carColorPanelVisible,
-        navManeuverVisible,
-        navStreetVisible,
         navSpeedVisible,
         navTrafficLightVisible,
         adasTopPanels,
@@ -425,7 +415,6 @@ private fun LauncherAdasQuickSettingsContent(
             "lights",
             "wipers",
             "car_color",
-            "yandex_nav",
         )
         allCandidates.filter { candidate ->
             if (candidate == "smart_panel") return@filter false
@@ -534,7 +523,6 @@ private fun LauncherAdasQuickSettingsContent(
             "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, true)
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, true)
             "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, true)
-            "yandex_nav" -> LauncherAppConfigStore.setYandexNavWidgetVisible(context, true)
         }
 
         // 3. Always add to bottom ADAS panels at index 0 and persist layout
@@ -854,7 +842,6 @@ private fun RenderQuickPanelCard(
             "lights" -> LauncherLightsControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
             "wipers" -> LauncherWiperControlBar(modifier = Modifier.fillMaxWidth())
             "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 60.dp)
-            "yandex_nav" -> LauncherYandexNavWidget(modifier = Modifier.fillMaxWidth())
         }
 
         if (showPlus) {

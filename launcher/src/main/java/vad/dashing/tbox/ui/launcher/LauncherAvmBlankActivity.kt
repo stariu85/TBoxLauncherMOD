@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -16,16 +17,68 @@ import android.widget.ImageView
 import vad.dashing.tbox.LauncherHomeActivityHolder
 
 /**
- * Snapshot holder capturing the Home screen before launching [LauncherAvmBlankActivity].
+ * Snapshot holder capturing the full screen (including open apps) before launching [LauncherAvmBlankActivity].
+ * Retains snapshot in memory for [CACHE_DURATION_MS] (10 seconds) after AVM camera closes,
+ * so rapid re-activations of 360 camera reuse the cached snapshot instantly without taking a new screenshot.
  */
 object LauncherHomeSnapshotHolder {
     private const val TAG = "LauncherHomeSnapshot"
+    private const val CACHE_DURATION_MS = 10_000L
 
     @Volatile
     var lastSnapshot: Bitmap? = null
         private set
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var clearRunnable: Runnable? = null
+
+    fun hasValidSnapshot(): Boolean {
+        val bmp = lastSnapshot
+        return bmp != null && !bmp.isRecycled
+    }
+
     fun captureSnapshot(activity: Activity?, onComplete: () -> Unit) {
+        cancelClearTimer()
+
+        if (hasValidSnapshot()) {
+            Log.i(TAG, "Reusing cached screen snapshot within 10s window")
+            mainHandler.post { onComplete() }
+            return
+        }
+
+        Thread {
+            val bitmap = captureViaScreencap()
+
+            if (bitmap != null) {
+                updateSnapshot(bitmap)
+                mainHandler.post { onComplete() }
+            } else {
+                Log.w(TAG, "screencap failed or returned null, falling back to PixelCopy")
+                mainHandler.post {
+                    captureViaPixelCopy(activity, onComplete)
+                }
+            }
+        }.start()
+    }
+
+    private fun captureViaScreencap(): Bitmap? {
+        return runCatching {
+            val process = Runtime.getRuntime().exec(arrayOf("screencap", "-p"))
+            val inputStream = process.inputStream.buffered()
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            process.waitFor()
+            if (bitmap != null && bitmap.width > 0 && bitmap.height > 0) {
+                Log.i(TAG, "Captured screen snapshot via screencap ${bitmap.width}x${bitmap.height}")
+                bitmap
+            } else {
+                null
+            }
+        }.onFailure { e ->
+            Log.w(TAG, "Failed screencap execution", e)
+        }.getOrNull()
+    }
+
+    private fun captureViaPixelCopy(activity: Activity?, onComplete: () -> Unit) {
         val act = activity ?: LauncherHomeActivityHolder.instance ?: run {
             onComplete()
             return
@@ -49,10 +102,8 @@ object LauncherHomeSnapshotHolder {
                 bitmap,
                 { copyResult ->
                     if (copyResult == PixelCopy.SUCCESS) {
-                        val old = lastSnapshot
-                        lastSnapshot = bitmap
-                        old?.recycle()
-                        Log.i(TAG, "Captured home snapshot ${width}x${height}")
+                        updateSnapshot(bitmap)
+                        Log.i(TAG, "Captured fallback PixelCopy snapshot ${width}x${height}")
                     } else {
                         Log.w(TAG, "PixelCopy failed with result=$copyResult")
                         bitmap.recycle()
@@ -67,10 +118,40 @@ object LauncherHomeSnapshotHolder {
         }
     }
 
+    @Synchronized
+    private fun updateSnapshot(newBitmap: Bitmap) {
+        val old = lastSnapshot
+        lastSnapshot = newBitmap
+        if (old != null && old != newBitmap && !old.isRecycled) {
+            old.recycle()
+        }
+    }
+
+    fun onAvmHidden() {
+        mainHandler.post {
+            cancelClearTimer()
+            val runnable = Runnable {
+                Log.i(TAG, "10 seconds elapsed since AVM closed, clearing snapshot")
+                clearSnapshot()
+            }
+            clearRunnable = runnable
+            mainHandler.postDelayed(runnable, CACHE_DURATION_MS)
+        }
+    }
+
+    fun cancelClearTimer() {
+        clearRunnable?.let { mainHandler.removeCallbacks(it) }
+        clearRunnable = null
+    }
+
+    @Synchronized
     fun clearSnapshot() {
+        cancelClearTimer()
         val bmp = lastSnapshot
         lastSnapshot = null
-        bmp?.recycle()
+        if (bmp != null && !bmp.isRecycled) {
+            bmp.recycle()
+        }
     }
 }
 
@@ -126,7 +207,7 @@ class LauncherAvmBlankActivity : Activity() {
         if (instance == this) {
             instance = null
         }
-        LauncherHomeSnapshotHolder.clearSnapshot()
+        LauncherHomeSnapshotHolder.onAvmHidden()
         super.onDestroy()
         Log.i(TAG, "LauncherAvmBlankActivity destroyed")
     }
@@ -174,7 +255,10 @@ class LauncherAvmBlankActivity : Activity() {
         }
 
         fun hide() {
-            val act = instance ?: return
+            val act = instance ?: run {
+                LauncherHomeSnapshotHolder.onAvmHidden()
+                return
+            }
             instance = null
             runCatching {
                 act.finish()
@@ -183,6 +267,8 @@ class LauncherAvmBlankActivity : Activity() {
             }.onFailure { e ->
                 Log.e(TAG, "Failed to finish LauncherAvmBlankActivity", e)
             }
+            LauncherHomeSnapshotHolder.onAvmHidden()
         }
     }
 }
+

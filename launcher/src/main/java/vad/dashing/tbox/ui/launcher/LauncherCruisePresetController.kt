@@ -126,9 +126,11 @@ internal object LauncherCruisePresetController {
 
         if (LauncherDevVehicleState.simulateEnabled) {
             CanDataRepository.updateCruiseSetSpeed(target.toUInt())
-            LauncherDevVehicleState.adasCruiseActive = true
-            LauncherDevVehicleState.adasLanesActive = ngp
-            LauncherDevVehicleState.adasLkaActive = ngp
+            if (!isFromSpeedLimit) {
+                LauncherDevVehicleState.adasCruiseActive = true
+                LauncherDevVehicleState.adasLanesActive = ngp
+                LauncherDevVehicleState.adasLkaActive = ngp
+            }
             LauncherAdasRepository.triggerTimeGapFlash(3000L)
             return
         }
@@ -146,8 +148,18 @@ internal object LauncherCruisePresetController {
 
                 // If already Active and at target speed, single click pauses (MFS_CANCEL)
                 if (state == AccCruiseState.Active && currentSpeed == target) {
+                    if (isFromSpeedLimit) {
+                        DiagFileLog.i(TAG, "Already active at target limit $target km/h (isFromSpeedLimit), ignoring MFS_CANCEL")
+                        return@launchExclusive
+                    }
                     DiagFileLog.i(TAG, "Already active at target $target km/h -> pulse MFS_CANCEL")
                     pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
+                    return@launchExclusive
+                }
+
+                // If setting speed by speed limit (isFromSpeedLimit) while Standby or Off, only update remembered target speed, do not activate cruise
+                if (isFromSpeedLimit && (state == AccCruiseState.Standby || state == AccCruiseState.Off)) {
+                    DiagFileLog.i(TAG, "isFromSpeedLimit is true while state=$state -> set remembered target $target km/h without activating cruise")
                     return@launchExclusive
                 }
 

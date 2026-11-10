@@ -216,6 +216,8 @@ object MbCanKnownVehiclePropertyId {
     const val VEHICEL_BRAKE_PEDA_FEEL_MODE = 300
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_REARFOGLIGHT] — 1 off, 2 on. */
     const val REAR_FOG_LIGHT = 136
+    /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_TSR_SWITCH] — 1 off, 2 on. */
+    const val TSR_SWITCH = 235
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_LIGHTCONTROL] — 4 off, 2 position, 3 low, 1 auto. */
     const val LIGHT_CONTROL = 135
     const val FRONT_LEFT_SEAT_HEAT_VENT_SWITCH = 138
@@ -386,6 +388,15 @@ object MbCanCommandRegistry {
                 unknownFallbackValue = 2
             ),
             refreshSignal = MbCanSignal.ParkingRadar
+        ),
+        MbCanCommandSpec(
+            propertyId = MbCanKnownVehiclePropertyId.TSR_SWITCH,
+            policy = MbCanCommandPolicy.ToggleBinary(
+                offValue = 1,
+                onValue = 2,
+                unknownFallbackValue = 2
+            ),
+            refreshSignal = null
         ),
         MbCanCommandSpec(
             propertyId = MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH,

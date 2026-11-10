@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import vad.dashing.tbox.mbcan.MbCanCommand
+import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
+import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.LaunchableAppEntry
 
 private const val PREFS = "tbox_launcher_app_config"
@@ -63,6 +66,8 @@ private const val KEY_ADAS_ICON_SCALE = "adas_icon_scale"
 private const val KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED = "adas_acc_by_speed_limit_enabled"
 private const val KEY_ADAS_ACC_SPEED_OFFSET = "adas_acc_speed_offset"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
+private const val KEY_ADAS_DISTANCE_LABEL_OFFSET_PERCENT = "adas_distance_label_offset_percent"
+private const val KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT = "adas_lead_car_min_dist_offset_percent"
 private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
 private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
@@ -259,13 +264,14 @@ private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
-private const val KEY_YANDEX_NAV_WIDGET_VISIBLE = "yandex_nav_widget_visible"
+private const val KEY_CLASSIC_SPEED_LIMIT_VISIBLE = "classic_speed_limit_visible"
+private const val KEY_TSR_SYSTEM_ENABLED = "tsr_system_enabled"
 private const val KEY_NAV_MANEUVER_VISIBLE = "nav_maneuver_visible"
 private const val KEY_NAV_STREET_VISIBLE = "nav_street_visible"
 private const val KEY_NAV_SPEED_VISIBLE = "nav_speed_visible"
 private const val KEY_NAV_TRAFFIC_LIGHT_VISIBLE = "nav_traffic_light_visible"
 private const val KEY_NAV_TEXT_VISIBLE = "nav_text_visible"
-private const val KEY_NAV_WIDGETS_ONLY_WHEN_MINIMIZED = "nav_widgets_only_when_minimized"
+
 private const val KEY_NAV_MANEUVER_X_RATIO = "nav_maneuver_x_ratio"
 private const val KEY_NAV_MANEUVER_Y_RATIO = "nav_maneuver_y_ratio"
 private const val KEY_NAV_STREET_X_RATIO = "nav_street_x_ratio"
@@ -313,6 +319,8 @@ private const val KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS = "tire_pressure_always_i
 private const val KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED = "tire_pressure_inertia_animation_enabled"
 private const val KEY_TIRE_PRESSURE_BADGE_SHAPE = "tire_pressure_badge_shape"
 private const val KEY_TIRE_PRESSURE_PERSIST_ENABLED = "tire_pressure_persist_enabled"
+private const val KEY_TIRE_PRESSURE_SHOW_HUNDREDTHS = "tire_pressure_show_hundredths"
+private const val KEY_TIRE_PRESSURE_SHOW_TEMPERATURE = "tire_pressure_show_temperature"
 private const val KEY_SAVED_TIRE_PRESSURE_FL = "saved_tire_pressure_fl"
 private const val KEY_SAVED_TIRE_PRESSURE_FR = "saved_tire_pressure_fr"
 private const val KEY_SAVED_TIRE_PRESSURE_RL = "saved_tire_pressure_rl"
@@ -427,6 +435,10 @@ internal object LauncherAppConfigStore {
     internal val adasAccSpeedOffsetRevisionFlow: StateFlow<Int> = adasAccSpeedOffsetRevision
     private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
+    private val adasDistanceLabelOffsetPercentRevision = MutableStateFlow(0)
+    internal val adasDistanceLabelOffsetPercentRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetPercentRevision
+    private val adasLeadCarMinDistOffsetPercentRevision = MutableStateFlow(0)
+    internal val adasLeadCarMinDistOffsetPercentRevisionFlow: StateFlow<Int> = adasLeadCarMinDistOffsetPercentRevision
     private val adasPanelVisibleRevision = MutableStateFlow(0)
     internal val adasPanelVisibleRevisionFlow: StateFlow<Int> = adasPanelVisibleRevision
     private val adasAlertsPlacementRevision = MutableStateFlow(0)
@@ -473,8 +485,10 @@ internal object LauncherAppConfigStore {
     internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
     private val carColorPanelRevision = MutableStateFlow(0)
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
-    private val yandexNavWidgetRevision = MutableStateFlow(0)
-    internal val yandexNavWidgetRevisionFlow: StateFlow<Int> = yandexNavWidgetRevision
+    private val classicSpeedLimitRevision = MutableStateFlow(0)
+    internal val classicSpeedLimitRevisionFlow: StateFlow<Int> = classicSpeedLimitRevision
+    private val tsrSystemRevision = MutableStateFlow(0)
+    internal val tsrSystemRevisionFlow: StateFlow<Int> = tsrSystemRevision
     private val navManeuverRevision = MutableStateFlow(0)
     internal val navManeuverRevisionFlow: StateFlow<Int> = navManeuverRevision
     private val navStreetRevision = MutableStateFlow(0)
@@ -485,8 +499,7 @@ internal object LauncherAppConfigStore {
     internal val navTrafficLightRevisionFlow: StateFlow<Int> = navTrafficLightRevision
     private val navTextRevision = MutableStateFlow(0)
     internal val navTextRevisionFlow: StateFlow<Int> = navTextRevision
-    private val navWidgetsOnlyWhenMinimizedRevision = MutableStateFlow(0)
-    internal val navWidgetsOnlyWhenMinimizedRevisionFlow: StateFlow<Int> = navWidgetsOnlyWhenMinimizedRevision
+
 
     private val navManeuverPositionRevision = MutableStateFlow(0)
     internal val navManeuverPositionRevisionFlow: StateFlow<Int> = navManeuverPositionRevision
@@ -1032,6 +1045,24 @@ internal object LauncherAppConfigStore {
         adasDistanceLabelOffsetRevision.value++
     }
 
+    fun adasDistanceLabelOffsetPercent(context: Context): Float =
+        prefs(context).getFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET_PERCENT, 0f).coerceIn(-100f, 100f)
+
+    fun setAdasDistanceLabelOffsetPercent(context: Context, offsetPercent: Float) {
+        val next = offsetPercent.coerceIn(-100f, 100f)
+        prefs(context).edit().putFloat(KEY_ADAS_DISTANCE_LABEL_OFFSET_PERCENT, next).apply()
+        adasDistanceLabelOffsetPercentRevision.value++
+    }
+
+    fun adasLeadCarMinDistOffsetPercent(context: Context): Float =
+        prefs(context).getFloat(KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT, 0f).coerceIn(-100f, 100f)
+
+    fun setAdasLeadCarMinDistOffsetPercent(context: Context, offsetPercent: Float) {
+        val next = offsetPercent.coerceIn(-100f, 100f)
+        prefs(context).edit().putFloat(KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT, next).apply()
+        adasLeadCarMinDistOffsetPercentRevision.value++
+    }
+
     fun adasPanelVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ADAS_PANEL_VISIBLE, true)
 
@@ -1199,6 +1230,22 @@ internal object LauncherAppConfigStore {
 
     fun setTirePressurePersistEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_PERSIST_ENABLED, enabled).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureShowHundredths(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_SHOW_HUNDREDTHS, false)
+
+    fun setTirePressureShowHundredths(context: Context, show: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_SHOW_HUNDREDTHS, show).apply()
+        tirePressureConfigRevision.value++
+    }
+
+    fun tirePressureShowTemperature(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_SHOW_TEMPERATURE, false)
+
+    fun setTirePressureShowTemperature(context: Context, show: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_SHOW_TEMPERATURE, show).apply()
         tirePressureConfigRevision.value++
     }
 
@@ -1679,12 +1726,27 @@ internal object LauncherAppConfigStore {
         carColorPanelRevision.value++
     }
 
-    fun yandexNavWidgetVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_YANDEX_NAV_WIDGET_VISIBLE, false)
+    fun classicSpeedLimitVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, true)
 
-    fun setYandexNavWidgetVisible(context: Context, visible: Boolean) {
-        prefs(context).edit().putBoolean(KEY_YANDEX_NAV_WIDGET_VISIBLE, visible).apply()
-        yandexNavWidgetRevision.value++
+    fun setClassicSpeedLimitVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, visible).apply()
+        classicSpeedLimitRevision.value++
+    }
+
+    fun tsrSystemEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TSR_SYSTEM_ENABLED, true)
+
+    fun setTsrSystemEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TSR_SYSTEM_ENABLED, enabled).apply()
+        tsrSystemRevision.value++
+        val targetValue = if (enabled) 2 else 1
+        UniversalCanRepository.launchExecute(
+            MbCanCommand.SetProperty(
+                MbCanKnownVehiclePropertyId.TSR_SWITCH,
+                targetValue
+            )
+        )
     }
 
     fun navManeuverVisible(context: Context): Boolean =
@@ -1727,13 +1789,7 @@ internal object LauncherAppConfigStore {
         navTextRevision.value++
     }
 
-    fun navWidgetsOnlyWhenMinimized(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_NAV_WIDGETS_ONLY_WHEN_MINIMIZED, false)
 
-    fun setNavWidgetsOnlyWhenMinimized(context: Context, minimizedOnly: Boolean) {
-        prefs(context).edit().putBoolean(KEY_NAV_WIDGETS_ONLY_WHEN_MINIMIZED, minimizedOnly).apply()
-        navWidgetsOnlyWhenMinimizedRevision.value++
-    }
 
     fun accPresetsInQuickSettingsVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, true)
@@ -1762,7 +1818,7 @@ internal object LauncherAppConfigStore {
     fun adasTopPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_TOP_PANELS, null)
         val list = if (raw != null) {
-            raw.split(',').map { it.trim() }.filter { it.isNotBlank() && it != "yandex_nav" && !it.startsWith("nav_") }
+            raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
                 .map { if (it == "presets") "assist" else it }.distinct().toMutableList()
         } else {
             mutableListOf("drive_mode")
@@ -1773,7 +1829,7 @@ internal object LauncherAppConfigStore {
     fun adasBottomPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
         val list = if (raw != null) {
-            raw.split(',').map { it.trim() }.filter { it.isNotBlank() && it != "yandex_nav" && !it.startsWith("nav_") }
+            raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
         } else {
             listOf("media_player", "assist", "body_controls")
         }
@@ -2067,6 +2123,8 @@ internal object LauncherAppConfigStore {
         navButtonsRevision.value++
         adasDistanceTextSizeRevision.value++
         adasDistanceLabelOffsetRevision.value++
+        adasDistanceLabelOffsetPercentRevision.value++
+        adasLeadCarMinDistOffsetPercentRevision.value++
         adasPanelVisibleRevision.value++
         adasAlertsPlacementRevision.value++
         adasBsdAlertOverlayRevision.value++

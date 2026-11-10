@@ -6,9 +6,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -56,6 +58,8 @@ fun LauncherTireBadges(
     isRearView: Boolean = false,
     inertiaEnabled: Boolean = true,
     badgeShape: LauncherTireBadgeShape = LauncherTireBadgeShape.RECTANGLE,
+    showHundredths: Boolean = false,
+    showTemperature: Boolean = false,
 ) {
     if (!enabled) return
     val needsAttentionAny = state.hasAttention(lowPressureThreshold)
@@ -122,11 +126,19 @@ fun LauncherTireBadges(
         val density = LocalDensity.current
         val boxWidthPx = with(density) { maxWidth.toPx() }
         val boxHeightPx = with(density) { maxHeight.toPx() }
-        val badgeHeight = if (compact) 40.dp else 68.dp
+        val badgeHeight = if (compact) {
+            if (showTemperature) 58.dp else 40.dp
+        } else {
+            if (showTemperature) 78.dp else 52.dp
+        }
         val badgeWidth = if (badgeShape == LauncherTireBadgeShape.ROUND) {
             badgeHeight
         } else {
-            if (compact) 62.dp else 98.dp
+            if (compact) {
+                if (showTemperature) 70.dp else 62.dp
+            } else {
+                if (showTemperature) 98.dp else 92.dp
+            }
         }
         val badgeWidthPx = with(density) { badgeWidth.toPx() }
         val badgeHeightPx = with(density) { badgeHeight.toPx() }
@@ -192,6 +204,8 @@ fun LauncherTireBadges(
                 lowPressureThreshold = lowPressureThreshold,
                 badgeShape = badgeShape,
                 badgeHeight = badgeHeight,
+                showHundredths = showHundredths,
+                showTemperature = showTemperature,
                 modifier = Modifier
                     .offset { IntOffset(shiftedLeft.roundToInt(), shiftedTop.roundToInt()) }
                     .width(badgeWidth),
@@ -209,6 +223,8 @@ private fun LauncherTireBadge(
     lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
     badgeShape: LauncherTireBadgeShape = LauncherTireBadgeShape.RECTANGLE,
     badgeHeight: Dp = if (compact) 40.dp else 68.dp,
+    showHundredths: Boolean = false,
+    showTemperature: Boolean = false,
 ) {
     val isRound = badgeShape == LauncherTireBadgeShape.ROUND
     val shape = if (isRound) CircleShape else RoundedCornerShape(8.dp)
@@ -230,15 +246,17 @@ private fun LauncherTireBadge(
         wheel.available -> LauncherColors.LeftTextPrimary
         else -> LauncherColors.LeftTextSecondary
     }
+    val pressureAccuracy = if (showHundredths) 2 else 1
     val pressureText = when {
         !wheel.available || wheel.calibrating || wheel.pressureBar == null ->
             stringResource(R.string.launcher_tire_invalid)
-        compact -> valueToString(wheel.pressureBar, 1)
-        else -> "${valueToString(wheel.pressureBar, 1)} ${stringResource(R.string.unit_bar)}"
+        compact -> valueToString(wheel.pressureBar, pressureAccuracy)
+        else -> "${valueToString(wheel.pressureBar, pressureAccuracy)} ${stringResource(R.string.unit_bar)}"
     }
     val tempText = wheel.temperatureC
         ?.takeIf { wheel.available && !wheel.calibrating }
         ?.let { "$it${stringResource(R.string.unit_celsius)}" }
+        ?: "—${stringResource(R.string.unit_celsius)}"
 
     val badgeBg = LauncherColors.LeftPanelCard
 
@@ -247,10 +265,10 @@ private fun LauncherTireBadge(
             .height(badgeHeight)
             .background(badgeBg, shape)
             .padding(
-                horizontal = if (isRound) 2.dp else (if (compact) 6.dp else 8.dp),
-                vertical = if (compact) 2.dp else 4.dp,
+                horizontal = if (isRound) 3.dp else (if (compact) 4.dp else 6.dp),
+                vertical = if (compact) (if (showTemperature) 2.dp else 3.dp) else (if (showTemperature) 3.dp else 4.dp),
             )
-            .then(if (isRound) Modifier.offset(y = (-2).dp) else Modifier),
+            .then(if (isRound && !showTemperature) Modifier.offset(y = (-2).dp) else Modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -258,23 +276,43 @@ private fun LauncherTireBadge(
             Text(
                 text = label,
                 color = tint.copy(alpha = 0.85f),
-                fontSize = if (isRound) 10.5.sp else 11.5.sp,
+                fontSize = if (isRound) 10.sp else 11.sp,
+                lineHeight = if (isRound) 10.5.sp else 11.5.sp,
                 fontWeight = FontWeight.Medium,
             )
         }
         Text(
             text = pressureText,
             color = tint,
-            fontSize = if (compact) (if (isRound) 13.5.sp else 15.sp) else (if (isRound) 13.5.sp else 15.sp),
+            fontSize = if (showTemperature) {
+                if (compact) (if (isRound) 12.5.sp else 13.5.sp) else (if (isRound) 13.sp else 14.sp)
+            } else {
+                if (compact) (if (isRound) 13.5.sp else 14.5.sp) else (if (isRound) 13.5.sp else 14.5.sp)
+            },
+            lineHeight = if (showTemperature) {
+                if (compact) (if (isRound) 13.sp else 14.sp) else (if (isRound) 13.5.sp else 14.5.sp)
+            } else {
+                if (compact) (if (isRound) 14.sp else 15.sp) else (if (isRound) 14.sp else 15.sp)
+            },
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            modifier = if (compact && !isRound) Modifier.offset(y = (-3).dp) else Modifier,
+            modifier = if (compact && !isRound && !showTemperature) Modifier.offset(y = (-3).dp) else Modifier,
         )
-        if (!compact && tempText != null) {
+        if (showTemperature) {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 1.5.dp)
+                    .fillMaxWidth(if (isRound) 0.55f else 0.75f)
+                    .height(1.dp)
+                    .background(tint.copy(alpha = 0.35f)),
+            )
             Text(
                 text = tempText,
                 color = tint.copy(alpha = 0.9f),
-                fontSize = if (isRound) 11.sp else 12.7.sp,
+                fontSize = if (compact) (if (isRound) 10.5.sp else 11.5.sp) else (if (isRound) 11.sp else 12.sp),
+                lineHeight = if (compact) (if (isRound) 11.sp else 12.sp) else (if (isRound) 11.5.sp else 12.5.sp),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
             )
         }
     }

@@ -66,15 +66,40 @@ internal fun LauncherSmartAccAndDistControl(
 
     val rawGap = adas.timeGapLevel ?: LauncherDevVehicleState.adasTimeGapLevel
     val displayChevronLevel = when (rawGap) {
-        0 -> 1 // 0 -> Level 1 (Min distance / 1 chevron)
-        1 -> 2 // 1 -> Level 2 (Mid distance / 2 chevrons)
-        2 -> 3 // 2 -> Level 3 (Max distance / 3 chevrons)
-        else -> (rawGap + 1).coerceIn(1, 3)
+        0 -> 3 // 0 -> 3 chevrons
+        1 -> 2 // 1 -> 2 chevrons
+        2 -> 1 // 2 -> 1 chevron
+        else -> 3 - rawGap.coerceIn(0, 2)
+    }
+
+    val classicSpeedLimitRevision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+    val classicSpeedLimitVisible = remember(context, classicSpeedLimitRevision) {
+        LauncherAppConfigStore.classicSpeedLimitVisible(context)
+    }
+    val navSpeedRevision by LauncherAppConfigStore.navSpeedRevisionFlow.collectAsStateWithLifecycle()
+    val navSpeedVisible = remember(context, navSpeedRevision) {
+        LauncherAppConfigStore.navSpeedVisible(context)
+    }
+    val tsrSystemRevision by LauncherAppConfigStore.tsrSystemRevisionFlow.collectAsStateWithLifecycle()
+    val tsrSystemEnabled = remember(context, tsrSystemRevision) {
+        LauncherAppConfigStore.tsrSystemEnabled(context)
     }
 
     val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
-    val yandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
-    val cameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+    val rawYandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
+    val yandexLimit = if (navSpeedVisible) rawYandexLimit else null
+    val rawCameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+
+    val cameraLimit = if (tsrSystemEnabled && (classicSpeedLimitVisible || navSpeedVisible)) {
+        if (yandexLimit != null) {
+            // Suppress TSR camera sign recognition while Yandex Navigator limit is displayed
+            null
+        } else {
+            // Use TSR camera sign recognition when Navigator limit is not active
+            rawCameraLimit
+        }
+    } else null
+
     val effectiveSpeedLimit = yandexLimit ?: cameraLimit
 
     val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()

@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -394,6 +395,12 @@ object UniversalCanRepository {
             MbCanRepository.widgetConfigsNeedMbCan(dataKeys)
         } else {
             Android10VhalRepository.widgetConfigsNeedMbCan(dataKeys)
+        }
+    }
+
+    fun launchExecute(command: MbCanCommand) {
+        scope.launch {
+            execute(command)
         }
     }
 

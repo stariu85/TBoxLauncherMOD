@@ -233,13 +233,11 @@ internal fun LauncherHomeSettingsContent() {
     PdcVisualModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
-    NavManeuverWidgetToggle()
-    NavStreetWidgetToggle()
     NavSpeedWidgetToggle()
+    ClassicSpeedLimitWidgetToggle()
+    TsrSystemToggle()
     NavTrafficLightWidgetToggle()
     NavTrafficLightScaleSlider()
-    NavTextWidgetToggle()
-    NavWidgetsOnlyWhenMinimizedToggle()
     AdasDistanceTextSizeSlider()
     NavButtonsToggle()
     FloatingHomeToggle()
@@ -1637,43 +1635,7 @@ private fun AdasPanelToggle() {
     }
 }
 
-@Composable
-private fun NavManeuverWidgetToggle() {
-    val context = LocalContext.current
-    val revision by LauncherAppConfigStore.navManeuverRevisionFlow.collectAsStateWithLifecycle()
-    val visible = remember(context, revision) { LauncherAppConfigStore.navManeuverVisible(context) }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_nav_maneuver_title),
-            active = visible,
-            onClick = { LauncherAppConfigStore.setNavManeuverVisible(context, !visible) },
-        )
-        Text(
-            text = stringResource(R.string.launcher_nav_maneuver_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-    }
-}
 
-@Composable
-private fun NavStreetWidgetToggle() {
-    val context = LocalContext.current
-    val revision by LauncherAppConfigStore.navStreetRevisionFlow.collectAsStateWithLifecycle()
-    val visible = remember(context, revision) { LauncherAppConfigStore.navStreetVisible(context) }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_nav_street_title),
-            active = visible,
-            onClick = { LauncherAppConfigStore.setNavStreetVisible(context, !visible) },
-        )
-        Text(
-            text = stringResource(R.string.launcher_nav_street_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-    }
-}
 
 @Composable
 private fun NavSpeedWidgetToggle() {
@@ -1688,6 +1650,52 @@ private fun NavSpeedWidgetToggle() {
         )
         Text(
             text = stringResource(R.string.launcher_nav_speed_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun ClassicSpeedLimitWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.classicSpeedLimitVisible(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_classic_speed_limit_title),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setClassicSpeedLimitVisible(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_classic_speed_limit_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun TsrSystemToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.tsrSystemRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.tsrSystemEnabled(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_tsr_system_title),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setTsrSystemEnabled(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_tsr_system_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -1760,43 +1768,9 @@ private fun NavTrafficLightScaleSlider() {
     }
 }
 
-@Composable
-private fun NavTextWidgetToggle() {
-    val context = LocalContext.current
-    val revision by LauncherAppConfigStore.navTextRevisionFlow.collectAsStateWithLifecycle()
-    val visible = remember(context, revision) { LauncherAppConfigStore.navTextVisible(context) }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_nav_text_title),
-            active = visible,
-            onClick = { LauncherAppConfigStore.setNavTextVisible(context, !visible) },
-        )
-        Text(
-            text = stringResource(R.string.launcher_nav_text_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-    }
-}
 
-@Composable
-private fun NavWidgetsOnlyWhenMinimizedToggle() {
-    val context = LocalContext.current
-    val revision by LauncherAppConfigStore.navWidgetsOnlyWhenMinimizedRevisionFlow.collectAsStateWithLifecycle()
-    val minimizedOnly = remember(context, revision) { LauncherAppConfigStore.navWidgetsOnlyWhenMinimized(context) }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_nav_widgets_only_minimized_title),
-            active = minimizedOnly,
-            onClick = { LauncherAppConfigStore.setNavWidgetsOnlyWhenMinimized(context, !minimizedOnly) },
-        )
-        Text(
-            text = stringResource(R.string.launcher_nav_widgets_only_minimized_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-    }
-}
+
+
 
 
 
@@ -1849,13 +1823,9 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
-        NavManeuverWidgetToggle()
-        NavStreetWidgetToggle()
         NavSpeedWidgetToggle()
         NavTrafficLightWidgetToggle()
         NavTrafficLightScaleSlider()
-        NavTextWidgetToggle()
-        NavWidgetsOnlyWhenMinimizedToggle()
 
         val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow
             .collectAsStateWithLifecycle()

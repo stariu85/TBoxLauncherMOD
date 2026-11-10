@@ -33,6 +33,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -76,6 +79,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.R
@@ -253,6 +257,14 @@ fun LauncherVirtualRoad(
     val distanceLabelOffsetRatio = remember(context, offsetRevision) {
         LauncherAppConfigStore.adasDistanceLabelOffset(context)
     }
+    val labelOffsetPercentRev by LauncherAppConfigStore.adasDistanceLabelOffsetPercentRevisionFlow.collectAsStateWithLifecycle()
+    val distanceLabelOffsetPercent = remember(context, labelOffsetPercentRev) {
+        LauncherAppConfigStore.adasDistanceLabelOffsetPercent(context)
+    }
+    val carOffsetPercentRev by LauncherAppConfigStore.adasLeadCarMinDistOffsetPercentRevisionFlow.collectAsStateWithLifecycle()
+    val leadCarMinDistOffsetPercent = remember(context, carOffsetPercentRev) {
+        LauncherAppConfigStore.adasLeadCarMinDistOffsetPercent(context)
+    }
 
     val leadSprites = rememberLeadObjectSprites()
     val leadVisual = rememberLeadObjectVisual(adas)
@@ -298,6 +310,8 @@ fun LauncherVirtualRoad(
             leadVisual = leadVisual,
             distanceTextSizeSp = distanceTextSizeSp,
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
+            distanceLabelOffsetPercent = distanceLabelOffsetPercent,
+            leadCarMinDistOffsetPercent = leadCarMinDistOffsetPercent,
             density = density,
             storedTimeGap = storedTimeGap,
             laneProgress = laneAnimProgress,
@@ -538,6 +552,8 @@ private fun DrawScope.drawVirtualRoad(
     leadVisual: LeadObjectVisual?,
     distanceTextSizeSp: Int = 14,
     distanceLabelOffsetRatio: Float = 0.50f,
+    distanceLabelOffsetPercent: Float = 0f,
+    leadCarMinDistOffsetPercent: Float = 0f,
     density: Float = 1.5f,
     storedTimeGap: Int = 2,
     laneProgress: Float = 1f,
@@ -698,6 +714,8 @@ private fun DrawScope.drawVirtualRoad(
             yAt = ::yAt,
             distanceTextSizeSp = distanceTextSizeSp,
             distanceLabelOffsetRatio = distanceLabelOffsetRatio,
+            distanceLabelOffsetPercent = distanceLabelOffsetPercent,
+            leadCarMinDistOffsetPercent = leadCarMinDistOffsetPercent,
         )
     } else {
         if (beamProgress > 0.005f) {
@@ -1133,6 +1151,8 @@ private fun DrawScope.drawFrontObject(
     yAt: (Float) -> Float,
     distanceTextSizeSp: Int = 14,
     distanceLabelOffsetRatio: Float = 0.50f,
+    distanceLabelOffsetPercent: Float = 0f,
+    leadCarMinDistOffsetPercent: Float = 0f,
 ) {
     val depth = distanceToRoadDepth(distanceM)
     val fogFade = distanceFade(depth)
@@ -1140,7 +1160,19 @@ private fun DrawScope.drawFrontObject(
     if (effectiveAlpha < 0.01f) return
 
     val cx = centerXAt(depth)
-    val cy = yAt(depth)
+    var cy = yAt(depth)
+
+    val egoCarCenterY = yAt(0.65f)
+
+    val isCruiseActive = adas.accActive || adas.accStandby || ((adas.accSetSpeedKmh ?: 0) > 0)
+    if (isCruiseActive && distanceM <= 1) {
+        cy -= 5.dp.toPx()
+        if (leadCarMinDistOffsetPercent != 0f) {
+            val distToEgoCenter = egoCarCenterY - cy
+            cy += (leadCarMinDistOffsetPercent / 100f) * distToEgoCenter
+        }
+    }
+
     val roadHalf = halfWidthAt(depth)
     val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
@@ -1206,10 +1238,14 @@ private fun DrawScope.drawFrontObject(
     val leadCarBottomY = cy
     val egoCarFrontY = yAt(0.51f) // Exact top windshield boundary of 3D car model on screen
     val targetLabelCy = leadCarBottomY + 10.dp.toPx() + halfPillHeight
-    val maxAllowedCy = egoCarFrontY - halfPillHeight + 12.dp.toPx()
 
+    val labelSpanToEgo = (egoCarCenterY - targetLabelCy).coerceAtLeast(20.dp.toPx())
+    val labelOffsetPx = (distanceLabelOffsetPercent / 100f) * labelSpanToEgo
+    val rawLabelCy = targetLabelCy + labelOffsetPx
+
+    val maxAllowedCy = egoCarFrontY - halfPillHeight + 12.dp.toPx()
     val labelCx = cx
-    val labelCy = minOf(targetLabelCy, maxAllowedCy)
+    val labelCy = if (distanceLabelOffsetPercent != 0f) rawLabelCy else minOf(targetLabelCy, maxAllowedCy)
 
     drawContext.canvas.nativeCanvas.drawText(
         text,
@@ -1424,6 +1460,24 @@ fun LauncherSpeedLimitOverlay(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val classicSpeedLimitRevision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+    val classicSpeedLimitVisible = remember(context, classicSpeedLimitRevision) {
+        LauncherAppConfigStore.classicSpeedLimitVisible(context)
+    }
+    val tsrSystemRevision by LauncherAppConfigStore.tsrSystemRevisionFlow.collectAsStateWithLifecycle()
+    val tsrSystemEnabled = remember(context, tsrSystemRevision) {
+        LauncherAppConfigStore.tsrSystemEnabled(context)
+    }
+
+    val navSpeedRevision by LauncherAppConfigStore.navSpeedRevisionFlow.collectAsStateWithLifecycle()
+    val navSpeedVisible = remember(context, navSpeedRevision) {
+        LauncherAppConfigStore.navSpeedVisible(context)
+    }
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
+    val hasYandexLimit = navSpeedVisible && navState.speedLimit?.filter { it.isDigit() }?.isNotEmpty() == true
+
+    if (!classicSpeedLimitVisible || !tsrSystemEnabled || hasYandexLimit) return
+
     val limit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
     if (limit == null) return
 
@@ -1436,27 +1490,32 @@ fun LauncherSpeedLimitOverlay(
         LauncherAppConfigStore.adasAccSpeedOffset(context)
     }
 
+    val carSpeedState by CanDataRepository.carSpeed.collectAsStateWithLifecycle()
+    val currentSpeedKmh = (carSpeedState ?: 0f).roundToInt().coerceAtLeast(0)
+
+    val isExceeded = currentSpeedKmh > (limit + offset)
+
+    var isBlinkingRed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isExceeded) {
+        if (isExceeded) {
+            while (isActive) {
+                repeat(5) {
+                    isBlinkingRed = true
+                    delay(200L)
+                    isBlinkingRed = false
+                    delay(200L)
+                }
+                delay(1000L)
+            }
+        } else {
+            isBlinkingRed = false
+        }
+    }
+
     val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
     val cruiseState = LauncherCruisePresetController.currentAccCruiseState()
     val showSmartUi = enabled && isSmartActive && cruiseState == AccCruiseState.Active
-
-    var lastAppliedLimit by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(limit, enabled, offset, isSmartActive, cruiseState) {
-        if (!enabled || cruiseState != AccCruiseState.Active || !isSmartActive) {
-            lastAppliedLimit = null
-            return@LaunchedEffect
-        }
-        if (limit != lastAppliedLimit) {
-            lastAppliedLimit = limit
-            val targetSpeed = limit + offset
-            LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
-        }
-    }
-    LaunchedEffect(enabled) {
-        if (!enabled) {
-            lastAppliedLimit = null
-        }
-    }
 
     var isDragging by remember { mutableStateOf(false) }
 
@@ -1508,7 +1567,6 @@ fun LauncherSpeedLimitOverlay(
                         onDragEnd()
                     } else if (!isDragging) {
                         if (enabled) {
-                            lastAppliedLimit = limit
                             val targetSpeed = limit + offset
                             LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
                         }
@@ -1523,6 +1581,7 @@ fun LauncherSpeedLimitOverlay(
                 warning = adas.speedLimitWarning,
                 accent = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
                 active = showSmartUi,
+                isBlinkingRed = isBlinkingRed,
             )
         }
         if (showSmartUi) {
@@ -1554,16 +1613,20 @@ private fun DrawScope.drawSpeedLimitSign(
     warning: Boolean,
     accent: Color = if (warning) Color(0xFFEF4444) else Color(0xFFE11D48),
     active: Boolean = false,
+    isBlinkingRed: Boolean = false,
 ) {
     val cx = size.width / 2f
     val cy = size.height / 2f
     val radius = minOf(cx, cy) - (if (active) 5f else 3f)
-    drawCircle(color = Color.White.copy(alpha = 0.92f), radius = radius, center = Offset(cx, cy))
+    val circleColor = if (isBlinkingRed) Color(0xFFEF4444) else Color.White.copy(alpha = 0.92f)
+    val ringColor = if (isBlinkingRed) Color.White else accent
+
+    drawCircle(color = circleColor, radius = radius, center = Offset(cx, cy))
     drawCircle(
-        color = accent,
+        color = ringColor,
         radius = radius,
         center = Offset(cx, cy),
-        style = Stroke(width = 4.5f),
+        style = Stroke(width = 9f),
     )
     if (active) {
         drawCircle(
@@ -1573,9 +1636,10 @@ private fun DrawScope.drawSpeedLimitSign(
             style = Stroke(width = 3f),
         )
     }
+    val textColorArgb = if (isBlinkingRed) Color.White.toArgb() else Color(0xFF111827).toArgb()
     val paint = Paint().apply {
         isAntiAlias = true
-        color = Color(0xFF111827).toArgb()
+        color = textColorArgb
         textAlign = Paint.Align.CENTER
         textSize = radius * 0.95f
         typeface = Typeface.DEFAULT_BOLD

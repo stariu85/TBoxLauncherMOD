@@ -539,6 +539,7 @@ object LauncherBackupManager {
                 "adas_bsd_alert_overlay_enabled", "tire_pressure_on_car_enabled",
                 "tire_pressure_only_low", "tire_pressure_only_top_view", "tire_pressure_always_in_settings",
                 "tire_pressure_inertia_animation_enabled", "tire_pressure_persist_enabled",
+                "tire_pressure_show_hundredths", "tire_pressure_show_temperature",
                 "fuel_shows_range", "cruise_panel_visible", "swap_top_bottom_panels",
                 "drive_mode_bar_visible", "assist_panel_visible", "body_controls_panel_visible",
                 "drive_mode_glow_visible", "headlight_beams_visible", "ngp_enabled",

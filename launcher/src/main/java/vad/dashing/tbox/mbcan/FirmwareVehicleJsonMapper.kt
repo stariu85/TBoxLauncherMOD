@@ -84,6 +84,8 @@ object FirmwareVehicleJsonMapper {
         MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION to 289415946, // T_0B01_IHU_8_LDWLKA_LaneAssit_TypeReq
         // MBVehicleProperty.eVEHICLE_SMART_HIGHBEAM_SWITCH
         MbCanKnownVehiclePropertyId.HMA_SWITCH to 289412671, // T_0401_IHU_1_DVD_SET_HeadlightSwitch
+        // MBVehicleProperty.eVEHICLE_TSR_SWITCH
+        MbCanKnownVehiclePropertyId.TSR_SWITCH to 289415948, // T_0B01_IHU_8_TSR_Switch
         // Audio
         MbCanKnownAudioPropertyId.VOLUME to 557849090, // AUDIO_CURRENT_MAIN_VOLUME
         MbCanKnownAudioPropertyId.VOLUME_SPEED to 557849227, // AUDIO_VOL_VSC_MOD_REQ

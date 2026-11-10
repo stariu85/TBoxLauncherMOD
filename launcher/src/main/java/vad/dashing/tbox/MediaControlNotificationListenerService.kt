@@ -12,12 +12,13 @@ import vad.dashing.tbox.ui.launcher.YandexNavRepository
 class MediaControlNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
-        Log.w(TAG, "notification listener connected")
+        Log.i(TAG, "MediaControlNotificationListenerService CONNECTED")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn != null) {
+            Log.d(TAG, "onNotificationPosted: pkg=${sbn.packageName}")
             YandexNavRepository.onNotificationPosted(this, sbn)
         }
     }
@@ -25,6 +26,7 @@ class MediaControlNotificationListenerService : NotificationListenerService() {
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         super.onNotificationRemoved(sbn)
         if (sbn != null) {
+            Log.d(TAG, "onNotificationRemoved: pkg=${sbn.packageName}")
             YandexNavRepository.onNotificationRemoved(sbn)
         }
     }

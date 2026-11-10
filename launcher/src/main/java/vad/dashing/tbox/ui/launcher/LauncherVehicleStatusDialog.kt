@@ -27,7 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import vad.dashing.tbox.valueToString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -122,6 +124,11 @@ private val LauncherAlertId.detailDescription: String
 
 @Composable
 internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetailItem> {
+    val context = LocalContext.current
+    val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
+    val tirePressureShowHundredths = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureShowHundredths(context)
+    }
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
@@ -154,7 +161,8 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
             ).filter { it.second.needsAttention }
 
             lowCorners.forEach { (cornerName, wheel) ->
-                val press = wheel.pressureBar?.let { "${(it * 10).roundToInt() / 10f} bar" } ?: "—"
+                val accuracy = if (tirePressureShowHundredths) 2 else 1
+                val press = wheel.pressureBar?.let { "${valueToString(it, accuracy)} bar" } ?: "—"
                 add(
                     LauncherVehicleStatusDetailItem(
                         title = "Низкое давление: $cornerName",

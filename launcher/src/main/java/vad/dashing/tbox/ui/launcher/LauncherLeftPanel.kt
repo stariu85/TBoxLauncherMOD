@@ -165,6 +165,12 @@ fun LauncherLeftPanel(
     val tirePressureBadgeShape = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureBadgeShape(context)
     }
+    val tirePressureShowHundredths = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureShowHundredths(context)
+    }
+    val tirePressureShowTemperature = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureShowTemperature(context)
+    }
 
     LaunchedEffect(context) {
         LauncherTireRepository.init(context)
@@ -253,21 +259,6 @@ fun LauncherLeftPanel(
     val carColorPanelVisible = remember(context, carColorRevision) {
         LauncherAppConfigStore.carColorPanelVisible(context)
     }
-    val yandexNavWidgetRevision by LauncherAppConfigStore.yandexNavWidgetRevisionFlow
-        .collectAsStateWithLifecycle()
-    val yandexNavWidgetVisible = remember(context, yandexNavWidgetRevision) {
-        LauncherAppConfigStore.yandexNavWidgetVisible(context)
-    }
-    val navManeuverRevision by LauncherAppConfigStore.navManeuverRevisionFlow
-        .collectAsStateWithLifecycle()
-    val navManeuverVisible = remember(context, navManeuverRevision) {
-        LauncherAppConfigStore.navManeuverVisible(context)
-    }
-    val navStreetRevision by LauncherAppConfigStore.navStreetRevisionFlow
-        .collectAsStateWithLifecycle()
-    val navStreetVisible = remember(context, navStreetRevision) {
-        LauncherAppConfigStore.navStreetVisible(context)
-    }
     val navSpeedRevision by LauncherAppConfigStore.navSpeedRevisionFlow
         .collectAsStateWithLifecycle()
     val navSpeedVisible = remember(context, navSpeedRevision) {
@@ -278,19 +269,7 @@ fun LauncherLeftPanel(
     val navTrafficLightVisible = remember(context, navTrafficLightRevision) {
         LauncherAppConfigStore.navTrafficLightVisible(context)
     }
-    val navWidgetsOnlyWhenMinimizedRevision by LauncherAppConfigStore.navWidgetsOnlyWhenMinimizedRevisionFlow
-        .collectAsStateWithLifecycle()
-    val navWidgetsOnlyWhenMinimized = remember(context, navWidgetsOnlyWhenMinimizedRevision) {
-        LauncherAppConfigStore.navWidgetsOnlyWhenMinimized(context)
-    }
-
-    val navManeuverPositionRevision by LauncherAppConfigStore.navManeuverPositionRevisionFlow.collectAsStateWithLifecycle()
-    var navManeuverXRatio by remember(context, navManeuverPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navManeuverXRatio(context)) }
-    var navManeuverYRatio by remember(context, navManeuverPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navManeuverYRatio(context)) }
-
-    val navStreetPositionRevision by LauncherAppConfigStore.navStreetPositionRevisionFlow.collectAsStateWithLifecycle()
-    var navStreetXRatio by remember(context, navStreetPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navStreetXRatio(context)) }
-    var navStreetYRatio by remember(context, navStreetPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navStreetYRatio(context)) }
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
 
     val navSpeedPositionRevision by LauncherAppConfigStore.navSpeedPositionRevisionFlow.collectAsStateWithLifecycle()
     var navSpeedXRatio by remember(context, navSpeedPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navSpeedXRatio(context)) }
@@ -299,20 +278,6 @@ fun LauncherLeftPanel(
     val navTrafficLightPositionRevision by LauncherAppConfigStore.navTrafficLightPositionRevisionFlow.collectAsStateWithLifecycle()
     var navTrafficLightXRatio by remember(context, navTrafficLightPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTrafficLightXRatio(context)) }
     var navTrafficLightYRatio by remember(context, navTrafficLightPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTrafficLightYRatio(context)) }
-
-    val navTextRevision by LauncherAppConfigStore.navTextRevisionFlow.collectAsStateWithLifecycle()
-    val navTextVisible = remember(context, navTextRevision) { LauncherAppConfigStore.navTextVisible(context) }
-    val navTextPositionRevision by LauncherAppConfigStore.navTextPositionRevisionFlow.collectAsStateWithLifecycle()
-    var navTextXRatio by remember(context, navTextPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTextXRatio(context)) }
-    var navTextYRatio by remember(context, navTextPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTextYRatio(context)) }
-
-    val activeAppPackage = LauncherActiveAppTracker.activeAppPackage()
-    val isYandexForeground = remember(activeAppPackage) {
-        val pkg = activeAppPackage ?: ""
-        pkg == "ru.yandex.yandexnavi" || pkg == "ru.yandex.yandexmaps" || pkg == "ru.yandex.mobile.navigator" ||
-                pkg.startsWith("ru.yandex.yandexnavi") || pkg.startsWith("ru.yandex.yandexmaps")
-    }
-    val hideNavWidgets = navWidgetsOnlyWhenMinimized && isYandexForeground
     val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
         .collectAsStateWithLifecycle()
     val smartPanelEnabled = remember(context, smartPanelRevision) {
@@ -566,13 +531,12 @@ fun LauncherLeftPanel(
                 "media_player" -> miniPlayerVisible
                 "car_color" -> carColorPanelVisible
                 "smart_panel" -> smartPanelEnabled
-                "yandex_nav" -> yandexNavWidgetVisible && !hideNavWidgets
                 "lanes" -> true
                 else -> true
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible, navManeuverVisible, navStreetVisible, navSpeedVisible, navTrafficLightVisible, hideNavWidgets) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, navSpeedVisible, navTrafficLightVisible) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -588,7 +552,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible, navManeuverVisible, navStreetVisible, navSpeedVisible, navTrafficLightVisible, hideNavWidgets) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, navSpeedVisible, navTrafficLightVisible) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }.toMutableList()
             if (smartPanelEnabled && "smart_panel" !in activeTopPanels && "smart_panel" !in filtered) {
                 filtered.add(0, "smart_panel")
@@ -684,13 +648,7 @@ fun LauncherLeftPanel(
                             )
                         }
                     }
-                    "yandex_nav" -> {
-                        if (yandexNavWidgetVisible && !hideNavWidgets) {
-                            LauncherYandexNavWidget(
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
+
                 }
             }
         }
@@ -784,6 +742,8 @@ fun LauncherLeftPanel(
                     isRearView = showDriveView,
                     inertiaEnabled = tirePressureInertiaEnabled,
                     badgeShape = tirePressureBadgeShape,
+                    showHundredths = tirePressureShowHundredths,
+                    showTemperature = tirePressureShowTemperature,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -820,104 +780,63 @@ fun LauncherLeftPanel(
                     )
             }
 
+            val classicSpeedLimitRevision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+            val classicSpeedLimitVisible = remember(context, classicSpeedLimitRevision) {
+                LauncherAppConfigStore.classicSpeedLimitVisible(context)
+            }
+            val tsrSystemRevision by LauncherAppConfigStore.tsrSystemRevisionFlow.collectAsStateWithLifecycle()
+            val tsrSystemEnabled = remember(context, tsrSystemRevision) {
+                LauncherAppConfigStore.tsrSystemEnabled(context)
+            }
+
             // Overlay layer for 3D speed limit sign floating over the 3D car area
-            if (!racing) {
+            if (showDriveView && !racing) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val signSizePx = with(density) { 48.dp.toPx() }
                     val containerWidthPx = with(density) { maxWidth.toPx() }
                     val containerHeightPx = with(density) { maxHeight.toPx() }
 
-                    val centerX = containerWidthPx * speedLimitXRatio
-                    val centerY = containerHeightPx * speedLimitYRatio
+                    if (classicSpeedLimitVisible && tsrSystemEnabled) {
+                        val centerX = containerWidthPx * speedLimitXRatio
+                        val centerY = containerHeightPx * speedLimitYRatio
 
-                    val leftPx = (centerX - signSizePx / 2f).coerceIn(0f, (containerWidthPx - signSizePx).coerceAtLeast(0f))
-                    val topPx = (centerY - signSizePx / 2f).coerceIn(0f, (containerHeightPx - signSizePx).coerceAtLeast(0f))
+                        val leftPx = (centerX - signSizePx / 2f).coerceIn(0f, (containerWidthPx - signSizePx).coerceAtLeast(0f))
+                        val topPx = (centerY - signSizePx / 2f).coerceIn(0f, (containerHeightPx - signSizePx).coerceAtLeast(0f))
 
-                    val leftDp = with(density) { leftPx.toDp() }
-                    val topDp = with(density) { topPx.toDp() }
+                        val leftDp = with(density) { leftPx.toDp() }
+                        val topDp = with(density) { topPx.toDp() }
 
-                    LauncherSpeedLimitOverlay(
-                        adas = adas,
-                        onDrag = { delta ->
-                            if (containerWidthPx > 0f && containerHeightPx > 0f) {
-                                val currentCenterX = containerWidthPx * speedLimitXRatio
-                                val currentCenterY = containerHeightPx * speedLimitYRatio
-                                val newCenterX = (currentCenterX + delta.x).coerceIn(signSizePx / 2f, containerWidthPx - signSizePx / 2f)
-                                val newCenterY = (currentCenterY + delta.y).coerceIn(signSizePx / 2f, containerHeightPx - signSizePx / 2f)
-                                speedLimitXRatio = newCenterX / containerWidthPx
-                                speedLimitYRatio = newCenterY / containerHeightPx
-                            }
-                        },
-                        onDragEnd = {
-                            LauncherAppConfigStore.setSpeedLimitPosition(context, speedLimitXRatio, speedLimitYRatio)
-                        },
-                        modifier = Modifier
-                            .offset(x = leftDp, y = topDp)
-                            .zIndex(160f),
-                    )
-
-                    // Freely Movable Navigation Overlay 1: Turn Maneuver & Distance
-                    if (navManeuverVisible && !hideNavWidgets) {
-                        val mWidthPx = with(density) { 80.dp.toPx() }
-                        val mHeightPx = with(density) { 36.dp.toPx() }
-                        val mCenterX = containerWidthPx * navManeuverXRatio
-                        val mCenterY = containerHeightPx * navManeuverYRatio
-                        val mLeftPx = (mCenterX - mWidthPx / 2f).coerceIn(0f, (containerWidthPx - mWidthPx).coerceAtLeast(0f))
-                        val mTopPx = (mCenterY - mHeightPx / 2f).coerceIn(0f, (containerHeightPx - mHeightPx).coerceAtLeast(0f))
-
-                        LauncherNavManeuverOverlay(
+                        LauncherSpeedLimitOverlay(
+                            adas = adas,
                             onDrag = { delta ->
                                 if (containerWidthPx > 0f && containerHeightPx > 0f) {
-                                    val currentX = containerWidthPx * navManeuverXRatio
-                                    val currentY = containerHeightPx * navManeuverYRatio
-                                    val newX = (currentX + delta.x).coerceIn(mWidthPx / 2f, containerWidthPx - mWidthPx / 2f)
-                                    val newY = (currentY + delta.y).coerceIn(mHeightPx / 2f, containerHeightPx - mHeightPx / 2f)
-                                    navManeuverXRatio = newX / containerWidthPx
-                                    navManeuverYRatio = newY / containerHeightPx
+                                    val currentCenterX = containerWidthPx * speedLimitXRatio
+                                    val currentCenterY = containerHeightPx * speedLimitYRatio
+                                    val newCenterX = (currentCenterX + delta.x).coerceIn(signSizePx / 2f, containerWidthPx - signSizePx / 2f)
+                                    val newCenterY = (currentCenterY + delta.y).coerceIn(signSizePx / 2f, containerHeightPx - signSizePx / 2f)
+                                    speedLimitXRatio = newCenterX / containerWidthPx
+                                    speedLimitYRatio = newCenterY / containerHeightPx
                                 }
                             },
                             onDragEnd = {
-                                LauncherAppConfigStore.setNavManeuverPosition(context, navManeuverXRatio, navManeuverYRatio)
+                                LauncherAppConfigStore.setSpeedLimitPosition(context, speedLimitXRatio, speedLimitYRatio)
                             },
                             modifier = Modifier
-                                .offset(x = with(density) { mLeftPx.toDp() }, y = with(density) { mTopPx.toDp() })
-                                .zIndex(165f),
-                        )
-                    }
-
-                    // Freely Movable Navigation Overlay 2: Target Street Name
-                    if (navStreetVisible && !hideNavWidgets) {
-                        val sWidthPx = with(density) { 120.dp.toPx() }
-                        val sHeightPx = with(density) { 32.dp.toPx() }
-                        val sCenterX = containerWidthPx * navStreetXRatio
-                        val sCenterY = containerHeightPx * navStreetYRatio
-                        val sLeftPx = (sCenterX - sWidthPx / 2f).coerceIn(0f, (containerWidthPx - sWidthPx).coerceAtLeast(0f))
-                        val sTopPx = (sCenterY - sHeightPx / 2f).coerceIn(0f, (containerHeightPx - sHeightPx).coerceAtLeast(0f))
-
-                        LauncherNavStreetOverlay(
-                            onDrag = { delta ->
-                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
-                                    val currentX = containerWidthPx * navStreetXRatio
-                                    val currentY = containerHeightPx * navStreetYRatio
-                                    val newX = (currentX + delta.x).coerceIn(sWidthPx / 2f, containerWidthPx - sWidthPx / 2f)
-                                    val newY = (currentY + delta.y).coerceIn(sHeightPx / 2f, containerHeightPx - sHeightPx / 2f)
-                                    navStreetXRatio = newX / containerWidthPx
-                                    navStreetYRatio = newY / containerHeightPx
-                                }
-                            },
-                            onDragEnd = {
-                                LauncherAppConfigStore.setNavStreetPosition(context, navStreetXRatio, navStreetYRatio)
-                            },
-                            modifier = Modifier
-                                .offset(x = with(density) { sLeftPx.toDp() }, y = with(density) { sTopPx.toDp() })
-                                .zIndex(166f),
+                                .offset(x = leftDp, y = topDp)
+                                .zIndex(160f),
                         )
                     }
 
                     // Freely Movable Navigation Overlay 3: Current Speed & Speed Limit
-                    if (navSpeedVisible && !hideNavWidgets) {
-                        val spWidthPx = with(density) { 70.dp.toPx() }
-                        val spHeightPx = with(density) { 36.dp.toPx() }
+                    if (navSpeedVisible) {
+                        val yandexLimit = navState.speedLimit?.filter { it.isDigit() }?.takeIf { it.isNotEmpty() }
+                        val cameraLimitRaw = (adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid })?.toString()
+                        val cameraLimit = if (tsrSystemEnabled && !classicSpeedLimitVisible && yandexLimit == null) cameraLimitRaw else null
+                        val effectiveSpeedLimit = yandexLimit ?: cameraLimit
+                        val spWidthDp = if (effectiveSpeedLimit != null) 114.dp else 60.dp
+                        val spHeightDp = 60.dp
+                        val spWidthPx = with(density) { spWidthDp.toPx() }
+                        val spHeightPx = with(density) { spHeightDp.toPx() }
                         val spCenterX = containerWidthPx * navSpeedXRatio
                         val spCenterY = containerHeightPx * navSpeedYRatio
                         val spLeftPx = (spCenterX - spWidthPx / 2f).coerceIn(0f, (containerWidthPx - spWidthPx).coerceAtLeast(0f))
@@ -945,7 +864,7 @@ fun LauncherLeftPanel(
                     }
 
                     // Freely Movable Navigation Overlay 4: Traffic Light
-                    if (navTrafficLightVisible && !hideNavWidgets) {
+                    if (showDriveView && navTrafficLightVisible) {
                         val tlWidthPx = with(density) { 80.dp.toPx() }
                         val tlHeightPx = with(density) { 36.dp.toPx() }
                         val tlCenterX = containerWidthPx * navTrafficLightXRatio
@@ -973,34 +892,7 @@ fun LauncherLeftPanel(
                         )
                     }
 
-                    // Freely Movable Navigation Overlay 5: Full Notification Text
-                    if (navTextVisible && !hideNavWidgets) {
-                        val tWidthPx = with(density) { 200.dp.toPx() }
-                        val tHeightPx = with(density) { 44.dp.toPx() }
-                        val tCenterX = containerWidthPx * navTextXRatio
-                        val tCenterY = containerHeightPx * navTextYRatio
-                        val tLeftPx = (tCenterX - tWidthPx / 2f).coerceIn(0f, (containerWidthPx - tWidthPx).coerceAtLeast(0f))
-                        val tTopPx = (tCenterY - tHeightPx / 2f).coerceIn(0f, (containerHeightPx - tHeightPx).coerceAtLeast(0f))
 
-                        LauncherNavTextOverlay(
-                            onDrag = { delta ->
-                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
-                                    val currentX = containerWidthPx * navTextXRatio
-                                    val currentY = containerHeightPx * navTextYRatio
-                                    val newX = (currentX + delta.x).coerceIn(tWidthPx / 2f, containerWidthPx - tWidthPx / 2f)
-                                    val newY = (currentY + delta.y).coerceIn(tHeightPx / 2f, containerHeightPx - tHeightPx / 2f)
-                                    navTextXRatio = newX / containerWidthPx
-                                    navTextYRatio = newY / containerHeightPx
-                                }
-                            },
-                            onDragEnd = {
-                                LauncherAppConfigStore.setNavTextPosition(context, navTextXRatio, navTextYRatio)
-                            },
-                            modifier = Modifier
-                                .offset(x = with(density) { tLeftPx.toDp() }, y = with(density) { tTopPx.toDp() })
-                                .zIndex(169f),
-                        )
-                    }
 
                     val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY
 

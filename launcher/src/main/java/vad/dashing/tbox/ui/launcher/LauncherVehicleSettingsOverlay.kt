@@ -269,6 +269,12 @@ internal fun LauncherVehicleSettingsContent(
     var tirePressurePersistEnabled by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressurePersistEnabled(context))
     }
+    var tirePressureShowHundredths by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureShowHundredths(context))
+    }
+    var tirePressureShowTemperature by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tirePressureShowTemperature(context))
+    }
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val pasOn = parkingRadar is MbCanBinaryState.On
@@ -316,10 +322,10 @@ internal fun LauncherVehicleSettingsContent(
             expanded = expandedSection == VehicleSettingsSection.Wheels,
             onToggle = { onSectionToggle(VehicleSettingsSection.Wheels) },
         ) {
-            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_fl), wheelPressure.wheel1, wheelTemp.wheel1)
-            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_fr), wheelPressure.wheel2, wheelTemp.wheel2)
-            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_rl), wheelPressure.wheel3, wheelTemp.wheel3)
-            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_rr), wheelPressure.wheel4, wheelTemp.wheel4)
+            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_fl), wheelPressure.wheel1, wheelTemp.wheel1, showHundredths = tirePressureShowHundredths)
+            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_fr), wheelPressure.wheel2, wheelTemp.wheel2, showHundredths = tirePressureShowHundredths)
+            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_rl), wheelPressure.wheel3, wheelTemp.wheel3, showHundredths = tirePressureShowHundredths)
+            LauncherWheelRow(stringResource(R.string.launcher_vs_wheel_rr), wheelPressure.wheel4, wheelTemp.wheel4, showHundredths = tirePressureShowHundredths)
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -360,6 +366,26 @@ internal fun LauncherVehicleSettingsContent(
                     val next = !tirePressureInertiaEnabled
                     tirePressureInertiaEnabled = next
                     LauncherAppConfigStore.setTirePressureInertiaAnimationEnabled(context, next)
+                },
+            )
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_tire_pressure_show_hundredths),
+                active = tirePressureShowHundredths,
+                onClick = {
+                    val next = !tirePressureShowHundredths
+                    tirePressureShowHundredths = next
+                    LauncherAppConfigStore.setTirePressureShowHundredths(context, next)
+                },
+            )
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_tire_pressure_show_temperature),
+                active = tirePressureShowTemperature,
+                onClick = {
+                    val next = !tirePressureShowTemperature
+                    tirePressureShowTemperature = next
+                    LauncherAppConfigStore.setTirePressureShowTemperature(context, next)
                 },
             )
 
@@ -952,6 +978,8 @@ internal fun LauncherVehicleSettingsContent(
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
+            ExperimentalAdasSliders()
+            Spacer(modifier = Modifier.height(8.dp))
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_exp_welcome_lamp),
                 active = vehicleControls.welcomeLamp == true,
@@ -1074,6 +1102,93 @@ internal fun LauncherVehicleSettingsContent(
     }
 }
 
+@Composable
+private fun ExperimentalAdasSliders() {
+    val context = LocalContext.current
+
+    val labelOffsetRev by LauncherAppConfigStore.adasDistanceLabelOffsetPercentRevisionFlow
+        .collectAsStateWithLifecycle()
+    var labelOffsetPercent by remember(context, labelOffsetRev) {
+        mutableFloatStateOf(LauncherAppConfigStore.adasDistanceLabelOffsetPercent(context))
+    }
+
+    val carOffsetRev by LauncherAppConfigStore.adasLeadCarMinDistOffsetPercentRevisionFlow
+        .collectAsStateWithLifecycle()
+    var carOffsetPercent by remember(context, carOffsetRev) {
+        mutableFloatStateOf(LauncherAppConfigStore.adasLeadCarMinDistOffsetPercent(context))
+    }
+
+    Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Расположение плашки расстояния",
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "${if (labelOffsetPercent > 0) "+" else ""}${labelOffsetPercent.roundToInt()}%",
+                color = LauncherColors.AccentCyan,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Slider(
+            value = labelOffsetPercent,
+            onValueChange = { newValue ->
+                val rounded = newValue.roundToInt().toFloat()
+                labelOffsetPercent = rounded
+                LauncherAppConfigStore.setAdasDistanceLabelOffsetPercent(context, rounded)
+            },
+            valueRange = -100f..100f,
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+            ),
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Положение спрайта машины (1 м)",
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "${if (carOffsetPercent > 0) "+" else ""}${carOffsetPercent.roundToInt()}%",
+                color = LauncherColors.AccentCyan,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Slider(
+            value = carOffsetPercent,
+            onValueChange = { newValue ->
+                val rounded = newValue.roundToInt().toFloat()
+                carOffsetPercent = rounded
+                LauncherAppConfigStore.setAdasLeadCarMinDistOffsetPercent(context, rounded)
+            },
+            valueRange = -100f..100f,
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+            ),
+        )
+    }
+}
+
 private fun seatModeToRaw(mode: MbCanSeatModeState): Int? = when (mode) {
     is MbCanSeatModeState.Off -> 1
     is MbCanSeatModeState.Heat -> when (mode.level) {
@@ -1110,9 +1225,11 @@ private fun LauncherWheelRow(
     label: String,
     pressure: Float?,
     temperature: Float?,
+    showHundredths: Boolean = false,
 ) {
     val dash = stringResource(R.string.launcher_vs_value_unknown)
-    val pressureText = pressure?.let { valueToString(it, 1) + " bar" } ?: dash
+    val pressureAccuracy = if (showHundredths) 2 else 1
+    val pressureText = pressure?.let { valueToString(it, pressureAccuracy) + " bar" } ?: dash
     val tempText = temperature?.let { valueToString(it, 0) + "°" } ?: dash
     LauncherSettingsValueRow(label, "$pressureText · $tempText")
 }
