@@ -260,6 +260,23 @@ private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
 private const val KEY_YANDEX_NAV_WIDGET_VISIBLE = "yandex_nav_widget_visible"
+private const val KEY_NAV_MANEUVER_VISIBLE = "nav_maneuver_visible"
+private const val KEY_NAV_STREET_VISIBLE = "nav_street_visible"
+private const val KEY_NAV_SPEED_VISIBLE = "nav_speed_visible"
+private const val KEY_NAV_TRAFFIC_LIGHT_VISIBLE = "nav_traffic_light_visible"
+private const val KEY_NAV_TEXT_VISIBLE = "nav_text_visible"
+private const val KEY_NAV_WIDGETS_ONLY_WHEN_MINIMIZED = "nav_widgets_only_when_minimized"
+private const val KEY_NAV_MANEUVER_X_RATIO = "nav_maneuver_x_ratio"
+private const val KEY_NAV_MANEUVER_Y_RATIO = "nav_maneuver_y_ratio"
+private const val KEY_NAV_STREET_X_RATIO = "nav_street_x_ratio"
+private const val KEY_NAV_STREET_Y_RATIO = "nav_street_y_ratio"
+private const val KEY_NAV_SPEED_X_RATIO = "nav_speed_x_ratio"
+private const val KEY_NAV_SPEED_Y_RATIO = "nav_speed_y_ratio"
+private const val KEY_NAV_TRAFFIC_LIGHT_X_RATIO = "nav_traffic_light_x_ratio"
+private const val KEY_NAV_TRAFFIC_LIGHT_Y_RATIO = "nav_traffic_light_y_ratio"
+private const val KEY_NAV_TEXT_X_RATIO = "nav_text_x_ratio"
+private const val KEY_NAV_TEXT_Y_RATIO = "nav_text_y_ratio"
+private const val KEY_NAV_TRAFFIC_LIGHT_SCALE = "nav_traffic_light_scale"
 private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
 private const val KEY_SMART_PANEL_ENABLED = "smart_panel_enabled"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
@@ -458,6 +475,31 @@ internal object LauncherAppConfigStore {
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
     private val yandexNavWidgetRevision = MutableStateFlow(0)
     internal val yandexNavWidgetRevisionFlow: StateFlow<Int> = yandexNavWidgetRevision
+    private val navManeuverRevision = MutableStateFlow(0)
+    internal val navManeuverRevisionFlow: StateFlow<Int> = navManeuverRevision
+    private val navStreetRevision = MutableStateFlow(0)
+    internal val navStreetRevisionFlow: StateFlow<Int> = navStreetRevision
+    private val navSpeedRevision = MutableStateFlow(0)
+    internal val navSpeedRevisionFlow: StateFlow<Int> = navSpeedRevision
+    private val navTrafficLightRevision = MutableStateFlow(0)
+    internal val navTrafficLightRevisionFlow: StateFlow<Int> = navTrafficLightRevision
+    private val navTextRevision = MutableStateFlow(0)
+    internal val navTextRevisionFlow: StateFlow<Int> = navTextRevision
+    private val navWidgetsOnlyWhenMinimizedRevision = MutableStateFlow(0)
+    internal val navWidgetsOnlyWhenMinimizedRevisionFlow: StateFlow<Int> = navWidgetsOnlyWhenMinimizedRevision
+
+    private val navManeuverPositionRevision = MutableStateFlow(0)
+    internal val navManeuverPositionRevisionFlow: StateFlow<Int> = navManeuverPositionRevision
+    private val navStreetPositionRevision = MutableStateFlow(0)
+    internal val navStreetPositionRevisionFlow: StateFlow<Int> = navStreetPositionRevision
+    private val navSpeedPositionRevision = MutableStateFlow(0)
+    internal val navSpeedPositionRevisionFlow: StateFlow<Int> = navSpeedPositionRevision
+    private val navTrafficLightPositionRevision = MutableStateFlow(0)
+    internal val navTrafficLightPositionRevisionFlow: StateFlow<Int> = navTrafficLightPositionRevision
+    private val navTextPositionRevision = MutableStateFlow(0)
+    internal val navTextPositionRevisionFlow: StateFlow<Int> = navTextPositionRevision
+    private val navTrafficLightScaleRevision = MutableStateFlow(0)
+    internal val navTrafficLightScaleRevisionFlow: StateFlow<Int> = navTrafficLightScaleRevision
     private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
     private val smartPanelRevision = MutableStateFlow(0)
@@ -1215,6 +1257,84 @@ internal object LauncherAppConfigStore {
         speedLimitPositionRevision.value++
     }
 
+    fun navManeuverXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_MANEUVER_X_RATIO, 0.15f).coerceIn(0f, 1f)
+
+    fun navManeuverYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_MANEUVER_Y_RATIO, 0.20f).coerceIn(0f, 1f)
+
+    fun setNavManeuverPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_MANEUVER_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_MANEUVER_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navManeuverPositionRevision.value++
+    }
+
+    fun navStreetXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_STREET_X_RATIO, 0.50f).coerceIn(0f, 1f)
+
+    fun navStreetYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_STREET_Y_RATIO, 0.12f).coerceIn(0f, 1f)
+
+    fun setNavStreetPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_STREET_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_STREET_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navStreetPositionRevision.value++
+    }
+
+    fun navSpeedXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_SPEED_X_RATIO, 0.50f).coerceIn(0f, 1f)
+
+    fun navSpeedYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_SPEED_Y_RATIO, 0.88f).coerceIn(0f, 1f)
+
+    fun setNavSpeedPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_SPEED_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_SPEED_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navSpeedPositionRevision.value++
+    }
+
+    fun navTrafficLightXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_TRAFFIC_LIGHT_X_RATIO, 0.85f).coerceIn(0f, 1f)
+
+    fun navTrafficLightYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_TRAFFIC_LIGHT_Y_RATIO, 0.20f).coerceIn(0f, 1f)
+
+    fun setNavTrafficLightPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_TRAFFIC_LIGHT_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_TRAFFIC_LIGHT_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navTrafficLightPositionRevision.value++
+    }
+
+    fun navTrafficLightScale(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_TRAFFIC_LIGHT_SCALE, 1.0f).coerceIn(0.5f, 1.5f)
+
+    fun setNavTrafficLightScale(context: Context, scale: Float) {
+        prefs(context).edit().putFloat(KEY_NAV_TRAFFIC_LIGHT_SCALE, scale.coerceIn(0.5f, 1.5f)).apply()
+        navTrafficLightScaleRevision.value++
+    }
+
+    fun navTextXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_TEXT_X_RATIO, 0.50f).coerceIn(0f, 1f)
+
+    fun navTextYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_TEXT_Y_RATIO, 0.16f).coerceIn(0f, 1f)
+
+    fun setNavTextPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_TEXT_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_TEXT_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navTextPositionRevision.value++
+    }
+
     fun climateControlsVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CLIMATE_VISIBLE, true)
 
@@ -1565,18 +1685,54 @@ internal object LauncherAppConfigStore {
     fun setYandexNavWidgetVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_YANDEX_NAV_WIDGET_VISIBLE, visible).apply()
         yandexNavWidgetRevision.value++
-        if (visible) {
-            val top = adasTopPanels(context).toMutableList()
-            val bottom = adasBottomPanels(context).toMutableList()
-            if ("yandex_nav" !in top && "yandex_nav" !in bottom) {
-                top.add("yandex_nav")
-                setAdasPanelsLayout(context, top, bottom)
-            } else {
-                adasPanelsRevision.value++
-            }
-        } else {
-            adasPanelsRevision.value++
-        }
+    }
+
+    fun navManeuverVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_MANEUVER_VISIBLE, false)
+
+    fun setNavManeuverVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_MANEUVER_VISIBLE, visible).apply()
+        navManeuverRevision.value++
+    }
+
+    fun navStreetVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_STREET_VISIBLE, false)
+
+    fun setNavStreetVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_STREET_VISIBLE, visible).apply()
+        navStreetRevision.value++
+    }
+
+    fun navSpeedVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_SPEED_VISIBLE, false)
+
+    fun setNavSpeedVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_SPEED_VISIBLE, visible).apply()
+        navSpeedRevision.value++
+    }
+
+    fun navTrafficLightVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_TRAFFIC_LIGHT_VISIBLE, false)
+
+    fun setNavTrafficLightVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_TRAFFIC_LIGHT_VISIBLE, visible).apply()
+        navTrafficLightRevision.value++
+    }
+
+    fun navTextVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_TEXT_VISIBLE, false)
+
+    fun setNavTextVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_TEXT_VISIBLE, visible).apply()
+        navTextRevision.value++
+    }
+
+    fun navWidgetsOnlyWhenMinimized(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_WIDGETS_ONLY_WHEN_MINIMIZED, false)
+
+    fun setNavWidgetsOnlyWhenMinimized(context: Context, minimizedOnly: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_WIDGETS_ONLY_WHEN_MINIMIZED, minimizedOnly).apply()
+        navWidgetsOnlyWhenMinimizedRevision.value++
     }
 
     fun accPresetsInQuickSettingsVisible(context: Context): Boolean =
@@ -1606,15 +1762,10 @@ internal object LauncherAppConfigStore {
     fun adasTopPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_TOP_PANELS, null)
         val list = if (raw != null) {
-            raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            raw.split(',').map { it.trim() }.filter { it.isNotBlank() && it != "yandex_nav" && !it.startsWith("nav_") }
                 .map { if (it == "presets") "assist" else it }.distinct().toMutableList()
         } else {
             mutableListOf("drive_mode")
-        }
-        val rawBottom = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
-        val hasBottom = rawBottom?.contains("yandex_nav") == true
-        if (yandexNavWidgetVisible(context) && "yandex_nav" !in list && !hasBottom) {
-            list.add("yandex_nav")
         }
         return list
     }
@@ -1622,7 +1773,7 @@ internal object LauncherAppConfigStore {
     fun adasBottomPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_ADAS_BOTTOM_PANELS, null)
         val list = if (raw != null) {
-            raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            raw.split(',').map { it.trim() }.filter { it.isNotBlank() && it != "yandex_nav" && !it.startsWith("nav_") }
         } else {
             listOf("media_player", "assist", "body_controls")
         }

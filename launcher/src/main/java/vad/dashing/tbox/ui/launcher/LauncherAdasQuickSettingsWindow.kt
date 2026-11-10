@@ -330,9 +330,21 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.carColorPanelVisible(context)
     }
 
-    val yandexNavWidgetRevision by LauncherAppConfigStore.yandexNavWidgetRevisionFlow.collectAsStateWithLifecycle()
-    val yandexNavWidgetVisible = remember(context, yandexNavWidgetRevision) {
-        LauncherAppConfigStore.yandexNavWidgetVisible(context)
+    val navManeuverRevision by LauncherAppConfigStore.navManeuverRevisionFlow.collectAsStateWithLifecycle()
+    val navManeuverVisible = remember(context, navManeuverRevision) {
+        LauncherAppConfigStore.navManeuverVisible(context)
+    }
+    val navStreetRevision by LauncherAppConfigStore.navStreetRevisionFlow.collectAsStateWithLifecycle()
+    val navStreetVisible = remember(context, navStreetRevision) {
+        LauncherAppConfigStore.navStreetVisible(context)
+    }
+    val navSpeedRevision by LauncherAppConfigStore.navSpeedRevisionFlow.collectAsStateWithLifecycle()
+    val navSpeedVisible = remember(context, navSpeedRevision) {
+        LauncherAppConfigStore.navSpeedVisible(context)
+    }
+    val navTrafficLightRevision by LauncherAppConfigStore.navTrafficLightRevisionFlow.collectAsStateWithLifecycle()
+    val navTrafficLightVisible = remember(context, navTrafficLightRevision) {
+        LauncherAppConfigStore.navTrafficLightVisible(context)
     }
 
     val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow.collectAsStateWithLifecycle()
@@ -357,7 +369,10 @@ private fun LauncherAdasQuickSettingsContent(
         assistPanelVisible,
         bodyControlsPanelVisible,
         carColorPanelVisible,
-        yandexNavWidgetVisible,
+        navManeuverVisible,
+        navStreetVisible,
+        navSpeedVisible,
+        navTrafficLightVisible,
         adasTopPanels,
         adasBottomPanels,
     ) {
@@ -371,7 +386,6 @@ private fun LauncherAdasQuickSettingsContent(
                     "body_controls" -> bodyControlsPanelVisible
                     "media_player" -> miniPlayerVisible
                     "car_color" -> carColorPanelVisible
-                    "yandex_nav" -> yandexNavWidgetVisible
                     "lanes" -> true
                     else -> true
                 }
@@ -394,7 +408,7 @@ private fun LauncherAdasQuickSettingsContent(
         visibleSubPanels
     }
 
-    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible, yandexNavWidgetVisible) {
+    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible) {
         val allCandidates = listOf(
             "media_player",
             "drive_mode",
@@ -416,7 +430,6 @@ private fun LauncherAdasQuickSettingsContent(
         allCandidates.filter { candidate ->
             if (candidate == "smart_panel") return@filter false
             if (candidate == "car_color" && !carColorPanelVisible) return@filter false
-            if (candidate == "yandex_nav" && !yandexNavWidgetVisible) return@filter false
             if (candidate == "presets" && !accPresetsInQuickSettingsVisible) return@filter false
             candidate !in directlyVisiblePanels
         }

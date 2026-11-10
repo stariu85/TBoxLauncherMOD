@@ -258,6 +258,61 @@ fun LauncherLeftPanel(
     val yandexNavWidgetVisible = remember(context, yandexNavWidgetRevision) {
         LauncherAppConfigStore.yandexNavWidgetVisible(context)
     }
+    val navManeuverRevision by LauncherAppConfigStore.navManeuverRevisionFlow
+        .collectAsStateWithLifecycle()
+    val navManeuverVisible = remember(context, navManeuverRevision) {
+        LauncherAppConfigStore.navManeuverVisible(context)
+    }
+    val navStreetRevision by LauncherAppConfigStore.navStreetRevisionFlow
+        .collectAsStateWithLifecycle()
+    val navStreetVisible = remember(context, navStreetRevision) {
+        LauncherAppConfigStore.navStreetVisible(context)
+    }
+    val navSpeedRevision by LauncherAppConfigStore.navSpeedRevisionFlow
+        .collectAsStateWithLifecycle()
+    val navSpeedVisible = remember(context, navSpeedRevision) {
+        LauncherAppConfigStore.navSpeedVisible(context)
+    }
+    val navTrafficLightRevision by LauncherAppConfigStore.navTrafficLightRevisionFlow
+        .collectAsStateWithLifecycle()
+    val navTrafficLightVisible = remember(context, navTrafficLightRevision) {
+        LauncherAppConfigStore.navTrafficLightVisible(context)
+    }
+    val navWidgetsOnlyWhenMinimizedRevision by LauncherAppConfigStore.navWidgetsOnlyWhenMinimizedRevisionFlow
+        .collectAsStateWithLifecycle()
+    val navWidgetsOnlyWhenMinimized = remember(context, navWidgetsOnlyWhenMinimizedRevision) {
+        LauncherAppConfigStore.navWidgetsOnlyWhenMinimized(context)
+    }
+
+    val navManeuverPositionRevision by LauncherAppConfigStore.navManeuverPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navManeuverXRatio by remember(context, navManeuverPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navManeuverXRatio(context)) }
+    var navManeuverYRatio by remember(context, navManeuverPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navManeuverYRatio(context)) }
+
+    val navStreetPositionRevision by LauncherAppConfigStore.navStreetPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navStreetXRatio by remember(context, navStreetPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navStreetXRatio(context)) }
+    var navStreetYRatio by remember(context, navStreetPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navStreetYRatio(context)) }
+
+    val navSpeedPositionRevision by LauncherAppConfigStore.navSpeedPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navSpeedXRatio by remember(context, navSpeedPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navSpeedXRatio(context)) }
+    var navSpeedYRatio by remember(context, navSpeedPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navSpeedYRatio(context)) }
+
+    val navTrafficLightPositionRevision by LauncherAppConfigStore.navTrafficLightPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navTrafficLightXRatio by remember(context, navTrafficLightPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTrafficLightXRatio(context)) }
+    var navTrafficLightYRatio by remember(context, navTrafficLightPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTrafficLightYRatio(context)) }
+
+    val navTextRevision by LauncherAppConfigStore.navTextRevisionFlow.collectAsStateWithLifecycle()
+    val navTextVisible = remember(context, navTextRevision) { LauncherAppConfigStore.navTextVisible(context) }
+    val navTextPositionRevision by LauncherAppConfigStore.navTextPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navTextXRatio by remember(context, navTextPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTextXRatio(context)) }
+    var navTextYRatio by remember(context, navTextPositionRevision) { mutableFloatStateOf(LauncherAppConfigStore.navTextYRatio(context)) }
+
+    val activeAppPackage = LauncherActiveAppTracker.activeAppPackage()
+    val isYandexForeground = remember(activeAppPackage) {
+        val pkg = activeAppPackage ?: ""
+        pkg == "ru.yandex.yandexnavi" || pkg == "ru.yandex.yandexmaps" || pkg == "ru.yandex.mobile.navigator" ||
+                pkg.startsWith("ru.yandex.yandexnavi") || pkg.startsWith("ru.yandex.yandexmaps")
+    }
+    val hideNavWidgets = navWidgetsOnlyWhenMinimized && isYandexForeground
     val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
         .collectAsStateWithLifecycle()
     val smartPanelEnabled = remember(context, smartPanelRevision) {
@@ -284,27 +339,7 @@ fun LauncherLeftPanel(
     }
     val isDarkTheme = LauncherThemeState.darkTheme
 
-    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
     val baseLeftPanelBg = LauncherColors.LeftPanelBg
-
-    val targetAdasNavBg = remember(yandexNavWidgetVisible, navState, isDarkTheme, baseLeftPanelBg) {
-        if (!yandexNavWidgetVisible && !navState.isNavigating) {
-            baseLeftPanelBg
-        } else {
-            when (navState.trafficLightColor?.lowercase()) {
-                "red", "dark_red" -> if (isDarkTheme) Color(0xFF381014) else Color(0xFFFEE2E2)
-                "yellow", "orange" -> if (isDarkTheme) Color(0xFF35200B) else Color(0xFFFEF3C7)
-                "green" -> if (isDarkTheme) Color(0xFF0C2B1D) else Color(0xFFD1FAE5)
-                else -> baseLeftPanelBg
-            }
-        }
-    }
-
-    val animatedAdasNavBg by animateColorAsState(
-        targetValue = targetAdasNavBg,
-        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
-        label = "animatedAdasNavBg",
-    )
     val solarDaytime = rememberSolarDaytimeState()
     val isNight = if (solarDaytime != null) !solarDaytime else {
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
@@ -483,7 +518,7 @@ fun LauncherLeftPanel(
                 vad.dashing.tbox.DclLogRecorder.log("LeftPanel", "onGloballyPositioned leftPanelBounds=$boundsRect carModelScale=$carModelScale")
                 onCarBoundsChanged(rect)
             }
-            .background(animatedAdasNavBg),
+            .background(baseLeftPanelBg),
     ) {
         if (roadVisible) {
             LauncherVirtualRoad(
@@ -531,13 +566,13 @@ fun LauncherLeftPanel(
                 "media_player" -> miniPlayerVisible
                 "car_color" -> carColorPanelVisible
                 "smart_panel" -> smartPanelEnabled
-                "yandex_nav" -> yandexNavWidgetVisible
+                "yandex_nav" -> yandexNavWidgetVisible && !hideNavWidgets
                 "lanes" -> true
                 else -> true
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible, navManeuverVisible, navStreetVisible, navSpeedVisible, navTrafficLightVisible, hideNavWidgets) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -553,7 +588,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, yandexNavWidgetVisible, navManeuverVisible, navStreetVisible, navSpeedVisible, navTrafficLightVisible, hideNavWidgets) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }.toMutableList()
             if (smartPanelEnabled && "smart_panel" !in activeTopPanels && "smart_panel" !in filtered) {
                 filtered.add(0, "smart_panel")
@@ -650,7 +685,7 @@ fun LauncherLeftPanel(
                         }
                     }
                     "yandex_nav" -> {
-                        if (yandexNavWidgetVisible) {
+                        if (yandexNavWidgetVisible && !hideNavWidgets) {
                             LauncherYandexNavWidget(
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -820,6 +855,152 @@ fun LauncherLeftPanel(
                             .offset(x = leftDp, y = topDp)
                             .zIndex(160f),
                     )
+
+                    // Freely Movable Navigation Overlay 1: Turn Maneuver & Distance
+                    if (navManeuverVisible && !hideNavWidgets) {
+                        val mWidthPx = with(density) { 80.dp.toPx() }
+                        val mHeightPx = with(density) { 36.dp.toPx() }
+                        val mCenterX = containerWidthPx * navManeuverXRatio
+                        val mCenterY = containerHeightPx * navManeuverYRatio
+                        val mLeftPx = (mCenterX - mWidthPx / 2f).coerceIn(0f, (containerWidthPx - mWidthPx).coerceAtLeast(0f))
+                        val mTopPx = (mCenterY - mHeightPx / 2f).coerceIn(0f, (containerHeightPx - mHeightPx).coerceAtLeast(0f))
+
+                        LauncherNavManeuverOverlay(
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentX = containerWidthPx * navManeuverXRatio
+                                    val currentY = containerHeightPx * navManeuverYRatio
+                                    val newX = (currentX + delta.x).coerceIn(mWidthPx / 2f, containerWidthPx - mWidthPx / 2f)
+                                    val newY = (currentY + delta.y).coerceIn(mHeightPx / 2f, containerHeightPx - mHeightPx / 2f)
+                                    navManeuverXRatio = newX / containerWidthPx
+                                    navManeuverYRatio = newY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setNavManeuverPosition(context, navManeuverXRatio, navManeuverYRatio)
+                            },
+                            modifier = Modifier
+                                .offset(x = with(density) { mLeftPx.toDp() }, y = with(density) { mTopPx.toDp() })
+                                .zIndex(165f),
+                        )
+                    }
+
+                    // Freely Movable Navigation Overlay 2: Target Street Name
+                    if (navStreetVisible && !hideNavWidgets) {
+                        val sWidthPx = with(density) { 120.dp.toPx() }
+                        val sHeightPx = with(density) { 32.dp.toPx() }
+                        val sCenterX = containerWidthPx * navStreetXRatio
+                        val sCenterY = containerHeightPx * navStreetYRatio
+                        val sLeftPx = (sCenterX - sWidthPx / 2f).coerceIn(0f, (containerWidthPx - sWidthPx).coerceAtLeast(0f))
+                        val sTopPx = (sCenterY - sHeightPx / 2f).coerceIn(0f, (containerHeightPx - sHeightPx).coerceAtLeast(0f))
+
+                        LauncherNavStreetOverlay(
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentX = containerWidthPx * navStreetXRatio
+                                    val currentY = containerHeightPx * navStreetYRatio
+                                    val newX = (currentX + delta.x).coerceIn(sWidthPx / 2f, containerWidthPx - sWidthPx / 2f)
+                                    val newY = (currentY + delta.y).coerceIn(sHeightPx / 2f, containerHeightPx - sHeightPx / 2f)
+                                    navStreetXRatio = newX / containerWidthPx
+                                    navStreetYRatio = newY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setNavStreetPosition(context, navStreetXRatio, navStreetYRatio)
+                            },
+                            modifier = Modifier
+                                .offset(x = with(density) { sLeftPx.toDp() }, y = with(density) { sTopPx.toDp() })
+                                .zIndex(166f),
+                        )
+                    }
+
+                    // Freely Movable Navigation Overlay 3: Current Speed & Speed Limit
+                    if (navSpeedVisible && !hideNavWidgets) {
+                        val spWidthPx = with(density) { 70.dp.toPx() }
+                        val spHeightPx = with(density) { 36.dp.toPx() }
+                        val spCenterX = containerWidthPx * navSpeedXRatio
+                        val spCenterY = containerHeightPx * navSpeedYRatio
+                        val spLeftPx = (spCenterX - spWidthPx / 2f).coerceIn(0f, (containerWidthPx - spWidthPx).coerceAtLeast(0f))
+                        val spTopPx = (spCenterY - spHeightPx / 2f).coerceIn(0f, (containerHeightPx - spHeightPx).coerceAtLeast(0f))
+
+                        LauncherNavSpeedOverlay(
+                            adas = adas,
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentX = containerWidthPx * navSpeedXRatio
+                                    val currentY = containerHeightPx * navSpeedYRatio
+                                    val newX = (currentX + delta.x).coerceIn(spWidthPx / 2f, containerWidthPx - spWidthPx / 2f)
+                                    val newY = (currentY + delta.y).coerceIn(spHeightPx / 2f, containerHeightPx - spHeightPx / 2f)
+                                    navSpeedXRatio = newX / containerWidthPx
+                                    navSpeedYRatio = newY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setNavSpeedPosition(context, navSpeedXRatio, navSpeedYRatio)
+                            },
+                            modifier = Modifier
+                                .offset(x = with(density) { spLeftPx.toDp() }, y = with(density) { spTopPx.toDp() })
+                                .zIndex(167f),
+                        )
+                    }
+
+                    // Freely Movable Navigation Overlay 4: Traffic Light
+                    if (navTrafficLightVisible && !hideNavWidgets) {
+                        val tlWidthPx = with(density) { 80.dp.toPx() }
+                        val tlHeightPx = with(density) { 36.dp.toPx() }
+                        val tlCenterX = containerWidthPx * navTrafficLightXRatio
+                        val tlCenterY = containerHeightPx * navTrafficLightYRatio
+                        val tlLeftPx = (tlCenterX - tlWidthPx / 2f).coerceIn(0f, (containerWidthPx - tlWidthPx).coerceAtLeast(0f))
+                        val tlTopPx = (tlCenterY - tlHeightPx / 2f).coerceIn(0f, (containerHeightPx - tlHeightPx).coerceAtLeast(0f))
+
+                        LauncherNavTrafficLightOverlay(
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentX = containerWidthPx * navTrafficLightXRatio
+                                    val currentY = containerHeightPx * navTrafficLightYRatio
+                                    val newX = (currentX + delta.x).coerceIn(tlWidthPx / 2f, containerWidthPx - tlWidthPx / 2f)
+                                    val newY = (currentY + delta.y).coerceIn(tlHeightPx / 2f, containerHeightPx - tlHeightPx / 2f)
+                                    navTrafficLightXRatio = newX / containerWidthPx
+                                    navTrafficLightYRatio = newY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setNavTrafficLightPosition(context, navTrafficLightXRatio, navTrafficLightYRatio)
+                            },
+                            modifier = Modifier
+                                .offset(x = with(density) { tlLeftPx.toDp() }, y = with(density) { tlTopPx.toDp() })
+                                .zIndex(168f),
+                        )
+                    }
+
+                    // Freely Movable Navigation Overlay 5: Full Notification Text
+                    if (navTextVisible && !hideNavWidgets) {
+                        val tWidthPx = with(density) { 200.dp.toPx() }
+                        val tHeightPx = with(density) { 44.dp.toPx() }
+                        val tCenterX = containerWidthPx * navTextXRatio
+                        val tCenterY = containerHeightPx * navTextYRatio
+                        val tLeftPx = (tCenterX - tWidthPx / 2f).coerceIn(0f, (containerWidthPx - tWidthPx).coerceAtLeast(0f))
+                        val tTopPx = (tCenterY - tHeightPx / 2f).coerceIn(0f, (containerHeightPx - tHeightPx).coerceAtLeast(0f))
+
+                        LauncherNavTextOverlay(
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentX = containerWidthPx * navTextXRatio
+                                    val currentY = containerHeightPx * navTextYRatio
+                                    val newX = (currentX + delta.x).coerceIn(tWidthPx / 2f, containerWidthPx - tWidthPx / 2f)
+                                    val newY = (currentY + delta.y).coerceIn(tHeightPx / 2f, containerHeightPx - tHeightPx / 2f)
+                                    navTextXRatio = newX / containerWidthPx
+                                    navTextYRatio = newY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setNavTextPosition(context, navTextXRatio, navTextYRatio)
+                            },
+                            modifier = Modifier
+                                .offset(x = with(density) { tLeftPx.toDp() }, y = with(density) { tTopPx.toDp() })
+                                .zIndex(169f),
+                        )
+                    }
 
                     val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY
 

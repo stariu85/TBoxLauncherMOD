@@ -1945,7 +1945,7 @@ private fun LauncherTempStepper(
                 text = tempText,
                 style = MaterialTheme.typography.tboxCaption,
                 color = textColor,
-                fontSize = dockSp(18.5f),
+                fontSize = dockSp(21.275f),
                 fontWeight = FontWeight.Light,
                 textAlign = TextAlign.Center,
                 maxLines = 1,

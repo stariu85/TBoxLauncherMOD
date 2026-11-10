@@ -1,11 +1,17 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.app.Notification
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.Icon
 import android.os.Build
+import android.service.notification.StatusBarNotification
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +21,9 @@ import kotlinx.coroutines.flow.update
 import java.util.Locale
 
 /**
- * Live navigation & traffic light state captured from Yandex Navigator / Monjaro Plus broadcast intents.
+ * Live navigation & traffic light state:
+ * - Traffic light & Speed limits are captured from Broadcast intents.
+ * - Turn maneuver icon, turn distance, street name, remaining distance & remaining time are captured ONLY from notifications.
  */
 data class YandexNavState(
     val isNavigating: Boolean = false,
@@ -24,6 +32,7 @@ data class YandexNavState(
     val speedLimit: String? = null,
     val nextStreet: String? = null,
     val nextText: String? = null,
+    val fullNotificationText: String? = null,
     val remainingDistance: String? = null,
     val remainingTime: String? = null,
     val arrivalTime: String? = null,
@@ -56,120 +65,29 @@ object YandexNavRepository {
                 }
             }
             val now = System.currentTimeMillis()
+            val normAction = action.substringAfterLast('.').uppercase()
 
-            when (action) {
-                ACTION_MANEUVER -> {
-                    val bmp = getParcelableBitmap(intent, "maneuver_bitmap")
-                        ?: getParcelableBitmap(intent, "maneuver_image")
-                    val mDist = extractStringOrInt(intent, "maneuver_distance")
-                        ?: extractStringOrInt(intent, "maneuver_dist")
-                        ?: extractStringOrInt(intent, "distance_to_turn")
-                    val tDist = extractStringOrInt(intent, "remaining_distance")
-                        ?: extractStringOrInt(intent, "total_distance")
-                    val genericDist = extractStringOrInt(intent, "distance")
-
-                    val maneuverDist = mDist ?: genericDist
-                    val finishDist = tDist ?: if (mDist != null) genericDist else null
-
-                    val time = extractStringOrInt(intent, "Time_text")
-                        ?: extractStringOrInt(intent, "time_text")
-                        ?: extractStringOrInt(intent, "time")
-                    val arrival = extractStringOrInt(intent, "arrival")
-                        ?: extractStringOrInt(intent, "arrival_time")
-
-                    _state.update {
-                        it.copy(
-                            isNavigating = true,
-                            maneuverBitmap = bmp ?: it.maneuverBitmap,
-                            maneuverDistance = maneuverDist ?: it.maneuverDistance,
-                            remainingDistance = finishDist ?: it.remainingDistance,
-                            remainingTime = time ?: it.remainingTime,
-                            arrivalTime = arrival ?: it.arrivalTime,
-                            lastUpdateMs = now,
-                        )
-                    }
-                }
-                ACTION_SPEEDLIMIT -> {
+            when (normAction) {
+                "SPEEDLIMIT" -> {
                     val limit = extractStringOrInt(intent, "speedlimit_text")
                         ?: extractStringOrInt(intent, "speed_limit")
                     val cleanLimit = limit?.filter { it.isDigit() }?.takeIf { it.isNotEmpty() } ?: limit
                     _state.update {
                         it.copy(
-                            speedLimit = cleanLimit ?: it.speedLimit,
+                            speedLimit = cleanLimit.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.speedLimit,
                             lastUpdateMs = now,
                         )
                     }
                 }
-                ACTION_NEXTSTREET -> {
-                    val street = intent.getStringExtra("next_street")
-                    val text = intent.getStringExtra("next_text")
-                    _state.update {
-                        it.copy(
-                            nextStreet = street ?: it.nextStreet,
-                            nextText = text ?: it.nextText,
-                            lastUpdateMs = now,
-                        )
+                "TRAFFIC_LIGHT_UPDATE" -> {
+                    val pos = extractIntExtra(intent, "tl_position", "position", "pos")
+                    if (pos != null && pos != 0) {
+                        return
                     }
-                }
-                ACTION_DISTANCE -> {
-                    val dist = extractStringOrInt(intent, "distance")
-                        ?: extractStringOrInt(intent, "remaining_distance")
-                        ?: extractStringOrInt(intent, "total_distance")
-                    _state.update {
-                        it.copy(
-                            remainingDistance = dist ?: it.remainingDistance,
-                            lastUpdateMs = now,
-                        )
-                    }
-                }
-                ACTION_TIME -> {
-                    val time = extractStringOrInt(intent, "Time_text")
-                        ?: extractStringOrInt(intent, "time_text")
-                        ?: extractStringOrInt(intent, "time")
-                    _state.update {
-                        it.copy(
-                            remainingTime = time ?: it.remainingTime,
-                            lastUpdateMs = now,
-                        )
-                    }
-                }
-                ACTION_ARRIVAL -> {
-                    val arrival = extractStringOrInt(intent, "Time_text")
-                        ?: extractStringOrInt(intent, "arrival")
-                        ?: extractStringOrInt(intent, "arrival_time")
-                    _state.update {
-                        it.copy(
-                            arrivalTime = arrival ?: it.arrivalTime,
-                            lastUpdateMs = now,
-                        )
-                    }
-                }
-                ACTION_LANES, ACTION_LANES_BITMAP -> {
-                    val lanesBmp = getParcelableBitmap(intent, "lanes_bitmap")
-                    val lanesDist = extractStringOrInt(intent, "LANE_DIST") ?: extractStringOrInt(intent, "lanes_distance")
-                    _state.update {
-                        it.copy(
-                            lanesBitmap = lanesBmp ?: it.lanesBitmap,
-                            lanesDistance = lanesDist ?: it.lanesDistance,
-                            lastUpdateMs = now,
-                        )
-                    }
-                }
-                ACTION_LANES_BITMAP_CLEAR -> {
-                    _state.update {
-                        it.copy(
-                            lanesBitmap = null,
-                            lanesDistance = null,
-                            lastUpdateMs = now,
-                        )
-                    }
-                }
-                ACTION_TRAFFIC_LIGHT_UPDATE -> {
+
                     val color = intent.getStringExtra("tl_color")
-                    val secs = intent.getIntExtra("tl_countdown", -1).takeIf { it >= 0 }
-                        ?: intent.getIntExtra("tl_sec", -1).takeIf { it >= 0 }
-                        ?: intent.getIntExtra("tl_secs", -1).takeIf { it >= 0 }
-                    val dist = intent.getIntExtra("tl_dist_m", -1).takeIf { it >= 0 }
+                    val secs = extractIntExtra(intent, "tl_countdown", "tl_sec", "tl_secs", "tl_time", "countdown", "sec", "secs", "time", "timer")
+                    val dist = extractIntExtra(intent, "tl_dist_m", "tl_dist", "tl_distance", "dist_m", "dist")
                     val arrow = intent.getStringExtra("tl_arrow")
 
                     _state.update {
@@ -182,7 +100,7 @@ object YandexNavRepository {
                         )
                     }
                 }
-                ACTION_NAVIGATION_ENDED -> {
+                "NAVIGATION_ENDED" -> {
                     _state.update {
                         YandexNavState(isNavigating = false)
                     }
@@ -195,15 +113,11 @@ object YandexNavRepository {
         if (registered) return
         val appContext = context.applicationContext
         val filter = IntentFilter().apply {
-            addAction(ACTION_MANEUVER)
-            addAction(ACTION_SPEEDLIMIT)
-            addAction(ACTION_NEXTSTREET)
-            addAction(ACTION_DISTANCE)
-            addAction(ACTION_TIME)
-            addAction(ACTION_ARRIVAL)
-            addAction(ACTION_LANES)
-            addAction(ACTION_LANES_BITMAP)
-            addAction(ACTION_LANES_BITMAP_CLEAR)
+            listOf(
+                "com.yandex.", "com.yandex.navi.", "ru.yandex.yandexnavi.", "ru.yandex.yandexmaps."
+            ).forEach { prefix ->
+                addAction("${prefix}SPEEDLIMIT")
+            }
             addAction(ACTION_TRAFFIC_LIGHT_UPDATE)
             addAction(ACTION_NAVIGATION_ENDED)
         }
@@ -230,6 +144,24 @@ object YandexNavRepository {
         }
     }
 
+    private fun extractIntExtra(intent: Intent, vararg keys: String): Int? {
+        val extras = intent.extras ?: return null
+        for (k in keys) {
+            if (!extras.containsKey(k)) continue
+            @Suppress("DEPRECATION")
+            val value = extras.get(k) ?: continue
+            when (value) {
+                is Number -> return value.toInt().takeIf { it >= 0 }
+                is String -> {
+                    val strDigits = value.filter { it.isDigit() }
+                    val parsed = strDigits.toIntOrNull()
+                    if (parsed != null && parsed >= 0) return parsed
+                }
+            }
+        }
+        return null
+    }
+
     private fun extractStringOrInt(intent: Intent, key: String): String? {
         if (!intent.hasExtra(key)) return null
         @Suppress("DEPRECATION")
@@ -248,27 +180,176 @@ object YandexNavRepository {
         return str
     }
 
-    private fun getParcelableBitmap(intent: Intent, key: String): Bitmap? {
-        return runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(key, Bitmap::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(key) as? Bitmap
+    private fun isIgnoredStreetName(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return true
+        val lower = raw.trim().lowercase()
+        if (lower in IGNORED_STREET_NAMES) return true
+        if (lower.startsWith("navigator is running") ||
+            lower.startsWith("яндекс.навигатор") ||
+            lower.startsWith("яндекс навигатор") ||
+            lower.startsWith("yandex navigator") ||
+            lower.startsWith("yandex.navigator") ||
+            lower.contains("is running")
+        ) return true
+        return false
+    }
+
+    private val IGNORED_STREET_NAMES = setOf(
+        "navigator is running",
+        "yandex navigator",
+        "yandex.navigator",
+        "яндекс навигатор",
+        "яндекс.навигатор",
+        "яндекс карты",
+        "яндекс.карты",
+        "навигатор",
+        "навигация",
+        "построение маршрута",
+        "поиск спутников",
+        "яндекс навигатор работает в фоновом режиме",
+        "yandex maps",
+        "yandex.maps",
+        "null"
+    )
+
+    private val DISTANCE_REGEX = Regex("(?i)(\\d+(?:[.,]\\d+)?\\s*(?:километров|километра|километр|метров|метра|метр|км|м|km|m|км\\.|м\\.))")
+    private val TIME_REGEX = Regex("(?i)\\b(\\d+\\s*(?:мин|ч|мин.|ч.)|\\d+\\s*(?:min|h))\\b")
+    private val ETA_REGEX = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b")
+    private val MANEUVER_PREFIX_REGEX = Regex("(?i)^(через\\s+\\d+(?:[.,]\\d+)?\\s*(?:километров|километра|километр|метров|метра|метр|км|м|km|m|км\\.|м\\.)\\s*)?(поверните|держитесь|съезд|развернитесь|перестройтесь|прямо|двигайтесь)?(\\s+(направо|налево|правее|левее))?\\s*(на|в|по)?\\s*")
+
+    private fun isYandexPackage(pkg: String): Boolean {
+        return pkg == "ru.yandex.yandexnavi" ||
+                pkg == "ru.yandex.yandexmaps" ||
+                pkg == "ru.yandex.mobile.navigator" ||
+                pkg.startsWith("ru.yandex.yandexnavi") ||
+                pkg.startsWith("ru.yandex.yandexmaps")
+    }
+
+    fun onNotificationPosted(context: Context, sbn: StatusBarNotification) {
+        val pkg = sbn.packageName ?: return
+        if (!isYandexPackage(pkg)) return
+
+        val notification = sbn.notification ?: return
+        val extras = notification.extras ?: return
+
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
+        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
+
+        val iconBitmap: Bitmap? = runCatching {
+            @Suppress("DEPRECATION")
+            val largeIconExtra = extras.get(Notification.EXTRA_LARGE_ICON)
+                ?: extras.get("android.largeIcon")
+                ?: extras.get(Notification.EXTRA_LARGE_ICON_BIG)
+            when (largeIconExtra) {
+                is Bitmap -> largeIconExtra
+                is Icon -> drawableToBitmap(largeIconExtra.loadDrawable(context))
+                else -> {
+                    @Suppress("DEPRECATION")
+                    notification.largeIcon
+                }
             }
         }.getOrNull()
+
+        var mDistance: String? = null
+        var streetText: String? = null
+        var remDist: String? = null
+        var remTime: String? = null
+        var arrTime: String? = null
+
+        val allRaw = listOfNotNull(title, text, bigText, subText).joinToString("\n")
+        val parts = allRaw.split("•", "\n", "|").map { it.trim() }.filter { it.isNotBlank() }
+
+        for (part in parts) {
+            if (isIgnoredStreetName(part)) continue
+
+            val distMatch = DISTANCE_REGEX.find(part)
+            if (distMatch != null) {
+                if (mDistance == null) {
+                    mDistance = distMatch.value
+                } else if (remDist == null && distMatch.value != mDistance) {
+                    remDist = distMatch.value
+                }
+            }
+
+            if (remTime == null) {
+                val timeMatch = TIME_REGEX.find(part)
+                if (timeMatch != null) remTime = timeMatch.value
+            }
+            if (arrTime == null) {
+                val etaMatch = ETA_REGEX.find(part)
+                if (etaMatch != null) arrTime = etaMatch.value
+            }
+
+            if (streetText == null) {
+                val hasDist = DISTANCE_REGEX.containsMatchIn(part)
+                val lower = part.lowercase()
+                val hasManeuverKw = listOf("через", "поверните", "держитесь", "развернитесь", "съезд", "перестройтесь", "прямо", "двигайтесь").any { lower.contains(it) }
+
+                if (!hasDist && !hasManeuverKw && part.length > 2) {
+                    streetText = part
+                } else if (hasManeuverKw) {
+                    val cleaned = part.replace(MANEUVER_PREFIX_REGEX, "").trim()
+                    if (cleaned.length > 2 && !isIgnoredStreetName(cleaned) && !DISTANCE_REGEX.containsMatchIn(cleaned)) {
+                        streetText = cleaned
+                    }
+                }
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        val validStreet = streetText.takeIf { !isIgnoredStreetName(it) }
+
+        val candidates = listOfNotNull(title, text, bigText).map { it.trim() }.filter {
+            it.isNotBlank() && !isIgnoredStreetName(it)
+        }
+        val fullTextCandidate = when {
+            candidates.size >= 2 -> candidates.joinToString(" ")
+            candidates.size == 1 -> candidates.first()
+            else -> null
+        }
+
+        _state.update {
+            it.copy(
+                isNavigating = true,
+                maneuverBitmap = iconBitmap ?: it.maneuverBitmap,
+                maneuverDistance = mDistance.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.maneuverDistance,
+                nextStreet = validStreet.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.nextStreet,
+                fullNotificationText = fullTextCandidate.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.fullNotificationText,
+                remainingDistance = remDist.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.remainingDistance,
+                remainingTime = remTime.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.remainingTime,
+                arrivalTime = arrTime.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.arrivalTime,
+                lastUpdateMs = now,
+            )
+        }
+    }
+
+    fun onNotificationRemoved(sbn: StatusBarNotification) {
+        val pkg = sbn.packageName ?: return
+        if (isYandexPackage(pkg)) {
+            val now = System.currentTimeMillis()
+            if (now - _state.value.lastUpdateMs > 3000L) {
+                _state.update { YandexNavState(isNavigating = false) }
+            }
+        }
+    }
+
+    private fun drawableToBitmap(drawable: Drawable?): Bitmap? {
+        if (drawable == null) return null
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap
+        }
+        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 96
+        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 96
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     // Actions broadcasted by Yandex Navigator mod / Monjaro Plus
-    private const val ACTION_MANEUVER = "com.yandex.MANEUVER"
-    private const val ACTION_SPEEDLIMIT = "com.yandex.SPEEDLIMIT"
-    private const val ACTION_NEXTSTREET = "com.yandex.NEXTSTREET"
-    private const val ACTION_DISTANCE = "com.yandex.DISTANCE"
-    private const val ACTION_TIME = "com.yandex.TIME"
-    private const val ACTION_ARRIVAL = "com.yandex.ARRIVAL"
-    private const val ACTION_LANES = "com.yandex.LANES"
-    private const val ACTION_LANES_BITMAP = "com.yandex.LANES_BITMAP"
-    private const val ACTION_LANES_BITMAP_CLEAR = "com.yandex.LANES_BITMAP_CLEAR"
     private const val ACTION_TRAFFIC_LIGHT_UPDATE = "plus.monjaro.TRAFFIC_LIGHT_UPDATE"
     private const val ACTION_NAVIGATION_ENDED = "plus.monjaro.NAVIGATION_ENDED"
 }

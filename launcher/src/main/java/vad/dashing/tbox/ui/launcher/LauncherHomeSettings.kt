@@ -233,7 +233,13 @@ internal fun LauncherHomeSettingsContent() {
     PdcVisualModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
-    YandexNavWidgetToggle()
+    NavManeuverWidgetToggle()
+    NavStreetWidgetToggle()
+    NavSpeedWidgetToggle()
+    NavTrafficLightWidgetToggle()
+    NavTrafficLightScaleSlider()
+    NavTextWidgetToggle()
+    NavWidgetsOnlyWhenMinimizedToggle()
     AdasDistanceTextSizeSlider()
     NavButtonsToggle()
     FloatingHomeToggle()
@@ -1632,23 +1638,160 @@ private fun AdasPanelToggle() {
 }
 
 @Composable
-private fun YandexNavWidgetToggle() {
+private fun NavManeuverWidgetToggle() {
     val context = LocalContext.current
-    val revision by LauncherAppConfigStore.yandexNavWidgetRevisionFlow
-        .collectAsStateWithLifecycle()
-    val visible = remember(context, revision) {
-        LauncherAppConfigStore.yandexNavWidgetVisible(context)
-    }
+    val revision by LauncherAppConfigStore.navManeuverRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navManeuverVisible(context) }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_yandex_nav_widget_visible_title),
+            label = stringResource(R.string.launcher_nav_maneuver_title),
             active = visible,
-            onClick = {
-                LauncherAppConfigStore.setYandexNavWidgetVisible(context, !visible)
-            },
+            onClick = { LauncherAppConfigStore.setNavManeuverVisible(context, !visible) },
         )
         Text(
-            text = stringResource(R.string.launcher_yandex_nav_widget_visible_desc),
+            text = stringResource(R.string.launcher_nav_maneuver_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavStreetWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navStreetRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navStreetVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_street_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavStreetVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_street_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavSpeedWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navSpeedRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navSpeedVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_speed_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavSpeedVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_speed_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavTrafficLightWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navTrafficLightRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navTrafficLightVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_traffic_light_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavTrafficLightVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_traffic_light_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavTrafficLightScaleSlider() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navTrafficLightScaleRevisionFlow.collectAsStateWithLifecycle()
+    var scaleRatio by remember(context, revision) {
+        mutableFloatStateOf(LauncherAppConfigStore.navTrafficLightScale(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_nav_traffic_light_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${(scaleRatio * 100).roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_nav_traffic_light_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scaleRatio,
+            onValueChange = { next ->
+                val snapped = ((next * 20f).roundToInt() / 20f).coerceIn(0.5f, 1.5f)
+                scaleRatio = snapped
+                LauncherAppConfigStore.setNavTrafficLightScale(context, snapped)
+            },
+            valueRange = 0.5f..1.5f,
+            steps = 9,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun NavTextWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navTextRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navTextVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_text_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavTextVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_text_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavWidgetsOnlyWhenMinimizedToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navWidgetsOnlyWhenMinimizedRevisionFlow.collectAsStateWithLifecycle()
+    val minimizedOnly = remember(context, revision) { LauncherAppConfigStore.navWidgetsOnlyWhenMinimized(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_widgets_only_minimized_title),
+            active = minimizedOnly,
+            onClick = { LauncherAppConfigStore.setNavWidgetsOnlyWhenMinimized(context, !minimizedOnly) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_widgets_only_minimized_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -1706,7 +1849,13 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
-        YandexNavWidgetToggle()
+        NavManeuverWidgetToggle()
+        NavStreetWidgetToggle()
+        NavSpeedWidgetToggle()
+        NavTrafficLightWidgetToggle()
+        NavTrafficLightScaleSlider()
+        NavTextWidgetToggle()
+        NavWidgetsOnlyWhenMinimizedToggle()
 
         val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow
             .collectAsStateWithLifecycle()
