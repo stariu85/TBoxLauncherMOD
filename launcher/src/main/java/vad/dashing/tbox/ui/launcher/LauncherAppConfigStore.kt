@@ -44,12 +44,14 @@ private const val KEY_EDGE_GESTURES_WIDTH = "edge_gestures_width_dp"
 private const val KEY_EDGE_GESTURE_ACTION_LEFT = "edge_gesture_action_left"
 private const val KEY_EDGE_GESTURE_ACTION_RIGHT = "edge_gesture_action_right"
 private const val KEY_EDGE_GESTURE_ACTION_BOTTOM = "edge_gesture_action_bottom"
+private const val KEY_EDGE_GESTURE_ACTION_TOP = "edge_gesture_action_top"
 
 internal const val EDGE_GESTURE_ACTION_NONE = "none"
 internal const val EDGE_GESTURE_ACTION_HOME = "home"
 internal const val EDGE_GESTURE_ACTION_BACK = "back"
 internal const val EDGE_GESTURE_ACTION_PREVIOUS_APP = "undo"
 internal const val EDGE_GESTURE_ACTION_CLOSE_ALL = "close_all"
+internal const val EDGE_GESTURE_ACTION_SHADE = "top_shade"
 
 const val PDC_VISUAL_ARCS = 0
 const val PDC_VISUAL_CLASSIC = 1
@@ -635,6 +637,14 @@ internal object LauncherAppConfigStore {
 
     fun setEdgeGestureActionBottom(context: Context, action: String) {
         prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_BOTTOM, action).apply()
+        edgeGesturesRevision.value++
+    }
+
+    fun edgeGestureActionTop(context: Context): String =
+        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_TOP, EDGE_GESTURE_ACTION_SHADE) ?: EDGE_GESTURE_ACTION_SHADE
+
+    fun setEdgeGestureActionTop(context: Context, action: String) {
+        prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_TOP, action).apply()
         edgeGesturesRevision.value++
     }
 

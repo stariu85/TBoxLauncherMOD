@@ -1161,6 +1161,7 @@ private fun EdgeGesturesSettings() {
     val leftAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionLeft(context) }
     val rightAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionRight(context) }
     val bottomAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionBottom(context) }
+    val topAction = remember(context, revision) { LauncherAppConfigStore.edgeGestureActionTop(context) }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
@@ -1234,6 +1235,12 @@ private fun EdgeGesturesSettings() {
             }
 
             EdgeGestureActionPicker(
+                title = "Жест сверху (Свайп вниз)",
+                currentAction = topAction,
+                onSelectAction = { LauncherAppConfigStore.setEdgeGestureActionTop(context, it) },
+            )
+
+            EdgeGestureActionPicker(
                 title = stringResource(R.string.launcher_edge_gesture_left),
                 currentAction = leftAction,
                 onSelectAction = { LauncherAppConfigStore.setEdgeGestureActionLeft(context, it) },
@@ -1271,6 +1278,7 @@ private fun EdgeGestureActionPicker(
 
     val builtInActions = remember(labelNone, labelHome, labelBack, labelUndo, labelClose) {
         listOf(
+            EDGE_GESTURE_ACTION_SHADE to "Панель управления (Шторка)",
             EDGE_GESTURE_ACTION_NONE to labelNone,
             EDGE_GESTURE_ACTION_HOME to labelHome,
             EDGE_GESTURE_ACTION_BACK to labelBack,

@@ -52,14 +52,17 @@ internal object LauncherEdgeGestureOverlay {
     private var rightView: ComposeView? = null
     @Volatile
     private var bottomView: ComposeView? = null
+    @Volatile
+    private var topView: ComposeView? = null
 
     private var leftOwner: MyLifecycleOwner? = null
     private var rightOwner: MyLifecycleOwner? = null
     private var bottomOwner: MyLifecycleOwner? = null
+    private var topOwner: MyLifecycleOwner? = null
 
     private var windowManager: WindowManager? = null
 
-    fun isShowing(): Boolean = leftView != null || rightView != null || bottomView != null
+    fun isShowing(): Boolean = leftView != null || rightView != null || bottomView != null || topView != null
 
     fun ensureShowing(context: Context) {
         if (isShowing()) return
@@ -103,6 +106,7 @@ internal object LauncherEdgeGestureOverlay {
         val leftAction = LauncherAppConfigStore.edgeGestureActionLeft(activity)
         val rightAction = LauncherAppConfigStore.edgeGestureActionRight(activity)
         val bottomAction = LauncherAppConfigStore.edgeGestureActionBottom(activity)
+        val topAction = LauncherAppConfigStore.edgeGestureActionTop(activity)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -163,6 +167,24 @@ internal object LauncherEdgeGestureOverlay {
             }
         } else {
             removeBottomStrip()
+        }
+
+        // 4. Top Strip
+        if (topAction != EDGE_GESTURE_ACTION_NONE) {
+            if (topView == null) {
+                topView = createStripView(activity, EDGE_GESTURE_SIDE_TOP)
+                topOwner = createOwner()
+                val params = createLayoutParams(type, WindowManager.LayoutParams.MATCH_PARENT, stripWidthPx, Gravity.START or Gravity.TOP)
+                runCatching { wm.addView(topView, params) }
+            } else {
+                val params = topView?.layoutParams as? WindowManager.LayoutParams
+                if (params != null && params.height != stripWidthPx) {
+                    params.height = stripWidthPx
+                    runCatching { wm.updateViewLayout(topView, params) }
+                }
+            }
+        } else {
+            removeTopStrip()
         }
     }
 
@@ -231,6 +253,15 @@ internal object LauncherEdgeGestureOverlay {
         bottomOwner = null
     }
 
+    private fun removeTopStrip() {
+        topView?.let { view ->
+            runCatching { windowManager?.removeViewImmediate(view) }
+        }
+        topView = null
+        topOwner?.clear()
+        topOwner = null
+    }
+
     fun bringToFront() {
         val wm = windowManager ?: return
         leftView?.let { view ->
@@ -254,6 +285,13 @@ internal object LauncherEdgeGestureOverlay {
                 wm.addView(view, p)
             }
         }
+        topView?.let { view ->
+            val p = view.layoutParams as? WindowManager.LayoutParams ?: return@let
+            runCatching {
+                wm.removeViewImmediate(view)
+                wm.addView(view, p)
+            }
+        }
         Log.w(TAG, "Edge gesture overlays brought to front above settings/overlays")
     }
 
@@ -261,6 +299,7 @@ internal object LauncherEdgeGestureOverlay {
         removeLeftStrip()
         removeRightStrip()
         removeBottomStrip()
+        removeTopStrip()
         windowManager = null
         Log.w(TAG, "Edge gesture overlays hidden")
     }
@@ -269,6 +308,7 @@ internal object LauncherEdgeGestureOverlay {
 private const val EDGE_GESTURE_SIDE_LEFT = 1
 private const val EDGE_GESTURE_SIDE_RIGHT = 2
 private const val EDGE_GESTURE_SIDE_BOTTOM = 3
+private const val EDGE_GESTURE_SIDE_TOP = 4
 
 @Composable
 private fun EdgeStripContent(context: Context, side: Int) {
@@ -282,6 +322,7 @@ private fun EdgeStripContent(context: Context, side: Int) {
             EDGE_GESTURE_SIDE_LEFT -> LauncherAppConfigStore.edgeGestureActionLeft(context)
             EDGE_GESTURE_SIDE_RIGHT -> LauncherAppConfigStore.edgeGestureActionRight(context)
             EDGE_GESTURE_SIDE_BOTTOM -> LauncherAppConfigStore.edgeGestureActionBottom(context)
+            EDGE_GESTURE_SIDE_TOP -> LauncherAppConfigStore.edgeGestureActionTop(context)
             else -> EDGE_GESTURE_ACTION_NONE
         }
     }
@@ -342,6 +383,20 @@ private fun EdgeStripContent(context: Context, side: Int) {
                             },
                         )
                     }
+                    EDGE_GESTURE_SIDE_TOP -> {
+                        detectVerticalDragGestures(
+                            onDragStart = { accum = 0f },
+                            onDragEnd = {
+                                if (accum > thresholdPx) trigger()
+                                accum = 0f
+                            },
+                            onDragCancel = { accum = 0f },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                accum += dragAmount
+                            },
+                        )
+                    }
                 }
             },
     )
@@ -351,6 +406,9 @@ internal fun executeEdgeGesture(context: Context, actionKey: String) {
     if (actionKey.isBlank() || actionKey == EDGE_GESTURE_ACTION_NONE) return
 
     when {
+        actionKey == EDGE_GESTURE_ACTION_SHADE -> {
+            LauncherTopShadeWindow.toggle(context)
+        }
         actionKey == EDGE_GESTURE_ACTION_HOME -> {
             goLauncherHome(context, source = "EdgeGesture:home")
         }
