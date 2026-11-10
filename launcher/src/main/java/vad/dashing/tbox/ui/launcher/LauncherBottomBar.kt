@@ -936,7 +936,7 @@ fun LauncherBottomBar(
                                         } else {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(36.dp, 36.dp)
+                                                    .fillMaxSize()
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .combinedClickable(
                                                         onLongClick = {
@@ -1045,7 +1045,7 @@ fun LauncherBottomBar(
                                 } else {
                                     Box(
                                         modifier = Modifier
-                                            .size(36.dp, 36.dp)
+                                            .fillMaxSize()
                                             .clip(RoundedCornerShape(8.dp))
                                             .combinedClickable(
                                                 onLongClick = {
@@ -1163,6 +1163,7 @@ private fun LauncherDraggableUnifiedSlot(
 
     Box(
         modifier = Modifier
+            .fillMaxSize()
             .zIndex(if (isDragging) 200f else 0f)
             .onGloballyPositioned { coordinates ->
                 itemLeftX = coordinates.boundsInWindow().left
@@ -1248,7 +1249,10 @@ private fun LauncherDraggableUnifiedSlot(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
             LauncherBottomDockButtonContent(
                 buttonId = itemId,
                 index = index,
@@ -1646,7 +1650,7 @@ private fun LauncherBottomDockButtonContent(
             onClick = {
                 sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, leftRaw)
             },
-            onDoubleClick = {
+            onSwipeDown = {
                 LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_rear_left")
             },
         ) {
@@ -1671,7 +1675,7 @@ private fun LauncherBottomDockButtonContent(
             onClick = {
                 sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, rightRaw)
             },
-            onDoubleClick = {
+            onSwipeDown = {
                 LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_rear_right")
             },
         ) {
@@ -1686,7 +1690,7 @@ private fun LauncherBottomDockButtonContent(
             onClick = {
                 sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH, rearLeftRaw)
             },
-            onDoubleClick = {
+            onSwipeDown = {
                 LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_left")
             },
         ) {
@@ -1696,7 +1700,7 @@ private fun LauncherBottomDockButtonContent(
             onClick = {
                 sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, rearRightRaw)
             },
-            onDoubleClick = {
+            onSwipeDown = {
                 LauncherAppConfigStore.setButtonInUnifiedSlot(context, index, "seat_heat_right")
             },
         ) {
@@ -2102,10 +2106,14 @@ private fun LauncherVolumeStepper(
     onUp: () -> Unit,
 ) {
     Row(
+        modifier = Modifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        LauncherDockIcon(onClick = onDown) {
+        LauncherDockIcon(
+            onClick = onDown,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        ) {
             Image(
                 painter = painterResource(R.drawable.ic_speaker_minus),
                 contentDescription = "Уменьшить громкость",
@@ -2122,7 +2130,10 @@ private fun LauncherVolumeStepper(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 2.dp),
         )
-        LauncherDockIcon(onClick = onUp) {
+        LauncherDockIcon(
+            onClick = onUp,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        ) {
             Image(
                 painter = painterResource(R.drawable.ic_speaker_plus),
                 contentDescription = "Увеличить громкость",
@@ -2140,10 +2151,14 @@ private fun LauncherBrightnessStepper(
     onUp: () -> Unit,
 ) {
     Row(
+        modifier = Modifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        LauncherDockIcon(onClick = onDown) {
+        LauncherDockIcon(
+            onClick = onDown,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        ) {
             Image(
                 painter = painterResource(R.drawable.ic_brightness_minus),
                 contentDescription = "Уменьшить яркость",
@@ -2160,7 +2175,10 @@ private fun LauncherBrightnessStepper(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 2.dp),
         )
-        LauncherDockIcon(onClick = onUp) {
+        LauncherDockIcon(
+            onClick = onUp,
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        ) {
             Image(
                 painter = painterResource(R.drawable.ic_brightness_plus),
                 contentDescription = "Увеличить яркость",
@@ -2429,6 +2447,8 @@ private fun LauncherDockIcon(
     onClick: () -> Unit,
     onDoubleClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onSwipeDown: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val cardBgVisible = LocalClimateCardBgVisible.current
@@ -2459,24 +2479,58 @@ private fun LauncherDockIcon(
         }
     }
 
+    val density = LocalDensity.current
+    val swipeThresholdPx = remember(density) { with(density) { 18.dp.toPx() } }
+
+    val clickModifier = if (onSwipeDown != null) {
+        Modifier.pointerInput(onClick, onSwipeDown, playSound) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                var totalDragY = 0f
+                var isDrag = false
+                val touchSlop = viewConfiguration.touchSlop
+
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!pointer.pressed) {
+                        if (!isDrag) {
+                            wrappedOnClick()
+                        } else if (totalDragY > swipeThresholdPx) {
+                            playSound()
+                            vad.dashing.tbox.DclLogRecorder.logUiClick("DockIcon", label = "swipeDown")
+                            onSwipeDown()
+                        }
+                        break
+                    } else {
+                        val dragY = pointer.position.y - down.position.y
+                        totalDragY = dragY
+                        if (abs(dragY) > touchSlop) {
+                            isDrag = true
+                            pointer.consume()
+                        }
+                    }
+                }
+            }
+        }
+    } else if (wrappedDoubleClick != null || wrappedLongClick != null) {
+        Modifier.combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = wrappedOnClick,
+            onDoubleClick = wrappedDoubleClick,
+            onLongClick = wrappedLongClick,
+        )
+    } else {
+        Modifier.clickable(onClick = wrappedOnClick)
+    }
+
     Box(
-        modifier = Modifier
-            .size(dockDp(44f))
-            .clip(RoundedCornerShape(12.dp))
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(8.dp))
             .background(if (cardBgVisible) LauncherColors.CardDark else Color.Transparent)
-            .then(
-                if (wrappedDoubleClick != null || wrappedLongClick != null) {
-                    Modifier.combinedClickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = wrappedOnClick,
-                        onDoubleClick = wrappedDoubleClick,
-                        onLongClick = wrappedLongClick,
-                    )
-                } else {
-                    Modifier.clickable(onClick = wrappedOnClick)
-                },
-            ),
+            .then(clickModifier),
         contentAlignment = Alignment.Center,
     ) {
         content()

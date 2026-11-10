@@ -1224,8 +1224,7 @@ private fun EdgeGesturesSettings() {
                     onValueChangeFinished = {
                         LauncherAppConfigStore.setEdgeGesturesWidthDp(context, widthDp.roundToInt())
                     },
-                    valueRange = 15f..35f,
-                    steps = 3,
+                    valueRange = 5f..50f,
                     colors = SliderDefaults.colors(
                         thumbColor = LauncherColors.AccentCyan,
                         activeTrackColor = LauncherColors.AccentCyan,

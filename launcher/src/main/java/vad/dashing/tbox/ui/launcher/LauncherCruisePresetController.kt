@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -54,7 +55,7 @@ internal object LauncherCruisePresetController {
 
     private var rememberedSetpointKmh: Int? = null
 
-    fun currentAccCruiseState(): AccCruiseState {
+    private fun computeAccCruiseState(): AccCruiseState {
         val adas = LauncherAdasRepository.state.value
         val tboxCruise = CanDataRepository.cruiseSetSpeed.value
         val isTboxActive = tboxCruise != null && tboxCruise > 0u
@@ -64,6 +65,32 @@ internal object LauncherCruisePresetController {
             adas.accOverride -> AccCruiseState.Override
             adas.accStandby -> AccCruiseState.Standby
             else -> AccCruiseState.Off
+        }
+    }
+
+    private val _accCruiseState = MutableStateFlow(computeAccCruiseState())
+    val accCruiseState: StateFlow<AccCruiseState> = _accCruiseState.asStateFlow()
+
+    fun currentAccCruiseState(): AccCruiseState = computeAccCruiseState()
+
+    init {
+        scope.launch {
+            combine(
+                LauncherAdasRepository.state,
+                CanDataRepository.cruiseSetSpeed,
+            ) { _, _ ->
+                computeAccCruiseState()
+            }.collect { newState ->
+                val previousState = _accCruiseState.value
+                _accCruiseState.value = newState
+
+                if ((previousState == AccCruiseState.Active || previousState == AccCruiseState.Override) &&
+                    (newState != AccCruiseState.Active && newState != AccCruiseState.Override)
+                ) {
+                    DiagFileLog.i(TAG, "ACC transitioned from $previousState to $newState -> turning off smart speed limit mode")
+                    _isSmartSpeedLimitActive.value = false
+                }
+            }
         }
     }
 
@@ -126,10 +153,10 @@ internal object LauncherCruisePresetController {
 
         if (LauncherDevVehicleState.simulateEnabled) {
             CanDataRepository.updateCruiseSetSpeed(target.toUInt())
-            if (!isFromSpeedLimit) {
-                LauncherDevVehicleState.adasCruiseActive = true
-                LauncherDevVehicleState.adasLanesActive = ngp
-                LauncherDevVehicleState.adasLkaActive = ngp
+            LauncherDevVehicleState.adasCruiseActive = true
+            if (ngp) {
+                LauncherDevVehicleState.adasLanesActive = true
+                LauncherDevVehicleState.adasLkaActive = true
             }
             LauncherAdasRepository.triggerTimeGapFlash(3000L)
             return
@@ -154,12 +181,6 @@ internal object LauncherCruisePresetController {
                     }
                     DiagFileLog.i(TAG, "Already active at target $target km/h -> pulse MFS_CANCEL")
                     pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
-                    return@launchExclusive
-                }
-
-                // If setting speed by speed limit (isFromSpeedLimit) while Standby or Off, only update remembered target speed, do not activate cruise
-                if (isFromSpeedLimit && (state == AccCruiseState.Standby || state == AccCruiseState.Off)) {
-                    DiagFileLog.i(TAG, "isFromSpeedLimit is true while state=$state -> set remembered target $target km/h without activating cruise")
                     return@launchExclusive
                 }
 

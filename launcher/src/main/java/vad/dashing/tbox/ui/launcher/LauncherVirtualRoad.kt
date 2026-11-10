@@ -1514,10 +1514,14 @@ fun LauncherSpeedLimitOverlay(
     }
 
     val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
-    val cruiseState = LauncherCruisePresetController.currentAccCruiseState()
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
     val showSmartUi = enabled && isSmartActive && cruiseState == AccCruiseState.Active
 
     var isDragging by remember { mutableStateOf(false) }
+
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
 
     Box(
         modifier = modifier
@@ -1552,7 +1556,7 @@ fun LauncherSpeedLimitOverlay(
 
                     if (longPressSucceeded) {
                         isDragging = true
-                        onDragStart()
+                        currentOnDragStart()
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -1560,11 +1564,11 @@ fun LauncherSpeedLimitOverlay(
                             val dragAmount = change.positionChange()
                             if (dragAmount != Offset.Zero) {
                                 change.consume()
-                                onDrag(dragAmount)
+                                currentOnDrag(dragAmount)
                             }
                         }
                         isDragging = false
-                        onDragEnd()
+                        currentOnDragEnd()
                     } else if (!isDragging) {
                         if (enabled) {
                             val targetSpeed = limit + offset

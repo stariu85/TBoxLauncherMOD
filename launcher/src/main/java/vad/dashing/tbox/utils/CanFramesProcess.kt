@@ -383,6 +383,49 @@ object CanFramesProcess {
         )
     }
 
+    /**
+     * Parse tire temperatures from ansCRTCycleSignal packet (UDP payload size >= 30).
+     * Tire temperatures: bytes 25..28 + offset (unit: raw - 60 °C or raw °C).
+     */
+    fun processCycleSignal(data: ByteArray) {
+        if (data.size < 30) return
+        try {
+            val offset = if (data.size == 346) -4 else 0
+            val t1Idx = 25 + offset
+            val t2Idx = 26 + offset
+            val t3Idx = 27 + offset
+            val t4Idx = 28 + offset
+
+            if (t4Idx < data.size) {
+                val t1 = parseTireTemperatureByte(data[t1Idx])
+                val t2 = parseTireTemperatureByte(data[t2Idx])
+                val t3 = parseTireTemperatureByte(data[t3Idx])
+                val t4 = parseTireTemperatureByte(data[t4Idx])
+
+                if (t1 != null || t2 != null || t3 != null || t4 != null) {
+                    val curTemp = CanDataRepository.wheelsTemperature.value
+                    CanDataRepository.updateWheelsTemperature(
+                        curTemp.copy(
+                            wheel1 = t1 ?: curTemp.wheel1,
+                            wheel2 = t2 ?: curTemp.wheel2,
+                            wheel3 = t3 ?: curTemp.wheel3,
+                            wheel4 = t4 ?: curTemp.wheel4,
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            TboxRepository.addLog("ERROR", "CRT cycle signal", "Error processing cycle signal: $e")
+        }
+    }
+
+    private fun parseTireTemperatureByte(b: Byte): Float? {
+        val u = unsignedByte(b)
+        if (u == 0xFF || u == 0) return null
+        val temp = if (u >= 60) u - 60 else u
+        return if (temp in -50..150) temp.toFloat() else null
+    }
+
     private fun readCanId(data: ByteArray, offset: Int): Int {
         return (unsignedByte(data[offset]) shl 24) or
             (unsignedByte(data[offset + 1]) shl 16) or

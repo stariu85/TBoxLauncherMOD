@@ -292,6 +292,7 @@ private fun LauncherAdasQuickSettingsContent(
     windowHeightDp: Dp = 0.dp,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
@@ -485,6 +486,9 @@ private fun LauncherAdasQuickSettingsContent(
     var quickContainerHeightPx by remember { mutableFloatStateOf(0f) }
     var containerWindowTopPx by remember { mutableFloatStateOf(0f) }
 
+    var showQuickBadges by remember { mutableStateOf(false) }
+    var hideQuickBadgesTimerJob by remember { mutableStateOf<Job?>(null) }
+
     fun addPanelToAdas(targetId: String) {
         fun canonicalPanelId(id: String): String = when (id) {
             "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
@@ -617,7 +621,7 @@ private fun LauncherAdasQuickSettingsContent(
                                     primarySlots = primarySlots,
                                     draggingItemId = draggingItemId,
                                     dragOffsetY = dragOffsetY,
-                                    activeGreenPlusItemId = activeGreenPlusItemId,
+                                    showBadges = showQuickBadges,
                                     mediaPlayerHeightDp = mediaPlayerHeightDp,
                                     containerWindowTopPx = containerWindowTopPx,
                                     onDragStart = { item, topPx, hPx ->
@@ -625,6 +629,8 @@ private fun LauncherAdasQuickSettingsContent(
                                         activeGreenPlusItemId = item
                                         initialPanelTopPx = topPx
                                         panelHeightPx = hPx
+                                        hideQuickBadgesTimerJob?.cancel()
+                                        showQuickBadges = true
                                     },
                                     onDragMove = { deltaY ->
                                         dragOffsetY = deltaY
@@ -641,6 +647,12 @@ private fun LauncherAdasQuickSettingsContent(
                                         draggingItemId = null
                                         dragOffsetY = 0f
                                         LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+
+                                        hideQuickBadgesTimerJob?.cancel()
+                                        hideQuickBadgesTimerJob = scope.launch {
+                                            delay(5000L)
+                                            showQuickBadges = false
+                                        }
                                     },
                                     onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
                                 )
@@ -671,7 +683,7 @@ private fun LauncherAdasQuickSettingsContent(
                                     primarySlots = primarySlots,
                                     draggingItemId = draggingItemId,
                                     dragOffsetY = dragOffsetY,
-                                    activeGreenPlusItemId = activeGreenPlusItemId,
+                                    showBadges = showQuickBadges,
                                     mediaPlayerHeightDp = mediaPlayerHeightDp,
                                     containerWindowTopPx = containerWindowTopPx,
                                     onDragStart = { item, topPx, hPx ->
@@ -679,6 +691,8 @@ private fun LauncherAdasQuickSettingsContent(
                                         activeGreenPlusItemId = item
                                         initialPanelTopPx = topPx
                                         panelHeightPx = hPx
+                                        hideQuickBadgesTimerJob?.cancel()
+                                        showQuickBadges = true
                                     },
                                     onDragMove = { deltaY ->
                                         dragOffsetY = deltaY
@@ -695,6 +709,12 @@ private fun LauncherAdasQuickSettingsContent(
                                         draggingItemId = null
                                         dragOffsetY = 0f
                                         LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+
+                                        hideQuickBadgesTimerJob?.cancel()
+                                        hideQuickBadgesTimerJob = scope.launch {
+                                            delay(5000L)
+                                            showQuickBadges = false
+                                        }
                                     },
                                     onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
                                 )
@@ -717,7 +737,7 @@ private fun RenderQuickPanelCard(
     primarySlots: Set<String>,
     draggingItemId: String?,
     dragOffsetY: Float,
-    activeGreenPlusItemId: String?,
+    showBadges: Boolean,
     mediaPlayerHeightDp: Dp,
     containerWindowTopPx: Float,
     onDragStart: (id: String, initialTopPx: Float, panelHeightPx: Float) -> Unit,
@@ -734,7 +754,7 @@ private fun RenderQuickPanelCard(
     val isBasePanelAlreadyInAdas = basePanelId in primarySlots
 
     val isDragging = draggingItemId == id
-    val showPlus = (isDragging || activeGreenPlusItemId == id) && !isBasePanelAlreadyInAdas
+    val showPlus = (showBadges || isDragging) && !isBasePanelAlreadyInAdas
     val slotHeight = if (id == "media_player") mediaPlayerHeightDp else 60.dp
 
     var localTopPx by remember { mutableFloatStateOf(0f) }

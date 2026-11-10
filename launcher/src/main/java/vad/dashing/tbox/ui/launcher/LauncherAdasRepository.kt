@@ -48,6 +48,8 @@ object LauncherAdasRepository {
     @Volatile private var lastSpeedKmh = 0f
     private val adasScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var pdcWatchdogJob: Job? = null
+    private var lasModeJob: Job? = null
+    @Volatile private var cachedLasMode: Int = -1
     private const val PDC_STALE_MS = 1_200L
     private const val PDC_DRIVE_CLEAR_KMH = 18f
 
@@ -105,12 +107,25 @@ object LauncherAdasRepository {
         registerDowListener()
         registerRadarListener()
         startPdcWatchdog()
+        startLasModeWatchdog()
         active = frmInfoListenerProxy != null ||
             lkaStatusListenerProxy != null ||
             bsdListenerProxy != null ||
             rctaListenerProxy != null ||
             dowListenerProxy != null ||
             radarListenerProxy != null
+    }
+
+    private fun startLasModeWatchdog() {
+        if (lasModeJob != null) return
+        lasModeJob = adasScope.launch {
+            while (isActive) {
+                if (MbCanEngineFacade.isInitialized()) {
+                    cachedLasMode = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ?: -1
+                }
+                delay(3_000L)
+            }
+        }
     }
 
     fun stop() {
@@ -123,6 +138,9 @@ object LauncherAdasRepository {
         unregisterRadarListener()
         pdcWatchdogJob?.cancel()
         pdcWatchdogJob = null
+        lasModeJob?.cancel()
+        lasModeJob = null
+        cachedLasMode = -1
         MbAdasTsrFacade.stop()
         tsrWatchdog.cancel()
         active = false
@@ -576,11 +594,7 @@ object LauncherAdasRepository {
     }
 
     private fun doPublish() {
-        val lasMode = if (MbCanEngineFacade.isInitialized()) {
-            MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) ?: -1
-        } else {
-            -1
-        }
+        val lasMode = cachedLasMode
         val newState = buildLauncherAdasState(
             accModeRaw = frmAccMode,
             vSetDisRaw = frmVSetDis,
@@ -616,12 +630,12 @@ object LauncherAdasRepository {
 
     fun triggerTimeGapFlash(ms: Long = 3000L) {
         timeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
-        publish(immediate = true)
+        publish()
     }
 
     fun clearTimeGapFlash() {
         timeGapFlashUntilMs = 0L
-        publish(immediate = true)
+        publish()
     }
 
     private fun clearSnapshots() {

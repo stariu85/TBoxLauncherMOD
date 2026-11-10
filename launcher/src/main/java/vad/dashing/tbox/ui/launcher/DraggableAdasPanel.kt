@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -48,22 +49,22 @@ import kotlinx.coroutines.launch
 internal fun DraggableAdasPanel(
     panelId: String,
     containerHeightPx: Float,
+    containerWindowTopPx: Float = 0f,
     topPanels: List<String>,
     bottomPanels: List<String>,
     onLayoutChanged: (topPanels: List<String>, bottomPanels: List<String>) -> Unit,
+    showBadges: Boolean = false,
+    onDragStarted: () -> Unit = {},
+    onDragEnded: () -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     var isDragging by remember { mutableStateOf(false) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var initialPanelTopPx by remember { mutableFloatStateOf(0f) }
     var panelHeightPx by remember { mutableFloatStateOf(0f) }
-
-    var showRedMinus by remember { mutableStateOf(false) }
-    var hideMinusTimerJob by remember { mutableStateOf<Job?>(null) }
 
     val animatedScale by animateFloatAsState(
         targetValue = if (isDragging) 1.03f else 1.00f,
@@ -94,12 +95,14 @@ internal fun DraggableAdasPanel(
             .zIndex(if (isDragging) 300f else 1f)
             .onGloballyPositioned { coordinates ->
                 if (!isDragging) {
-                    val parent = coordinates.parentLayoutCoordinates
-                    if (parent != null) {
-                        val positionInParent = parent.localPositionOf(coordinates, Offset.Zero)
-                        initialPanelTopPx = positionInParent.y
-                        panelHeightPx = coordinates.size.height.toFloat()
+                    val cardWindowTopPx = coordinates.boundsInWindow().top
+                    initialPanelTopPx = if (containerWindowTopPx > 0f) {
+                        cardWindowTopPx - containerWindowTopPx
+                    } else {
+                        val parent = coordinates.parentLayoutCoordinates
+                        if (parent != null) parent.localPositionOf(coordinates, Offset.Zero).y else 0f
                     }
+                    panelHeightPx = coordinates.size.height.toFloat()
                 }
             }
             .graphicsLayer {
@@ -154,12 +157,7 @@ internal fun DraggableAdasPanel(
                                 isDragging = false
                                 dragOffsetY = 0f
                                 onLayoutChanged(newLayout.first, newLayout.second)
-
-                                hideMinusTimerJob?.cancel()
-                                hideMinusTimerJob = scope.launch {
-                                    delay(5000L)
-                                    showRedMinus = false
-                                }
+                                onDragEnded()
                             }
                             break
                         }
@@ -172,17 +170,16 @@ internal fun DraggableAdasPanel(
                             if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
                                 dragActive = true
                                 isDragging = true
-                                hideMinusTimerJob?.cancel()
-                                showRedMinus = true
+                                onDragStarted()
                                 accumulativeDragY = pointer.position.y - down.position.y
                                 dragOffsetY = accumulativeDragY
                                 pointer.consume()
                             } else if (elapsed >= 350L) {
                                 dragActive = true
                                 isDragging = true
-                                hideMinusTimerJob?.cancel()
-                                showRedMinus = true
+                                onDragStarted()
                                 accumulativeDragY = 0f
+                                dragOffsetY = accumulativeDragY
                                 pointer.consume()
                             }
                         } else {
@@ -197,7 +194,7 @@ internal fun DraggableAdasPanel(
     ) {
         content()
 
-        if (showRedMinus) {
+        if (showBadges || isDragging) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -208,8 +205,6 @@ internal fun DraggableAdasPanel(
                     .background(Color(0xFFEF4444))
                     .clickable {
                         removePanelFromAdas()
-                        hideMinusTimerJob?.cancel()
-                        showRedMinus = false
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -235,52 +230,50 @@ internal fun calculateNewPanelLayout(
     val newBottom = currentBottom.filter { it != draggedPanelId }.toMutableList()
 
     val midPoint = if (containerHeightPx > 0f) containerHeightPx / 2f else 300f
-    val wasInTop = draggedPanelId in currentTop
+    val slotHeightPx = 130f
+
+    val topSectionHeight = newTop.size * slotHeightPx
+    val bottomSectionHeight = newBottom.size * slotHeightPx
+    val bottomSectionTop = (containerHeightPx - bottomSectionHeight).coerceAtLeast(midPoint)
 
     if (releasedCenterY < midPoint) {
         // Drop into TOP section
         if (newTop.isEmpty()) {
             newTop.add(draggedPanelId)
-        } else if (releasedCenterY < 80f) {
-            // Dragged to very top of screen -> insert at index 0 (top of top section)
-            newTop.add(0, draggedPanelId)
-        } else if (!wasInTop) {
-            // Dragged UP from bottom section -> snap/attach directly below existing top panels
-            newTop.add(draggedPanelId)
-        } else {
-            // Reordering within top section
-            val step = midPoint / newTop.size
+        } else if (releasedCenterY <= topSectionHeight + 40f) {
+            // Dropped over existing top panels -> find matching slot index and insert/swap
+            val step = if (topSectionHeight > 0f) topSectionHeight / newTop.size else slotHeightPx
             var insertIndex = newTop.size
             for (i in newTop.indices) {
-                if (releasedCenterY < step * (i + 1)) {
+                if (releasedCenterY < (i + 0.8f) * step) {
                     insertIndex = i
                     break
                 }
             }
             newTop.add(insertIndex.coerceIn(0, newTop.size), draggedPanelId)
+        } else {
+            // Dropped in empty space in top half -> snap/attach at bottom of top section
+            newTop.add(draggedPanelId)
         }
     } else {
         // Drop into BOTTOM section
         if (newBottom.isEmpty()) {
             newBottom.add(draggedPanelId)
-        } else if (containerHeightPx > 0f && releasedCenterY > containerHeightPx - 80f) {
-            // Dragged to very bottom of screen -> attach at bottom of bottom section
-            newBottom.add(draggedPanelId)
-        } else if (wasInTop) {
-            // Dragged DOWN from top section -> snap/attach directly above existing bottom panels
-            newBottom.add(0, draggedPanelId)
-        } else {
-            // Reordering within bottom section
-            val bottomHeight = containerHeightPx - midPoint
-            val step = bottomHeight / newBottom.size
+        } else if (releasedCenterY >= bottomSectionTop - 40f) {
+            // Dropped over existing bottom panels -> find matching slot index and insert/swap
+            val step = if (bottomSectionHeight > 0f) bottomSectionHeight / newBottom.size else slotHeightPx
             var insertIndex = newBottom.size
             for (i in newBottom.indices) {
-                if (releasedCenterY < midPoint + step * (i + 1)) {
+                val slotThresholdY = bottomSectionTop + (i + 0.8f) * step
+                if (releasedCenterY < slotThresholdY) {
                     insertIndex = i
                     break
                 }
             }
             newBottom.add(insertIndex.coerceIn(0, newBottom.size), draggedPanelId)
+        } else {
+            // Dropped in empty space in bottom half -> snap/attach at top of bottom section
+            newBottom.add(0, draggedPanelId)
         }
     }
 

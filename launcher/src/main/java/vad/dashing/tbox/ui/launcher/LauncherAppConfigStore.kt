@@ -609,10 +609,10 @@ internal object LauncherAppConfigStore {
     }
 
     fun edgeGesturesWidthDp(context: Context): Int =
-        prefs(context).getInt(KEY_EDGE_GESTURES_WIDTH, 20).coerceIn(15, 35)
+        prefs(context).getInt(KEY_EDGE_GESTURES_WIDTH, 20).coerceIn(5, 50)
 
     fun setEdgeGesturesWidthDp(context: Context, widthDp: Int) {
-        prefs(context).edit().putInt(KEY_EDGE_GESTURES_WIDTH, widthDp.coerceIn(15, 35)).apply()
+        prefs(context).edit().putInt(KEY_EDGE_GESTURES_WIDTH, widthDp.coerceIn(5, 50)).apply()
         edgeGesturesRevision.value++
     }
 

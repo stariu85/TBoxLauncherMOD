@@ -141,8 +141,9 @@ fun LauncherVehicleSettingsScreen(
     val simulate = LauncherDevVehicleState.simulateEnabled
     val effectiveBody = if (simulate) LauncherDevVehicleState.bodyState() else vehicleBody
     val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
-    val mergedTires = remember(tiresReal, wheelsPressure) {
-        mergeTireStateWithCanData(tiresReal, wheelsPressure)
+    val wheelsTemperature by canViewModel.wheelsTemperature.collectAsStateWithLifecycle()
+    val mergedTires = remember(tiresReal, wheelsPressure, wheelsTemperature) {
+        mergeTireStateWithCanData(tiresReal, wheelsPressure, wheelsTemperature)
     }
     val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: mergedTires
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)

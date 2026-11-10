@@ -72,25 +72,35 @@ data class LauncherTireState(
             (rr.available && rr.pressureBar != null)
 }
 
-internal fun mergeTireStateWithCanData(mbCanTires: LauncherTireState, canWheels: Wheels): LauncherTireState {
-    fun mergeWheel(wheel: LauncherTireWheelState, canPressure: Float?): LauncherTireWheelState {
+internal fun mergeTireStateWithCanData(
+    mbCanTires: LauncherTireState,
+    canWheels: Wheels,
+    canTemperatures: Wheels? = null,
+): LauncherTireState {
+    fun mergeWheel(
+        wheel: LauncherTireWheelState,
+        canPressure: Float?,
+        canTemp: Float?,
+    ): LauncherTireWheelState {
         val rawBar = wheel.pressureBar
         val convertedBar = if (rawBar != null && rawBar > 10f) rawBar / 36f else rawBar
         val effectiveBar = canPressure ?: convertedBar
-        val isAvailable = wheel.available || effectiveBar != null
+        val effectiveTemp = canTemp?.toInt() ?: wheel.temperatureC
+        val isAvailable = wheel.available || effectiveBar != null || effectiveTemp != null
         if (isAvailable) {
             return wheel.copy(
                 pressureBar = effectiveBar,
+                temperatureC = effectiveTemp,
                 available = true,
             )
         }
         return wheel
     }
     return LauncherTireState(
-        fl = mergeWheel(mbCanTires.fl, canWheels.wheel1),
-        fr = mergeWheel(mbCanTires.fr, canWheels.wheel2),
-        rl = mergeWheel(mbCanTires.rl, canWheels.wheel3),
-        rr = mergeWheel(mbCanTires.rr, canWheels.wheel4),
+        fl = mergeWheel(mbCanTires.fl, canWheels.wheel1, canTemperatures?.wheel1),
+        fr = mergeWheel(mbCanTires.fr, canWheels.wheel2, canTemperatures?.wheel2),
+        rl = mergeWheel(mbCanTires.rl, canWheels.wheel3, canTemperatures?.wheel3),
+        rr = mergeWheel(mbCanTires.rr, canWheels.wheel4, canTemperatures?.wheel4),
     )
 }
 

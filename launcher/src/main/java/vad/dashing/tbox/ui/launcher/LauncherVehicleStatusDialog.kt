@@ -67,8 +67,9 @@ internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
     val wheelsPressure by CanDataRepository.wheelsPressure.collectAsStateWithLifecycle()
-    val effectiveTires = remember(tiresState, wheelsPressure) {
-        mergeTireStateWithCanData(tiresState, wheelsPressure)
+    val wheelsTemperature by CanDataRepository.wheelsTemperature.collectAsStateWithLifecycle()
+    val effectiveTires = remember(tiresState, wheelsPressure, wheelsTemperature) {
+        mergeTireStateWithCanData(tiresState, wheelsPressure, wheelsTemperature)
     }
     val simShowAll = LauncherDevVehicleState.showAllIndicators
 
@@ -133,8 +134,9 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
     val wheelsPressure by CanDataRepository.wheelsPressure.collectAsStateWithLifecycle()
-    val effectiveTires = remember(tiresState, wheelsPressure) {
-        mergeTireStateWithCanData(tiresState, wheelsPressure)
+    val wheelsTemperature by CanDataRepository.wheelsTemperature.collectAsStateWithLifecycle()
+    val effectiveTires = remember(tiresState, wheelsPressure, wheelsTemperature) {
+        mergeTireStateWithCanData(tiresState, wheelsPressure, wheelsTemperature)
     }
     val simShowAll = LauncherDevVehicleState.showAllIndicators
 

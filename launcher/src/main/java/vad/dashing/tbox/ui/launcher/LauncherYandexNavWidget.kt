@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -109,6 +110,8 @@ internal fun LauncherNavSpeedOverlay(
     }
 
     val isDark = LauncherThemeState.darkTheme
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
 
     Box(
         modifier = modifier
@@ -116,10 +119,10 @@ internal fun LauncherNavSpeedOverlay(
                 detectDragGestures(
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        onDrag(dragAmount)
+                        currentOnDrag(dragAmount)
                     },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragEnd() },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
                 )
             }
             .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
@@ -168,16 +171,19 @@ internal fun LauncherNavTrafficLightOverlay(
         LauncherAppConfigStore.navTrafficLightScale(context)
     }
 
+    val currentTrafficOnDrag by rememberUpdatedState(onDrag)
+    val currentTrafficOnDragEnd by rememberUpdatedState(onDragEnd)
+
     Box(
         modifier = modifier
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        onDrag(dragAmount)
+                        currentTrafficOnDrag(dragAmount)
                     },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragEnd() },
+                    onDragEnd = { currentTrafficOnDragEnd() },
+                    onDragCancel = { currentTrafficOnDragEnd() },
                 )
             }
             .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") },

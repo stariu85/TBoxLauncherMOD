@@ -26,6 +26,7 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
@@ -39,7 +40,7 @@ import vad.dashing.tbox.ui.theme.TboxAppTheme
 /**
  * Three thin system overlay touch strips for edge swipe gestures (Left, Right, Bottom).
  *
- * Each strip is placed along its respective edge and occupies only [stripWidthDp] (15-35dp).
+ * Each strip is placed along its respective edge and occupies configured width (5-50dp).
  * The center of the screen remains 100% uncovered, allowing all touches on the launcher UI
  * and external apps to pass through without any interference.
  */
@@ -61,6 +62,8 @@ internal object LauncherEdgeGestureOverlay {
     private var topOwner: MyLifecycleOwner? = null
 
     private var windowManager: WindowManager? = null
+    private var revisionJob: Job? = null
+    private val overlayScope = CoroutineScope(Dispatchers.Main.immediate)
 
     fun isShowing(): Boolean = leftView != null || rightView != null || bottomView != null || topView != null
 
@@ -70,14 +73,13 @@ internal object LauncherEdgeGestureOverlay {
     }
 
     fun show(context: Context): Boolean {
-        if (isShowing()) {
-            updateStrips(context)
-            return true
-        }
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
-        if (!LauncherAppConfigStore.edgeGesturesEnabled(activity)) return false
+        if (!LauncherAppConfigStore.edgeGesturesEnabled(activity)) {
+            hide()
+            return false
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
             return false
@@ -86,8 +88,21 @@ internal object LauncherEdgeGestureOverlay {
         val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
 
+        startObservingRevisions(activity)
         updateStrips(activity)
         return isShowing()
+    }
+
+    private fun startObservingRevisions(activity: LauncherHomeActivity) {
+        if (revisionJob?.isActive == true) return
+        revisionJob = overlayScope.launch {
+            LauncherAppConfigStore.edgeGesturesRevisionFlow.collect {
+                val act = LauncherHomeActivityHolder.instance ?: activity
+                if (!act.isFinishing && !act.isDestroyed) {
+                    updateStrips(act)
+                }
+            }
+        }
     }
 
     fun updateStrips(context: Context) {
@@ -101,7 +116,8 @@ internal object LauncherEdgeGestureOverlay {
         }
 
         val density = activity.resources.displayMetrics.density
-        val stripWidthPx = (LauncherAppConfigStore.edgeGesturesWidthDp(activity) * density).toInt().coerceIn(20, 100)
+        val widthDp = LauncherAppConfigStore.edgeGesturesWidthDp(activity)
+        val stripWidthPx = (widthDp * density).toInt().coerceAtLeast(1)
 
         val leftAction = LauncherAppConfigStore.edgeGestureActionLeft(activity)
         val rightAction = LauncherAppConfigStore.edgeGestureActionRight(activity)
@@ -116,7 +132,7 @@ internal object LauncherEdgeGestureOverlay {
         }
 
         // 1. Left Strip
-        if (leftAction != EDGE_GESTURE_ACTION_NONE) {
+        if (isActionActive(leftAction)) {
             if (leftView == null) {
                 leftView = createStripView(activity, EDGE_GESTURE_SIDE_LEFT)
                 leftOwner = createOwner()
@@ -134,7 +150,7 @@ internal object LauncherEdgeGestureOverlay {
         }
 
         // 2. Right Strip
-        if (rightAction != EDGE_GESTURE_ACTION_NONE) {
+        if (isActionActive(rightAction)) {
             if (rightView == null) {
                 rightView = createStripView(activity, EDGE_GESTURE_SIDE_RIGHT)
                 rightOwner = createOwner()
@@ -152,7 +168,7 @@ internal object LauncherEdgeGestureOverlay {
         }
 
         // 3. Bottom Strip
-        if (bottomAction != EDGE_GESTURE_ACTION_NONE) {
+        if (isActionActive(bottomAction)) {
             if (bottomView == null) {
                 bottomView = createStripView(activity, EDGE_GESTURE_SIDE_BOTTOM)
                 bottomOwner = createOwner()
@@ -170,7 +186,7 @@ internal object LauncherEdgeGestureOverlay {
         }
 
         // 4. Top Strip
-        if (topAction != EDGE_GESTURE_ACTION_NONE) {
+        if (isActionActive(topAction)) {
             if (topView == null) {
                 topView = createStripView(activity, EDGE_GESTURE_SIDE_TOP)
                 topOwner = createOwner()
@@ -296,6 +312,8 @@ internal object LauncherEdgeGestureOverlay {
     }
 
     fun hide() {
+        revisionJob?.cancel()
+        revisionJob = null
         removeLeftStrip()
         removeRightStrip()
         removeBottomStrip()
@@ -304,6 +322,9 @@ internal object LauncherEdgeGestureOverlay {
         Log.w(TAG, "Edge gesture overlays hidden")
     }
 }
+
+internal fun isActionActive(actionKey: String?): Boolean =
+    !actionKey.isNullOrBlank() && actionKey != EDGE_GESTURE_ACTION_NONE
 
 private const val EDGE_GESTURE_SIDE_LEFT = 1
 private const val EDGE_GESTURE_SIDE_RIGHT = 2
@@ -315,7 +336,7 @@ private fun EdgeStripContent(context: Context, side: Int) {
     val revision by LauncherAppConfigStore.edgeGesturesRevisionFlow.collectAsStateWithLifecycle()
     val playSound = rememberPlaySystemClickSound()
     val density = LocalDensity.current
-    val thresholdPx = remember(density) { with(density) { 35.dp.toPx() } }
+    val thresholdPx = remember(density) { with(density) { 25.dp.toPx() } }
 
     val actionKey = remember(context, revision, side) {
         when (side) {
@@ -327,7 +348,7 @@ private fun EdgeStripContent(context: Context, side: Int) {
         }
     }
 
-    if (actionKey == EDGE_GESTURE_ACTION_NONE) return
+    if (!isActionActive(actionKey)) return
 
     fun trigger() {
         playSound()

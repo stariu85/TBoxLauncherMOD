@@ -103,7 +103,7 @@ internal fun LauncherSmartAccAndDistControl(
     val effectiveSpeedLimit = yandexLimit ?: cameraLimit
 
     val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
-    val cruiseState = LauncherCruisePresetController.currentAccCruiseState()
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
 
     // Auto-adapt ACC speed on speed limit change when Smart ACC is active
     var lastAppliedLimit by remember { mutableStateOf<Int?>(null) }
@@ -153,7 +153,7 @@ internal fun LauncherSmartAccAndDistControl(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .height(60.dp),
             )
 
             // --- BUTTON 2: SMART ACC (Only if enabled in settings) ---
@@ -171,17 +171,17 @@ internal fun LauncherSmartAccAndDistControl(
                         if (hasLimit) {
                             Box(
                                 modifier = Modifier
-                                    .size(26.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
                                     .background(Color.White)
-                                    .border(2.dp, Color(0xFFEF4444), CircleShape),
+                                    .border(2.5.dp, Color(0xFFEF4444), CircleShape),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 @Suppress("DEPRECATION")
                                 Text(
                                     text = effectiveSpeedLimit.toString(),
                                     color = Color.Black,
-                                    fontSize = 10.5.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     textAlign = TextAlign.Center,
                                     style = TextStyle(
@@ -196,17 +196,17 @@ internal fun LauncherSmartAccAndDistControl(
                         } else {
                             Box(
                                 modifier = Modifier
-                                    .size(26.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
                                     .background(Color(0x20FFFFFF))
-                                    .border(1.5.dp, Color.Gray, CircleShape),
+                                    .border(2.dp, Color.Gray, CircleShape),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 @Suppress("DEPRECATION")
                                 Text(
                                     text = "--",
                                     color = Color.Gray,
-                                    fontSize = 10.5.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center,
                                     style = TextStyle(
@@ -228,7 +228,7 @@ internal fun LauncherSmartAccAndDistControl(
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .height(60.dp),
                 )
             }
         }
@@ -259,11 +259,11 @@ private fun SmartPanelButton(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(30.dp))
             .background(bg)
             .then(
                 if (isActive) {
-                    Modifier.border(1.5.dp, border, RoundedCornerShape(24.dp))
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(30.dp))
                 } else {
                     Modifier
                 }
@@ -272,16 +272,16 @@ private fun SmartPanelButton(
         contentAlignment = Alignment.Center,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp),
+            modifier = Modifier.padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             icon()
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = label,
                 color = textTint,
-                fontSize = 12.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 softWrap = false,
@@ -304,7 +304,7 @@ private fun ThreeChevronsIcon(
     modifier: Modifier = Modifier,
 ) {
     val activeLevel = level.coerceIn(1, 3)
-    Canvas(modifier = modifier.size(20.dp, 22.dp)) {
+    Canvas(modifier = modifier.size(24.dp, 26.dp)) {
         val w = size.width
         val h = size.height
         val stepY = h / 3.2f
@@ -316,14 +316,14 @@ private fun ThreeChevronsIcon(
             val cy = h - (i - 0.45f) * stepY
 
             val path = Path().apply {
-                moveTo(1.5f, cy + 2.5f)
-                lineTo(w / 2f, cy - 2.5f)
-                lineTo(w - 1.5f, cy + 2.5f)
+                moveTo(2f, cy + 3f)
+                lineTo(w / 2f, cy - 3f)
+                lineTo(w - 2f, cy + 3f)
             }
             drawPath(
                 path = path,
                 color = c,
-                style = Stroke(width = 2.6f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                style = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
     }

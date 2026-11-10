@@ -269,7 +269,13 @@ class TboxLinkManager(
         val cmd = raw[12]
         when (module) {
             MDC_CODE -> if (cmd == 0x87.toByte()) parseMdcNetState(payload)
-            CRT_CODE -> if (cmd == 0x95.toByte()) parseCrtCanFrame(payload)
+            CRT_CODE -> {
+                if (cmd == 0x95.toByte()) {
+                    parseCrtCanFrame(payload)
+                } else if (cmd == 0x81.toByte() || cmd == 0x84.toByte() || cmd == 0x85.toByte() || payload.size >= 342) {
+                    parseCrtCycleSignal(payload)
+                }
+            }
             LOC_CODE -> if (cmd == 0x85.toByte()) parseLocValues(payload)
             else -> Unit
         }
@@ -381,6 +387,14 @@ class TboxLinkManager(
             CanFramesProcess.process(data, maxFrames = 20)
         } catch (e: Exception) {
             TboxRepository.addLog("ERROR", "CRT response", "Error get CAN Frame: $e")
+        }
+    }
+
+    private fun parseCrtCycleSignal(data: ByteArray) {
+        try {
+            CanFramesProcess.processCycleSignal(data)
+        } catch (e: Exception) {
+            TboxRepository.addLog("ERROR", "CRT cycle response", "Error get cycle signal: $e")
         }
     }
 
