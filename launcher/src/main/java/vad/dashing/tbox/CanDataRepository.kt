@@ -641,24 +641,14 @@ object CanDataRepository {
         }
     }
 
+    fun set6DctGearbox(is6Dct: Boolean) {
+        _is6DctGearbox.setIfChanged(is6Dct)
+    }
+
     fun updateMaxGearSeen(newValue: Int) {
         if (newValue > _maxGearSeen.value) {
             _maxGearSeen.value = newValue
-            reevaluateGearboxType()
         }
-    }
-
-    private fun reevaluateGearboxType() {
-        val maxG = _maxGearSeen.value
-        val config6Dct = is6DctBySystemConfig()
-
-        val is6Dct = when {
-            maxG >= 7 -> false
-            config6Dct -> true
-            maxG in 1..6 -> true
-            else -> false
-        }
-        _is6DctGearbox.setIfChanged(is6Dct)
     }
 
     fun updateFrontLeftSeatMode(newValue: UInt) {

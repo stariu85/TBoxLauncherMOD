@@ -107,7 +107,7 @@ fun resolveDriveModeDisplayLabel(
     gearBoxDriveMode: String?,
     is6DCT: Boolean = CanDataRepository.is6DctGearbox.value,
 ): String {
-    if (is6DCT || (driveModeWetRaw != null && driveModeRaw == null)) {
+    if (is6DCT) {
         if (driveModeWetRaw != null) {
             val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
                 it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET && it.propertyValue == driveModeWetRaw

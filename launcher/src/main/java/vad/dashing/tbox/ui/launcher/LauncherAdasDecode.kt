@@ -417,12 +417,13 @@ internal fun decodeRearThreatLevel(raw: Byte, hardOnly: Boolean = false): Launch
  *
  * Kept in the upper/mid band so the front target stays clear of the 3D car
  * (which sits over the near end of the road).
+ * Visual distance (gap) to follower car (0.51) is reduced by 2x.
  */
 internal fun distanceToRoadDepth(distanceM: Int): Float {
     val clamped = distanceM.coerceIn(1, 120).toFloat()
     val t = (clamped - 1f) / 119f // 0 = near (1 m), 1 = far (120 m)
-    // Near (1 m) → 0.44, far (120 m) → 0.12.
-    return (0.44f - t * 0.32f).coerceIn(0.12f, 0.44f)
+    // Near (1 m) → 0.475 (halved gap to ego car front at 0.51), far (120 m) → 0.315.
+    return (0.475f - t * 0.16f).coerceIn(0.315f, 0.475f)
 }
 
 /** Parking-sensor urgency buckets derived from the raw centimetre distance. */

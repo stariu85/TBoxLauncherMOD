@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -87,6 +88,7 @@ private const val KEY_PASSENGER_SEAT_BUTTON_OFFSET_X = "passenger_seat_button_of
 private const val KEY_PASSENGER_SEAT_BUTTON_OFFSET_Y = "passenger_seat_button_offset_y_dp"
 private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
 private const val KEY_SPEED_LIMIT_Y_RATIO = "speed_limit_y_ratio"
+private const val KEY_GEARBOX_TYPE_IS_6DCT = "gearbox_type_is_6dct"
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
@@ -525,6 +527,8 @@ internal object LauncherAppConfigStore {
     internal val adasPanelsRevisionFlow: StateFlow<Int> = adasPanelsRevision
     private val driveModeGlowRevision = MutableStateFlow(0)
     internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
+    private val gearboxTypeRevision = MutableStateFlow(0)
+    internal val gearboxTypeRevisionFlow: StateFlow<Int> = gearboxTypeRevision
     private val launcherSettingsOnDoubleTapRevision = MutableStateFlow(0)
     internal val launcherSettingsOnDoubleTapRevisionFlow: StateFlow<Int> = launcherSettingsOnDoubleTapRevision
     private val headlightBeamsRevision = MutableStateFlow(0)
@@ -1873,6 +1877,23 @@ internal object LauncherAppConfigStore {
     fun setDriveModeGlowVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_DRIVE_MODE_GLOW_VISIBLE, visible).apply()
         driveModeGlowRevision.value++
+    }
+
+    fun is6DctGearbox(context: Context): Boolean {
+        val prefs = prefs(context)
+        val result = if (prefs.contains(KEY_GEARBOX_TYPE_IS_6DCT)) {
+            prefs.getBoolean(KEY_GEARBOX_TYPE_IS_6DCT, false)
+        } else {
+            CanDataRepository.is6DctBySystemConfig()
+        }
+        CanDataRepository.set6DctGearbox(result)
+        return result
+    }
+
+    fun set6DctGearbox(context: Context, is6Dct: Boolean) {
+        prefs(context).edit().putBoolean(KEY_GEARBOX_TYPE_IS_6DCT, is6Dct).apply()
+        gearboxTypeRevision.value++
+        CanDataRepository.set6DctGearbox(is6Dct)
     }
 
     fun launcherSettingsOnDoubleTap(context: Context): Boolean =

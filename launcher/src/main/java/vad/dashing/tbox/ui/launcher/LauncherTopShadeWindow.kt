@@ -96,8 +96,8 @@ internal object LauncherTopShadeWindow {
         val bottomBarHeightDp = LauncherAppConfigStore.bottomBarHeightDp(activity)
         val bottomBarHeightPx = (bottomBarHeightDp * density).toInt()
 
-        // Height of the shade = Physical Screen Height minus Bottom Dock Height
-        val targetHeightPx = (screenHeightPx - bottomBarHeightPx).coerceAtLeast(300)
+        val calculatedBottomPx = screenHeightPx - bottomBarHeightPx
+        val targetHeightPx = (LauncherEmbeddedBoundsState.bottomBarTopPx.takeIf { it > 0 } ?: calculatedBottomPx).coerceAtLeast(300)
 
         val owner = MyLifecycleOwner().also {
             it.setCurrentState(Lifecycle.State.CREATED)
@@ -198,13 +198,14 @@ private fun TopShadeWrapperContent(
         dismissWithAnimation()
     }
 
-    // Dynamic backdrop darkening based on current drag position
+    // Dynamic backdrop effect based on current drag position and theme
     val openFraction = (1f - (-offsetYAnim.value / heightPx)).coerceIn(0f, 1f)
+    val backdropColor = if (LauncherThemeState.darkTheme) Color.Black else Color.White
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.4f * openFraction))
+            .background(backdropColor.copy(alpha = 0.6f * openFraction))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

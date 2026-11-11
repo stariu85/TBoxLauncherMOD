@@ -981,7 +981,7 @@ private fun DrawScope.drawAccDistanceSteps(
             endD,
         )
     } else {
-        floatArrayOf(0.42f, 0.28f, 0.16f)
+        floatArrayOf(0.46f, 0.38f, 0.30f)
     }
     depths.forEachIndexed { idx, t ->
         val stepNumber = idx + 1
@@ -1194,10 +1194,8 @@ private fun DrawScope.drawFrontObject(
         cy += (leadCarMinDistOffsetPercent / 100f) * distToEgoCenter
     }
 
-    // Enforce that at minimal actual distance, the gap between lead car bottom and ego car front hood
-    // is large enough for the distance pill label to fit cleanly between the two car models (with 2dp paddings).
-    val minRequiredGapForPill = 4.dp.toPx() + (2 * halfPillHeight)
-    val maxLeadCarBottomY = egoCarFrontY - minRequiredGapForPill
+    // Allow lead car bottom to approach near ego car front hood boundary (with 2dp margin).
+    val maxLeadCarBottomY = egoCarFrontY - 2.dp.toPx()
     cy = minOf(cy, maxLeadCarBottomY)
 
     val roadHalf = halfWidthAt(depth)
@@ -1250,7 +1248,7 @@ private fun DrawScope.drawFrontObject(
     val labelOffsetPx = (distanceLabelOffsetPercent / 100f) * labelSpanToEgo
     val rawLabelCy = targetLabelCy + labelOffsetPx
 
-    val maxAllowedCy = egoCarFrontY - halfPillHeight - 2.dp.toPx()
+    val maxAllowedCy = egoCarFrontY - (halfPillHeight + 2.dp.toPx()) / 2f
     val labelCx = cx
     val labelCy = if (distanceLabelOffsetPercent != 0f) rawLabelCy else minOf(targetLabelCy, maxAllowedCy)
 

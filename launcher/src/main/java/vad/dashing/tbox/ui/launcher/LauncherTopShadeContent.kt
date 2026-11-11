@@ -334,7 +334,7 @@ internal fun LauncherTopShadeContent(
     }
 
     // Theme adaptive colors
-    val shadeBgColor = if (isDark) Color(0xFF0F1115).copy(alpha = 0.96f) else Color(0xFFF3F4F6).copy(alpha = 0.98f)
+    val shadeBgColor = if (isDark) Color(0xFF0F1115).copy(alpha = 0.80f) else Color(0xFFF3F4F6).copy(alpha = 0.80f)
     val textPrimaryColor = if (isDark) Color.White else Color(0xFF111827)
     val textSecondaryColor = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF4B5563)
     val guideBorderColor = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f)

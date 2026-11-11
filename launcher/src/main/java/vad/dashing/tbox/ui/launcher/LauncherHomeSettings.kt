@@ -1784,6 +1784,12 @@ private fun NavTrafficLightScaleSlider() {
 @Composable
 fun CruiseControlSettingsContent() {
     val context = LocalContext.current
+    val gearboxTypeRevision by LauncherAppConfigStore.gearboxTypeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val is6Dct = remember(context, gearboxTypeRevision) {
+        LauncherAppConfigStore.is6DctGearbox(context)
+    }
+
     val driveModeGlowRevision by LauncherAppConfigStore.driveModeGlowRevisionFlow
         .collectAsStateWithLifecycle()
     val driveModeGlowVisible = remember(context, driveModeGlowRevision) {
@@ -1791,6 +1797,43 @@ fun CruiseControlSettingsContent() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            Text(
+                text = stringResource(R.string.launcher_gearbox_type_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.launcher_gearbox_type_desc),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LauncherSettingsOptionButton(
+                    text = "7DCT",
+                    selected = !is6Dct,
+                    onClick = {
+                        LauncherAppConfigStore.set6DctGearbox(context, false)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                LauncherSettingsOptionButton(
+                    text = "6DCT",
+                    selected = is6Dct,
+                    onClick = {
+                        LauncherAppConfigStore.set6DctGearbox(context, true)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
 
         val launcherSettingsOnDoubleTapRevision by LauncherAppConfigStore.launcherSettingsOnDoubleTapRevisionFlow
             .collectAsStateWithLifecycle()

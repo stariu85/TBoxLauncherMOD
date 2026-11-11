@@ -237,6 +237,8 @@
     <string name="launcher_assist_panel_visible_title">Cruise Control Panel</string>
     <string name="launcher_assist_panel_visible_desc">Show quick activation panel for cruise control (ACC &amp; NGP) in left zone</string>
     <string name="launcher_reset_adas_panels_layout_title">Reset ADAS panels layout</string>
+    <string name="launcher_gearbox_type_title">Transmission type</string>
+    <string name="launcher_gearbox_type_desc">Select drive mode display and switching algorithm (7DCT or 6DCT)</string>
     <string name="launcher_settings_on_double_tap_title">Launcher settings on double tap</string>
     <string name="launcher_settings_on_double_tap_desc">If enabled, quick settings panel opens on single tap on car model, and launcher settings on double tap</string>
     <string name="adas_quick_settings_add_separate">Add as separate panel</string>

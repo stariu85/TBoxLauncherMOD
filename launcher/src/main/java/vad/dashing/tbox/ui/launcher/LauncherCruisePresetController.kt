@@ -90,8 +90,8 @@ internal object LauncherCruisePresetController {
                 val previousState = _accCruiseState.value
                 _accCruiseState.value = newState
 
-                if ((isBrakePressed || adas.accStandby) && _isSmartSpeedLimitActive.value) {
-                    DiagFileLog.i(TAG, "Brake pressed or ACC Standby -> turning off smart speed limit mode")
+                if (isBrakePressed && _isSmartSpeedLimitActive.value) {
+                    DiagFileLog.i(TAG, "Brake pressed -> turning off smart speed limit mode")
                     _isSmartSpeedLimitActive.value = false
                 }
 
