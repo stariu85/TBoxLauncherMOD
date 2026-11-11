@@ -11,8 +11,10 @@ import android.os.Looper
 import android.os.Process
 import android.util.Log
 import vad.dashing.tbox.ui.launcher.LauncherActiveAppTracker
+import vad.dashing.tbox.ui.launcher.LauncherAppLaunchMode
 import vad.dashing.tbox.ui.launcher.launchLauncherAppEmbedded
 import vad.dashing.tbox.ui.launcher.launchLauncherAppFullscreen
+import vad.dashing.tbox.ui.launcher.launchLauncherAppFullWidth
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -91,6 +93,12 @@ class DclLauncherApiProvider : ContentProvider() {
         val activityClass = extras?.getString("activityClass")
         val requestId = extras?.getString("requestId")
 
+        val isFullscreen = mode.equals("fullscreen", ignoreCase = true)
+        val isFullWidth = mode.equals("full_width", ignoreCase = true) ||
+            mode.equals("fullwidth", ignoreCase = true) ||
+            mode.equals("full_width_no_adas", ignoreCase = true) ||
+            mode.equals("no_adas", ignoreCase = true)
+
         // Idempotency check
         if (!requestId.isNullOrBlank()) {
             cleanExpiredRequestIds()
@@ -115,16 +123,21 @@ class DclLauncherApiProvider : ContentProvider() {
 
         Handler(Looper.getMainLooper()).post {
             try {
-                val isFullscreen = mode == "fullscreen"
-                if (isFullscreen) {
-                    launchLauncherAppFullscreen(appCtx, pkg, activityClass)
-                } else {
-                    launchLauncherAppEmbedded(appCtx, pkg, activityClass)
+                val launchMode = when {
+                    isFullscreen -> LauncherAppLaunchMode.FULLSCREEN
+                    isFullWidth -> LauncherAppLaunchMode.FULL_WIDTH
+                    else -> LauncherAppLaunchMode.EMBEDDED
+                }
+                when (launchMode) {
+                    LauncherAppLaunchMode.FULLSCREEN -> launchLauncherAppFullscreen(appCtx, pkg, activityClass)
+                    LauncherAppLaunchMode.FULL_WIDTH -> launchLauncherAppFullWidth(appCtx, pkg, activityClass)
+                    LauncherAppLaunchMode.EMBEDDED -> launchLauncherAppEmbedded(appCtx, pkg, activityClass)
                 }
                 LauncherActiveAppTracker.onAppLaunched(
                     packageName = pkg,
                     topActivityClass = activityClass,
                     isFullscreen = isFullscreen,
+                    launchMode = launchMode,
                 )
                 DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
             } catch (e: Exception) {
@@ -150,11 +163,12 @@ class DclLauncherApiProvider : ContentProvider() {
             putInt("apiVersion", 1)
             putBoolean("launchFullscreen", true)
             putBoolean("launchAppArea", true)
+            putBoolean("launchFullWidth", true)
             putBoolean("uiStateQuery", true)
             putBoolean("uiStateEvents", true)
             putBoolean("adasPanel", true)
             putBoolean("splitSupported", true)
-            putString("screenModes", "home,single,fullscreen,split")
+            putString("screenModes", "home,single,full_width,fullscreen,split")
         }
     }
 

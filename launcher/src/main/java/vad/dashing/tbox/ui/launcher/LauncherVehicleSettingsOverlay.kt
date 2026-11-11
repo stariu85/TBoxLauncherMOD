@@ -1091,16 +1091,10 @@ internal fun LauncherVehicleSettingsContent(
 private fun ExperimentalAdasSliders() {
     val context = LocalContext.current
 
-    val labelOffsetRev by LauncherAppConfigStore.adasDistanceLabelOffsetPercentRevisionFlow
+    val carGapRev by LauncherAppConfigStore.adasLeadCarMinDistGapDpRevisionFlow
         .collectAsStateWithLifecycle()
-    var labelOffsetPercent by remember(context, labelOffsetRev) {
-        mutableFloatStateOf(LauncherAppConfigStore.adasDistanceLabelOffsetPercent(context))
-    }
-
-    val carOffsetRev by LauncherAppConfigStore.adasLeadCarMinDistOffsetPercentRevisionFlow
-        .collectAsStateWithLifecycle()
-    var carOffsetPercent by remember(context, carOffsetRev) {
-        mutableFloatStateOf(LauncherAppConfigStore.adasLeadCarMinDistOffsetPercent(context))
+    var carGapDp by remember(context, carGapRev) {
+        mutableFloatStateOf(LauncherAppConfigStore.adasLeadCarMinDistGapDp(context))
     }
 
     Column(modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp)) {
@@ -1110,61 +1104,26 @@ private fun ExperimentalAdasSliders() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Расположение плашки расстояния",
+                text = "Расстояние между модельками при АСС",
                 color = LauncherColors.TextPrimary,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "${if (labelOffsetPercent > 0) "+" else ""}${labelOffsetPercent.roundToInt()}%",
+                text = "${carGapDp.roundToInt()} dp",
                 color = LauncherColors.AccentCyan,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
         }
         Slider(
-            value = labelOffsetPercent,
+            value = carGapDp,
             onValueChange = { newValue ->
                 val rounded = newValue.roundToInt().toFloat()
-                labelOffsetPercent = rounded
-                LauncherAppConfigStore.setAdasDistanceLabelOffsetPercent(context, rounded)
+                carGapDp = rounded
+                LauncherAppConfigStore.setAdasLeadCarMinDistGapDp(context, rounded)
             },
-            valueRange = -100f..100f,
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = LauncherColors.AccentCyan,
-                activeTrackColor = LauncherColors.AccentCyan,
-            ),
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Положение спрайта машины (1 м)",
-                color = LauncherColors.TextPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "${if (carOffsetPercent > 0) "+" else ""}${carOffsetPercent.roundToInt()}%",
-                color = LauncherColors.AccentCyan,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        Slider(
-            value = carOffsetPercent,
-            onValueChange = { newValue ->
-                val rounded = newValue.roundToInt().toFloat()
-                carOffsetPercent = rounded
-                LauncherAppConfigStore.setAdasLeadCarMinDistOffsetPercent(context, rounded)
-            },
-            valueRange = -100f..100f,
+            valueRange = 6f..80f,
             modifier = Modifier.fillMaxWidth(),
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,

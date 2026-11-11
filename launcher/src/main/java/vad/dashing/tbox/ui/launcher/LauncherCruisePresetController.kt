@@ -43,16 +43,24 @@ internal object LauncherCruisePresetController {
     private const val PULSE_HOLD_MS = 80L
     private const val POST_CONVERGE_VERIFY_MS = 1000L
     private const val MAX_PULSES = 50
+    private const val SMART_ACC_DEACTIVATE_DELAY_MS = 2000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
     private var adjustJob: Job? = null
+    private var smartAccExitJob: Job? = null
 
     private val _adjustingTargetSpeed = MutableStateFlow<Int?>(null)
     val adjustingTargetSpeed: StateFlow<Int?> = _adjustingTargetSpeed.asStateFlow()
 
     private val _isSmartSpeedLimitActive = MutableStateFlow(false)
     val isSmartSpeedLimitActive: StateFlow<Boolean> = _isSmartSpeedLimitActive.asStateFlow()
+
+    private fun setSmartSpeedLimitActive(active: Boolean) {
+        smartAccExitJob?.cancel()
+        smartAccExitJob = null
+        _isSmartSpeedLimitActive.value = active
+    }
 
     private var rememberedSetpointKmh: Int? = null
 
@@ -92,14 +100,28 @@ internal object LauncherCruisePresetController {
 
                 if (isBrakePressed && _isSmartSpeedLimitActive.value) {
                     DiagFileLog.i(TAG, "Brake pressed -> turning off smart speed limit mode")
-                    _isSmartSpeedLimitActive.value = false
+                    setSmartSpeedLimitActive(false)
                 }
 
-                if ((previousState == AccCruiseState.Active || previousState == AccCruiseState.Override) &&
-                    (newState != AccCruiseState.Active && newState != AccCruiseState.Override)
+                if (newState == AccCruiseState.Active || newState == AccCruiseState.Override) {
+                    if (smartAccExitJob?.isActive == true) {
+                        DiagFileLog.i(TAG, "ACC returned to $newState before ${SMART_ACC_DEACTIVATE_DELAY_MS}ms timeout -> cancelling smart speed limit deactivation")
+                        smartAccExitJob?.cancel()
+                        smartAccExitJob = null
+                    }
+                } else if ((previousState == AccCruiseState.Active || previousState == AccCruiseState.Override) &&
+                    _isSmartSpeedLimitActive.value
                 ) {
-                    DiagFileLog.i(TAG, "ACC transitioned from $previousState to $newState -> turning off smart speed limit mode")
-                    _isSmartSpeedLimitActive.value = false
+                    DiagFileLog.i(TAG, "ACC transitioned from $previousState to $newState -> scheduling smart speed limit deactivation in ${SMART_ACC_DEACTIVATE_DELAY_MS}ms")
+                    smartAccExitJob?.cancel()
+                    smartAccExitJob = scope.launch {
+                        delay(SMART_ACC_DEACTIVATE_DELAY_MS)
+                        val currentState = _accCruiseState.value
+                        if (currentState != AccCruiseState.Active && currentState != AccCruiseState.Override) {
+                            DiagFileLog.i(TAG, "ACC remained in $currentState for ${SMART_ACC_DEACTIVATE_DELAY_MS}ms -> turning off smart speed limit mode")
+                            _isSmartSpeedLimitActive.value = false
+                        }
+                    }
                 }
             }
         }
@@ -155,7 +177,7 @@ internal object LauncherCruisePresetController {
         decreaseIntervalMs: Long = LauncherAppConfigStore.cruiseDecreaseIntervalMs(context),
         isFromSpeedLimit: Boolean = false,
     ) {
-        _isSmartSpeedLimitActive.value = isFromSpeedLimit
+        setSmartSpeedLimitActive(isFromSpeedLimit)
         val target = targetKmh.coerceIn(30, 160)
         val ngpOn = UniversalCanRepository.tjaIcaState.value is MbCanBinaryState.On
         val ngpConfig = LauncherAppConfigStore.ngpEnabled(context)
@@ -282,7 +304,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchStatusSingleTap(context: Context) {
-        _isSmartSpeedLimitActive.value = false
+        setSmartSpeedLimitActive(false)
         if (LauncherDevVehicleState.simulateEnabled) {
             val active = LauncherDevVehicleState.adasCruiseActive
             if (active) {
@@ -326,7 +348,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchNgpWithSetMinus(context: Context) {
-        _isSmartSpeedLimitActive.value = false
+        setSmartSpeedLimitActive(false)
         if (LauncherDevVehicleState.simulateEnabled) {
             LauncherDevVehicleState.toggleAdasLanes()
             LauncherDevVehicleState.adasCruiseActive = LauncherDevVehicleState.adasLanesActive
@@ -363,7 +385,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchStatusSwipeUp(context: Context) {
-        _isSmartSpeedLimitActive.value = false
+        setSmartSpeedLimitActive(false)
         if (LauncherDevVehicleState.simulateEnabled) {
             val current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
             val next = (current + 1).coerceIn(30, 160)
@@ -395,7 +417,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchStatusSwipeDown(context: Context) {
-        _isSmartSpeedLimitActive.value = false
+        setSmartSpeedLimitActive(false)
         if (LauncherDevVehicleState.simulateEnabled) {
             val current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
             val next = (current - 1).coerceIn(30, 160)
@@ -429,7 +451,7 @@ internal object LauncherCruisePresetController {
     }
 
     fun launchFullOff(context: Context) {
-        _isSmartSpeedLimitActive.value = false
+        setSmartSpeedLimitActive(false)
         adjustJob?.cancel()
         _adjustingTargetSpeed.value = null
         LauncherAdasRepository.clearTimeGapFlash()
@@ -449,12 +471,12 @@ internal object LauncherCruisePresetController {
     }
 
     fun applyPreset(context: Context, targetKmh: Int) {
-        _isSmartSpeedLimitActive.value = false
+        setSmartSpeedLimitActive(false)
         launchEngageToTarget(context, targetKmh, isFromSpeedLimit = false)
     }
 
     fun applySpeedLimitPreset(context: Context, targetKmh: Int) {
-        _isSmartSpeedLimitActive.value = true
+        setSmartSpeedLimitActive(true)
         launchEngageToTarget(context, targetKmh, isFromSpeedLimit = true)
     }
 
@@ -492,14 +514,16 @@ internal object LauncherCruisePresetController {
         val validLevel = level.coerceIn(0, 3)
         val storedLevel = if (validLevel in 0..2) validLevel + 1 else validLevel
         LauncherAppConfigStore.setTimeGapLevel(context, storedLevel)
-        LauncherDevVehicleState.adasTimeGapLevel = validLevel
-        LauncherDevVehicleState.triggerTimeGapFlash(3000L)
         LauncherAdasRepository.triggerTimeGapFlash(3000L)
         if (LauncherDevVehicleState.simulateEnabled) {
+            LauncherDevVehicleState.adasTimeGapLevel = validLevel
+            LauncherDevVehicleState.triggerTimeGapFlash(3000L)
             return
         }
         scope.launch {
-            pulse(MbCanKnownVehiclePropertyId.MFS_TIME_GAP)
+            mutex.withLock {
+                pulse(MbCanKnownVehiclePropertyId.MFS_TIME_GAP)
+            }
         }
     }
 

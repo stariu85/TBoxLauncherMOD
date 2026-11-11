@@ -23,7 +23,7 @@
 | Поле в Bundle | Тип | Описание |
 | :--- | :--- | :--- |
 | `status` | String | `"ok"` при успешном вызове. |
-| `screenMode` | String | `"home"` \| `"single"` \| `"fullscreen"` \| `"split"` |
+| `screenMode` | String | `"home"` \| `"single"` \| `"full_width"` \| `"fullscreen"` \| `"split"` |
 | `foregroundPackage` | String | Имя пакета текущего активного стороннего приложения (или `""`). |
 | `adasPanelVisible` | Boolean | Реальная видимость панели ADAS на экране (`false` при fullscreen или открытых настройках). |
 | `topBarVisible` | Boolean | Реальная видимость верхнего бара на экране (`false` при fullscreen или открытых настройках). |
@@ -65,6 +65,11 @@
 - `screenMode` = `"fullscreen"`, `foregroundPackage` = `"pkg.name"`, `immersive` = `true`
 - `adasPanelVisible` = `false`, `topBarVisible` = `false`, `bottomBarVisible` = `false`
 - `adasPanelBounds` = `"0,0,0,0"`, `appAreaBounds` = `"0,0,1920,1080"`
+
+### 5. Режим на всю ширину между двумя барами без ADAS (`full_width`)
+- `screenMode` = `"full_width"`, `foregroundPackage` = `"pkg.name"`, `immersive` = `false`
+- `adasPanelVisible` = `false`, `topBarVisible` = `true`, `bottomBarVisible` = `true`
+- `adasPanelBounds` = `"0,0,0,0"`, `appAreaBounds` = `"0,51,1920,998"` (на всю ширину экрана между верхним и нижним барами)
 
 ---
 
@@ -190,7 +195,7 @@ object DclLauncherApi {
 fun launchApp(
     context: Context,
     packageName: String,
-    mode: String = "app_area", // "app_area" или "fullscreen"
+    mode: String = "app_area", // "app_area", "full_width" (без ADAS) или "fullscreen"
     activityClass: String? = null
 ): Boolean {
     val extras = Bundle().apply {

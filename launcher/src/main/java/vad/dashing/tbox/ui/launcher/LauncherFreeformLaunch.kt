@@ -306,6 +306,12 @@ internal fun tryLaunchIntentInBounds(
     val isFullscreenLaunch = (targetBounds.left <= 0 && targetBounds.top <= 0 && targetBounds.width() >= 1800) ||
         LauncherAppConfigStore.appLaunchMode(context, packageName) == LauncherAppLaunchMode.FULLSCREEN
 
+    val resolvedLaunchMode = when {
+        isFullscreenLaunch -> LauncherAppLaunchMode.FULLSCREEN
+        targetBounds.left <= 0 && targetBounds.width() >= 1800 -> LauncherAppLaunchMode.FULL_WIDTH
+        else -> LauncherAppConfigStore.appLaunchMode(context, packageName)
+    }
+
     val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val existingTaskId = findTaskIdForPackage(am, packageName)
     if (existingTaskId != null) {
@@ -316,6 +322,7 @@ internal fun tryLaunchIntentInBounds(
             taskId = existingTaskId,
             topActivityClass = launchIntent.component?.className,
             isFullscreen = isFullscreenLaunch,
+            launchMode = resolvedLaunchMode,
         )
         FreeformLaunchRegistry.record(packageName, targetBounds)
         Log.w("LauncherAppLaunch", "Reused existing task $existingTaskId for pkg=$packageName bounds=$targetBounds")
@@ -342,6 +349,7 @@ internal fun tryLaunchIntentInBounds(
             packageName = packageName,
             topActivityClass = launchIntent.component?.className,
             isFullscreen = isFullscreenLaunch,
+            launchMode = resolvedLaunchMode,
         )
         Log.w("LauncherAppLaunch", "freeform startActivity OK pkg=$packageName bounds=$targetBounds")
         FreeformLaunchRegistry.record(packageName, targetBounds)

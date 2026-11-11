@@ -253,17 +253,9 @@ fun LauncherVirtualRoad(
     val distanceTextSizeSp = remember(context, textSizeRevision) {
         LauncherAppConfigStore.adasDistanceTextSize(context)
     }
-    val offsetRevision by LauncherAppConfigStore.adasDistanceLabelOffsetRevisionFlow.collectAsStateWithLifecycle()
-    val distanceLabelOffsetRatio = remember(context, offsetRevision) {
-        LauncherAppConfigStore.adasDistanceLabelOffset(context)
-    }
-    val labelOffsetPercentRev by LauncherAppConfigStore.adasDistanceLabelOffsetPercentRevisionFlow.collectAsStateWithLifecycle()
-    val distanceLabelOffsetPercent = remember(context, labelOffsetPercentRev) {
-        LauncherAppConfigStore.adasDistanceLabelOffsetPercent(context)
-    }
-    val carOffsetPercentRev by LauncherAppConfigStore.adasLeadCarMinDistOffsetPercentRevisionFlow.collectAsStateWithLifecycle()
-    val leadCarMinDistOffsetPercent = remember(context, carOffsetPercentRev) {
-        LauncherAppConfigStore.adasLeadCarMinDistOffsetPercent(context)
+    val carGapRev by LauncherAppConfigStore.adasLeadCarMinDistGapDpRevisionFlow.collectAsStateWithLifecycle()
+    val leadCarMinDistGapDp = remember(context, carGapRev) {
+        LauncherAppConfigStore.adasLeadCarMinDistGapDp(context)
     }
 
     val leadSprites = rememberLeadObjectSprites()
@@ -309,9 +301,7 @@ fun LauncherVirtualRoad(
             leadSprites = leadSprites,
             leadVisual = leadVisual,
             distanceTextSizeSp = distanceTextSizeSp,
-            distanceLabelOffsetRatio = distanceLabelOffsetRatio,
-            distanceLabelOffsetPercent = distanceLabelOffsetPercent,
-            leadCarMinDistOffsetPercent = leadCarMinDistOffsetPercent,
+            leadCarMinDistGapDp = leadCarMinDistGapDp,
             density = density,
             storedTimeGap = storedTimeGap,
             laneProgress = laneAnimProgress,
@@ -550,10 +540,8 @@ private fun DrawScope.drawVirtualRoad(
     adas: LauncherAdasState,
     leadSprites: LeadObjectSprites,
     leadVisual: LeadObjectVisual?,
-    distanceTextSizeSp: Int = 14,
-    distanceLabelOffsetRatio: Float = 0.50f,
-    distanceLabelOffsetPercent: Float = 0f,
-    leadCarMinDistOffsetPercent: Float = 0f,
+    distanceTextSizeSp: Int = ADAS_DISTANCE_TEXT_SIZE_DEFAULT,
+    leadCarMinDistGapDp: Float = DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP,
     density: Float = 1.5f,
     storedTimeGap: Int = 2,
     laneProgress: Float = 1f,
@@ -681,8 +669,21 @@ private fun DrawScope.drawVirtualRoad(
     }
     val timeGapLevel = (mappedTimeGap?.takeIf { it in 1..3 } ?: storedTimeGap).coerceIn(1, 3)
 
+    fun leadCarDepth(distanceM: Int): Float {
+        val egoCarBumperY = yAt(0.51f) + 20.dp.toPx()
+        val minGapPx = (leadCarMinDistGapDp * density).coerceAtLeast(4f * density)
+        val nearY = egoCarBumperY - minGapPx
+        val nearDepth = ((nearY - horizonY) / (h - horizonY)).coerceIn(0.33f, 0.58f)
+        val farDepth = 0.315f
+        val clampedDist = distanceM.coerceIn(1, 120)
+        val t = (clampedDist - 1f) / 119f // 0 at 1m, 1 at 120m
+        val normT = t.pow(0.75f)
+        return (nearDepth - (nearDepth - farDepth) * normT).coerceIn(farDepth, nearDepth)
+    }
+
     val frontDistance = leadVisual?.distanceM ?: adas.frontObject.displayDistanceM
     if (leadVisual != null) {
+        val targetLeadDepth = leadCarDepth(leadVisual.distanceM)
         if (beamProgress > 0.005f) {
             drawAccBeam(
                 objectDistanceM = frontDistance,
@@ -691,12 +692,13 @@ private fun DrawScope.drawVirtualRoad(
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 alert = adas.fcwActive || adas.distanceWarning,
+                leadTargetDepth = targetLeadDepth,
             )
         }
         if (showDistanceSteps) {
             drawAccDistanceSteps(
                 activeLevel = timeGapLevel,
-                targetDepth = distanceToRoadDepth(leadVisual.distanceM),
+                targetDepth = targetLeadDepth,
                 centerXAt = ::centerXAt,
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
@@ -707,15 +709,13 @@ private fun DrawScope.drawVirtualRoad(
             adas = adas,
             type = leadVisual.type,
             distanceM = leadVisual.distanceM,
+            depth = targetLeadDepth,
             objectAlpha = leadVisual.alpha,
             leadSprites = leadSprites,
             centerXAt = ::centerXAt,
             halfWidthAt = ::halfWidthAt,
             yAt = ::yAt,
             distanceTextSizeSp = distanceTextSizeSp,
-            distanceLabelOffsetRatio = distanceLabelOffsetRatio,
-            distanceLabelOffsetPercent = distanceLabelOffsetPercent,
-            leadCarMinDistOffsetPercent = leadCarMinDistOffsetPercent,
         )
     } else {
         if (beamProgress > 0.005f) {
@@ -925,13 +925,14 @@ private fun DrawScope.drawAccBeam(
     yAt: (Float) -> Float,
     alert: Boolean,
     toHorizon: Boolean = false,
+    leadTargetDepth: Float? = null,
 ) {
     if (beamProgress < 0.005f) return
 
     val fullTargetDepth = if (toHorizon || objectDistanceM == null) {
         0.05f
     } else {
-        distanceToRoadDepth(objectDistanceM)
+        leadTargetDepth ?: distanceToRoadDepth(objectDistanceM)
     }
     // Start in front of the 3D car's front bumper on the road ahead.
     val egoDepth = 0.72f
@@ -1144,17 +1145,14 @@ private fun DrawScope.drawFrontObject(
     adas: LauncherAdasState,
     type: LauncherAdasFrontObjectType,
     distanceM: Int,
+    depth: Float,
     objectAlpha: Float,
     leadSprites: LeadObjectSprites,
     centerXAt: (Float) -> Float,
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
-    distanceTextSizeSp: Int = 14,
-    distanceLabelOffsetRatio: Float = 0.50f,
-    distanceLabelOffsetPercent: Float = 0f,
-    leadCarMinDistOffsetPercent: Float = 0f,
+    distanceTextSizeSp: Int = ADAS_DISTANCE_TEXT_SIZE_DEFAULT,
 ) {
-    val depth = distanceToRoadDepth(distanceM)
     val fogFade = distanceFade(depth)
     val effectiveAlpha = objectAlpha * fogFade.coerceIn(0.15f, 1f)
     if (effectiveAlpha < 0.01f) return
@@ -1175,28 +1173,11 @@ private fun DrawScope.drawFrontObject(
     }
 
     val textHeight = abs(paint.ascent()) + paint.descent()
-    val paddingY = 4f
-    val halfPillHeight = textHeight / 2f + paddingY
 
     val cx = centerXAt(depth)
-    var cy = yAt(depth)
+    val cy = yAt(depth)
 
-    val egoCarCenterY = yAt(0.65f)
-    val egoCarFrontY = yAt(0.51f) // Exact top windshield boundary of 3D car model on screen
-
-    if (adas.accActive) {
-        cy += 10.dp.toPx()
-    }
-
-    val isCruiseActive = adas.accActive || adas.accStandby || ((adas.accSetSpeedKmh ?: 0) > 0)
-    if (isCruiseActive && leadCarMinDistOffsetPercent != 0f) {
-        val distToEgoCenter = egoCarCenterY - cy
-        cy += (leadCarMinDistOffsetPercent / 100f) * distToEgoCenter
-    }
-
-    // Allow lead car bottom to approach near ego car front hood boundary (with 2dp margin).
-    val maxLeadCarBottomY = egoCarFrontY - 2.dp.toPx()
-    cy = minOf(cy, maxLeadCarBottomY)
+    val egoCarBumperY = yAt(0.51f) + 20.dp.toPx() // Front bumper of 3D ego car model on screen
 
     val roadHalf = halfWidthAt(depth)
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
@@ -1242,15 +1223,8 @@ private fun DrawScope.drawFrontObject(
     }
 
     val leadCarBottomY = cy
-    val targetLabelCy = leadCarBottomY + 2.dp.toPx() + halfPillHeight
-
-    val labelSpanToEgo = (egoCarCenterY - targetLabelCy).coerceAtLeast(20.dp.toPx())
-    val labelOffsetPx = (distanceLabelOffsetPercent / 100f) * labelSpanToEgo
-    val rawLabelCy = targetLabelCy + labelOffsetPx
-
-    val maxAllowedCy = egoCarFrontY - (halfPillHeight + 2.dp.toPx()) / 2f
+    val labelCy = (leadCarBottomY + egoCarBumperY) / 2f
     val labelCx = cx
-    val labelCy = if (distanceLabelOffsetPercent != 0f) rawLabelCy else minOf(targetLabelCy, maxAllowedCy)
 
     drawContext.canvas.nativeCanvas.drawText(
         text,

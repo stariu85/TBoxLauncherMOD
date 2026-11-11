@@ -967,6 +967,15 @@ private fun RenderTopBarItemContent(
                 LauncherHeaderStatusIcons(
                     tboxViewModel = tboxViewModel,
                     showVehicleAlerts = false,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                launchLauncherApp(context, "com.mengbo.systemsettings")
+                            },
+                        ),
                 )
             }
         }
@@ -974,6 +983,15 @@ private fun RenderTopBarItemContent(
             LauncherTopBarModemCellularWidget(
                 indicatorIconSizeDp = indicatorIconSizeDp,
                 indicatorFontSizeSp = indicatorFontSizeSp,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            launchLauncherApp(context, "com.mengbo.systemsettings")
+                        },
+                    ),
             )
         }
         itemId == "temp" -> {

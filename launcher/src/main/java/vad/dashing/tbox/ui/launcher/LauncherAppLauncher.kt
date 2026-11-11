@@ -583,6 +583,12 @@ private fun startResolved(
         }
     }
 
+    val resolvedMode = when {
+        forceFullscreen -> LauncherAppLaunchMode.FULLSCREEN
+        preferEmbedded -> LauncherAppLaunchMode.EMBEDDED
+        else -> LauncherAppLaunchMode.FULL_WIDTH
+    }
+
     if (component != null && tryStartMainActivity(context, packageName, component, activity)) {
         LastAppTracker.recordLaunch(context, packageName)
         LauncherActiveAppTracker.recordAppLaunchedAndResolveTaskId(
@@ -590,6 +596,7 @@ private fun startResolved(
             packageName = packageName,
             topActivityClass = component.className,
             isFullscreen = forceFullscreen,
+            launchMode = resolvedMode,
         )
         return
     }
@@ -605,6 +612,7 @@ private fun startResolved(
                 packageName = packageName,
                 topActivityClass = component?.className,
                 isFullscreen = forceFullscreen,
+                launchMode = resolvedMode,
             )
             Log.w(TAG, "startActivity OK pkg=$packageName")
             LauncherNavLogger.logAppLaunch(

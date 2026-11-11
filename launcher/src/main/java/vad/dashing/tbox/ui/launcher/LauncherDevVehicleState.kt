@@ -83,7 +83,6 @@ object LauncherDevVehicleState {
     }
 
     fun triggerTimeGapFlash(ms: Long = 3000L) {
-        simulateEnabled = true
         adasTimeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
     }
 

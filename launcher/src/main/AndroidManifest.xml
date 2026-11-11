@@ -124,6 +124,7 @@
         <package android:name="ru.yandex.yandexnavi" />
         <package android:name="com.mengbo.acsettings" />
         <package android:name="com.mengbo.mbcanwidget" />
+        <package android:name="com.mengbo.systemsettings" />
         <package android:name="com.android.wallpaper.livepicker" />
         <package android:name="com.android.wallpaper" />
         <package android:name="com.android.wallpapercropper" />

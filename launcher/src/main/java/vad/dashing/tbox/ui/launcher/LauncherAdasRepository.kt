@@ -545,6 +545,8 @@ object LauncherAdasRepository {
         val lastValid = lastGapCode in 0..2
         if (gapValid && lastValid && newGapCode != lastGapCode) {
             timeGapFlashUntilMs = now + TIME_GAP_FLASH_MS
+            mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
+            mainHandler.postDelayed(clearTimeGapFlashRunnable, TIME_GAP_FLASH_MS + 50L)
         }
         if (gapValid) {
             frmTimeGapLastSeenValid = newGap
@@ -569,6 +571,11 @@ object LauncherAdasRepository {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val publishLock = Any()
     @Volatile private var publishScheduled = false
+
+    private val clearTimeGapFlashRunnable = Runnable {
+        timeGapFlashUntilMs = 0L
+        publish()
+    }
 
     private val publishRunnable = Runnable {
         synchronized(publishLock) {
@@ -630,10 +637,13 @@ object LauncherAdasRepository {
 
     fun triggerTimeGapFlash(ms: Long = 3000L) {
         timeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
+        mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
+        mainHandler.postDelayed(clearTimeGapFlashRunnable, ms + 50L)
         publish()
     }
 
     fun clearTimeGapFlash() {
+        mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
         timeGapFlashUntilMs = 0L
         publish()
     }
@@ -651,6 +661,7 @@ object LauncherAdasRepository {
         frmDistanceWarning = 0
         frmTimeGap = 0
         frmTimeGapLastSeenValid = 0
+        mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
         timeGapFlashUntilMs = 0L
         lkaLeft = 0
         lkaRight = 0

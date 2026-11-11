@@ -85,9 +85,10 @@ object LauncherEmbeddedBoundsState {
 
     /** Full screen width, height bounded between top and bottom panels. */
     fun fullWidthBounds(): Rect? {
-        val row = contentRowBounds ?: return null
+        val right = contentRowBounds?.let { it.right + BLEED_RIGHT_PX }
+            ?: screenBounds?.width()
+            ?: 1920
         val left = 0
-        val right = row.right + BLEED_RIGHT_PX
         val top = topHeaderBottomPx.takeIf { it > 0 } ?: FREEFORM_TOP_PX
         val bottom = bottomBarTopPx.takeIf { it > 0 } ?: FREEFORM_BOTTOM_PX
         if (bottom <= top || right <= left) return null

@@ -63,8 +63,18 @@ object DclUiStateNotifier {
         val activePkg = LauncherActiveAppTracker.activeAppPackage().orEmpty()
         val hasActiveApp = activePkg.isNotBlank()
 
-        val isFullscreenApp = LauncherActiveAppTracker.isFullscreen() ||
-            (appCtx != null && hasActiveApp && LauncherAppConfigStore.appLaunchMode(appCtx, activePkg) == LauncherAppLaunchMode.FULLSCREEN)
+        val trackerLaunchMode = LauncherActiveAppTracker.launchMode()
+        val isFullscreenApp = hasActiveApp && (
+            trackerLaunchMode == LauncherAppLaunchMode.FULLSCREEN ||
+            (trackerLaunchMode == null && LauncherActiveAppTracker.isFullscreen()) ||
+            (trackerLaunchMode == null && appCtx != null && LauncherAppConfigStore.appLaunchMode(appCtx, activePkg) == LauncherAppLaunchMode.FULLSCREEN)
+        )
+
+        val isFullWidthApp = !isFullscreenApp && hasActiveApp && (
+            trackerLaunchMode == LauncherAppLaunchMode.FULL_WIDTH ||
+            (trackerLaunchMode == null && LauncherActiveAppTracker.isFullWidth()) ||
+            (trackerLaunchMode == null && appCtx != null && LauncherAppConfigStore.appLaunchMode(appCtx, activePkg) == LauncherAppLaunchMode.FULL_WIDTH)
+        )
 
         val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || LauncherVehicleSettingsOverlayWindow.isShowing()
         val isTopShadeOpen = LauncherTopShadeWindow.isShowing()
@@ -74,13 +84,14 @@ object DclUiStateNotifier {
 
         val screenMode = when {
             isFullscreenApp -> "fullscreen"
+            isFullWidthApp -> "full_width"
             isVehicleSettingsOpen || isMainActivityOpen -> if (hasActiveApp) "single" else "home"
             !hasActiveApp -> "home"
             else -> "single"
         }
 
         val isAdasVisibleOnScreen = when {
-            isFullscreenApp -> false
+            isFullscreenApp || isFullWidthApp -> false
             isVehicleSettingsOpen || isMainActivityOpen -> false
             appCtx != null -> LauncherAppConfigStore.adasPanelVisible(appCtx)
             else -> true
@@ -129,14 +140,23 @@ object DclUiStateNotifier {
             "0,0,0,0"
         }
 
-        val appAreaBounds = if (screenMode == "fullscreen") {
-            "0,0,$displayW,$displayH"
-        } else {
-            val b = LauncherEmbeddedBoundsState.embeddedBounds()
-            if (b != null && b.width() > 0) {
-                "${b.left},${b.top},${b.right},${b.bottom}"
-            } else {
-                "344,51,$displayW,$bottomBarTop"
+        val appAreaBounds = when (screenMode) {
+            "fullscreen" -> "0,0,$displayW,$displayH"
+            "full_width" -> {
+                val b = LauncherEmbeddedBoundsState.fullWidthBounds()
+                if (b != null && b.width() > 0) {
+                    "${b.left},${b.top},${b.right},${b.bottom}"
+                } else {
+                    "0,$topBarH,$displayW,$bottomBarTop"
+                }
+            }
+            else -> {
+                val b = LauncherEmbeddedBoundsState.embeddedBounds()
+                if (b != null && b.width() > 0) {
+                    "${b.left},${b.top},${b.right},${b.bottom}"
+                } else {
+                    "344,51,$displayW,$bottomBarTop"
+                }
             }
         }
 

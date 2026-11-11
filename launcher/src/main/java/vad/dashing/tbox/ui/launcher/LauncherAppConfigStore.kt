@@ -72,6 +72,8 @@ private const val KEY_ADAS_ACC_SPEED_OFFSET = "adas_acc_speed_offset"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET = "adas_distance_label_offset"
 private const val KEY_ADAS_DISTANCE_LABEL_OFFSET_PERCENT = "adas_distance_label_offset_percent"
 private const val KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT = "adas_lead_car_min_dist_offset_percent"
+private const val KEY_ADAS_LEAD_CAR_MIN_DIST_GAP_DP = "adas_lead_car_min_dist_gap_dp"
+const val DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP = 20f
 private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
 private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
@@ -229,7 +231,7 @@ internal const val AVM_CAMERA_ACTION_DO_NOTHING = 0
 internal const val AVM_CAMERA_ACTION_CLOSE_APPS = 1
 internal const val AVM_CAMERA_ACTION_MINIMIZE_APPS = 2
 internal const val AVM_CAMERA_ACTION_DEFAULT = AVM_CAMERA_ACTION_MINIMIZE_APPS
-internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 28
+internal const val ADAS_DISTANCE_TEXT_SIZE_DEFAULT = 25
 internal const val ADAS_DISTANCE_TEXT_SIZE_MIN = 20
 internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
 internal const val ADAS_ICON_SCALE_DEFAULT = 100
@@ -443,6 +445,8 @@ internal object LauncherAppConfigStore {
     internal val adasDistanceLabelOffsetPercentRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetPercentRevision
     private val adasLeadCarMinDistOffsetPercentRevision = MutableStateFlow(0)
     internal val adasLeadCarMinDistOffsetPercentRevisionFlow: StateFlow<Int> = adasLeadCarMinDistOffsetPercentRevision
+    private val adasLeadCarMinDistGapDpRevision = MutableStateFlow(0)
+    internal val adasLeadCarMinDistGapDpRevisionFlow: StateFlow<Int> = adasLeadCarMinDistGapDpRevision
     private val adasPanelVisibleRevision = MutableStateFlow(0)
     internal val adasPanelVisibleRevisionFlow: StateFlow<Int> = adasPanelVisibleRevision
     private val adasAlertsPlacementRevision = MutableStateFlow(0)
@@ -1075,6 +1079,24 @@ internal object LauncherAppConfigStore {
         val next = offsetPercent.coerceIn(-100f, 100f)
         prefs(context).edit().putFloat(KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT, next).apply()
         adasLeadCarMinDistOffsetPercentRevision.value++
+    }
+
+    fun adasLeadCarMinDistGapDp(context: Context): Float {
+        val prefs = prefs(context)
+        if (prefs.contains(KEY_ADAS_LEAD_CAR_MIN_DIST_GAP_DP)) {
+            return prefs.getFloat(KEY_ADAS_LEAD_CAR_MIN_DIST_GAP_DP, DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP).coerceIn(6f, 80f)
+        }
+        if (prefs.contains(KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT)) {
+            val oldPercent = prefs.getFloat(KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT, 0f)
+            return (DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP + oldPercent * 0.35f).coerceIn(6f, 80f)
+        }
+        return DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP
+    }
+
+    fun setAdasLeadCarMinDistGapDp(context: Context, gapDp: Float) {
+        val next = gapDp.coerceIn(6f, 80f)
+        prefs(context).edit().putFloat(KEY_ADAS_LEAD_CAR_MIN_DIST_GAP_DP, next).apply()
+        adasLeadCarMinDistGapDpRevision.value++
     }
 
     fun adasPanelVisible(context: Context): Boolean =
@@ -2154,6 +2176,7 @@ internal object LauncherAppConfigStore {
         adasDistanceLabelOffsetRevision.value++
         adasDistanceLabelOffsetPercentRevision.value++
         adasLeadCarMinDistOffsetPercentRevision.value++
+        adasLeadCarMinDistGapDpRevision.value++
         adasPanelVisibleRevision.value++
         adasAlertsPlacementRevision.value++
         adasBsdAlertOverlayRevision.value++

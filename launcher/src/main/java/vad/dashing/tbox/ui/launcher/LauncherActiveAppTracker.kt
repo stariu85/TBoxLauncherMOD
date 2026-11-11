@@ -35,6 +35,9 @@ internal object LauncherActiveAppTracker {
     private var currentIsFullscreen: Boolean = false
 
     @Volatile
+    private var currentLaunchMode: LauncherAppLaunchMode? = null
+
+    @Volatile
     private var previousAppPackage: String? = null
 
     @Volatile
@@ -48,17 +51,19 @@ internal object LauncherActiveAppTracker {
         taskId: Int? = null,
         topActivityClass: String? = null,
         isFullscreen: Boolean = false,
+        launchMode: LauncherAppLaunchMode? = null,
     ) {
         if (packageName.isBlank() || (packageName in ignoredLauncherPackages)) return
         currentAppPackage = packageName
         currentIsFullscreen = isFullscreen
+        currentLaunchMode = launchMode ?: if (isFullscreen) LauncherAppLaunchMode.FULLSCREEN else LauncherAppLaunchMode.EMBEDDED
         if (taskId != null && taskId > 0) {
             currentTaskId = taskId
         }
         if (!topActivityClass.isNullOrBlank()) {
             currentTopClass = topActivityClass
         }
-        Log.w(TAG, "onAppLaunched pkg=$packageName taskId=$taskId topClass=$topActivityClass fullscreen=$isFullscreen")
+        Log.w(TAG, "onAppLaunched pkg=$packageName taskId=$taskId topClass=$topActivityClass fullscreen=$isFullscreen mode=$currentLaunchMode")
     }
 
     fun recordAppLaunchedAndResolveTaskId(
@@ -66,8 +71,9 @@ internal object LauncherActiveAppTracker {
         packageName: String,
         topActivityClass: String? = null,
         isFullscreen: Boolean = false,
+        launchMode: LauncherAppLaunchMode? = null,
     ) {
-        onAppLaunched(packageName, topActivityClass = topActivityClass, isFullscreen = isFullscreen)
+        onAppLaunched(packageName, topActivityClass = topActivityClass, isFullscreen = isFullscreen, launchMode = launchMode)
         val appCtx = context.applicationContext
         DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -75,7 +81,7 @@ internal object LauncherActiveAppTracker {
                 val am = appCtx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
                 val taskId = findTaskIdForPackage(am, packageName)
                 if (taskId != null && taskId > 0) {
-                    onAppLaunched(packageName, taskId = taskId, topActivityClass = topActivityClass, isFullscreen = isFullscreen)
+                    onAppLaunched(packageName, taskId = taskId, topActivityClass = topActivityClass, isFullscreen = isFullscreen, launchMode = launchMode)
                     Log.w(TAG, "Resolved taskId=$taskId post-launch for pkg=$packageName")
                 }
             }
@@ -90,6 +96,7 @@ internal object LauncherActiveAppTracker {
             previousTopClass = currentTopClass
         }
         currentIsFullscreen = false
+        currentLaunchMode = null
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
@@ -104,6 +111,10 @@ internal object LauncherActiveAppTracker {
     fun activeAppPackage(): String? = currentAppPackage
 
     fun isFullscreen(): Boolean = currentIsFullscreen
+
+    fun isFullWidth(): Boolean = currentLaunchMode == LauncherAppLaunchMode.FULL_WIDTH
+
+    fun launchMode(): LauncherAppLaunchMode? = currentLaunchMode
 
     fun activeTaskId(): Int? = currentTaskId
 
@@ -128,6 +139,7 @@ internal object LauncherActiveAppTracker {
         currentTaskId = null
         currentTopClass = null
         currentIsFullscreen = false
+        currentLaunchMode = null
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
     }
 
