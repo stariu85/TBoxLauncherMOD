@@ -30,9 +30,14 @@ object LocalAccessClient {
             }
 
             val bundle = try {
-                context.contentResolver.call(uri, "getAccess", null, extras)
+                val client = context.contentResolver.acquireUnstableContentProviderClient(uri)
+                try {
+                    client?.call("getAccess", null, extras)
+                } finally {
+                    client?.close()
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "ContentResolver call failed, TBox Monitor might be missing or unsupported", e)
+                Log.w(TAG, "Unstable ContentResolver call failed, TBox Monitor might be missing or unsupported", e)
                 null
             }
 

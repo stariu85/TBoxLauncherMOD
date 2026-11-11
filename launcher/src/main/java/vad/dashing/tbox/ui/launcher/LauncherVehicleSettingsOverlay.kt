@@ -266,9 +266,6 @@ internal fun LauncherVehicleSettingsContent(
     var tirePressureBadgeShape by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressureBadgeShape(context))
     }
-    var tirePressurePersistEnabled by remember(context, tirePressureConfigRevision) {
-        mutableStateOf(LauncherAppConfigStore.tirePressurePersistEnabled(context))
-    }
     var tirePressureShowHundredths by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressureShowHundredths(context))
     }
@@ -455,18 +452,6 @@ internal fun LauncherVehicleSettingsContent(
                     ),
                 )
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            LauncherSettingsToggleRow(
-                label = stringResource(R.string.launcher_vs_tire_pressure_persist),
-                active = tirePressurePersistEnabled,
-                onClick = {
-                    val next = !tirePressurePersistEnabled
-                    tirePressurePersistEnabled = next
-                    LauncherAppConfigStore.setTirePressurePersistEnabled(context, next)
-                },
-            )
         }
 
         LauncherVehicleSectionCard(

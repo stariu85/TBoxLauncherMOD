@@ -433,15 +433,15 @@ fun LauncherSmartPanel(
     onShowTrunkParkWarning: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var wasInDrive by remember { mutableStateOf(activeGear == 'D') }
+    var wasInDrive by remember { mutableStateOf(activeGear == 'D' || activeGear == 'M') }
     var currentView by remember {
         mutableStateOf(
-            if (activeGear == 'D') SmartPanelView.CruiseControl else SmartPanelView.SeatPresets
+            if (activeGear == 'D' || activeGear == 'M') SmartPanelView.CruiseControl else SmartPanelView.SeatPresets
         )
     }
 
     LaunchedEffect(activeGear) {
-        if (activeGear == 'D') {
+        if (activeGear == 'D' || activeGear == 'M') {
             wasInDrive = true
             currentView = SmartPanelView.CruiseControl
         } else if (activeGear == 'P') {

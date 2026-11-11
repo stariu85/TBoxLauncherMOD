@@ -278,6 +278,13 @@ class CanDataViewModel : ViewModel() {
             initialValue = ""
         )
 
+    val is6DctGearbox: StateFlow<Boolean> = CanDataRepository.is6DctGearbox
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = CanDataRepository.is6DctGearbox.value
+        )
+
     val frontLeftSeatMode: StateFlow<UInt?> = CanDataRepository.frontLeftSeatMode
         .stateIn(
             scope = viewModelScope,

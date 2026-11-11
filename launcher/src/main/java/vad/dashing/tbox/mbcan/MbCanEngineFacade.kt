@@ -274,6 +274,16 @@ object MbCanEngineFacade {
         }.getOrNull()
     }
 
+    /** Returns true if the BCM indicates the brake pedal is currently depressed. */
+    fun readBrakePedalPressed(): Boolean {
+        return runCatching {
+            val bcmClass = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleBcmStatus")
+            val bcm = getMbCanData(21, bcmClass) ?: return false
+            val sts = (bcmClass.getMethod("getBrakePedalSts").invoke(bcm) as? Number)?.toInt() ?: 0
+            sts > 0
+        }.getOrDefault(false)
+    }
+
     /**
      * Uses the same native API as the OEM CarSettings window controls.
      * Updates target positions for any windows specified in [positions].

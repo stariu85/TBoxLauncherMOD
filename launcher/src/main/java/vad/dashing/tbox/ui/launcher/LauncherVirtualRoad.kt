@@ -1159,22 +1159,48 @@ private fun DrawScope.drawFrontObject(
     val effectiveAlpha = objectAlpha * fogFade.coerceIn(0.15f, 1f)
     if (effectiveAlpha < 0.01f) return
 
+    val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
+    val distanceColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
+    val labelColor = distanceColor.copy(alpha = effectiveAlpha)
+
+    val text = "${distanceM} м"
+    val baseSizeSp = distanceTextSizeSp.toFloat()
+    val paint = Paint().apply {
+        isAntiAlias = true
+        color = labelColor.toArgb()
+        textAlign = Paint.Align.CENTER
+        textSize = (baseSizeSp * 1.0f).coerceIn(12f, 50f)
+        typeface = Typeface.DEFAULT_BOLD
+        setShadowLayer(6f, 0f, 2f, android.graphics.Color.argb((0xA0 * effectiveAlpha).toInt(), 0, 0, 0))
+    }
+
+    val textHeight = abs(paint.ascent()) + paint.descent()
+    val paddingY = 4f
+    val halfPillHeight = textHeight / 2f + paddingY
+
     val cx = centerXAt(depth)
     var cy = yAt(depth)
 
     val egoCarCenterY = yAt(0.65f)
+    val egoCarFrontY = yAt(0.51f) // Exact top windshield boundary of 3D car model on screen
 
-    val isCruiseActive = adas.accActive || adas.accStandby || ((adas.accSetSpeedKmh ?: 0) > 0)
-    if (isCruiseActive && distanceM <= 1) {
-        cy -= 5.dp.toPx()
-        if (leadCarMinDistOffsetPercent != 0f) {
-            val distToEgoCenter = egoCarCenterY - cy
-            cy += (leadCarMinDistOffsetPercent / 100f) * distToEgoCenter
-        }
+    if (adas.accActive) {
+        cy += 10.dp.toPx()
     }
 
+    val isCruiseActive = adas.accActive || adas.accStandby || ((adas.accSetSpeedKmh ?: 0) > 0)
+    if (isCruiseActive && leadCarMinDistOffsetPercent != 0f) {
+        val distToEgoCenter = egoCarCenterY - cy
+        cy += (leadCarMinDistOffsetPercent / 100f) * distToEgoCenter
+    }
+
+    // Enforce that at minimal actual distance, the gap between lead car bottom and ego car front hood
+    // is large enough for the distance pill label to fit cleanly between the two car models (with 2dp paddings).
+    val minRequiredGapForPill = 4.dp.toPx() + (2 * halfPillHeight)
+    val maxLeadCarBottomY = egoCarFrontY - minRequiredGapForPill
+    cy = minOf(cy, maxLeadCarBottomY)
+
     val roadHalf = halfWidthAt(depth)
-    val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
     val fillColor = baseColor.copy(alpha = (if (alert) 0.58f else 0.40f) * effectiveAlpha)
     val strokeColor = baseColor.copy(alpha = 0.92f * effectiveAlpha)
@@ -1217,33 +1243,14 @@ private fun DrawScope.drawFrontObject(
         }
     }
 
-    val distanceColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
-    val labelColor = distanceColor.copy(alpha = effectiveAlpha)
-
-    val text = "${distanceM} м"
-    val baseSizeSp = distanceTextSizeSp.toFloat()
-    val paint = Paint().apply {
-        isAntiAlias = true
-        color = labelColor.toArgb()
-        textAlign = Paint.Align.CENTER
-        textSize = (baseSizeSp * 1.0f).coerceIn(12f, 50f)
-        typeface = Typeface.DEFAULT_BOLD
-        setShadowLayer(6f, 0f, 2f, android.graphics.Color.argb((0xA0 * effectiveAlpha).toInt(), 0, 0, 0))
-    }
-
-    val textHeight = abs(paint.ascent()) + paint.descent()
-    val paddingY = 4f
-    val halfPillHeight = textHeight / 2f + paddingY
-
     val leadCarBottomY = cy
-    val egoCarFrontY = yAt(0.51f) // Exact top windshield boundary of 3D car model on screen
-    val targetLabelCy = leadCarBottomY + 10.dp.toPx() + halfPillHeight
+    val targetLabelCy = leadCarBottomY + 2.dp.toPx() + halfPillHeight
 
     val labelSpanToEgo = (egoCarCenterY - targetLabelCy).coerceAtLeast(20.dp.toPx())
     val labelOffsetPx = (distanceLabelOffsetPercent / 100f) * labelSpanToEgo
     val rawLabelCy = targetLabelCy + labelOffsetPx
 
-    val maxAllowedCy = egoCarFrontY - halfPillHeight + 12.dp.toPx()
+    val maxAllowedCy = egoCarFrontY - halfPillHeight - 2.dp.toPx()
     val labelCx = cx
     val labelCy = if (distanceLabelOffsetPercent != 0f) rawLabelCy else minOf(targetLabelCy, maxAllowedCy)
 

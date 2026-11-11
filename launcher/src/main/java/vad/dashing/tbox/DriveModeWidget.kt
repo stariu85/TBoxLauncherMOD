@@ -105,30 +105,53 @@ fun resolveDriveModeDisplayLabel(
     driveModeRaw: Int?,
     driveModeWetRaw: Int?,
     gearBoxDriveMode: String?,
+    is6DCT: Boolean = CanDataRepository.is6DctGearbox.value,
 ): String {
-    if (driveModeRaw != null) {
-        val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
-            it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE && it.propertyValue == driveModeRaw
+    if (is6DCT || (driveModeWetRaw != null && driveModeRaw == null)) {
+        if (driveModeWetRaw != null) {
+            val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
+                it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET && it.propertyValue == driveModeWetRaw
+            }
+            if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
         }
-        if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
-    }
-    if (driveModeWetRaw != null) {
-        val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
-            it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET && it.propertyValue == driveModeWetRaw
+        if (!gearBoxDriveMode.isNullOrBlank() && gearBoxDriveMode != "N/A") {
+            return parseGearBoxDriveModeText(gearBoxDriveMode)
         }
-        if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
-    }
-    if (!gearBoxDriveMode.isNullOrBlank() && gearBoxDriveMode != "N/A") {
-        return when (gearBoxDriveMode.uppercase(Locale.ROOT)) {
-            "ECO", "ЭКО" -> "ECO"
-            "NOR", "NORMAL", "COMFORT", "КОМФОРТ", "НОРМА" -> "NOR"
-            "SPT", "SPORT", "СПОРТ" -> "SPT"
-            "SNOW", "СНЕГ" -> "SNOW"
-            "MUD", "ГРЯЗЬ" -> "MUD"
-            "SAND", "ПЕСОК" -> "SAND"
-            "SMART", "СМАРТ" -> "SMART"
-            else -> gearBoxDriveMode
+        if (driveModeRaw != null) {
+            val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
+                it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE && it.propertyValue == driveModeRaw
+            }
+            if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
+        }
+    } else {
+        if (driveModeRaw != null) {
+            val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
+                it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE && it.propertyValue == driveModeRaw
+            }
+            if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
+        }
+        if (driveModeWetRaw != null) {
+            val opt = DRIVE_MODE_WIDGET_OPTIONS.firstOrNull {
+                it.propertyId == MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET && it.propertyValue == driveModeWetRaw
+            }
+            if (opt != null) return opt.widgetLabel.ifBlank { opt.label }
+        }
+        if (!gearBoxDriveMode.isNullOrBlank() && gearBoxDriveMode != "N/A") {
+            return parseGearBoxDriveModeText(gearBoxDriveMode)
         }
     }
     return ""
+}
+
+private fun parseGearBoxDriveModeText(gearBoxDriveMode: String): String {
+    return when (gearBoxDriveMode.uppercase(Locale.ROOT)) {
+        "ECO", "ЭКО" -> "ECO"
+        "NOR", "NORMAL", "COMFORT", "КОМФОРТ", "НОРМА" -> "NOR"
+        "SPT", "SPORT", "СПОРТ" -> "SPT"
+        "SNOW", "СНЕГ" -> "SNOW"
+        "MUD", "ГРЯЗЬ" -> "MUD"
+        "SAND", "ПЕСОК" -> "SAND"
+        "SMART", "СМАРТ" -> "SMART"
+        else -> gearBoxDriveMode
+    }
 }

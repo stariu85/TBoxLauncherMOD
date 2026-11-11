@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.util.Log
+import vad.dashing.tbox.ui.launcher.LauncherActiveAppTracker
 import vad.dashing.tbox.ui.launcher.launchLauncherAppEmbedded
 import vad.dashing.tbox.ui.launcher.launchLauncherAppFullscreen
 import java.util.concurrent.ConcurrentHashMap
@@ -114,12 +115,18 @@ class DclLauncherApiProvider : ContentProvider() {
 
         Handler(Looper.getMainLooper()).post {
             try {
-                if (mode == "fullscreen") {
+                val isFullscreen = mode == "fullscreen"
+                if (isFullscreen) {
                     launchLauncherAppFullscreen(appCtx, pkg, activityClass)
                 } else {
                     launchLauncherAppEmbedded(appCtx, pkg, activityClass)
                 }
-                DclUiStateNotifier.notifyUiStateChanged(appCtx)
+                LauncherActiveAppTracker.onAppLaunched(
+                    packageName = pkg,
+                    topActivityClass = activityClass,
+                    isFullscreen = isFullscreen,
+                )
+                DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to launch app $pkg in mode $mode", e)
             }
@@ -134,7 +141,7 @@ class DclLauncherApiProvider : ContentProvider() {
 
     private fun handleGetUiState(): Bundle {
         val ctx = context?.applicationContext
-        return DclUiStateNotifier.buildUiStateBundle(ctx)
+        return DclUiStateNotifier.getUiState(ctx)
     }
 
     private fun handleGetCapabilities(): Bundle {

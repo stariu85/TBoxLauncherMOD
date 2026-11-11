@@ -159,67 +159,13 @@ internal fun LauncherSmartAccAndDistControl(
             // --- BUTTON 2: SMART ACC (Only if enabled in settings) ---
             if (adasAccBySpeedLimitEnabled) {
                 val hasLimit = effectiveSpeedLimit != null
-                val offsetStr = if (offset >= 0) "+$offset" else "$offset"
-                val buttonText = "Limit $offsetStr"
                 val isActive = isSmartActive && cruiseState == AccCruiseState.Active
 
-                SmartPanelButton(
-                    label = buttonText,
+                SmartAccButton(
+                    speedLimit = effectiveSpeedLimit,
+                    offset = offset,
                     enabled = hasLimit,
                     isActive = isActive,
-                    icon = {
-                        if (hasLimit) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White)
-                                    .border(2.5.dp, Color(0xFFEF4444), CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                @Suppress("DEPRECATION")
-                                Text(
-                                    text = effectiveSpeedLimit.toString(),
-                                    color = Color.Black,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    textAlign = TextAlign.Center,
-                                    style = TextStyle(
-                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                                        lineHeightStyle = LineHeightStyle(
-                                            alignment = LineHeightStyle.Alignment.Center,
-                                            trim = LineHeightStyle.Trim.Both,
-                                        ),
-                                    ),
-                                )
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x20FFFFFF))
-                                    .border(2.dp, Color.Gray, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                @Suppress("DEPRECATION")
-                                Text(
-                                    text = "--",
-                                    color = Color.Gray,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    style = TextStyle(
-                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                                        lineHeightStyle = LineHeightStyle(
-                                            alignment = LineHeightStyle.Alignment.Center,
-                                            trim = LineHeightStyle.Trim.Both,
-                                        ),
-                                    ),
-                                )
-                            }
-                        }
-                    },
                     onClick = {
                         if (effectiveSpeedLimit != null) {
                             val targetSpeed = effectiveSpeedLimit + offset
@@ -229,6 +175,149 @@ internal fun LauncherSmartAccAndDistControl(
                     modifier = Modifier
                         .weight(1f)
                         .height(60.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmartAccButton(
+    speedLimit: Int?,
+    offset: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isActive: Boolean = false,
+) {
+    val activeGreen = Color(0xFF10B981)
+    val bg = when {
+        isActive -> LauncherColors.LeftPanelCard
+        enabled -> LauncherColors.LeftPanelCard
+        else -> LauncherColors.LeftPanelCard.copy(alpha = 0.5f)
+    }
+    val border = if (isActive) activeGreen else Color.Transparent
+    val textTint = when {
+        isActive -> activeGreen
+        enabled -> LauncherColors.LeftTextPrimary
+        else -> Color.Gray
+    }
+
+    val offsetText = offset.toString()
+    val limitText = speedLimit?.toString() ?: "--"
+
+    // Both icons have 44.dp diameter following the 30.dp button curvature.
+    // Identical font size for both icons; reduced to 14.sp if 3 digits to fit perfectly inside circle.
+    val iconFontSize = if (limitText.length >= 3 || offsetText.length >= 3) 14.sp else 16.sp
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(30.dp))
+            .background(bg)
+            .then(
+                if (isActive) {
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(30.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
+        ) {
+            // 1. Left Icon: Speed Limit Sign (Red Circle, 44.dp)
+            if (enabled && speedLimit != null) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .border(3.dp, Color(0xFFEF4444), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    @Suppress("DEPRECATION")
+                    Text(
+                        text = limitText,
+                        color = Color.Black,
+                        fontSize = iconFontSize,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                        style = TextStyle(
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                            lineHeightStyle = LineHeightStyle(
+                                alignment = LineHeightStyle.Alignment.Center,
+                                trim = LineHeightStyle.Trim.Both,
+                            ),
+                        ),
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x20FFFFFF))
+                        .border(2.5.dp, Color.Gray, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    @Suppress("DEPRECATION")
+                    Text(
+                        text = "--",
+                        color = Color.Gray,
+                        fontSize = iconFontSize,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        style = TextStyle(
+                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                            lineHeightStyle = LineHeightStyle(
+                                alignment = LineHeightStyle.Alignment.Center,
+                                trim = LineHeightStyle.Trim.Both,
+                            ),
+                        ),
+                    )
+                }
+            }
+
+            // 2. Center Element: Plus Sign
+            Text(
+                text = "+",
+                color = textTint,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+
+            // 3. Right Icon: Speed Offset Badge (Round White Border, 44.dp)
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (enabled) Color(0xFF1E293B) else Color(0x20FFFFFF))
+                    .border(
+                        width = 3.dp,
+                        color = if (enabled) Color.White else Color.Gray,
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                @Suppress("DEPRECATION")
+                Text(
+                    text = offsetText,
+                    color = if (enabled) Color.White else Color.Gray,
+                    fontSize = iconFontSize,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
+                    style = TextStyle(
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        lineHeightStyle = LineHeightStyle(
+                            alignment = LineHeightStyle.Alignment.Center,
+                            trim = LineHeightStyle.Trim.Both,
+                        ),
+                    ),
                 )
             }
         }

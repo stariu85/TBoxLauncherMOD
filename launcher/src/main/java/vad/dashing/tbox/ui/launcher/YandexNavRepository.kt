@@ -253,6 +253,7 @@ object YandexNavRepository {
                 addAction("${prefix}DISTANCE_UPDATE")
                 addAction("${prefix}NAVIGATION_ENDED")
                 addAction("${prefix}NAVIGATION_STOPPED")
+                addAction("${prefix}TRAFFIC_LIGHT_UPDATE")
             }
             addAction(ACTION_TRAFFIC_LIGHT_UPDATE)
             addAction(ACTION_NAVIGATION_ENDED)
@@ -287,11 +288,11 @@ object YandexNavRepository {
             @Suppress("DEPRECATION")
             val value = extras.get(k) ?: continue
             when (value) {
-                is Number -> return value.toInt().takeIf { it >= 0 }
+                is Number -> return value.toInt()
                 is String -> {
-                    val strDigits = value.filter { it.isDigit() }
+                    val strDigits = value.filter { it.isDigit() || it == '-' }
                     val parsed = strDigits.toIntOrNull()
-                    if (parsed != null && parsed >= 0) return parsed
+                    if (parsed != null) return parsed
                 }
             }
         }

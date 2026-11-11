@@ -386,7 +386,7 @@ fun LauncherLeftPanel(
         }
     }
 
-    val inDriveGear = racing || activeGear == 'D' || effectiveSpeed > 0.5f
+    val inDriveGear = racing || activeGear == 'D' || activeGear == 'M' || effectiveSpeed > 0.5f
     val rawDriveView = if (isStartupGracePeriod) {
         false
     } else {
@@ -425,12 +425,14 @@ fun LauncherLeftPanel(
     val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
     val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
     val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
+    val is6Dct by canViewModel.is6DctGearbox.collectAsStateWithLifecycle()
 
-    val resolvedDriveMode = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode) {
+    val resolvedDriveMode = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct) {
         resolveDriveModeDisplayLabel(
             driveModeRaw = driveModeRaw,
             driveModeWetRaw = driveModeWetRaw,
             gearBoxDriveMode = gearBoxDriveMode,
+            is6DCT = is6Dct,
         ).uppercase()
     }
 

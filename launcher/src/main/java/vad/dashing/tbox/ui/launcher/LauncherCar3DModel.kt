@@ -80,6 +80,12 @@ object LauncherCar3DModelTrigger {
     private val _paintChangedEvent = MutableStateFlow(0L)
     val paintChangedEvent: StateFlow<Long> = _paintChangedEvent.asStateFlow()
 
+    private val _topShadeOpen = MutableStateFlow(false)
+    val topShadeOpen: StateFlow<Boolean> = _topShadeOpen.asStateFlow()
+
+    private val _topShadeClosedEvent = MutableStateFlow(0L)
+    val topShadeClosedEvent: StateFlow<Long> = _topShadeClosedEvent.asStateFlow()
+
     fun notifyHomePressed() {
         _homePressedEvent.value = SystemClock.uptimeMillis()
     }
@@ -98,6 +104,13 @@ object LauncherCar3DModelTrigger {
 
     fun notifyPaintChanged() {
         _paintChangedEvent.value = SystemClock.uptimeMillis()
+    }
+
+    fun setTopShadeOpen(open: Boolean) {
+        if (_topShadeOpen.value && !open) {
+            _topShadeClosedEvent.value = SystemClock.uptimeMillis()
+        }
+        _topShadeOpen.value = open
     }
 }
 
@@ -576,12 +589,21 @@ private fun LauncherCarFilamentContent(
                         val paintChangedEventMs = LauncherCar3DModelTrigger.paintChangedEvent.value
                         val isPaintChangeRecent = (nowMs - paintChangedEventMs) < 2000L
 
-                        if (isAvmRef.value || (carHiddenRef.value && !isPaintChangeRecent)) {
+                        val topShadeOpenVal = LauncherCar3DModelTrigger.topShadeOpen.value
+                        val topShadeClosedEventMs = LauncherCar3DModelTrigger.topShadeClosedEvent.value
+                        val isTopShadeClosedRecent = (nowMs - topShadeClosedEventMs) < 2000L
+
+                        if (topShadeOpenVal || isAvmRef.value || (carHiddenRef.value && !isPaintChangeRecent)) {
                             val node = modelNodeRef.get()
                             if (node != null && node.isVisible) {
                                 node.isVisible = false
                             }
                             return@runCatching
+                        } else {
+                            val node = modelNodeRef.get()
+                            if (node != null && !node.isVisible) {
+                                node.isVisible = true
+                            }
                         }
 
                         if (lastDynamicNs == 0L) {
@@ -626,6 +648,7 @@ private fun LauncherCarFilamentContent(
                             (nowMs - backEventMs) < 2000L ||
                             (nowMs - prevAppEventMs) < 2000L ||
                             (nowMs - quickSettingsClosedEventMs) < 2000L ||
+                            isTopShadeClosedRecent ||
                             isPaintChangeRecent
 
                         val wasDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.DiagFileLog
 import vad.dashing.tbox.HeadUnitCanMode
@@ -61,9 +62,10 @@ internal object LauncherCruisePresetController {
         val isTboxActive = tboxCruise != null && tboxCruise > 0u
 
         return when {
-            adas.accActive || isTboxActive -> AccCruiseState.Active
+            adas.accActive -> AccCruiseState.Active
             adas.accOverride -> AccCruiseState.Override
             adas.accStandby -> AccCruiseState.Standby
+            adas.accMode == LauncherAdasAccMode.Unknown && isTboxActive -> AccCruiseState.Active
             else -> AccCruiseState.Off
         }
     }
@@ -78,11 +80,20 @@ internal object LauncherCruisePresetController {
             combine(
                 LauncherAdasRepository.state,
                 CanDataRepository.cruiseSetSpeed,
-            ) { _, _ ->
-                computeAccCruiseState()
-            }.collect { newState ->
+                LauncherVehicleAlertsRepository.state,
+            ) { adas, _, alerts ->
+                val isAlertBrake = alerts.alerts.any { it.id == LauncherAlertId.PressBrake }
+                val isMbCanBrake = MbCanEngineFacade.readBrakePedalPressed()
+                val isBrakePressed = isAlertBrake || isMbCanBrake
+                Triple(computeAccCruiseState(), isBrakePressed, adas)
+            }.collect { (newState, isBrakePressed, adas) ->
                 val previousState = _accCruiseState.value
                 _accCruiseState.value = newState
+
+                if ((isBrakePressed || adas.accStandby) && _isSmartSpeedLimitActive.value) {
+                    DiagFileLog.i(TAG, "Brake pressed or ACC Standby -> turning off smart speed limit mode")
+                    _isSmartSpeedLimitActive.value = false
+                }
 
                 if ((previousState == AccCruiseState.Active || previousState == AccCruiseState.Override) &&
                     (newState != AccCruiseState.Active && newState != AccCruiseState.Override)
@@ -479,7 +490,8 @@ internal object LauncherCruisePresetController {
 
     fun setTimeGap(context: Context, level: Int) {
         val validLevel = level.coerceIn(0, 3)
-        LauncherAppConfigStore.setTimeGapLevel(context, validLevel)
+        val storedLevel = if (validLevel in 0..2) validLevel + 1 else validLevel
+        LauncherAppConfigStore.setTimeGapLevel(context, storedLevel)
         LauncherDevVehicleState.adasTimeGapLevel = validLevel
         LauncherDevVehicleState.triggerTimeGapFlash(3000L)
         LauncherAdasRepository.triggerTimeGapFlash(3000L)
@@ -491,7 +503,7 @@ internal object LauncherCruisePresetController {
         }
     }
 
-    private suspend fun pulse(propertyId: Int) {
+    private suspend fun pulse(propertyId: Int) = withContext(Dispatchers.IO) {
         if (UniversalCanRepository.mode.value == HeadUnitCanMode.Android10Vhal) {
             Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 1))
             delay(PULSE_HOLD_MS)

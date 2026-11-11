@@ -4,14 +4,15 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
 import android.provider.Settings
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,28 +20,30 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.LauncherHomeActivity
+import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.ui.MyLifecycleOwner
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
+import kotlin.math.roundToInt
 
 /**
  * Top Control Center (Shade Dropdown Window) that slides down from the top of the screen
@@ -75,19 +78,26 @@ internal object LauncherTopShadeWindow {
             return false
         }
 
-        val metrics = activity.resources.displayMetrics
-        val screenWidthPx = metrics.widthPixels
-        val screenHeightPx = metrics.heightPixels
-        val density = metrics.density
-
-        val bottomBarHeightDp = LauncherAppConfigStore.bottomBarHeightDp(activity)
-        val bottomBarHeightPx = (bottomBarHeightDp * density).toInt().coerceIn(60, 200)
-
-        // Height of the shade = Screen Height minus Bottom Dock Height
-        val targetHeightPx = (screenHeightPx - bottomBarHeightPx).coerceAtLeast(300)
-
         val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
+
+        val realMetrics = DisplayMetrics()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity.display?.getRealMetrics(realMetrics)
+        } else {
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(realMetrics)
+        }
+
+        val density = activity.resources.displayMetrics.density
+        val screenWidthPx = if (realMetrics.widthPixels > 0) realMetrics.widthPixels else activity.resources.displayMetrics.widthPixels
+        val screenHeightPx = if (realMetrics.heightPixels > 0) realMetrics.heightPixels else activity.resources.displayMetrics.heightPixels
+
+        val bottomBarHeightDp = LauncherAppConfigStore.bottomBarHeightDp(activity)
+        val bottomBarHeightPx = (bottomBarHeightDp * density).toInt()
+
+        // Height of the shade = Physical Screen Height minus Bottom Dock Height
+        val targetHeightPx = (screenHeightPx - bottomBarHeightPx).coerceAtLeast(300)
 
         val owner = MyLifecycleOwner().also {
             it.setCurrentState(Lifecycle.State.CREATED)
@@ -113,6 +123,8 @@ internal object LauncherTopShadeWindow {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
@@ -122,7 +134,7 @@ internal object LauncherTopShadeWindow {
             setViewTreeViewModelStoreOwner(activity)
             setContent {
                 ProvideUiClickSounds {
-                    TboxAppTheme(theme = 2) {
+                    TboxAppTheme(theme = if (LauncherThemeState.darkTheme) 2 else 1) {
                         TopShadeWrapperContent(
                             heightDp = (targetHeightPx / density).dp,
                             onClose = { hide() },
@@ -135,6 +147,8 @@ internal object LauncherTopShadeWindow {
         return runCatching {
             wm.addView(view, params)
             composeView = view
+            LauncherCar3DModelTrigger.setTopShadeOpen(true)
+            DclUiStateNotifier.notifyUiStateChanged(activity, immediate = true)
             Log.w(TAG, "Top Shade Window shown successfully: width=$screenWidthPx height=$targetHeightPx")
             true
         }.getOrElse { e ->
@@ -143,7 +157,7 @@ internal object LauncherTopShadeWindow {
         }
     }
 
-    fun hide() {
+    fun hide(context: Context? = null) {
         val view = composeView ?: return
         val wm = windowManager ?: return
         runCatching { wm.removeViewImmediate(view) }
@@ -151,6 +165,8 @@ internal object LauncherTopShadeWindow {
         lifecycleOwner?.clear()
         lifecycleOwner = null
         windowManager = null
+        LauncherCar3DModelTrigger.setTopShadeOpen(false)
+        context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
         Log.w(TAG, "Top Shade Window hidden")
     }
 }
@@ -160,54 +176,73 @@ private fun TopShadeWrapperContent(
     heightDp: Dp,
     onClose: () -> Unit,
 ) {
-    var visible by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val heightPx = with(density) { heightDp.toPx() }
+    val coroutineScope = rememberCoroutineScope()
+    val offsetYAnim = remember { Animatable(-heightPx) }
 
-    LaunchedEffect(Unit) {
-        visible = true
+    LaunchedEffect(heightPx) {
+        if (heightPx > 0f) {
+            offsetYAnim.animateTo(0f, animationSpec = tween(durationMillis = 300))
+        }
+    }
+
+    val dismissWithAnimation: () -> Unit = {
+        coroutineScope.launch {
+            offsetYAnim.animateTo(-heightPx, animationSpec = tween(durationMillis = 220))
+            onClose()
+        }
     }
 
     BackHandler(enabled = true) {
-        visible = false
-        onClose()
+        dismissWithAnimation()
     }
+
+    // Dynamic backdrop darkening based on current drag position
+    val openFraction = (1f - (-offsetYAnim.value / heightPx)).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.4f))
+            .background(Color.Black.copy(alpha = 0.4f * openFraction))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = {
-                    visible = false
-                    onClose()
-                },
+                onClick = dismissWithAnimation,
             ),
     ) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = slideInVertically(
-                initialOffsetY = { -it },
-                animationSpec = tween(durationMillis = 300),
-            ),
-            exit = slideOutVertically(
-                targetOffsetY = { -it },
-                animationSpec = tween(durationMillis = 250),
-            ),
-            modifier = Modifier.align(Alignment.TopCenter),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(heightDp)
+                .offset { IntOffset(0, offsetYAnim.value.roundToInt()) }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}, // Catch clicks inside panel
+                ),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(heightDp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {}, // Catch clicks inside panel
-                    ),
-            ) {
-                LauncherTopShadeContent(onClose = onClose)
-            }
+            LauncherTopShadeContent(
+                onClose = dismissWithAnimation,
+                onHandleDrag = { dragY ->
+                    val newOffset = (offsetYAnim.value + dragY).coerceAtMost(0f)
+                    coroutineScope.launch {
+                        offsetYAnim.snapTo(newOffset)
+                    }
+                },
+                onHandleDragEnd = {
+                    val currentDragUpPx = -offsetYAnim.value
+                    val thresholdPx = heightPx * 0.30f
+                    coroutineScope.launch {
+                        if (currentDragUpPx >= thresholdPx) {
+                            offsetYAnim.animateTo(-heightPx, animationSpec = tween(durationMillis = 220))
+                            onClose()
+                        } else {
+                            offsetYAnim.animateTo(0f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
+                        }
+                    }
+                },
+            )
         }
     }
 }

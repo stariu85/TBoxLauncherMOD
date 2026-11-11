@@ -32,6 +32,9 @@ internal object LauncherTopShadeConfigStore {
     private const val PREFS_NAME = "launcher_top_shade_prefs"
     private const val KEY_TILES_JSON = "top_shade_tiles_json"
 
+    const val GRID_COLS = 12
+    const val GRID_ROWS = 12
+
     private val tilesRevision = MutableStateFlow(0)
     val tilesRevisionFlow: StateFlow<Int> = tilesRevision
 
@@ -39,32 +42,32 @@ internal object LauncherTopShadeConfigStore {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     val DEFAULT_TILES = listOf(
-        TopShadeTileSpec("mirror_fold", "Зеркала", TopShadeTileType.CAR_CONTROL, "mirror_fold", "ic_widget_mirror_fold", 1, 1, 0, 0),
-        TopShadeTileSpec("seat_heat_left", "Подогрев водит.", TopShadeTileType.CAR_CONTROL, "seat_heat_left", "ic_widget_seat_heat_left_3", 1, 1, 1, 0),
-        TopShadeTileSpec("seat_vent_left", "Вент. водит.", TopShadeTileType.CAR_CONTROL, "seat_vent_left", "ic_widget_seat_vent_left_3", 1, 1, 2, 0),
-        TopShadeTileSpec("seat_heat_right", "Подогрев пасс.", TopShadeTileType.CAR_CONTROL, "seat_heat_right", "ic_widget_seat_heat_right_3", 1, 1, 3, 0),
-        TopShadeTileSpec("seat_vent_right", "Вент. пасс.", TopShadeTileType.CAR_CONTROL, "seat_vent_right", "ic_widget_seat_vent_right_3", 1, 1, 4, 0),
-        TopShadeTileSpec("steering_heat", "Руль", TopShadeTileType.CAR_CONTROL, "steering_heat", "ic_widget_steering_wheel_heat", 1, 1, 5, 0),
+        TopShadeTileSpec("brightness", "Яркость", TopShadeTileType.SYSTEM_TOGGLE, "brightness", null, 2, 1, 0, 0),
+        TopShadeTileSpec("vol_media", "Громкость Медиа", TopShadeTileType.SYSTEM_TOGGLE, "vol_media", null, 2, 1, 2, 0),
 
-        TopShadeTileSpec("windscreen_heat", "Лобовое", TopShadeTileType.CAR_CONTROL, "windscreen_heat", "ic_widget_front_windscreen_heat", 1, 1, 0, 1),
-        TopShadeTileSpec("rear_defrost", "Заднее стекло", TopShadeTileType.CAR_CONTROL, "rear_defrost", "ic_widget_rear_windscreen_heat", 1, 1, 1, 1),
-        TopShadeTileSpec("hvac_auto", "Климат AUTO", TopShadeTileType.CAR_CONTROL, "hvac_auto", "ic_widget_hvac_ac", 1, 1, 2, 1),
-        TopShadeTileSpec("hvac_recirc", "Рециркуляция", TopShadeTileType.CAR_CONTROL, "hvac_recirc", "ic_widget_hvac_air_recirculation", 1, 1, 3, 1),
-        TopShadeTileSpec("wifi_toggle", "Wi-Fi", TopShadeTileType.SYSTEM_TOGGLE, "wifi", "ic_widget_wifi", 1, 1, 4, 1),
-        TopShadeTileSpec("theme_toggle", "Тема День/Ночь", TopShadeTileType.SYSTEM_TOGGLE, "theme", "ic_widget_theme", 1, 1, 5, 1),
+        TopShadeTileSpec("mirror_fold", "Зеркала", TopShadeTileType.CAR_CONTROL, "mirror_fold", "ic_widget_mirror_fold", 1, 1, 4, 0),
+        TopShadeTileSpec("seat_heat_left", "Подогрев водит.", TopShadeTileType.CAR_CONTROL, "seat_heat_left", "ic_widget_seat_heat_left_3", 1, 1, 5, 0),
+        TopShadeTileSpec("seat_vent_left", "Вент. водит.", TopShadeTileType.CAR_CONTROL, "seat_vent_left", "ic_widget_seat_vent_left_3", 1, 1, 6, 0),
+        TopShadeTileSpec("seat_heat_right", "Подогрев пасс.", TopShadeTileType.CAR_CONTROL, "seat_heat_right", "ic_widget_seat_heat_right_3", 1, 1, 7, 0),
+        TopShadeTileSpec("seat_vent_right", "Вент. пасс.", TopShadeTileType.CAR_CONTROL, "seat_vent_right", "ic_widget_seat_vent_right_3", 1, 1, 8, 0),
+        TopShadeTileSpec("steering_heat", "Руль", TopShadeTileType.CAR_CONTROL, "steering_heat", "ic_widget_steering_wheel_heat", 1, 1, 9, 0),
+        TopShadeTileSpec("windscreen_heat", "Лобовое", TopShadeTileType.CAR_CONTROL, "windscreen_heat", "ic_widget_front_windscreen_heat", 1, 1, 10, 0),
+        TopShadeTileSpec("rear_defrost", "Заднее стекло", TopShadeTileType.CAR_CONTROL, "rear_defrost", "ic_widget_rear_windscreen_heat", 1, 1, 11, 0),
 
-        TopShadeTileSpec("screen_off", "Экран выкл", TopShadeTileType.SYSTEM_TOGGLE, "screen_off", "ic_widget_screen_off", 1, 1, 0, 2),
-        TopShadeTileSpec("reboot_hu", "Перезагрузка ГУ", TopShadeTileType.SYSTEM_TOGGLE, "reboot_hu", "ic_widget_reboot", 1, 1, 1, 2),
-        TopShadeTileSpec("engine_battery", "ДВС и АКБ", TopShadeTileType.TELEMETRY, "engine_battery", null, 2, 1, 2, 2),
-        TopShadeTileSpec("tpms_info", "Давление в шинах", TopShadeTileType.TELEMETRY, "tpms_info", null, 2, 1, 4, 2),
-
-        TopShadeTileSpec("app_nav", "Яндекс Навигатор", TopShadeTileType.SHORTCUT, "com.yandex.yandexnavi", null, 1, 1, 0, 3),
-        TopShadeTileSpec("app_music", "Яндекс Музыка", TopShadeTileType.SHORTCUT, "ru.yandex.music", null, 1, 1, 1, 3),
-        TopShadeTileSpec("app_avm", "Камеры 360", TopShadeTileType.SHORTCUT, "avm_camera", "ic_launcher_avm", 1, 1, 2, 3),
+        TopShadeTileSpec("vol_phone", "Громкость Звонков", TopShadeTileType.SYSTEM_TOGGLE, "vol_phone", null, 2, 1, 0, 1),
+        TopShadeTileSpec("vol_navi", "Громкость Навигации", TopShadeTileType.SYSTEM_TOGGLE, "vol_navi", null, 2, 1, 2, 1),
+        TopShadeTileSpec("vol_voice", "Громкость Голоса", TopShadeTileType.SYSTEM_TOGGLE, "vol_voice", null, 2, 1, 4, 1),
+        TopShadeTileSpec("headrest_speaker", "Подголовник", TopShadeTileType.SYSTEM_TOGGLE, "headrest_speaker", "ic_widget_reboot", 1, 1, 6, 1),
+        TopShadeTileSpec("hvac_auto", "Климат AUTO", TopShadeTileType.CAR_CONTROL, "hvac_auto", "ic_widget_hvac_ac", 1, 1, 7, 1),
+        TopShadeTileSpec("hvac_recirc", "Рециркуляция", TopShadeTileType.CAR_CONTROL, "hvac_recirc", "ic_widget_hvac_air_recirculation", 1, 1, 8, 1),
+        TopShadeTileSpec("wifi_toggle", "Wi-Fi", TopShadeTileType.SYSTEM_TOGGLE, "wifi", "ic_widget_wifi", 1, 1, 9, 1),
+        TopShadeTileSpec("theme_toggle", "Тема День/Ночь", TopShadeTileType.SYSTEM_TOGGLE, "theme", "ic_widget_theme", 1, 1, 10, 1),
+        TopShadeTileSpec("screen_off", "Экран выкл", TopShadeTileType.SYSTEM_TOGGLE, "screen_off", "ic_widget_screen_off", 1, 1, 11, 1),
     )
 
     fun getTiles(context: Context): List<TopShadeTileSpec> {
         val jsonStr = prefs(context).getString(KEY_TILES_JSON, null)
+
         val loaded = if (jsonStr.isNull_or_blank()) {
             DEFAULT_TILES
         } else {
@@ -75,12 +78,16 @@ internal object LauncherTopShadeConfigStore {
                     val obj = jsonArray.getJSONObject(i)
                     val typeStr = obj.optString("type", TopShadeTileType.CAR_CONTROL.name)
                     val type = runCatching { TopShadeTileType.valueOf(typeStr) }.getOrDefault(TopShadeTileType.CAR_CONTROL)
+
+                    val rawActionKey = obj.getString("actionKey")
+                    val actionKey = if (rawActionKey == "volume") "vol_media" else rawActionKey
+
                     list.add(
                         TopShadeTileSpec(
                             id = obj.getString("id"),
                             title = obj.getString("title"),
                             type = type,
-                            actionKey = obj.getString("actionKey"),
+                            actionKey = actionKey,
                             iconResName = obj.optString("iconResName", "").takeIf { it.isNotBlank() },
                             spanX = obj.optInt("spanX", 1),
                             spanY = obj.optInt("spanY", 1),
@@ -95,7 +102,7 @@ internal object LauncherTopShadeConfigStore {
                 DEFAULT_TILES
             }
         }
-        return ensureValidGridCoordinates(loaded)
+        return ensureValidGridCoordinates(loaded, GRID_COLS, GRID_ROWS)
     }
 
     fun setTiles(context: Context, tiles: List<TopShadeTileSpec>) {
@@ -127,21 +134,32 @@ internal object LauncherTopShadeConfigStore {
         tilesRevision.value++
     }
 
-    private fun ensureValidGridCoordinates(tiles: List<TopShadeTileSpec>): List<TopShadeTileSpec> {
+    private fun ensureValidGridCoordinates(
+        tiles: List<TopShadeTileSpec>,
+        numCols: Int,
+        numRows: Int,
+    ): List<TopShadeTileSpec> {
         var currentRow = 0
         var currentCol = 0
-        val numCols = 6
 
         return tiles.map { tile ->
-            if (tile.col >= 0 && tile.row >= 0) {
-                tile
+            val clampedSpanX = tile.spanX.coerceIn(1, numCols)
+            val clampedSpanY = tile.spanY.coerceIn(1, numRows)
+
+            if (tile.col >= 0 && tile.row >= 0 &&
+                tile.col + clampedSpanX <= numCols &&
+                tile.row + clampedSpanY <= numRows
+            ) {
+                tile.copy(spanX = clampedSpanX, spanY = clampedSpanY)
             } else {
-                if (currentCol + tile.spanX > numCols) {
+                if (currentCol + clampedSpanX > numCols) {
                     currentCol = 0
                     currentRow++
                 }
-                val assigned = tile.copy(col = currentCol, row = currentRow)
-                currentCol += tile.spanX
+                val assignedRow = currentRow.coerceAtMost((numRows - clampedSpanY).coerceAtLeast(0))
+                val assignedCol = currentCol.coerceAtMost((numCols - clampedSpanX).coerceAtLeast(0))
+                val assigned = tile.copy(col = assignedCol, row = assignedRow, spanX = clampedSpanX, spanY = clampedSpanY)
+                currentCol += clampedSpanX
                 if (currentCol >= numCols) {
                     currentCol = 0
                     currentRow++

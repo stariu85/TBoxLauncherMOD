@@ -99,6 +99,12 @@ internal fun goLauncherHome(
         }
     }
     runCatching {
+        if (LauncherTopShadeWindow.isShowing()) {
+            LauncherTopShadeWindow.hide()
+            closedList += "TopShade"
+        }
+    }
+    runCatching {
         if (LauncherAdasQuickSettingsWindow.isShowing()) {
             LauncherAdasQuickSettingsWindow.hide()
             closedList += "AdasQuickSettings"
@@ -200,6 +206,11 @@ internal fun goLauncherBack(
     }
 
     when {
+        LauncherTopShadeWindow.isShowing() -> {
+            LauncherTopShadeWindow.hide()
+            LauncherNavLogger.logNavAction("BACK", source, stateBefore, result = "Closed TopShadeWindow")
+            return
+        }
         vehicleSettingsOpen ||
             LauncherVehicleSettingsUiState.open ||
             LauncherVehicleSettingsOverlayWindow.isShowing() ||

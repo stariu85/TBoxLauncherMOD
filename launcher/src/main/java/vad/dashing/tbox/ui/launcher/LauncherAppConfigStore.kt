@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
@@ -320,7 +321,6 @@ private const val KEY_TIRE_PRESSURE_LOW_THRESHOLD = "tire_pressure_low_threshold
 private const val KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS = "tire_pressure_always_in_settings"
 private const val KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED = "tire_pressure_inertia_animation_enabled"
 private const val KEY_TIRE_PRESSURE_BADGE_SHAPE = "tire_pressure_badge_shape"
-private const val KEY_TIRE_PRESSURE_PERSIST_ENABLED = "tire_pressure_persist_enabled"
 private const val KEY_TIRE_PRESSURE_SHOW_HUNDREDTHS = "tire_pressure_show_hundredths"
 private const val KEY_TIRE_PRESSURE_SHOW_TEMPERATURE = "tire_pressure_show_temperature"
 private const val KEY_SAVED_TIRE_PRESSURE_FL = "saved_tire_pressure_fl"
@@ -1079,6 +1079,7 @@ internal object LauncherAppConfigStore {
     fun setAdasPanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_PANEL_VISIBLE, visible).apply()
         adasPanelVisibleRevision.value++
+        DclUiStateNotifier.notifyUiStateChanged(context, immediate = true)
     }
 
     fun adasAlertsInLeftPanel(context: Context): Boolean = true
@@ -1235,13 +1236,7 @@ internal object LauncherAppConfigStore {
         tirePressureConfigRevision.value++
     }
 
-    fun tirePressurePersistEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_TIRE_PRESSURE_PERSIST_ENABLED, true)
-
-    fun setTirePressurePersistEnabled(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_PERSIST_ENABLED, enabled).apply()
-        tirePressureConfigRevision.value++
-    }
+    fun tirePressurePersistEnabled(context: Context): Boolean = false
 
     fun tirePressureShowHundredths(context: Context): Boolean =
         prefs(context).getBoolean(KEY_TIRE_PRESSURE_SHOW_HUNDREDTHS, false)
@@ -1923,6 +1918,7 @@ internal object LauncherAppConfigStore {
 
     fun setTimeGapLevel(context: Context, level: Int) {
         val valid = level.coerceIn(1, 3)
+        if (timeGapLevel(context) == valid) return
         prefs(context).edit().putInt(KEY_TIME_GAP_LEVEL, valid).apply()
         cruisePresetsRevision.value++
     }
@@ -1932,6 +1928,7 @@ internal object LauncherAppConfigStore {
 
     fun setCruiseIncreaseIntervalMs(context: Context, intervalMs: Long) {
         val valid = intervalMs.coerceIn(50L, 1500L)
+        if (cruiseIncreaseIntervalMs(context) == valid) return
         prefs(context).edit().putLong(KEY_CRUISE_INCREASE_INTERVAL, valid).apply()
         cruisePresetsRevision.value++
     }
@@ -1941,6 +1938,7 @@ internal object LauncherAppConfigStore {
 
     fun setCruiseDecreaseIntervalMs(context: Context, intervalMs: Long) {
         val valid = intervalMs.coerceIn(50L, 1500L)
+        if (cruiseDecreaseIntervalMs(context) == valid) return
         prefs(context).edit().putLong(KEY_CRUISE_DECREASE_INTERVAL, valid).apply()
         cruisePresetsRevision.value++
     }

@@ -1,6 +1,9 @@
 package vad.dashing.tbox
 
 import android.content.Context
+import android.os.SystemClock
+import com.mengbo.mbconfig.MBConfigConstant
+import com.mengbo.mbconfig.PropManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -111,6 +114,10 @@ object CanDataRepository {
     private var previousAvgConsumption: Float? = null
     @Volatile
     private var tripStartTimeMs: Long = System.currentTimeMillis()
+    @Volatile
+    private var lastFilteredFuelUpdateMs: Long = 0L
+
+    private const val FILTERED_FUEL_TIMEOUT_MS = 600_000L // 10 мин тайм-аут резервного переключения
 
     @Volatile
     private var overallAccumulatedDistanceKm: Float = 0f
@@ -287,6 +294,12 @@ object CanDataRepository {
     private val _gearBoxWork = MutableStateFlow<String>("")
     val gearBoxWork: StateFlow<String> = _gearBoxWork.asStateFlow()
 
+    private val _maxGearSeen = MutableStateFlow(0)
+    val maxGearSeen: StateFlow<Int> = _maxGearSeen.asStateFlow()
+
+    private val _is6DctGearbox = MutableStateFlow(is6DctBySystemConfig())
+    val is6DctGearbox: StateFlow<Boolean> = _is6DctGearbox.asStateFlow()
+
     private val _frontLeftSeatMode = MutableStateFlow<UInt?>(null)
     val frontLeftSeatMode: StateFlow<UInt?> = _frontLeftSeatMode.asStateFlow()
 
@@ -385,12 +398,24 @@ object CanDataRepository {
         return vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.fuelTankCapacityLiters(context)
     }
 
+    private fun getEffectiveFuelPercentage(): Float? {
+        val filtered = _fuelLevelPercentageFiltered.value
+        val raw = _fuelLevelPercentage.value
+        if (filtered != null) {
+            val isFresh = (SystemClock.elapsedRealtime() - lastFilteredFuelUpdateMs) < FILTERED_FUEL_TIMEOUT_MS
+            if (isFresh) {
+                return filtered.toFloat()
+            }
+        }
+        return raw?.toFloat() ?: filtered?.toFloat()
+    }
+
     fun resetLocalTripDistance() {
         loadPersistedStateIfNeeded()
         accumulatedTripDistanceKm = 0f
         _localTripDistanceKm.value = 0f
         lastOdometer = _odometer.value
-        val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
+        val currentPercent = getEffectiveFuelPercentage()
         initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
         tripStartTimeMs = System.currentTimeMillis()
         updateTripDuration()
@@ -402,7 +427,9 @@ object CanDataRepository {
         overallAccumulatedDistanceKm = 0f
         overallAccumulatedFuelLiters = 0f
         currentSegmentDistKm = 0f
-        val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
+        _fuelLevelPercentageFiltered.value = null
+        lastFilteredFuelUpdateMs = 0L
+        val currentPercent = getEffectiveFuelPercentage()
         initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
         lastKnownFuelLiters = initialFuelLiters
         previousAvgConsumption = null
@@ -417,7 +444,7 @@ object CanDataRepository {
 
     private fun recalculateLocalAverageFuelConsumption() {
         loadPersistedStateIfNeeded()
-        val currentPercent = (_fuelLevelPercentageFiltered.value ?: _fuelLevelPercentage.value)?.toFloat()
+        val currentPercent = getEffectiveFuelPercentage()
             ?: (_fuelLevelCalibratedLitersActual.value ?: _fuelLevelCalibratedLiters.value)?.let { (it / getTankCapacityLiters()) * 100f }
             ?: return
         val currentFuelLiters = _fuelLevelCalibratedLitersActual.value
@@ -476,6 +503,7 @@ object CanDataRepository {
     }
 
     fun updateFuelLevelPercentageFiltered(newValue: UInt) {
+        lastFilteredFuelUpdateMs = SystemClock.elapsedRealtime()
         _fuelLevelPercentageFiltered.setIfChanged(newValue)
         recalculateLocalAverageFuelConsumption()
         vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository.refresh()
@@ -590,6 +618,47 @@ object CanDataRepository {
 
     fun updateGearBoxWork(newValue: String) {
         _gearBoxWork.setIfChanged(newValue)
+    }
+
+    fun is6DctBySystemConfig(): Boolean {
+        return try {
+            val pm = PropManager.getInstance()
+            val c1 = pm.config ?: ""
+            val c2 = pm.persistConfig ?: ""
+            val c3 = pm.carType ?: ""
+            val c4 = pm.getProp(MBConfigConstant.RO_MB_CAN_CONFIG)
+            val c5 = pm.getProp(MBConfigConstant.PERSIST_MB_CAN_CONFIG)
+            val combined = "$c1 $c2 $c3 $c4 $c5".uppercase(Locale.ROOT)
+
+            if (combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_7DCT)) {
+                return false
+            }
+            combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_6DCT) ||
+                combined.contains("6DCT") ||
+                combined.contains("1.5_6DCT")
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun updateMaxGearSeen(newValue: Int) {
+        if (newValue > _maxGearSeen.value) {
+            _maxGearSeen.value = newValue
+            reevaluateGearboxType()
+        }
+    }
+
+    private fun reevaluateGearboxType() {
+        val maxG = _maxGearSeen.value
+        val config6Dct = is6DctBySystemConfig()
+
+        val is6Dct = when {
+            maxG >= 7 -> false
+            config6Dct -> true
+            maxG in 1..6 -> true
+            else -> false
+        }
+        _is6DctGearbox.setIfChanged(is6Dct)
     }
 
     fun updateFrontLeftSeatMode(newValue: UInt) {

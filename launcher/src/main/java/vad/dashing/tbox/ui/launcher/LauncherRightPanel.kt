@@ -125,6 +125,7 @@ fun LauncherRightPanel(
     val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
     val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
     val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
+    val is6Dct by canViewModel.is6DctGearbox.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         UniversalCanRepository.setSourceSignals(
@@ -137,6 +138,7 @@ fun LauncherRightPanel(
         driveModeRaw = driveModeRaw,
         driveModeWetRaw = driveModeWetRaw,
         gearBoxDriveMode = gearBoxDriveMode,
+        is6DCT = is6Dct,
     )
     val iconRevision by settingsViewModel.launcherAppIconRevision.collectAsStateWithLifecycle()
     val rawApps = rememberLaunchableAppEntries(settingsViewModel, iconRevision)

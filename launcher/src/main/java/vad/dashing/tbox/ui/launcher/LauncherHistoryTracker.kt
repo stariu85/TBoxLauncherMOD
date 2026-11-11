@@ -275,6 +275,10 @@ internal fun performUndoLaunch(context: Context, source: String = "unknown") {
         LauncherAboutOverlayWindow.isShowing()
 
     val closedList = mutableListOf<String>()
+    if (LauncherTopShadeWindow.isShowing()) {
+        LauncherTopShadeWindow.hide()
+        closedList += "TopShade"
+    }
     if (settingsWereOpen) {
         closeVehicleSettingsOverlay()
         closedList += "VehicleSettings"

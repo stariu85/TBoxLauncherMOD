@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.launcher.LauncherSettingsScreen
 import vad.dashing.tbox.ui.theme.TboxAppTheme
@@ -63,8 +64,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        DclUiStateNotifier.notifyUiStateChanged(this, immediate = true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        DclUiStateNotifier.notifyUiStateChanged(this, immediate = true)
+    }
+
     override fun onDestroy() {
         if (instanceRef?.get() === this) instanceRef = null
         super.onDestroy()
+        DclUiStateNotifier.notifyUiStateChanged(this, immediate = true)
     }
 }

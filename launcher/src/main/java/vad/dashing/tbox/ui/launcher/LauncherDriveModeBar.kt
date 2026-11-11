@@ -66,12 +66,14 @@ fun LauncherDriveModeBar(
     val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
     val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
     val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
+    val is6Dct by canViewModel.is6DctGearbox.collectAsStateWithLifecycle()
 
-    val resolvedLabel = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode) {
+    val resolvedLabel = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct) {
         resolveDriveModeDisplayLabel(
             driveModeRaw = driveModeRaw,
             driveModeWetRaw = driveModeWetRaw,
             gearBoxDriveMode = gearBoxDriveMode,
+            is6DCT = is6Dct,
         ).uppercase()
     }
 
@@ -233,14 +235,10 @@ private fun GearIndicatorChip(
     modifier: Modifier = Modifier,
 ) {
     val gearText = remember(activeGear, currentGearNum) {
-        if (activeGear == 'D') {
-            if (currentGearNum != null && currentGearNum > 0) {
-                "D $currentGearNum"
-            } else {
-                "D"
-            }
-        } else {
-            activeGear?.toString() ?: "-"
+        when (activeGear) {
+            'D' -> if (currentGearNum != null && currentGearNum > 0) "D $currentGearNum" else "D"
+            'M' -> if (currentGearNum != null && currentGearNum > 0) "M $currentGearNum" else "M"
+            else -> activeGear?.toString() ?: "-"
         }
     }
 

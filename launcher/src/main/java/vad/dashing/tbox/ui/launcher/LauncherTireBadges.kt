@@ -255,8 +255,8 @@ private fun LauncherTireBadge(
     }
     val tempText = wheel.temperatureC
         ?.takeIf { wheel.available && !wheel.calibrating }
-        ?.let { "$it${stringResource(R.string.unit_celsius)}" }
-        ?: "—${stringResource(R.string.unit_celsius)}"
+        ?.let { "$it${stringResource(R.string.unit_degree)}" }
+        ?: "—${stringResource(R.string.unit_degree)}"
 
     val badgeBg = LauncherColors.LeftPanelCard
 

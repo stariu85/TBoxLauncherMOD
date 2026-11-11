@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -142,6 +143,8 @@ internal fun LauncherNavSpeedOverlay(
     }
 }
 
+private const val TRAFFIC_LIGHT_STALE_TIMEOUT_MS = 180_000L // 180s backup timeout
+
 /**
  * Freely movable Overlay 4: Next Traffic Light Signal & Distance.
  * Scalable via navTrafficLightScale setting (50% - 150%).
@@ -155,8 +158,21 @@ internal fun LauncherNavTrafficLightOverlay(
 ) {
     val context = LocalContext.current
     val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
-    val now = System.currentTimeMillis()
-    val isTrafficLightStale = (now - navState.trafficLightLastUpdateMs) > 15000L
+
+    var currentTimeMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(navState.trafficLightLastUpdateMs) {
+        if (navState.trafficLightLastUpdateMs > 0L) {
+            val elapsed = System.currentTimeMillis() - navState.trafficLightLastUpdateMs
+            val remaining = TRAFFIC_LIGHT_STALE_TIMEOUT_MS - elapsed
+            if (remaining > 0) {
+                delay(remaining + 100L)
+            }
+            currentTimeMs = System.currentTimeMillis()
+        }
+    }
+
+    val isTrafficLightStale = navState.trafficLightLastUpdateMs == 0L ||
+            (currentTimeMs - navState.trafficLightLastUpdateMs) > TRAFFIC_LIGHT_STALE_TIMEOUT_MS
     val hasTrafficLightData = !isTrafficLightStale &&
             (!navState.trafficLightColor.isNullOrBlank() ||
              navState.trafficLightCountdownSeconds != null ||

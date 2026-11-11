@@ -117,9 +117,14 @@ object CanFramesProcess {
                     val gearBoxCurrentGear: Int
                     val gearBoxPreparedGear: Int
 
+                    val leftNibble = b0.getLeftNibble()
+                    if (leftNibble in 1..7) {
+                        CanDataRepository.updateMaxGearSeen(leftNibble)
+                    }
+
                     if (b0 in GEAR_BOX_7_DRIVE_MODES) {
                         gearBoxMode = "D"
-                        gearBoxCurrentGear = b0.getLeftNibble()
+                        gearBoxCurrentGear = leftNibble
                     } else if (b0 == 0xBE.toByte()) {
                         gearBoxMode = "P"
                         gearBoxCurrentGear = 0
@@ -129,6 +134,9 @@ object CanFramesProcess {
                     } else if (b0 == 0xAD.toByte()) {
                         gearBoxMode = "R"
                         gearBoxCurrentGear = 0
+                    } else if (leftNibble in 1..7) {
+                        gearBoxMode = "M"
+                        gearBoxCurrentGear = leftNibble
                     } else {
                         gearBoxMode = "N/A"
                         gearBoxCurrentGear = 0
@@ -212,10 +220,9 @@ object CanFramesProcess {
                     // Стабильный filtered и калибровка — только в активной поездке, чтобы скачок
                     // после заправки на стоянке не «съелся» до старта учёта.
                     if (TripRepository.activeTrip.value != null) {
-                        if (fuelLevelPercentageBuffer.addValue(fuelLevelPercentage)) {
-                            FuelCalibrationLive.applyFromStableFilteredPercent(fuelLevelPercentage)
-                            CanDataRepository.updateFuelLevelPercentageFiltered(fuelLevelPercentage)
-                        }
+                        val filteredFuel = fuelLevelPercentageBuffer.addValue(fuelLevelPercentage)
+                        FuelCalibrationLive.applyFromStableFilteredPercent(filteredFuel)
+                        CanDataRepository.updateFuelLevelPercentageFiltered(filteredFuel)
                     }
                 } else if (canId == CAN_ID_FUEL_CONSUMPTION) {
                     val currentFuelConsumption = if (b2 != 0xFF.toByte() && b3 != 0xFF.toByte()) {

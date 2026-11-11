@@ -29,6 +29,7 @@ fun resolveActiveGearSlot(gearBoxMode: String, gearBoxCurrentGear: Int?): Char? 
         mode.contains('R') -> 'R'
         mode == "N" || mode.startsWith("N ") -> 'N'
         mode.contains('D') -> 'D'
+        mode.contains('M') || mode.contains("MANUAL") -> 'M'
         mode.contains('P') && !mode.contains("N/A") -> 'P'
         gearBoxCurrentGear == 0 -> null
         gearBoxCurrentGear != null && gearBoxCurrentGear > 0 -> 'D'

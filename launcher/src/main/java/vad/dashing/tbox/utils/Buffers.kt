@@ -1,30 +1,42 @@
 package vad.dashing.tbox.utils
 
 import android.os.SystemClock
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
-class FuelLevelBuffer(private val bufferSize: Int = 10) {
+class FuelLevelBuffer(private val bufferSize: Int = 15, private val alpha: Float = 0.05f) {
     private val buffer = ArrayDeque<UInt>()
+    private var smoothedValue: Float? = null
 
-    fun addValue(newValue: UInt): Boolean {
-        // Добавляем новое значение в буфер
+    /**
+     * Добавляет новое сырое значение процента топлива и возвращает отфильтрованное значение (EMA).
+     */
+    fun addValue(newValue: UInt): UInt {
         buffer.addLast(newValue)
-
-        // Если буфер превысил размер, удаляем самое старое значение
         if (buffer.size > bufferSize) {
             buffer.removeFirst()
         }
 
-        // Проверяем, можно ли записать значение (буфер заполнен и все значения одинаковы)
-        return shouldWriteToStorage()
+        val rawFloat = newValue.toFloat()
+        val currentSmoothed = smoothedValue
+        if (currentSmoothed == null) {
+            smoothedValue = rawFloat
+        } else {
+            // Если произошел резкий скачок (например, заправка >= 5%), сразу сбрасываем фильтр к новому значению
+            if (abs(rawFloat - currentSmoothed) >= 5.0f) {
+                smoothedValue = rawFloat
+            } else {
+                // Экспоненциальное скользящее среднее (EMA)
+                smoothedValue = currentSmoothed * (1f - alpha) + rawFloat * alpha
+            }
+        }
+
+        return smoothedValue!!.roundToInt().coerceIn(0, 100).toUInt()
     }
 
-    private fun shouldWriteToStorage(): Boolean {
-        // Если буфер еще не заполнен, не записываем
-        if (buffer.size < bufferSize) return false
-
-        // Проверяем, что все значения в буфере равны первому
-        val firstValue = buffer.first()
-        return buffer.all { it == firstValue }
+    fun reset(newValue: UInt? = null) {
+        buffer.clear()
+        smoothedValue = newValue?.toFloat()
     }
 }
 

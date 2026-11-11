@@ -103,6 +103,9 @@ internal object LauncherAppDrawerWindow {
         onConfigChanged: () -> Unit,
     ): Boolean {
         if (isShowing()) return true
+        if (LauncherTopShadeWindow.isShowing()) {
+            LauncherTopShadeWindow.hide()
+        }
         closeVehicleSettingsOverlay()
         LauncherAboutOverlayWindow.hide()
         LauncherAdasQuickSettingsWindow.hide()

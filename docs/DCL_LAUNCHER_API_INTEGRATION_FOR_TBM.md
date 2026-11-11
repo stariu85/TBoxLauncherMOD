@@ -1,6 +1,6 @@
-# Руководство по интеграции с DCL Launcher API (для разработчика TBox Monitor)
+# Руководство по интеграции с DCL Launcher API v1.3 (для разработчика TBox Monitor)
 
-Данная инструкция описывает процесс подключения TBox Monitor (`vad.dashing.tbox`) к DCL Launcher (`ras.dashing.tbox.launcher`) для получения параметров рабочего стола, высоты панелей, границ ADAS-зоны и управления запуском приложений.
+Данная инструкция описывает актуальный протокол подключения TBox Monitor (`vad.dashing.tbox`) к DCL Launcher (`ras.dashing.tbox.launcher`) для получения реального состояния экрана, геометрии баров/ADAS-панели, управления приложениями и работы с `localaccess`.
 
 ---
 
@@ -10,94 +10,70 @@
 | :--- | :--- |
 | **Authority** | `ras.dashing.tbox.launcher.api` |
 | **URI** | `content://ras.dashing.tbox.launcher.api` |
-| **Разрешение** | `ras.dashing.tbox.launcher.permission.CALL_LAUNCHER_API` *(не обязательно на user-builds, проверка по UID)* |
-| **Авторизация** | Автоматическая (по UID вызывающего пакета `vad.dashing.tbox`). Токены и подтверждения в UI не требуются. |
-| **Формат обмена** | Синхронный `ContentResolver.call()` (вызывать в фоновом потоке IO). |
+| **Авторизация** | Автоматическая по UID вызывающего пакета (`vad.dashing.tbox`). |
+| **Прямой адрес Push** | Broadcast-события отправляются с явным пакетом `vad.dashing.tbox`. |
+| **Гарантия согласованности** | Ответ метода `getUiState` строго равен последнему переданному Push-событию (один и тот же номер `revision`). |
 
 ---
 
-## 2. Подключение и получение возможностей API
+## 2. Поля снимка состояния UI (`DclUiState`)
 
-Перед использованием рекомендуем проверить доступность API лаунчера через метод `getCapabilities`.
+Каждый Push-broadcast и вызов `getUiState` содержит полный согласованный снимок интерфейса:
 
-```kotlin
-import android.content.Context
-import android.net.Uri
-import android.os.Bundle
-
-object DclLauncherApi {
-    private val LAUNCHER_API_URI = Uri.parse("content://ras.dashing.tbox.launcher.api")
-
-    fun getCapabilities(context: Context): Bundle? {
-        return try {
-            context.contentResolver.call(LAUNCHER_API_URI, "getCapabilities", null, null)
-        } catch (e: Exception) {
-            null // Лаунчер не установлен или API недоступно
-        }
-    }
-}
-```
-
-**Ответ `Bundle`**:
-- `status` (String): `"ok"`
-- `apiVersion` (Int): `1`
-- `launchFullscreen` (Boolean): `true`
-- `launchAppArea` (Boolean): `true`
-- `uiStateQuery` (Boolean): `true`
-- `uiStateEvents` (Boolean): `true`
-- `adasPanel` (Boolean): `true`
-- `screenModes` (String): `"home,single,fullscreen,split"`
+| Поле в Bundle | Тип | Описание |
+| :--- | :--- | :--- |
+| `status` | String | `"ok"` при успешном вызове. |
+| `screenMode` | String | `"home"` \| `"single"` \| `"fullscreen"` \| `"split"` |
+| `foregroundPackage` | String | Имя пакета текущего активного стороннего приложения (или `""`). |
+| `adasPanelVisible` | Boolean | Реальная видимость панели ADAS на экране (`false` при fullscreen или открытых настройках). |
+| `topBarVisible` | Boolean | Реальная видимость верхнего бара на экране (`false` при fullscreen или открытых настройках). |
+| `bottomBarVisible` | Boolean | Реальная видимость нижнего бара (`true` на рабочем столе, в `app_area` и в окне настроек; `false` в fullscreen). |
+| `overlayOpen` | Boolean | `true`, если поверх интерфейса/приложений открыты настройки DCL, Vehicle Settings или шторка Control Center. |
+| `immersive` | Boolean | `true` при работе приложения на полный экран. |
+| `topBarHeightPx` | Int | Высота верхнего бара в px (`0`, если скрыт). |
+| `bottomBarHeightPx` | Int | Высота нижнего бара в px (`0`, если скрыт). |
+| `adasPanelBounds` | String | Границы ADAS-зоны `"left,top,right,bottom"` (`"0,0,0,0"`, если скрыта). |
+| `appAreaBounds` | String | Границы рабочей зоны приложений `"left,top,right,bottom"` (`"0,0,displayW,displayH"`, если fullscreen). |
+| `displayWidthPx` | Int | Ширина экрана в пикселях (например, `1920`). |
+| `displayHeightPx` | Int | Высота экрана в пикселях (например, `1080`). |
+| `notificationShadeExpanded` | Boolean | `true`, если открыта верхняя шторка управления DCL. |
+| `revision` | Long | Монотонно растущий счетчик ревизий снимка экрана. |
+| `updatedAtEpochMs` | Long | Метка времени формирования снимка (Unix epoch ms). |
 
 ---
 
-## 3. Запрос состояния экрана и геометрии (`getUiState` / `getUiChrome`)
+## 3. Поведение лаунчера в различных режимах
 
-Вызывайте метод `getUiState` для получения ширины/высоты баров, зоны ADAS и рабочей области приложений.
+### 1. Рабочий стол (Home)
+- `screenMode` = `"home"`, `foregroundPackage` = `""`
+- `adasPanelVisible` = `true` (согласно настройкам пользователя)
+- `topBarVisible` = `true`, `bottomBarVisible` = `true`, `overlayOpen` = `false`
 
-```kotlin
-data class DclUiState(
-    val screenMode: String,          // "home" | "single" | "fullscreen" | "split"
-    val foregroundPackage: String,   // Пакет текущего видимого приложения
-    val topBarHeightPx: Int,         // Высота верхнего бара (px)
-    val bottomBarHeightPx: Int,      // Высота нижнего бара (px)
-    val adasPanelBounds: String,     // Границы зоны ADAS: "left,top,right,bottom"
-    val appAreaBounds: String,       // Границы рабочей области: "left,top,right,bottom"
-    val displayWidthPx: Int,         // Ширина экрана в пикселях (напр. 1920)
-    val displayHeightPx: Int,        // Высота экрана в пикселях (напр. 1080)
-    val overlayOpen: Boolean,        // Открыты ли оверлеи DCL поверх приложений
-    val revision: Long,              // Монотонно растущий номер версии состояния
-)
+### 2. Приложение в рабочей зоне (`app_area`)
+- `screenMode` = `"single"`, `foregroundPackage` = `"pkg.name"`
+- `adasPanelVisible` = `true`, `topBarVisible` = `true`, `bottomBarVisible` = `true`
+- `appAreaBounds` = `"344,51,1920,998"` (справа от ADAS, между верхним и нижним барами)
 
-fun getUiState(context: Context): DclUiState? {
-    val bundle = context.contentResolver.call(LAUNCHER_API_URI, "getUiState", null, null) 
-        ?: return null
+### 3. Экран настроек DCL / Vehicle Settings
+- `overlayOpen` = `true`
+- `adasPanelVisible` = `false` (перекрыта окном настроек)
+- `topBarVisible` = `false` (перекрыт окном настроек)
+- `bottomBarVisible` = `true` (нижняя панель отображается внизу экрана настроек)
+- **При закрытии настроек**: шлется мгновенный push с полным восстановлением значений баров и `overlayOpen = false`.
 
-    if (bundle.getString("status") != "ok") return null
-
-    return DclUiState(
-        screenMode = bundle.getString("screenMode", "home"),
-        foregroundPackage = bundle.getString("foregroundPackage", ""),
-        topBarHeightPx = bundle.getInt("topBarHeightPx", 51),
-        bottomBarHeightPx = bundle.getInt("bottomBarHeightPx", 82),
-        adasPanelBounds = bundle.getString("adasPanelBounds", "0,51,344,998"),
-        appAreaBounds = bundle.getString("appAreaBounds", "344,51,1920,998"),
-        displayWidthPx = bundle.getInt("displayWidthPx", 1920),
-        displayHeightPx = bundle.getInt("displayHeightPx", 1080),
-        overlayOpen = bundle.getBoolean("overlayOpen", false),
-        revision = bundle.getLong("revision", 1L)
-    )
-}
-```
+### 4. Полноэкранный режим (Fullscreen)
+- `screenMode` = `"fullscreen"`, `foregroundPackage` = `"pkg.name"`, `immersive` = `true`
+- `adasPanelVisible` = `false`, `topBarVisible` = `false`, `bottomBarVisible` = `false`
+- `adasPanelBounds` = `"0,0,0,0"`, `appAreaBounds` = `"0,0,1920,1080"`
 
 ---
 
-## 4. Подписка на Push-события изменений UI (Broadcast)
+## 4. Подписка на Push-события Broadcast
 
-Чтобы TBox Monitor не производил непрерывный опрос (`polling`), DCL автоматически отправляет Push Broadcast при любом изменении режима или геометрии.
+DCL отправляет Push-уведомления при **любом** изменении видимости баров, ADAS, оверлея настроек или режима экрана.
 
-### Регистрация Receiver в TBox Monitor
+### `AndroidManifest.xml` (TBox Monitor)
 
-#### `AndroidManifest.xml`
 ```xml
 <receiver
     android:name=".receiver.DclUiStateReceiver"
@@ -109,7 +85,8 @@ fun getUiState(context: Context): DclUiState? {
 </receiver>
 ```
 
-#### `DclUiStateReceiver.kt`
+### `DclUiStateReceiver.kt` (TBox Monitor)
+
 ```kotlin
 package vad.dashing.tbox.receiver
 
@@ -119,18 +96,85 @@ import android.content.Intent
 
 class DclUiStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == "ras.dashing.tbox.launcher.action.UI_STATE_CHANGED" ||
-            intent.action == "ras.dashing.tbox.launcher.action.UI_CHROME_CHANGED"
+        val action = intent.action ?: return
+        if (action == "ras.dashing.tbox.launcher.action.UI_STATE_CHANGED" ||
+            action == "ras.dashing.tbox.launcher.action.UI_CHROME_CHANGED"
         ) {
             val extras = intent.extras ?: return
+            
             val screenMode = extras.getString("screenMode", "home")
             val foregroundPackage = extras.getString("foregroundPackage", "")
-            val adasBounds = extras.getString("adasPanelBounds", "")
-            val appAreaBounds = extras.getString("appAreaBounds", "")
-            val topBarHeightPx = extras.getInt("topBarHeightPx", 51)
-            val bottomBarHeightPx = extras.getInt("bottomBarHeightPx", 82)
-            
-            // Обработать изменение геометрии/экрана в TBox Monitor (например, подстроить плавающие окна)
+            val adasPanelVisible = extras.getBoolean("adasPanelVisible", true)
+            val topBarVisible = extras.getBoolean("topBarVisible", true)
+            val bottomBarVisible = extras.getBoolean("bottomBarVisible", true)
+            val overlayOpen = extras.getBoolean("overlayOpen", false)
+            val adasBoundsStr = extras.getString("adasPanelBounds", "0,51,344,998")
+            val appAreaBoundsStr = extras.getString("appAreaBounds", "344,51,1920,998")
+            val revision = extras.getLong("revision", 1L)
+
+            // Перестроить плавающие окна и логику автоматизаций TBox Monitor
+            onUiStateUpdated(
+                screenMode = screenMode,
+                foregroundPackage = foregroundPackage,
+                adasPanelVisible = adasPanelVisible,
+                topBarVisible = topBarVisible,
+                bottomBarVisible = bottomBarVisible,
+                overlayOpen = overlayOpen,
+                adasBounds = parseRect(adasBoundsStr),
+                appAreaBounds = parseRect(appAreaBoundsStr),
+                revision = revision
+            )
+        }
+    }
+
+    private fun parseRect(str: String): android.graphics.Rect {
+        val p = str.split(",")
+        if (p.size == 4) {
+            return android.graphics.Rect(
+                p[0].toIntOrNull() ?: 0,
+                p[1].toIntOrNull() ?: 0,
+                p[2].toIntOrNull() ?: 0,
+                p[3].toIntOrNull() ?: 0
+            )
+        }
+        return android.graphics.Rect(0, 0, 0, 0)
+    }
+
+    private fun onUiStateUpdated(
+        screenMode: String,
+        foregroundPackage: String,
+        adasPanelVisible: Boolean,
+        topBarVisible: Boolean,
+        bottomBarVisible: Boolean,
+        overlayOpen: Boolean,
+        adasBounds: android.graphics.Rect,
+        appAreaBounds: android.graphics.Rect,
+        revision: Long
+    ) {
+        // Логика подстройки оверлеев TBox Monitor
+    }
+}
+```
+
+---
+
+## 5. Запрос текущего состояния (`getUiState`)
+
+Если TBox Monitor запускается перезапускается или производит инициализацию, он может запросить актуальный снимок экрана напрямую:
+
+```kotlin
+import android.content.Context
+import android.net.Uri
+import android.os.Bundle
+
+object DclLauncherApi {
+    private val LAUNCHER_API_URI = Uri.parse("content://ras.dashing.tbox.launcher.api")
+
+    fun getUiState(context: Context): Bundle? {
+        return try {
+            context.contentResolver.call(LAUNCHER_API_URI, "getUiState", null, null)
+        } catch (e: Exception) {
+            null
         }
     }
 }
@@ -138,25 +182,15 @@ class DclUiStateReceiver : BroadcastReceiver() {
 
 ---
 
-## 5. Запуск приложений и самого TBox Monitor (`launchApp`)
+## 6. Запуск приложений (`launchApp`)
 
-Вызывайте метод `launchApp`, чтобы запустить TBox Monitor или стороннее приложение в требуемом режиме (`app_area` или `fullscreen`).
-
-### Параметры `extras`
-- `packageName` (String, обязательно): Имя пакета приложения (например, `"vad.dashing.tbox"` или `"ru.yandex.yandexnavi"`).
-- `mode` (String, обязательно):
-  - `"app_area"` — открытие приложения в рабочей области лаунчера (между верхним и нижним барами, справа от ADAS-зоны).
-  - `"fullscreen"` — открытие на полный экран.
-- `activityClass` (String, опционально): Полное имя класса конкретной Activity.
-- `requestId` (String, опционально): Уникальный ID запроса для предотвращения дублирующих нажатий.
-
-### Пример вызова
+Для открытия сторонних приложений или самого TBox Monitor используйте метод `launchApp`.
 
 ```kotlin
 fun launchApp(
     context: Context,
     packageName: String,
-    mode: String = "app_area",
+    mode: String = "app_area", // "app_area" или "fullscreen"
     activityClass: String? = null
 ): Boolean {
     val extras = Bundle().apply {
@@ -170,7 +204,7 @@ fun launchApp(
 
     return try {
         val response = context.contentResolver.call(
-            LAUNCHER_API_URI,
+            Uri.parse("content://ras.dashing.tbox.launcher.api"),
             "launchApp",
             null,
             extras
@@ -184,33 +218,44 @@ fun launchApp(
 
 ---
 
-## 6. Пример считывания координат для плавающих окон TBox
+## 7. Критично: Работа с ContentProvider `localaccess`
 
-Для размещения плавающих оверлеев TBox Monitor относительно рабочей зоны DCL:
+Для предотвращения ситуации, когда Android ActivityManager (AMS) при обновлении APK TBox Monitor убивает DCL Launcher (`ras.dashing.tbox.launcher`) из-за удерживаемой стабильной связи с ContentProvider:
+
+### Правило обращения к `vad.dashing.tbox.localaccess`:
+1. **Строго использовать `acquireUnstableContentProviderClient`**
+2. **Делать одиночный вызов и НЕМЕДЛЕННО закрывать клиент через `close()`**
+3. **НЕ удерживать persistent connection, курсоры или ContentObserver**
+
+### Пример корректной реализации вызова в TBox Monitor:
 
 ```kotlin
-fun parseBounds(boundsStr: String): android.graphics.Rect {
-    val parts = boundsStr.split(",")
-    if (parts.size == 4) {
-        return android.graphics.Rect(
-            parts[0].toIntOrNull() ?: 0,
-            parts[1].toIntOrNull() ?: 0,
-            parts[2].toIntOrNull() ?: 1920,
-            parts[3].toIntOrNull() ?: 1080
-        )
+import android.content.Context
+import android.net.Uri
+import android.os.Bundle
+
+object LocalAccessCaller {
+    private val AUTHORITY_URI = Uri.parse("content://vad.dashing.tbox.localaccess")
+
+    fun getAccess(context: Context, interactive: Boolean = false): Bundle? {
+        val extras = Bundle().apply {
+            putBoolean("interactive", interactive)
+        }
+
+        // КРИТИЧНО: Использовать unstable клиент
+        val client = context.contentResolver.acquireUnstableContentProviderClient(AUTHORITY_URI) 
+            ?: return null
+
+        return try {
+            client.call("getAccess", null, extras)
+        } catch (e: Exception) {
+            null
+        } finally {
+            // КРИТИЧНО: Сразу закрывать клиент после каждого вызова
+            client.close()
+        }
     }
-    return android.graphics.Rect(344, 51, 1920, 998)
 }
 ```
 
----
-
-## 7. Коды ошибок в ответе API
-
-При возникновении ошибок метод `call()` возвращает `status = "error"` с полями:
-- `errorCode`:
-  - `"forbidden"` — доступ запрещен (вызывающий пакет не `vad.dashing.tbox`).
-  - `"invalid_args"` — отсутствуют обязательные аргументы.
-  - `"unsupported"` — вызов неизвестного метода.
-  - `"internal"` — внутреннее исключение лаунчера.
-- `message`: Текстовое описание ошибки.
+*Примечание: HTTP API Token TBox Monitor сохраняется лаунчером и автоматически сохраняется между обновлениями приложений.*

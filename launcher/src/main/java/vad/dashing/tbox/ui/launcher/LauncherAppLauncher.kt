@@ -585,7 +585,12 @@ private fun startResolved(
 
     if (component != null && tryStartMainActivity(context, packageName, component, activity)) {
         LastAppTracker.recordLaunch(context, packageName)
-        LauncherActiveAppTracker.recordAppLaunchedAndResolveTaskId(context, packageName, topActivityClass = component.className)
+        LauncherActiveAppTracker.recordAppLaunchedAndResolveTaskId(
+            context = context,
+            packageName = packageName,
+            topActivityClass = component.className,
+            isFullscreen = forceFullscreen,
+        )
         return
     }
 
@@ -595,7 +600,12 @@ private fun startResolved(
     runCatching { (activity ?: context).startActivity(fallbackIntent) }
         .onSuccess {
             LastAppTracker.recordLaunch(context, packageName)
-            LauncherActiveAppTracker.recordAppLaunchedAndResolveTaskId(context, packageName, topActivityClass = component?.className)
+            LauncherActiveAppTracker.recordAppLaunchedAndResolveTaskId(
+                context = context,
+                packageName = packageName,
+                topActivityClass = component?.className,
+                isFullscreen = forceFullscreen,
+            )
             Log.w(TAG, "startActivity OK pkg=$packageName")
             LauncherNavLogger.logAppLaunch(
                 packageName = packageName,
