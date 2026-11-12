@@ -1095,7 +1095,7 @@ private fun LauncherSeatMemoryAndAdjustmentBar(
     }
 }
 
-private suspend fun sendSequentialWindowCommands(percent: Int) {
+internal suspend fun sendSequentialWindowCommands(percent: Int) {
     val target = percent.coerceIn(0, 100)
     val activeTargets = mutableMapOf<Int, Int>()
     val windowIndices = intArrayOf(0, 1, 2, 3)

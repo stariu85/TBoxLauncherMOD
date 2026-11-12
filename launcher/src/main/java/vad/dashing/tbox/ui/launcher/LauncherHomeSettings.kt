@@ -1784,6 +1784,12 @@ private fun NavTrafficLightScaleSlider() {
 @Composable
 fun CruiseControlSettingsContent() {
     val context = LocalContext.current
+    val carModelVisibleRevision by LauncherAppConfigStore.carModelVisibleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val carModelVisible = remember(context, carModelVisibleRevision) {
+        LauncherAppConfigStore.carModelVisible(context)
+    }
+
     val gearboxTypeRevision by LauncherAppConfigStore.gearboxTypeRevisionFlow
         .collectAsStateWithLifecycle()
     val is6Dct = remember(context, gearboxTypeRevision) {
@@ -1797,6 +1803,18 @@ fun CruiseControlSettingsContent() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_car_model_visible_title),
+            active = carModelVisible,
+            onClick = {
+                LauncherAppConfigStore.setCarModelVisible(context, !carModelVisible)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_car_model_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
 
         Column(modifier = Modifier.padding(vertical = 4.dp)) {
             Text(

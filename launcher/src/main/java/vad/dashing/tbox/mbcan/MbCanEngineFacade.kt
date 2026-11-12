@@ -461,7 +461,7 @@ object MbCanEngineFacade {
                     }.getOrNull()
                     val speed = fromArgs ?: readVehicleSpeed()
                     val prev = lastSpeed
-                    if (prev != null && speed != null && Math.abs(speed - prev) < 0.05f) {
+                    if (prev != null && speed != null && Math.abs(speed - prev) < 1.0f && (speed > 0.5f || prev <= 0.5f)) {
                         return@InvocationHandler null
                     }
                     lastSpeed = speed

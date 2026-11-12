@@ -18,7 +18,7 @@ object HeadUnitDayNightMapping {
     const val MB_NIGHT_MODE_AUTO_KEY = "com.mb.provider.night_mode_auto"
     const val ADAYO_NIGHT_MODE_AUTO_KEY = "com.adayo.provider.night_mode_auto"
 
-    fun usesAdayoKeys(canMode: HeadUnitCanMode): Boolean {
+    fun usesAdayoKeys(canMode: HeadUnitCanMode = UniversalCanRepository.mode.value): Boolean {
         return canMode == HeadUnitCanMode.Android10Vhal || Build.VERSION.SDK_INT >= 29
     }
 

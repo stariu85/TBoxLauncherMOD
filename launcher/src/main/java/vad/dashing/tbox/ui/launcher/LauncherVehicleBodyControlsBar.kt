@@ -493,18 +493,3 @@ fun LauncherSmartPanel(
         }
     }
 }
-
-private suspend fun sendSequentialWindowCommands(percent: Int) {
-    val target = percent.coerceIn(0, 100)
-    val activeTargets = mutableMapOf<Int, Int>()
-    val windowIndices = intArrayOf(0, 1, 2, 3) // 0: Driver, 1: Passenger, 2: Rear Left, 3: Rear Right
-    for (i in windowIndices.indices) {
-        if (i > 0) {
-            delay(1000L)
-        }
-        val windowIdx = windowIndices[i]
-        activeTargets[windowIdx] = target
-        MbCanEngineFacade.setWindowPositions(activeTargets)
-    }
-    delay(2500L)
-}

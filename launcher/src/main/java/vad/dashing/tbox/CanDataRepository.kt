@@ -214,7 +214,15 @@ object CanDataRepository {
         }
     }
 
-    private fun savePersistedState() {
+    private var lastSavePersistedStateMs: Long = 0L
+    private const val SAVE_PERSISTED_STATE_MIN_INTERVAL_MS = 15_000L
+
+    private fun savePersistedState(immediate: Boolean = false) {
+        val now = SystemClock.elapsedRealtime()
+        if (!immediate && (now - lastSavePersistedStateMs) < SAVE_PERSISTED_STATE_MIN_INTERVAL_MS) {
+            return
+        }
+        lastSavePersistedStateMs = now
         val context = AppContextHolder.appContextOrNull ?: return
         runCatching {
             val prefs = context.getSharedPreferences(PREFS_PERSISTENCE, Context.MODE_PRIVATE)
@@ -358,7 +366,10 @@ object CanDataRepository {
     }
 
     fun updateCarSpeed(newValue: Float) {
-        _carSpeed.setIfChanged(newValue)
+        val current = _carSpeed.value
+        if (current == null || kotlin.math.abs(current - newValue) >= 1.0f || (newValue == 0f && current != 0f)) {
+            _carSpeed.value = newValue
+        }
     }
 
     fun updateCarSpeedAccurate(newValue: Float) {
@@ -419,7 +430,7 @@ object CanDataRepository {
         initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
         tripStartTimeMs = System.currentTimeMillis()
         updateTripDuration()
-        savePersistedState()
+        savePersistedState(immediate = true)
     }
 
     fun resetOverallAverageFuelConsumption() {
@@ -434,7 +445,7 @@ object CanDataRepository {
         lastKnownFuelLiters = initialFuelLiters
         previousAvgConsumption = null
         _averageFuelConsumption.value = null
-        savePersistedState()
+        savePersistedState(immediate = true)
     }
 
     fun updateTripDuration() {
@@ -722,7 +733,12 @@ object CanDataRepository {
         _motorHoursTrip.value = (_motorHoursTrip.value ?: 0f) + newValue
     }
 
+    fun hasCanFramesStructuredSubscribers(): Boolean {
+        return _canFramesStructured.subscriptionCount.value > 0 || DclLogRecorder.isLoggingActive()
+    }
+
     fun addCanFrameStructured(canId: String, rawValue: ByteArray, maxFrames: Int = MAX_FRAMES_PER_ID) {
+        if (!hasCanFramesStructuredSubscribers()) return
         val date = Date()
         val frame = CanFrame(date, rawValue)
 

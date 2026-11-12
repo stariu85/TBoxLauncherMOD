@@ -2313,7 +2313,10 @@ private fun rememberCpuUsagePercentage(): Int {
     val tracker = remember { CpuUsageTracker() }
     LaunchedEffect(Unit) {
         while (isActive) {
-            cpuUsage = tracker.readCpuUsage()
+            val usage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                tracker.readCpuUsage()
+            }
+            cpuUsage = usage
             delay(2500L)
         }
     }
@@ -2326,7 +2329,10 @@ private fun rememberRamUsagePercentage(): Int {
     var ramUsage by remember { mutableIntStateOf(readRamUsagePercentage(context)) }
     LaunchedEffect(context) {
         while (isActive) {
-            ramUsage = readRamUsagePercentage(context)
+            val usage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                readRamUsagePercentage(context)
+            }
+            ramUsage = usage
             delay(3000L)
         }
     }

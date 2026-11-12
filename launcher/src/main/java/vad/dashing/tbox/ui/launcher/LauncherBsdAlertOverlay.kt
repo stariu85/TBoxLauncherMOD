@@ -47,6 +47,15 @@ import vad.dashing.tbox.ui.ProvideUiClickSounds
  */
 @Composable
 fun LauncherBsdAlertOverlay(
+    modifier: Modifier = Modifier,
+) {
+    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+    LauncherBsdAlertOverlay(adas = adas, modifier = modifier)
+}
+
+@Composable
+fun LauncherBsdAlertOverlay(
     adas: LauncherAdasState,
     modifier: Modifier = Modifier,
 ) {

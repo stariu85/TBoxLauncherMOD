@@ -99,6 +99,16 @@ private data class Snowflake(
 
 private const val DASH_SPACING = 72f
 
+internal class VirtualRoadDrawCache {
+    val roadSurfacePath = Path()
+    val accBeamPath = Path()
+    val bsdLeftBeamPath = Path()
+    val bsdRightBeamPath = Path()
+    val stepPaths = Array(3) { Path() }
+    val lanePaths = Array(2) { Path() }
+    val cabinPath = Path()
+}
+
 @Composable
 fun LauncherVirtualRoad(
     speedKmh: Float,
@@ -286,14 +296,16 @@ fun LauncherVirtualRoad(
         label = "bsdRoadPulseValue",
     )
 
-    val snowPhase = snowPhaseState.floatValue
+    val drawCache = remember { VirtualRoadDrawCache() }
+
     if (driveBlend <= 0.01f) return
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .graphicsLayer { alpha = driveBlend },
     ) {
-        snowPhase.let {}
+        val currentSnowPhase = snowPhaseState.floatValue
+        currentSnowPhase.let {}
         drawVirtualRoad(
             roadPhase = roadPhaseState.floatValue,
             speedKmh = speedKmh,
@@ -311,6 +323,7 @@ fun LauncherVirtualRoad(
             bsdRightProgress = bsdRightProgress,
             isSnow = effectiveIsSnow,
             snowflakes = snowflakes,
+            drawCache = drawCache,
         )
     }
 }
@@ -551,6 +564,7 @@ private fun DrawScope.drawVirtualRoad(
     bsdRightProgress: Float = 0f,
     isSnow: Boolean = false,
     snowflakes: List<Snowflake> = emptyList(),
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
     val w = size.width
     val h = size.height
@@ -572,6 +586,7 @@ private fun DrawScope.drawVirtualRoad(
         centerXAt = ::centerXAt,
         halfWidthAt = ::halfWidthAt,
         yAt = ::yAt,
+        cachedPath = drawCache?.roadSurfacePath,
     )
 
     drawAdasLaneAssist(
@@ -580,6 +595,7 @@ private fun DrawScope.drawVirtualRoad(
         centerXAt = ::centerXAt,
         laneOffsetAt = ::laneOffsetAt,
         yAt = ::yAt,
+        cachedLanePaths = drawCache?.lanePaths,
     )
 
     val phase = roadPhase % DASH_SPACING
@@ -656,6 +672,8 @@ private fun DrawScope.drawVirtualRoad(
         centerXAt = ::centerXAt,
         laneOffsetAt = ::laneOffsetAt,
         yAt = ::yAt,
+        cachedLeftPath = drawCache?.bsdLeftBeamPath,
+        cachedRightPath = drawCache?.bsdRightBeamPath,
     )
 
     val now = android.os.SystemClock.uptimeMillis()
@@ -693,6 +711,7 @@ private fun DrawScope.drawVirtualRoad(
                 yAt = ::yAt,
                 alert = adas.fcwActive || adas.distanceWarning,
                 leadTargetDepth = targetLeadDepth,
+                cachedPath = drawCache?.accBeamPath,
             )
         }
         if (showDistanceSteps) {
@@ -703,6 +722,7 @@ private fun DrawScope.drawVirtualRoad(
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 tint = if (adas.fcwActive || adas.distanceWarning) Color(0xFFEF4444) else LauncherColors.AccentCyan,
+                cachedStepPaths = drawCache?.stepPaths,
             )
         }
         drawFrontObject(
@@ -716,6 +736,7 @@ private fun DrawScope.drawVirtualRoad(
             halfWidthAt = ::halfWidthAt,
             yAt = ::yAt,
             distanceTextSizeSp = distanceTextSizeSp,
+            cachedCabinPath = drawCache?.cabinPath,
         )
     } else {
         if (beamProgress > 0.005f) {
@@ -728,6 +749,7 @@ private fun DrawScope.drawVirtualRoad(
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 alert = false,
+                cachedPath = drawCache?.accBeamPath,
             )
         }
         if (showDistanceSteps) {
@@ -805,8 +827,10 @@ private fun DrawScope.drawRoadSurface(
     centerXAt: (Float) -> Float,
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
+    cachedPath: Path? = null,
 ) {
-    val surface = Path().apply {
+    val surface = (cachedPath ?: Path()).apply {
+        reset()
         moveTo(centerXAt(0f) - halfWidthAt(0f), yAt(0f))
         lineTo(centerXAt(0f) + halfWidthAt(0f), yAt(0f))
         for (i in 1..10) {
@@ -865,6 +889,8 @@ private fun DrawScope.drawBsdBeam(
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
+    cachedLeftPath: Path? = null,
+    cachedRightPath: Path? = null,
 ) {
     if (leftProgress < 0.005f && rightProgress < 0.005f) return
 
@@ -872,9 +898,10 @@ private fun DrawScope.drawBsdBeam(
     val nearDepth = 1.00f
 
     listOf(
-        Triple(threats.bsdLeft, -1f, leftProgress),  // Lane to the left of the car model
-        Triple(threats.bsdRight, 1f, rightProgress),  // Lane to the right of the car model
-    ).forEach { (level, side, progress) ->
+        Triple(threats.bsdLeft, -1f, leftProgress to cachedLeftPath),  // Lane to the left of the car model
+        Triple(threats.bsdRight, 1f, rightProgress to cachedRightPath),  // Lane to the right of the car model
+    ).forEach { (level, side, progressAndPath) ->
+        val (progress, cachedPath) = progressAndPath
         if (progress < 0.005f) return@forEach
 
         val (tint, isPulsing, maxAlpha) = when (level) {
@@ -889,7 +916,8 @@ private fun DrawScope.drawBsdBeam(
         val nearCenter = centerXAt(nearDepth) + side * 2.0f * laneOffsetAt(nearDepth)
         val nearHalf = laneOffsetAt(nearDepth) * 0.85f
 
-        val beam = Path().apply {
+        val beam = (cachedPath ?: Path()).apply {
+            reset()
             moveTo(farCenter - farHalf, yAt(farDepth))
             lineTo(farCenter + farHalf, yAt(farDepth))
             lineTo(nearCenter + nearHalf, yAt(nearDepth))
@@ -926,6 +954,7 @@ private fun DrawScope.drawAccBeam(
     alert: Boolean,
     toHorizon: Boolean = false,
     leadTargetDepth: Float? = null,
+    cachedPath: Path? = null,
 ) {
     if (beamProgress < 0.005f) return
 
@@ -940,7 +969,8 @@ private fun DrawScope.drawAccBeam(
 
     val nearHalf = laneOffsetAt(egoDepth) * 0.85f
     val farHalf = laneOffsetAt(animatedTargetDepth) * 0.85f
-    val beam = Path().apply {
+    val beam = (cachedPath ?: Path()).apply {
+        reset()
         moveTo(centerXAt(egoDepth) - nearHalf, yAt(egoDepth))
         lineTo(centerXAt(animatedTargetDepth) - farHalf, yAt(animatedTargetDepth))
         lineTo(centerXAt(animatedTargetDepth) + farHalf, yAt(animatedTargetDepth))
@@ -970,6 +1000,7 @@ private fun DrawScope.drawAccDistanceSteps(
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
     tint: Color,
+    cachedStepPaths: Array<Path>? = null,
 ) {
     // 3 steps in front of the car on the road ahead (1 = Near/Близко, 2 = Mid/Средне, 3 = Far/Далеко)
     val egoDepth = 0.72f
@@ -991,7 +1022,8 @@ private fun DrawScope.drawAccDistanceSteps(
         val cx = centerXAt(t)
         val halfW = laneOffsetAt(t) * 0.72f
         val chevronH = 8.dp.toPx() * (0.6f + t * 0.4f)
-        val stepPath = Path().apply {
+        val stepPath = (cachedStepPaths?.getOrNull(idx) ?: Path()).apply {
+            reset()
             moveTo(cx - halfW, y + chevronH)
             lineTo(cx, y)
             lineTo(cx + halfW, y + chevronH)
@@ -1047,6 +1079,7 @@ private fun DrawScope.drawAdasLaneAssist(
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
+    cachedLanePaths: Array<Path>? = null,
 ) {
     if (laneProgress < 0.01f) return
 
@@ -1058,11 +1091,13 @@ private fun DrawScope.drawAdasLaneAssist(
     listOf(
         adas.leftLane to -1f,
         adas.rightLane to 1f,
-    ).forEach { (lane, side) ->
-        if (lane == LauncherAdasLaneVisualization.Hidden) return@forEach
+    ).forEachIndexed { laneIdx, (lane, side) ->
+        if (lane == LauncherAdasLaneVisualization.Hidden) return@forEachIndexed
         val isWarning = lane == LauncherAdasLaneVisualization.Warning
 
-        val lanePath = Path()
+        val lanePath = (cachedLanePaths?.getOrNull(laneIdx) ?: Path()).apply {
+            reset()
+        }
         var first = true
         val steps = 16
         for (i in 0..steps) {
@@ -1152,6 +1187,7 @@ private fun DrawScope.drawFrontObject(
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
     distanceTextSizeSp: Int = ADAS_DISTANCE_TEXT_SIZE_DEFAULT,
+    cachedCabinPath: Path? = null,
 ) {
     val fogFade = distanceFade(depth)
     val effectiveAlpha = objectAlpha * fogFade.coerceIn(0.15f, 1f)
@@ -1218,6 +1254,7 @@ private fun DrawScope.drawFrontObject(
                 objH = objH,
                 fill = fillColor,
                 stroke = strokeColor,
+                cachedCabinPath = cachedCabinPath,
             )
         }
     }
@@ -1297,6 +1334,7 @@ private fun DrawScope.drawFrontObjectSilhouette(
     objH: Float,
     fill: Color,
     stroke: Color,
+    cachedCabinPath: Path? = null,
 ) {
     when (type) {
         LauncherAdasFrontObjectType.Bus -> {
@@ -1356,7 +1394,8 @@ private fun DrawScope.drawFrontObjectSilhouette(
                 Size(objW, bodyH),
                 CornerRadius(objW * 0.22f, objW * 0.22f),
             )
-            val cabinPath = Path().apply {
+            val cabinPath = (cachedCabinPath ?: Path()).apply {
+                reset()
                 moveTo(cx - objW * 0.28f, cy - bodyH)
                 lineTo(cx - objW * 0.18f, cy - bodyH - cabinH)
                 lineTo(cx + objW * 0.18f, cy - bodyH - cabinH)

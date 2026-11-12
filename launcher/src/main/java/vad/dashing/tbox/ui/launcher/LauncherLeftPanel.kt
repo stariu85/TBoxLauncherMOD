@@ -77,7 +77,6 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
@@ -202,12 +201,13 @@ fun LauncherLeftPanel(
     } else {
         vehicleBody
     }
-    val mergedTires = remember(tires, wheelsPressure, wheelsTemperature, context) {
-        val merged = mergeTireStateWithCanData(tires, wheelsPressure, wheelsTemperature)
-        if (merged.hasAvailableData) {
-            LauncherAppConfigStore.saveTirePressures(context, merged)
+    val mergedTires = remember(tires, wheelsPressure, wheelsTemperature) {
+        mergeTireStateWithCanData(tires, wheelsPressure, wheelsTemperature)
+    }
+    LaunchedEffect(mergedTires, context) {
+        if (mergedTires.hasAvailableData) {
+            LauncherAppConfigStore.saveTirePressures(context, mergedTires)
         }
-        merged
     }
     // Simulation overrides (hidden settings tab) take precedence over live TPMS.
     val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: mergedTires
@@ -362,21 +362,33 @@ fun LauncherLeftPanel(
     val trunkLongPressEnabled = remember(context, trunkLongPressRevision) {
         LauncherAppConfigStore.trunkLongPressEnabled(context)
     }
+    val carModelVisibleRevision by LauncherAppConfigStore.carModelVisibleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val carModelVisible = remember(context, carModelVisibleRevision) {
+        LauncherAppConfigStore.carModelVisible(context)
+    }
     var smartDriveViewActive by remember { mutableStateOf(false) }
     var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
     val hasBodyOpen = effectiveBody.anyDoorOpen()
 
     val launcherBootMs = remember { SystemClock.elapsedRealtime() }
-    var nowViewMs by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            delay(100L)
-            nowViewMs = SystemClock.elapsedRealtime()
+    var isStartupGracePeriod by remember {
+        mutableStateOf(cameraAnimEnabled && (SystemClock.elapsedRealtime() - launcherBootMs < 5000L))
+    }
+    LaunchedEffect(cameraAnimEnabled) {
+        if (cameraAnimEnabled) {
+            val elapsed = SystemClock.elapsedRealtime() - launcherBootMs
+            if (elapsed < 5000L) {
+                isStartupGracePeriod = true
+                delay(5000L - elapsed)
+                isStartupGracePeriod = false
+            } else {
+                isStartupGracePeriod = false
+            }
+        } else {
+            isStartupGracePeriod = false
         }
     }
-
-    val isStartupGracePeriod = cameraAnimEnabled && (nowViewMs - launcherBootMs < 5000L)
 
     LaunchedEffect(effectiveSpeed, pasObstacle, hasBodyOpen, activeGear, accActive, racing, cameraSwitchMode, isStartupGracePeriod) {
         if (isStartupGracePeriod || activeGear == 'P' || pasObstacle || hasBodyOpen) {
@@ -405,20 +417,15 @@ fun LauncherLeftPanel(
 
     // Hold drive view for up to 5000ms (5s) to prevent camera view jumping when stopping or CAN speed/gear drops
     var showDriveView by remember { mutableStateOf(false) }
-    var lastDriveViewTrueMs by remember { mutableLongStateOf(0L) }
-
-    if (isStartupGracePeriod) {
-        showDriveView = false
-        lastDriveViewTrueMs = 0L
-    } else if (rawDriveView) {
-        showDriveView = true
-        lastDriveViewTrueMs = nowViewMs
-    } else if (activeGear == 'P' || hasBodyOpen) {
-        showDriveView = false
-        lastDriveViewTrueMs = 0L
-    } else {
-        val elapsedView = nowViewMs - lastDriveViewTrueMs
-        showDriveView = elapsedView < 5000L
+    LaunchedEffect(rawDriveView, activeGear, hasBodyOpen, isStartupGracePeriod) {
+        if (isStartupGracePeriod || activeGear == 'P' || hasBodyOpen) {
+            showDriveView = false
+        } else if (rawDriveView) {
+            showDriveView = true
+        } else {
+            delay(5000L)
+            showDriveView = false
+        }
     }
 
     // Drive mode glow highlighting
@@ -506,7 +513,8 @@ fun LauncherLeftPanel(
             }
             .background(baseLeftPanelBg),
     ) {
-        if (roadVisible) {
+        val effectiveRoadVisible = roadVisible && carModelVisible
+        if (effectiveRoadVisible) {
             LauncherVirtualRoad(
                 speedKmh = if (racing) effectiveSpeed * 0.45f else effectiveSpeed,
                 steerAngleDeg = if (racing) 0f else motion.steerAngleDeg,
@@ -688,8 +696,8 @@ fun LauncherLeftPanel(
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
             val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
-            val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen
-            val showCarInComposition = cameraAnimEnabled || !carHidden
+            val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
+            val showCarInComposition = carModelVisible && (cameraAnimEnabled || !carHidden)
             if (showCarInComposition) {
                 LauncherCar3DModel(
                     rigState = rigState,

@@ -65,7 +65,9 @@ fun rememberLauncherVehicleMotion(
 
     val nowMs = SystemClock.elapsedRealtime()
     if (rawSpeed > 0.5f) {
-        smoothedSpeed = rawSpeed
+        if (kotlin.math.abs(smoothedSpeed - rawSpeed) >= 1.0f || smoothedSpeed == 0f) {
+            smoothedSpeed = rawSpeed
+        }
         lastMovingSpeed = rawSpeed
         lastMovingMs = nowMs
     } else {

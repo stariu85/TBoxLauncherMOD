@@ -340,6 +340,8 @@ object MbCanKnownAudioPropertyId {
     const val VOLUME = 2
     /** [com.mengbo.mbCan.defines.MBAudioProperty.eAUDIO_PROPERTY_VOLUME_SPEED] */
     const val VOLUME_SPEED = 13
+    /** [com.mengbo.mbCan.defines.MBAudioProperty.eAUDIO_AUDIO_HEADREST_SPEAKER] */
+    const val HEADREST_SPEAKER = 37
 }
 
 data class MbCanAudioCommandSpec(

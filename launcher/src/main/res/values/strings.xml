@@ -260,6 +260,8 @@
     <string name="launcher_car_model_scale_desc">Размер 3D-модели автомобиля на экране при виде сверху</string>
     <string name="launcher_car_model_drive_scale_title">Масштаб 3D-модели (вид сзади)</string>
     <string name="launcher_car_model_drive_scale_desc">Размер 3D-модели автомобиля на экране в режиме движения</string>
+    <string name="launcher_car_model_visible_title">Отображение модельки авто</string>
+    <string name="launcher_car_model_visible_desc">Отображать модель авто при виде сверху, а также модель и дорогу при виде сзади</string>
     <string name="launcher_sidebar_width_title">Ширина левой панели</string>
     <string name="launcher_sidebar_width_desc">Изменяет ширину панели с машиной и зону Freeform</string>
     <string name="launcher_trunk_long_press_enabled_title">Длинный тап по багажнику открывает багажник</string>

@@ -24,7 +24,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -141,11 +140,11 @@ fun TeslaLauncherScreen(
     LaunchedEffect(configRevision, iconRevision) {
     }
 
-    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
-    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
-
-    SideEffect {
-        LauncherBsdAlertOverlayWindow.update(context, adas)
+    LaunchedEffect(context) {
+        LauncherAdasRepository.state.collect { adasLive ->
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+            LauncherBsdAlertOverlayWindow.update(context, adas)
+        }
     }
 
     // Standalone launcher is dark-first; TBox theme channel is idle without the proxy.
@@ -364,7 +363,6 @@ fun TeslaLauncherScreen(
             }
 
             LauncherBsdAlertOverlay(
-                adas = adas,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1000f),

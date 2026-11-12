@@ -62,12 +62,14 @@ object CanFramesProcess {
                 }
 
                 val payloadStart = i + PAYLOAD_OFFSET
-                val singleData = rawValue.copyOfRange(payloadStart, payloadStart + 8)
-                CanDataRepository.addCanFrameStructured(
-                    canIdToHexString(canId),
-                    singleData,
-                    maxFrames
-                )
+                if (CanDataRepository.hasCanFramesStructuredSubscribers()) {
+                    val singleData = rawValue.copyOfRange(payloadStart, payloadStart + 8)
+                    CanDataRepository.addCanFrameStructured(
+                        canIdToHexString(canId),
+                        singleData,
+                        maxFrames
+                    )
+                }
 
                 val b0 = rawValue[payloadStart]
                 val b1 = rawValue[payloadStart + 1]

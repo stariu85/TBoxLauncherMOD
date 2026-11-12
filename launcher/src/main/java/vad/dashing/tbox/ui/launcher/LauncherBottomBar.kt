@@ -105,6 +105,8 @@ import androidx.compose.ui.unit.em
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.times
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -157,9 +159,9 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private val HvacOnColor = Color(0xFF4FC3F7)
-private val SeatHeatOnColor = Color(0xFFF97316)
-private val HvacOffColor: Color get() = LauncherColors.TextSecondary
+internal val HvacOnColor = Color(0xFF4FC3F7)
+internal val SeatHeatOnColor = Color(0xFFF97316)
+internal val HvacOffColor: Color get() = LauncherColors.TextSecondary
 private const val LAUNCHER_BOTTOM_BAR_CAN_SOURCE = "launcher-bottom-bar"
 private const val SEAT_COMMAND_CONFIRM_TIMEOUT_MS = 2_500L
 private const val LIGHT_COMMAND_CONFIRM_TIMEOUT_MS = 1_200L
@@ -200,7 +202,7 @@ internal data class LauncherDockButtonDescriptor(
 )
 
 @Composable
-private fun LauncherFanSpeedIcon(
+internal fun LauncherFanSpeedIcon(
     speedLevel: Int,
     activeColor: Color = Color(0xFF4FC3F7),
     inactiveColor: Color = Color.White.copy(alpha = 0.2f),
@@ -727,7 +729,7 @@ private fun LauncherDockSlotPickerPopup(
     }
 }
 
-private fun formatHvacSetTempAnnotated(celsius: Float?): AnnotatedString {
+internal fun formatHvacSetTempAnnotated(celsius: Float?): AnnotatedString {
     if (celsius == null || celsius <= 0f) return AnnotatedString("—")
     val tenths = (celsius * 10f).roundToInt()
     val whole = tenths / 10
@@ -2238,16 +2240,19 @@ private fun LauncherSeatModeIcon(
  * Level lights progressively more waves, like ventilation blades.
  */
 @Composable
-private fun LauncherSeatHeatIcon(
+internal fun LauncherSeatHeatIcon(
     raw: Int,
     mirrored: Boolean = false,
     badgeText: String? = null,
+    modifier: Modifier = Modifier,
+    iconSizeDp: Dp = dockDp(25.5f),
+    seatSizeDp: Dp = dockDp(22.1f),
 ) {
     val level = heatLevel(raw)
     val activeColor = if (level > 0) SeatHeatOnColor else HvacOffColor
 
     Box(
-        modifier = Modifier.size(dockDp(25.5f)),
+        modifier = modifier.size(iconSizeDp),
         contentAlignment = Alignment.Center,
     ) {
         if (badgeText != null) {
@@ -2256,14 +2261,14 @@ private fun LauncherSeatHeatIcon(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
-                    modifier = Modifier.size(dockDp(17.5f)),
+                    modifier = Modifier.size(iconSizeDp * 0.72f),
                     contentAlignment = Alignment.Center,
                 ) {
                     Image(
                         painter = painterResource(R.drawable.ic_widget_seat),
                         contentDescription = null,
                         modifier = Modifier
-                            .size(dockDp(15.5f))
+                            .size(seatSizeDp * 0.72f)
                             .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                         colorFilter = ColorFilter.tint(activeColor),
                     )
@@ -2276,7 +2281,7 @@ private fun LauncherSeatHeatIcon(
                             painter = painterResource(drawable),
                             contentDescription = null,
                             modifier = Modifier
-                                .size(dockDp(15.5f))
+                                .size(seatSizeDp * 0.72f)
                                 .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                             colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
                         )
@@ -2297,7 +2302,7 @@ private fun LauncherSeatHeatIcon(
                 painter = painterResource(R.drawable.ic_widget_seat),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(dockDp(22.1f))
+                    .size(seatSizeDp)
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                 colorFilter = ColorFilter.tint(activeColor),
             )
@@ -2310,7 +2315,7 @@ private fun LauncherSeatHeatIcon(
                     painter = painterResource(drawable),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(dockDp(22.1f))
+                        .size(seatSizeDp)
                         .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                     colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
                 )
@@ -2320,14 +2325,20 @@ private fun LauncherSeatHeatIcon(
 }
 
 @Composable
-private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
+internal fun LauncherSeatVentIcon(
+    raw: Int,
+    mirrored: Boolean = false,
+    modifier: Modifier = Modifier,
+    iconSizeDp: Dp = dockDp(25.5f),
+    seatSizeDp: Dp = dockDp(22.1f),
+) {
     val level = ventLevel(raw)
-    Box(modifier = Modifier.size(dockDp(25.5f)), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(iconSizeDp), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_widget_seat),
             contentDescription = null,
             modifier = Modifier
-                .size(dockDp(22.1f))
+                .size(seatSizeDp)
                 .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
             colorFilter = ColorFilter.tint(if (level > 0) HvacOnColor else HvacOffColor),
         )
@@ -2341,7 +2352,7 @@ private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
                 painter = painterResource(drawable),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(dockDp(22.1f))
+                    .size(seatSizeDp)
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                 colorFilter = ColorFilter.tint(if (enabled) HvacOnColor else HvacOffColor),
             )
@@ -2365,18 +2376,18 @@ private fun LauncherBinaryTintIcon(
 }
 
 @Composable
-private fun LauncherHeadlightsModeIcon(raw: Int) {
+internal fun LauncherHeadlightsModeIcon(raw: Int, sizeDp: Dp = dockDp(27f)) {
     val (iconRes, tintColor) = when (raw) {
         LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to Color(0xFF22C55E)
         LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to Color(0xFF38BDF8)
         LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_position to Color(0xFF38BDF8)
         else -> R.drawable.ic_headlights_off to Color(0xFF6B7280)
     }
-    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(sizeDp + 3.dp), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(iconRes),
             contentDescription = stringResource(R.string.launcher_vs_headlights),
-            modifier = Modifier.size(dockDp(27f)),
+            modifier = Modifier.size(sizeDp),
             colorFilter = ColorFilter.tint(tintColor),
         )
     }

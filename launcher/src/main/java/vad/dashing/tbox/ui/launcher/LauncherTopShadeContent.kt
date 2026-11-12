@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,14 +30,17 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -71,6 +77,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -83,6 +90,7 @@ import kotlinx.coroutines.withContext
 import vad.dashing.tbox.BackgroundService
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.DclLogRecorder
+import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -92,6 +100,13 @@ import vad.dashing.tbox.tbm.TbmConnectionState
 import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.LauncherAppIconLoader
 import vad.dashing.tbox.ui.launchAppFromWidget
+import androidx.compose.ui.graphics.lerp
+import vad.dashing.tbox.ui.HvacTempZone
+import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
+import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
+import vad.dashing.tbox.ui.LIGHT_CONTROL_OFF
+import vad.dashing.tbox.ui.LIGHT_CONTROL_POSITION
+import vad.dashing.tbox.ui.sendAdjustHvacTemperature
 import vad.dashing.tbox.ui.sendCycleDriverUnlockMode
 import vad.dashing.tbox.ui.sendCycleFcw
 import vad.dashing.tbox.ui.sendCycleFrontSeatHeat
@@ -125,10 +140,54 @@ import vad.dashing.tbox.ui.sendToggleParkingRadar
 import vad.dashing.tbox.ui.sendToggleRearWindowMirrorsDefrost
 import vad.dashing.tbox.ui.sendToggleSteeringWheelHeat
 import vad.dashing.tbox.ui.sendToggleWiperMaintenance
+import vad.dashing.tbox.ui.sendToggleRearFogLight
+import vad.dashing.tbox.mbcan.MbCanCommand
+import vad.dashing.tbox.MirrorFoldLastCommandStore
+import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
+import vad.dashing.tbox.resolveDriveModeDisplayLabel
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private val isOperatingWindowsFlow = MutableStateFlow(false)
+private val activeSeatMemorySlotFlow = MutableStateFlow<Int?>(null)
+
+private fun recallSeatMemorySlot(context: Context, slot: Int) {
+    activeSeatMemorySlotFlow.value = slot
+    Toast.makeText(context, "Применение памяти: Слот $slot", Toast.LENGTH_SHORT).show()
+    CoroutineScope(Dispatchers.IO).launch {
+        UniversalCanRepository.execute(
+            MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION, slot)
+        )
+        UniversalCanRepository.execute(
+            MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ, slot)
+        )
+        delay(1000L)
+        UniversalCanRepository.execute(
+            MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION, 0)
+        )
+        UniversalCanRepository.execute(
+            MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.SEAT_POSITION_CALLOUTREQ, 0)
+        )
+        delay(1500L)
+        activeSeatMemorySlotFlow.value = null
+    }
+}
+
+private fun triggerSequentialWindows(targetPercent: Int) {
+    CoroutineScope(Dispatchers.IO).launch {
+        isOperatingWindowsFlow.value = true
+        try {
+            sendSequentialWindowCommands(targetPercent)
+        } finally {
+            isOperatingWindowsFlow.value = false
+        }
+    }
+}
 
 private val IconResizeWidth: ImageVector by lazy {
     ImageVector.Builder(
@@ -568,33 +627,119 @@ private fun TopShadeTileCanvasItemView(
     val context = LocalContext.current
     val flSeatMode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
     val frSeatMode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
+    val rlSeatMode by UniversalCanRepository.rearLeftSeatModeState.collectAsStateWithLifecycle()
+    val rrSeatMode by UniversalCanRepository.rearRightSeatModeState.collectAsStateWithLifecycle()
     val steeringHeat by UniversalCanRepository.steeringWheelHeatState.collectAsStateWithLifecycle()
     val windscreenHeat by UniversalCanRepository.frontWindscreenHeatState.collectAsStateWithLifecycle()
     val rearDefrost by UniversalCanRepository.hvacDefrosterState.collectAsStateWithLifecycle()
     val hvacAuto by UniversalCanRepository.hvacAutoState.collectAsStateWithLifecycle()
     val hvacRecirc by UniversalCanRepository.hvacAirRecirculationState.collectAsStateWithLifecycle()
+    val hvacPower by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+    val hvacAc by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+    val hvacSync by UniversalCanRepository.hvacSyncState.collectAsStateWithLifecycle()
+    val hvacPm25 by UniversalCanRepository.hvacPm25State.collectAsStateWithLifecycle()
+    val hvacFanSpeed by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
+    val hvacFanDirection by UniversalCanRepository.hvacFanDirectionRawState.collectAsStateWithLifecycle()
+    val hvacDefrost by UniversalCanRepository.hvacDefrosterFrontState.collectAsStateWithLifecycle()
+    val driverTemp by CanDataRepository.climateSetTemperature1.collectAsStateWithLifecycle()
+    val passTemp by CanDataRepository.climateSetTemperature2.collectAsStateWithLifecycle()
     val headrestMode by PlatformAudioRepository.headrestMode.collectAsStateWithLifecycle()
 
     val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
 
-    val isActive = remember(spec, flSeatMode, frSeatMode, steeringHeat, windscreenHeat, rearDefrost, hvacAuto, hvacRecirc, headrestMode, vehicleControls) {
+    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+    val tboxCruise by CanDataRepository.cruiseSetSpeed.collectAsStateWithLifecycle()
+    val tjaIcaState by UniversalCanRepository.tjaIcaState.collectAsStateWithLifecycle()
+    val wiperMaintenance by UniversalCanRepository.wiperMaintenanceState.collectAsStateWithLifecycle()
+    val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
+    val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
+    val gearBoxDriveMode by CanDataRepository.gearBoxDriveMode.collectAsStateWithLifecycle()
+    val is6Dct by CanDataRepository.is6DctGearbox.collectAsStateWithLifecycle()
+    val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
+    val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
+    val isOperatingWindows by isOperatingWindowsFlow.collectAsStateWithLifecycle()
+    val activeSeatMemorySlot by activeSeatMemorySlotFlow.collectAsStateWithLifecycle()
+
+    val mirrorFoldVal = remember(vehicleControls) { MirrorFoldLastCommandStore.readLastValue() }
+    val isMirrorFolded = mirrorFoldVal == MIRROR_FOLD_SWITCH_VALUE_FOLD
+    val isEscOff = vehicleControls.escOff == true
+    val currentLasMode = vehicleControls.lasMode ?: adas.lasMode
+    val isLdwActive = currentLasMode == 1
+    val isLkaActive = currentLasMode == 2
+    val isFcwActive = vehicleControls.fcw == true || adas.fcwActive
+    val isHmaActive = vehicleControls.hmaOn == true || adas.hma == LauncherAdasAssistIcon.Active
+    val isRearFogActive = vehicleControls.rearFogLight == true
+    val isWiperMaintenanceActive = wiperMaintenance is MbCanBinaryState.On
+    val accActive = adas.accActive || (tboxCruise ?: 0u) > 0u
+    val accStandby = adas.accStandby
+    val ngpActive = adas.tja == LauncherAdasAssistIcon.Active
+    val ngpStandby = tjaIcaState is MbCanBinaryState.On || adas.tja == LauncherAdasAssistIcon.Dark
+    val ngpUnavailable = tjaIcaState is MbCanBinaryState.Unavailable
+    val resolvedDriveMode = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct) {
+        resolveDriveModeDisplayLabel(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct).uppercase()
+    }
+
+    val isSyncOn = hvacSync is MbCanBinaryState.On || (hvacSync !is MbCanBinaryState.Off && driverTemp != null && passTemp != null && abs(driverTemp!! - passTemp!!) < 0.1f)
+    val isPowerOn = hvacPower is MbCanBinaryState.On || hvacFanSpeed > 0
+
+    val isActive = remember(
+        spec.actionKey, flSeatMode, frSeatMode, rlSeatMode, rrSeatMode,
+        steeringHeat, windscreenHeat, rearDefrost, hvacAuto, hvacRecirc,
+        isPowerOn, hvacAc, isSyncOn, hvacPm25, hvacFanSpeed, hvacDefrost,
+        headrestMode, vehicleControls, isMirrorFolded, isOperatingWindows,
+        activeSeatMemorySlot, accActive, accStandby, ngpActive, ngpStandby,
+        ngpUnavailable, isSmartActive, cruiseState, isLdwActive, isLkaActive,
+        isFcwActive, isHmaActive, isRearFogActive, isWiperMaintenanceActive,
+        vehicleBody.tailgateOpen
+    ) {
         when (spec.actionKey) {
             "seat_heat_left" -> flSeatMode is MbCanSeatModeState.Heat && (flSeatMode as MbCanSeatModeState.Heat).level > 0
             "seat_vent_left" -> flSeatMode is MbCanSeatModeState.Vent && (flSeatMode as MbCanSeatModeState.Vent).level > 0
             "seat_heat_right" -> frSeatMode is MbCanSeatModeState.Heat && (frSeatMode as MbCanSeatModeState.Heat).level > 0
             "seat_vent_right" -> frSeatMode is MbCanSeatModeState.Vent && (frSeatMode as MbCanSeatModeState.Vent).level > 0
+            "seat_heat_rear_left" -> rlSeatMode is MbCanSeatModeState.Heat && (rlSeatMode as MbCanSeatModeState.Heat).level > 0
+            "seat_heat_rear_right" -> rrSeatMode is MbCanSeatModeState.Heat && (rrSeatMode as MbCanSeatModeState.Heat).level > 0
             "steering_heat" -> steeringHeat is MbCanBinaryState.On
             "windscreen_heat" -> windscreenHeat is MbCanBinaryState.On
             "rear_defrost" -> rearDefrost is MbCanBinaryState.On
             "hvac_auto" -> hvacAuto is MbCanBinaryState.On
-            "hvac_recirc" -> hvacRecirc is MbCanBinaryState.On
+            "hvac_recirc", "recirc" -> hvacRecirc is MbCanBinaryState.On
+            "hvac_power" -> isPowerOn
+            "hvac_ac" -> hvacAc is MbCanBinaryState.On
+            "hvac_sync" -> isSyncOn
+            "hvac_pm25" -> hvacPm25 is MbCanBinaryState.On
+            "hvac_fan_speed" -> hvacFanSpeed > 0
+            "front_defrost" -> hvacDefrost is MbCanBinaryState.On
             "theme" -> LauncherThemeState.darkTheme
             "wifi" -> (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled == true
             "headrest_speaker" -> headrestMode != 3
-            "avh" -> vehicleControls.avh == true
-            "hdc" -> vehicleControls.hdc == true
-            "esc_off" -> vehicleControls.escOff == true
+            "mirror_fold" -> isMirrorFolded
+            "trunk_door" -> vehicleBody.tailgateOpen
+            "windows" -> isOperatingWindows
+            "seat_memory_1" -> activeSeatMemorySlot == 1
+            "seat_memory_2" -> activeSeatMemorySlot == 2
+            "seat_memory_3" -> activeSeatMemorySlot == 3
+            "seat_adjust", "passenger_seat_adjust" -> false
+            "acc" -> accActive || accStandby
+            "ngp" -> ngpActive || ngpStandby || ngpUnavailable
+            "adas_dist" -> true
+            "smart_acc" -> isSmartActive && cruiseState == AccCruiseState.Active
+            "ldw" -> isLdwActive
+            "lka" -> isLkaActive
+            "fcw" -> isFcwActive
+            "bsd" -> vehicleControls.bsd == true
+            "dow" -> vehicleControls.dow == true
             "parking_radar" -> vehicleControls.parkingRadar == true
+            "esc_off" -> true
+            "hdc" -> vehicleControls.hdc == true
+            "avh" -> vehicleControls.avh == true || vehicleControls.accAutobrake == true
+            "hma" -> isHmaActive
+            "rear_fog" -> isRearFogActive
+            "wiper_maintenance" -> isWiperMaintenanceActive
+            "wiper_sensitivity" -> true
+            "drive_mode" -> true
             "acc_autobrake" -> vehicleControls.accAutobrake == true
             "door_autolock" -> vehicleControls.doorAutoLock == true
             "door_ignoff_unlock" -> vehicleControls.doorIgnOffUnlock == true
@@ -605,7 +750,6 @@ private fun TopShadeTileCanvasItemView(
             "car_wash_mode" -> vehicleControls.vehWashMode == true
             "welcome_seat" -> vehicleControls.welcomeSeat == true
             "window_autoclose" -> vehicleControls.windowAutoclose == true
-            "fcw" -> vehicleControls.fcw == true
             "las" -> ((vehicleControls.lasSensitivity ?: 0) > 0) || ((vehicleControls.lasMode ?: 0) > 0)
             "homelight_delay" -> (vehicleControls.homelightDelay ?: 0) > 0
             "driver_unlock_mode" -> (vehicleControls.driverUnlockMode ?: 0) > 0
@@ -632,18 +776,78 @@ private fun TopShadeTileCanvasItemView(
     val renderXPx = if (isDragging) xPx + dragOffsetX else xPx
     val renderYPx = if (isDragging) yPx + dragOffsetY else yPx
 
+    val activeColor = remember(
+        spec.actionKey, hvacAc, isEscOff, isLdwActive, isLkaActive, vehicleControls.lasSensitivity,
+        vehicleControls.fcwOption, isFcwActive, accActive, accStandby, ngpActive, ngpStandby,
+        ngpUnavailable, vehicleControls.wiperSensitivity, driveModeRaw, is6Dct, gearBoxDriveMode
+    ) {
+        when {
+            spec.actionKey.startsWith("seat_heat_") ||
+            spec.actionKey in listOf("steering_heat", "windscreen_heat", "rear_defrost") -> SeatHeatOnColor
+            spec.actionKey == "hvac_pm25" -> Color(0xFF22C55E)
+            spec.actionKey == "hvac_fan_speed" -> if (hvacAc is MbCanBinaryState.On) HvacOnColor else SeatHeatOnColor
+            spec.actionKey.startsWith("seat_vent_") ||
+            spec.actionKey.startsWith("hvac_") ||
+            spec.actionKey in listOf("recirc", "front_defrost") -> HvacOnColor
+            spec.actionKey == "esc_off" -> if (isEscOff) Color(0xFFEF4444) else Color(0xFF10B981)
+            spec.actionKey == "ldw" -> if (vehicleControls.lasSensitivity == 1) Color(0xFFF97316) else Color(0xFF10B981)
+            spec.actionKey == "lka" -> if (vehicleControls.lasSensitivity == 1) Color(0xFFF97316) else Color(0xFF10B981)
+            spec.actionKey == "fcw" -> when (vehicleControls.fcwOption) {
+                1 -> Color(0xFF10B981)
+                2 -> Color(0xFF3B82F6)
+                3 -> Color(0xFFEF4444)
+                else -> Color(0xFF10B981)
+            }
+            spec.actionKey == "rear_fog" -> Color(0xFFF97316)
+            spec.actionKey == "wiper_maintenance" -> LauncherColors.AccentCyan
+            spec.actionKey == "wiper_sensitivity" -> when (vehicleControls.wiperSensitivity ?: 1) {
+                1 -> Color(0xFFEF4444)
+                2 -> Color(0xFFEAB308)
+                3 -> Color(0xFF3B82F6)
+                4 -> Color(0xFF22C55E)
+                else -> Color(0xFFEF4444)
+            }
+            spec.actionKey == "acc" -> if (accActive) Color(0xFF10B981) else Color(0xFF38BDF8)
+            spec.actionKey == "ngp" -> when {
+                ngpUnavailable -> Color(0xFFEF4444)
+                ngpActive -> Color(0xFF10B981)
+                else -> Color(0xFF38BDF8)
+            }
+            spec.actionKey == "adas_dist" -> LauncherColors.AccentCyan
+            spec.actionKey == "drive_mode" -> {
+                when (resolvedDriveMode) {
+                    "ECO" -> Color(0xFF10B981)
+                    "SPT", "SPORT" -> Color(0xFFEF4444)
+                    "SNOW", "СНЕГ" -> Color(0xFF38BDF8)
+                    else -> Color(0xFF3B82F6)
+                }
+            }
+            spec.actionKey in listOf(
+                "seat_memory_1", "seat_memory_2", "seat_memory_3", "windows", "mirror_fold",
+                "bsd", "dow", "parking_radar", "hdc", "avh", "hma", "smart_acc"
+            ) -> Color(0xFF10B981)
+            else -> LauncherColors.AccentBlue
+        }
+    }
+
     val containerBg = if (isDragging) {
         LauncherColors.AccentBlue.copy(alpha = 0.65f)
     } else if (isActive) {
-        LauncherColors.AccentBlue.copy(alpha = if (isDark) 0.35f else 0.25f)
+        activeColor.copy(alpha = if (isDark) 0.35f else 0.25f)
     } else {
         if (isDark) Color.White.copy(alpha = 0.07f) else Color.White
     }
-    val borderColor = if (isDragging || isActive) {
+    val borderColor = if (isDragging) {
         LauncherColors.AccentBlue
+    } else if (isActive) {
+        activeColor
     } else {
         if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.10f)
     }
+
+    val isInteractive = spec.actionKey.startsWith("vol_") ||
+        spec.actionKey == "brightness" ||
+        spec.actionKey in listOf("temp_driver", "temp_pass", "hvac_heater_level")
 
     val tileShape = if (spec.spanX > 1 || spec.spanY > 1) RoundedCornerShape(30.dp) else CircleShape
 
@@ -705,6 +909,8 @@ private fun TopShadeTileCanvasItemView(
                                 },
                             )
                         }
+                    } else if (isInteractive) {
+                        Modifier
                     } else {
                         Modifier.clickable(onClick = onClick)
                     }
@@ -723,19 +929,93 @@ private fun TopShadeTileCanvasItemView(
                     "vol_navi" -> ChannelVolumeTileContent(PlatformVolumeChannel.Navi, spec = spec, isEditMode = isEditMode, isDark = isDark)
                     "vol_voice" -> ChannelVolumeTileContent(PlatformVolumeChannel.Voice, spec = spec, isEditMode = isEditMode, isDark = isDark)
                     "headrest_speaker" -> HeadrestTileContent(spec = spec, headrestMode = headrestMode, isDark = isDark)
+                    "seat_heat_left", "seat_vent_left", "seat_heat_right", "seat_vent_right", "seat_heat_rear_left", "seat_heat_rear_right" -> {
+                        SeatTileContent(
+                            spec = spec,
+                            flSeatMode = flSeatMode,
+                            frSeatMode = frSeatMode,
+                            rlSeatMode = rlSeatMode,
+                            rrSeatMode = rrSeatMode,
+                            isDark = isDark,
+                        )
+                    }
+                    "hvac_auto", "hvac_sync" -> {
+                        HvacTextTileContent(
+                            spec = spec,
+                            text = if (spec.actionKey == "hvac_sync") "SYNC" else "AUTO",
+                            isActive = isActive,
+                            activeColor = activeColor,
+                            isDark = isDark,
+                        )
+                    }
+                    "hvac_fan_speed" -> {
+                        HvacFanSpeedTileContent(
+                            spec = spec,
+                            speedRaw = hvacFanSpeed,
+                            activeColor = activeColor,
+                            isActive = isActive,
+                            isDark = isDark,
+                        )
+                    }
+                    "temp_driver" -> {
+                        HvacTempStepperTileContent(
+                            spec = spec,
+                            temp = driverTemp,
+                            zone = HvacTempZone.Driver,
+                            isDark = isDark,
+                            isEditMode = isEditMode,
+                        )
+                    }
+                    "temp_pass" -> {
+                        HvacTempStepperTileContent(
+                            spec = spec,
+                            temp = passTemp,
+                            zone = HvacTempZone.Passenger,
+                            isDark = isDark,
+                            isEditMode = isEditMode,
+                        )
+                    }
+                    "hvac_heater_level" -> {
+                        HvacHeaterLevelTileContent(
+                            spec = spec,
+                            driverTemp = driverTemp,
+                            isDark = isDark,
+                            isEditMode = isEditMode,
+                        )
+                    }
+                    "headlights" -> {
+                        HeadlightsTileContent(
+                            spec = spec,
+                            raw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF,
+                            isDark = isDark,
+                        )
+                    }
                     else -> {
                         if (spec.type == TopShadeTileType.TELEMETRY) {
                             TelemetryTileContent(spec = spec, isDark = isDark)
                         } else {
-                            StandardTileContent(spec = spec, isActive = isActive, isDark = isDark, vehicleControls = vehicleControls)
+                            StandardTileContent(
+                                spec = spec,
+                                isActive = isActive,
+                                activeColor = activeColor,
+                                isDark = isDark,
+                                vehicleControls = vehicleControls,
+                                hvacFanDirectionRaw = hvacFanDirection ?: MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT,
+                                isRecircOn = hvacRecirc is MbCanBinaryState.On,
+                                isPm25On = hvacPm25 is MbCanBinaryState.On,
+                                adas = adas,
+                                tboxCruise = tboxCruise,
+                                driveModeText = resolvedDriveMode,
+                            )
                         }
                     }
                 }
 
                 if (isEditMode) {
-                    val isSliderTile = spec.actionKey == "brightness" ||
+                    val isWideTile = spec.actionKey == "brightness" ||
                         spec.actionKey.startsWith("vol_") ||
-                        spec.actionKey == "volume"
+                        spec.actionKey == "volume" ||
+                        spec.actionKey in listOf("temp_driver", "temp_pass", "hvac_heater_level")
 
                     Row(
                         modifier = Modifier
@@ -747,11 +1027,11 @@ private fun TopShadeTileCanvasItemView(
                             modifier = Modifier
                                 .size(18.dp)
                                 .background(
-                                    if ((isSliderTile && spec.spanX > 2) || (!isSliderTile && spec.spanX > 1)) LauncherColors.AccentBlue else if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.15f),
+                                    if ((isWideTile && spec.spanX > 2) || (!isWideTile && spec.spanX > 1)) LauncherColors.AccentBlue else if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.15f),
                                     CircleShape,
                                 )
                                 .clickable {
-                                    val nextSpanX = if (isSliderTile) {
+                                    val nextSpanX = if (isWideTile) {
                                         if (spec.spanX == 2) 4 else 2
                                     } else {
                                         if (spec.spanX == 1) 2 else 1
@@ -850,7 +1130,7 @@ private fun BrightnessTileContent(
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Яркость: $percent%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Яркость: $percent%", color = textColor, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Slider(
@@ -891,7 +1171,7 @@ private fun BrightnessTileContent(
             )
             Spacer(modifier = Modifier.width(6.dp))
             if (spec.spanX >= 4) {
-                Text("Яркость: $percent%", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("Яркость: $percent%", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Slider(
@@ -960,7 +1240,7 @@ private fun ChannelVolumeTileContent(
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Slider(
@@ -994,7 +1274,7 @@ private fun ChannelVolumeTileContent(
             )
             Spacer(modifier = Modifier.width(6.dp))
             if (spec.spanX >= 4) {
-                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Slider(
@@ -1016,6 +1296,151 @@ private fun ChannelVolumeTileContent(
 }
 
 @Composable
+private fun AdaptiveTileText(
+    text: String,
+    color: Color,
+    baseFontSize: TextUnit,
+    minFontSize: TextUnit = 11.sp,
+    maxLines: Int = 2,
+    textAlign: TextAlign = TextAlign.Center,
+    fontWeight: FontWeight = FontWeight.Bold,
+    modifier: Modifier = Modifier,
+) {
+    var fontSizeVal by remember(text, baseFontSize) { mutableFloatStateOf(baseFontSize.value) }
+
+    Text(
+        text = text,
+        color = color,
+        fontSize = fontSizeVal.sp,
+        lineHeight = (fontSizeVal * 1.15f).sp,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        maxLines = maxLines,
+        overflow = TextOverflow.Clip,
+        softWrap = true,
+        modifier = modifier,
+        onTextLayout = { result ->
+            if (result.size.width > 0) {
+                val hasLineOverflow = (0 until result.lineCount).any { line ->
+                    result.isLineEllipsized(line) || result.getLineRight(line) > result.size.width
+                }
+                if ((result.hasVisualOverflow || hasLineOverflow) && fontSizeVal > minFontSize.value) {
+                    fontSizeVal = (fontSizeVal * 0.9f).coerceAtLeast(minFontSize.value)
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun GeneralTileLayout(
+    spec: TopShadeTileSpec,
+    isDark: Boolean,
+    title: String,
+    hasIcon: Boolean = true,
+    iconContent: @Composable (iconModifier: Modifier) -> Unit,
+) {
+    val textColor = if (isDark) Color.White else Color(0xFF1F2937)
+
+    if (!hasIcon) {
+        // Всегда во всех размерах, если нет иконки, текст центруй по вертикали и горизонтали
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            AdaptiveTileText(
+                text = title,
+                color = textColor,
+                baseFontSize = 26.sp,
+                minFontSize = 13.sp,
+                maxLines = if (spec.spanY >= 2) 4 else 2,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        return
+    }
+
+    if (spec.spanX == 1 && spec.spanY == 1) {
+        // 1 слот: только значок с минимальными отступами
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 3.dp, horizontal = 3.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            iconContent(
+                Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(1f),
+            )
+        }
+    } else if (spec.spanX >= 2 && spec.spanY == 1) {
+        // Горизонтально: слева значок, справа название
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 8.dp, end = 10.dp, top = 3.dp, bottom = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(1f),
+            ) {
+                iconContent(Modifier.fillMaxSize())
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            AdaptiveTileText(
+                text = title,
+                color = textColor,
+                baseFontSize = 26.sp,
+                minFontSize = 13.sp,
+                maxLines = 2,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    } else {
+        // Вертикально: сверху значок, снизу название
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                iconContent(
+                    Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(1f),
+                )
+            }
+            AdaptiveTileText(
+                text = title,
+                color = textColor,
+                baseFontSize = 26.sp,
+                minFontSize = 13.sp,
+                maxLines = if (spec.spanY >= 3) 3 else 2,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp, bottom = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun HeadrestTileContent(
     spec: TopShadeTileSpec,
     headrestMode: Int,
@@ -1027,37 +1452,375 @@ private fun HeadrestTileContent(
         else -> "Подголовник: Выкл"
     }
     val isActive = headrestMode != 3
-
-    val iconSize = if (spec.spanY >= 2) 68.dp else 34.dp
-    val fontSize = if (spec.spanY >= 2) 22.sp else 12.sp
-    val textColor = if (isDark) Color.White else Color(0xFF1F2937)
     val iconTint = if (isActive) LauncherColors.AccentBlue else if (isDark) Color.White else Color(0xFF374151)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            imageVector = IconVolumeSpeaker,
-            contentDescription = modeTitle,
-            tint = iconTint,
-            modifier = Modifier.size(iconSize),
-        )
+    GeneralTileLayout(
+        spec = spec,
+        isDark = isDark,
+        title = modeTitle,
+        hasIcon = true,
+    ) { iconModifier ->
+        BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
+            val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+            Icon(
+                imageVector = IconVolumeSpeaker,
+                contentDescription = modeTitle,
+                tint = iconTint,
+                modifier = Modifier.size(iconSize),
+            )
+        }
+    }
+}
 
-        Spacer(modifier = Modifier.height(2.dp))
+@Composable
+private fun SeatTileContent(
+    spec: TopShadeTileSpec,
+    flSeatMode: MbCanSeatModeState,
+    frSeatMode: MbCanSeatModeState,
+    rlSeatMode: MbCanSeatModeState,
+    rrSeatMode: MbCanSeatModeState,
+    isDark: Boolean,
+) {
+    val raw = when (spec.actionKey) {
+        "seat_heat_left", "seat_vent_left" -> launcherSeatModeToRaw(flSeatMode) ?: 1
+        "seat_heat_right", "seat_vent_right" -> launcherSeatModeToRaw(frSeatMode) ?: 1
+        "seat_heat_rear_left" -> launcherSeatModeToRaw(rlSeatMode) ?: 1
+        "seat_heat_rear_right" -> launcherSeatModeToRaw(rrSeatMode) ?: 1
+        else -> 1
+    }
+    val isVent = spec.actionKey.startsWith("seat_vent_")
+    val mirrored = spec.actionKey.endsWith("_right")
+    val badgeText = if (spec.actionKey.contains("_rear_")) "REAR" else null
+    val level = if (isVent) ventLevel(raw) else heatLevel(raw)
+    val displayTitle = if (level > 0) "${spec.title} $level" else spec.title
 
-        Text(
-            text = modeTitle,
-            color = textColor,
-            fontSize = fontSize,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            maxLines = if (spec.spanY >= 2) 3 else 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+    GeneralTileLayout(
+        spec = spec,
+        isDark = isDark,
+        title = displayTitle,
+        hasIcon = true,
+    ) { iconModifier ->
+        BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
+            val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+            if (isVent) {
+                LauncherSeatVentIcon(
+                    raw = raw,
+                    mirrored = mirrored,
+                    iconSizeDp = iconSize,
+                    seatSizeDp = iconSize * 0.86f,
+                )
+            } else {
+                LauncherSeatHeatIcon(
+                    raw = raw,
+                    mirrored = mirrored,
+                    badgeText = badgeText,
+                    iconSizeDp = iconSize,
+                    seatSizeDp = iconSize * 0.86f,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HvacTextTileContent(
+    spec: TopShadeTileSpec,
+    text: String,
+    isActive: Boolean,
+    activeColor: Color,
+    isDark: Boolean,
+) {
+    val textColor = if (isActive) activeColor else if (isDark) Color.White else Color(0xFF374151)
+
+    GeneralTileLayout(
+        spec = spec,
+        isDark = isDark,
+        title = spec.title,
+        hasIcon = true,
+    ) { iconModifier ->
+        BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
+            val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+            val textSize = (iconSize.value * 0.45f).sp
+            Text(
+                text = text,
+                color = textColor,
+                fontSize = textSize,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HvacFanSpeedTileContent(
+    spec: TopShadeTileSpec,
+    speedRaw: Int,
+    activeColor: Color,
+    isActive: Boolean,
+    isDark: Boolean,
+) {
+    val iconTint = if (isActive) activeColor else (if (isDark) Color.White else Color(0xFF374151))
+    val displayTitle = if (speedRaw > 0) "Скорость $speedRaw" else spec.title
+
+    GeneralTileLayout(
+        spec = spec,
+        isDark = isDark,
+        title = displayTitle,
+        hasIcon = true,
+    ) { iconModifier ->
+        BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
+            val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+            Box(
+                modifier = Modifier.size(iconSize),
+                contentAlignment = Alignment.Center,
+            ) {
+                LauncherFanSpeedIcon(
+                    speedLevel = speedRaw.coerceIn(0, 7),
+                    activeColor = activeColor,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Image(
+                    painter = painterResource(R.drawable.ic_widget_fan),
+                    contentDescription = spec.title,
+                    colorFilter = ColorFilter.tint(iconTint),
+                    modifier = Modifier.size(iconSize * 0.5f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HvacTempStepperTileContent(
+    spec: TopShadeTileSpec,
+    temp: Float?,
+    zone: HvacTempZone,
+    isDark: Boolean,
+    isEditMode: Boolean,
+) {
+    val context = LocalContext.current
+    val tempColorIndicationRevision by LauncherAppConfigStore.climateTempColorIndicationRevisionFlow.collectAsStateWithLifecycle()
+    val tempColorIndication = remember(context, tempColorIndicationRevision) {
+        LauncherAppConfigStore.climateTempColorIndication(context)
+    }
+
+    val blueColor = Color(0xFF3B82F6)
+    val redColor = Color(0xFFEF4444)
+    val downTint = if (tempColorIndication) blueColor else (if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280))
+    val upTint = if (tempColorIndication) redColor else (if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280))
+
+    val textColor = if (tempColorIndication) {
+        val fraction = if (temp != null) ((temp - 16f) / 14f).coerceIn(0f, 1f) else 0.5f
+        lerp(blueColor, redColor, fraction)
+    } else {
+        if (isDark) Color.White else Color(0xFF1F2937)
+    }
+
+    val formattedTemp = remember(temp) { formatHvacSetTempAnnotated(temp) }
+
+    val onDown = {
+        if (!isEditMode) {
+            sendAdjustHvacTemperature(context, temp, -0.5f, zone)
+        }
+    }
+    val onUp = {
+        if (!isEditMode) {
+            sendAdjustHvacTemperature(context, temp, 0.5f, zone)
+        }
+    }
+    val onOpenApp = {
+        if (!isEditMode) {
+            launchClimateApp(context)
+        }
+    }
+
+    if (spec.spanX >= 2) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            IconButton(onClick = onDown, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = downTint, modifier = Modifier.size(24.dp))
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpenApp),
+            ) {
+                Text(
+                    text = if (zone == HvacTempZone.Driver) "Водитель" else "Пассажир",
+                    color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280),
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                )
+                Text(
+                    text = formattedTemp,
+                    color = textColor,
+                    fontSize = if (spec.spanY >= 2) 36.sp else 28.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            IconButton(onClick = onUp, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = upTint, modifier = Modifier.size(24.dp))
+            }
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            IconButton(onClick = onUp, modifier = Modifier.size(22.dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = upTint, modifier = Modifier.size(18.dp))
+            }
+            Text(
+                text = formattedTemp,
+                color = textColor,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.clickable(onClick = onOpenApp),
+            )
+            IconButton(onClick = onDown, modifier = Modifier.size(22.dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = downTint, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HvacHeaterLevelTileContent(
+    spec: TopShadeTileSpec,
+    driverTemp: Float?,
+    isDark: Boolean,
+    isEditMode: Boolean,
+) {
+    val context = LocalContext.current
+    val currentTemp = driverTemp
+    val heaterLevel = if (currentTemp != null) {
+        ((currentTemp - 16f).roundToInt() + 1).coerceIn(1, 15)
+    } else {
+        8
+    }
+
+    val blueColor = Color(0xFF3B82F6)
+    val redColor = Color(0xFFEF4444)
+    val fraction = (heaterLevel - 1) / 14f
+    val levelColor = lerp(blueColor, redColor, fraction)
+
+    val onDown = {
+        if (!isEditMode) {
+            sendAdjustHvacTemperature(context, driverTemp, -1.0f, HvacTempZone.Driver)
+        }
+    }
+    val onUp = {
+        if (!isEditMode) {
+            sendAdjustHvacTemperature(context, driverTemp, 1.0f, HvacTempZone.Driver)
+        }
+    }
+    val onOpenApp = {
+        if (!isEditMode) {
+            launchClimateApp(context)
+        }
+    }
+
+    if (spec.spanX >= 2) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            IconButton(onClick = onDown, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = blueColor, modifier = Modifier.size(24.dp))
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onOpenApp),
+            ) {
+                Text(
+                    text = "Печка",
+                    color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280),
+                    fontSize = 18.sp,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "$heaterLevel / 15",
+                    color = levelColor,
+                    fontSize = if (spec.spanY >= 2) 36.sp else 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            IconButton(onClick = onUp, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = redColor, modifier = Modifier.size(24.dp))
+            }
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 2.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            IconButton(onClick = onUp, modifier = Modifier.size(22.dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = redColor, modifier = Modifier.size(18.dp))
+            }
+            Text(
+                text = "$heaterLevel",
+                color = levelColor,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.clickable(onClick = onOpenApp),
+            )
+            IconButton(onClick = onDown, modifier = Modifier.size(22.dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = blueColor, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeadlightsTileContent(
+    spec: TopShadeTileSpec,
+    raw: Int,
+    isDark: Boolean,
+) {
+    val (iconRes, tintColor) = when (raw) {
+        LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to Color(0xFF22C55E)
+        LIGHT_CONTROL_LOW_BEAM -> R.drawable.ic_headlights_low_beam to Color(0xFF38BDF8)
+        LIGHT_CONTROL_POSITION -> R.drawable.ic_headlights_position to Color(0xFF38BDF8)
+        else -> R.drawable.ic_headlights_off to Color(0xFF6B7280)
+    }
+
+    GeneralTileLayout(
+        spec = spec,
+        isDark = isDark,
+        title = spec.title,
+        hasIcon = true,
+    ) { iconModifier ->
+        BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
+            val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = spec.title,
+                colorFilter = ColorFilter.tint(tintColor),
+                modifier = Modifier.size(iconSize),
+            )
+        }
     }
 }
 
@@ -1065,24 +1828,56 @@ private fun HeadrestTileContent(
 private fun StandardTileContent(
     spec: TopShadeTileSpec,
     isActive: Boolean,
+    activeColor: Color,
     isDark: Boolean,
     vehicleControls: LauncherVehicleControlSnapshot = LauncherVehicleControlSnapshot(),
+    hvacFanDirectionRaw: Int = MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT,
+    isRecircOn: Boolean = false,
+    isPm25On: Boolean = false,
+    adas: LauncherAdasState = LauncherAdasState(),
+    tboxCruise: UInt? = null,
+    driveModeText: String = "",
 ) {
     val context = LocalContext.current
 
-    val displayTitle = remember(spec, vehicleControls) {
+    val displayTitle = remember(spec, vehicleControls, adas, tboxCruise, driveModeText) {
         when (spec.actionKey) {
-            "fcw" -> when (vehicleControls.fcwOption) {
-                1 -> "FCW: Близко"
-                2 -> "FCW: Средне"
-                3 -> "FCW: Далеко"
-                else -> if (vehicleControls.fcw == true) "FCW: Вкл" else "FCW: Выкл"
+            "fcw" -> {
+                val isFcwActive = vehicleControls.fcw == true || adas.fcwActive
+                if (!isFcwActive) "FCW: Выкл"
+                else when (vehicleControls.fcwOption) {
+                    1 -> "FCW: Близко"
+                    2 -> "FCW: Средне"
+                    3 -> "FCW: Далеко"
+                    else -> "FCW: Вкл"
+                }
             }
-            "las" -> when (vehicleControls.lasSensitivity) {
-                1 -> "LAS: Предупреждение"
-                2 -> "LAS: Ассистент"
-                else -> if ((vehicleControls.lasSensitivity ?: 0) > 0) "LAS: Вкл" else "LAS: Выкл"
+            "ldw" -> {
+                val curMode = vehicleControls.lasMode ?: adas.lasMode
+                if (curMode == 1) {
+                    if (vehicleControls.lasSensitivity == 1) "LDW: Выс." else "LDW: Низ."
+                } else "LDW"
             }
+            "lka" -> {
+                val curMode = vehicleControls.lasMode ?: adas.lasMode
+                if (curMode == 2) {
+                    if (vehicleControls.lasSensitivity == 1) "LKA: Выс." else "LKA: Низ."
+                } else "LKA"
+            }
+            "esc_off" -> if (vehicleControls.escOff == true) "ESP: Выкл" else "ESP: Вкл"
+            "acc" -> {
+                val speed = adas.accSetSpeedKmh ?: tboxCruise?.toInt()?.takeIf { it > 0 }
+                if (speed != null && speed > 0 && (adas.accActive || (tboxCruise ?: 0u) > 0u)) {
+                    "$speed км/ч"
+                } else "ACC"
+            }
+            "wiper_sensitivity" -> "Авто ${vehicleControls.wiperSensitivity ?: 1}"
+            "drive_mode" -> if (driveModeText.isNotBlank()) "Режим $driveModeText" else "Режим"
+            "seat_memory_1" -> "DRV1"
+            "seat_memory_2" -> "DRV2"
+            "seat_memory_3" -> "DRV3"
+            "adas_dist" -> "Дистанция"
+            "smart_acc" -> "Умный ACC"
             "homelight_delay" -> when (vehicleControls.homelightDelay) {
                 1 -> "Фары: 30с"
                 2 -> "Фары: 60с"
@@ -1098,19 +1893,53 @@ private fun StandardTileContent(
         }
     }
 
-    val iconSize = if (spec.spanY >= 2) 68.dp else 34.dp
-    val fontSize = if (spec.spanY >= 2) 22.sp else 12.sp
-
-    val textColor = if (isDark) Color.White else Color(0xFF1F2937)
     val iconTint = if (isActive) {
-        LauncherColors.AccentBlue
+        activeColor
     } else {
         if (isDark) Color.White else Color(0xFF374151)
     }
 
-    val iconRes = remember(spec.iconResName) {
-        spec.iconResName?.let { name ->
-            context.resources.getIdentifier(name, "drawable", context.packageName).takeIf { it != 0 }
+    val iconRes = remember(spec.iconResName, spec.actionKey, hvacFanDirectionRaw, isRecircOn, isPm25On) {
+        when (spec.actionKey) {
+            "hvac_fan_direction" -> when (hvacFanDirectionRaw) {
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT -> R.drawable.ic_widget_fan_feet
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE_FOOT -> R.drawable.ic_widget_fan_face_feet
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE -> R.drawable.ic_widget_fan_face
+                MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_DEFROST_FOOT -> R.drawable.ic_widget_fan_defrost_feet
+                else -> R.drawable.ic_widget_fan_feet
+            }
+            "hvac_recirc", "recirc" -> {
+                if (isRecircOn) R.drawable.ic_widget_hvac_recirc_on else R.drawable.ic_widget_hvac_recirc_off
+            }
+            "hvac_pm25" -> {
+                if (isPm25On) R.drawable.ic_widget_pm25_on else R.drawable.ic_widget_pm25_off
+            }
+            "mirror_fold" -> R.drawable.ic_launcher_mirror
+            "windows" -> R.drawable.ic_widget_side_window
+            "trunk_door" -> R.drawable.ic_launcher_trunk
+            "seat_memory_1" -> R.drawable.ic_seat_memory_drv1
+            "seat_memory_2" -> R.drawable.ic_seat_memory_drv2
+            "seat_memory_3" -> R.drawable.ic_seat_memory_drv3
+            "seat_adjust", "passenger_seat_adjust" -> R.drawable.ic_seat_memory_btn
+            "acc" -> R.drawable.ic_launcher_cruise
+            "ngp" -> R.drawable.ic_adas_steering_wheel
+            "ldw", "lka" -> R.drawable.ic_adas_lka
+            "fcw" -> R.drawable.ic_fcw_arcs
+            "bsd" -> R.drawable.ic_bsd_blindspot
+            "dow" -> R.drawable.ic_dow_door
+            "parking_radar" -> R.drawable.ic_widget_parking_radar
+            "esc_off" -> R.drawable.ic_esp_icon
+            "hdc" -> R.drawable.ic_launcher_hdc
+            "avh" -> R.drawable.ic_hold_brake
+            "hma" -> R.drawable.ic_high_beam_auto
+            "rear_fog" -> R.drawable.ic_launcher_rear_fog
+            "wiper_maintenance" -> R.drawable.ic_wiper
+            "wiper_sensitivity" -> R.drawable.ic_windshield
+            else -> {
+                spec.iconResName?.let { name ->
+                    context.resources.getIdentifier(name, "drawable", context.packageName).takeIf { it != 0 }
+                }
+            }
         }
     }
     val appIconBitmap = remember(spec.actionKey, spec.type) {
@@ -1119,20 +1948,65 @@ private fun StandardTileContent(
         } else null
     }
 
-    if (spec.spanX >= 2 && spec.spanY == 1) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            if (iconRes != null) {
+    val hasIcon = iconRes != null || appIconBitmap != null || spec.actionKey in listOf("adas_dist", "smart_acc")
+
+    GeneralTileLayout(
+        spec = spec,
+        isDark = isDark,
+        title = displayTitle,
+        hasIcon = hasIcon,
+    ) { iconModifier ->
+        BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
+            val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
+            if (spec.actionKey == "adas_dist") {
+                val rawGap = adas.timeGapLevel ?: LauncherDevVehicleState.adasTimeGapLevel
+                val displayChevronLevel = when (rawGap) {
+                    0 -> 3
+                    1 -> 2
+                    2 -> 1
+                    else -> 3 - rawGap.coerceIn(0, 2)
+                }
+                ThreeChevronsIcon(
+                    level = displayChevronLevel,
+                    activeColor = activeColor,
+                    modifier = Modifier.size(iconSize * 0.9f),
+                )
+            } else if (spec.actionKey == "smart_acc") {
+                val navState = YandexNavRepository.state.collectAsStateWithLifecycle().value
+                val navSpeedVisible = LauncherAppConfigStore.navSpeedVisible(context)
+                val rawYandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
+                val yandexLimit = if (navSpeedVisible) rawYandexLimit else null
+                val cameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+                val effectiveSpeedLimit = yandexLimit ?: cameraLimit
+                val limitText = effectiveSpeedLimit?.toString() ?: "--"
+                Box(
+                    modifier = Modifier
+                        .size(iconSize * 0.85f)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .border(3.dp, Color(0xFFEF4444), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = limitText,
+                        color = Color.Black,
+                        fontSize = (iconSize.value * 0.38f).sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else if (iconRes != null) {
                 Image(
                     painter = painterResource(id = iconRes),
                     contentDescription = displayTitle,
                     colorFilter = ColorFilter.tint(iconTint),
-                    modifier = Modifier.size(iconSize),
+                    modifier = Modifier
+                        .size(iconSize)
+                        .then(
+                            if (spec.actionKey == "passenger_seat_adjust") {
+                                Modifier.graphicsLayer { scaleX = -1f }
+                            } else Modifier
+                        ),
                 )
             } else if (appIconBitmap != null) {
                 Image(
@@ -1141,53 +2015,6 @@ private fun StandardTileContent(
                     modifier = Modifier.size(iconSize),
                 )
             }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            Text(
-                text = displayTitle,
-                color = textColor,
-                fontSize = fontSize,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    } else {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            if (iconRes != null) {
-                Image(
-                    painter = painterResource(id = iconRes),
-                    contentDescription = displayTitle,
-                    colorFilter = ColorFilter.tint(iconTint),
-                    modifier = Modifier.size(iconSize),
-                )
-            } else if (appIconBitmap != null) {
-                Image(
-                    bitmap = appIconBitmap,
-                    contentDescription = displayTitle,
-                    modifier = Modifier.size(iconSize),
-                )
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Text(
-                text = displayTitle,
-                color = textColor,
-                fontSize = fontSize,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = if (spec.spanY >= 2) 3 else 2,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -1201,8 +2028,8 @@ private fun TelemetryTileContent(
     val voltage by CanDataRepository.voltage.collectAsStateWithLifecycle()
     val wheelsPressure by CanDataRepository.wheelsPressure.collectAsStateWithLifecycle()
 
-    val labelFontSize = if (spec.spanY >= 2) 18.sp else 10.sp
-    val valueFontSize = if (spec.spanY >= 2) 24.sp else 12.sp
+    val labelFontSize = if (spec.spanY >= 2) 26.sp else 18.sp
+    val valueFontSize = if (spec.spanY >= 2) 36.sp else 22.sp
     val textColor = if (isDark) Color.White else Color(0xFF1F2937)
     val labelColor = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280)
 
@@ -1260,17 +2087,56 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
         }
         "headrest_speaker" -> PlatformAudioRepository.cycleHeadrestMode(context)
         "mirror_fold" -> sendToggleMirrorFold(context)
-        "seat_heat_left" -> sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, null)
-        "seat_vent_left" -> sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, null)
-        "seat_heat_right" -> sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, null)
-        "seat_vent_right" -> sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, null)
-        "seat_heat_rear_left" -> sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH, null)
-        "seat_heat_rear_right" -> sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, null)
+        "seat_heat_left" -> {
+            val flSeatMode = UniversalCanRepository.frontLeftSeatModeState.value
+            val raw = launcherSeatModeToRaw(flSeatMode)
+                ?: runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH) }.getOrNull()
+                ?: 1
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, raw)
+        }
+        "seat_vent_left" -> {
+            val flSeatMode = UniversalCanRepository.frontLeftSeatModeState.value
+            val raw = launcherSeatModeToRaw(flSeatMode)
+                ?: runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH) }.getOrNull()
+                ?: 1
+            sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH, raw)
+        }
+        "seat_heat_right" -> {
+            val frSeatMode = UniversalCanRepository.frontRightSeatModeState.value
+            val raw = launcherSeatModeToRaw(frSeatMode)
+                ?: runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH) }.getOrNull()
+                ?: 1
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, raw)
+        }
+        "seat_vent_right" -> {
+            val frSeatMode = UniversalCanRepository.frontRightSeatModeState.value
+            val raw = launcherSeatModeToRaw(frSeatMode)
+                ?: runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH) }.getOrNull()
+                ?: 1
+            sendCycleFrontSeatVent(context, MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH, raw)
+        }
+        "seat_heat_rear_left" -> {
+            val rlSeatMode = UniversalCanRepository.rearLeftSeatModeState.value
+            val raw = launcherSeatModeToRaw(rlSeatMode)
+                ?: runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH) }.getOrNull()
+                ?: 1
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_LEFT_SEAT_HEAT_SWITCH, raw)
+        }
+        "seat_heat_rear_right" -> {
+            val rrSeatMode = UniversalCanRepository.rearRightSeatModeState.value
+            val raw = launcherSeatModeToRaw(rrSeatMode)
+                ?: runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH) }.getOrNull()
+                ?: 1
+            sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, raw)
+        }
+        "temp_driver", "temp_pass", "hvac_heater_level" -> {
+            launchClimateApp(context)
+        }
         "steering_heat" -> sendToggleSteeringWheelHeat(context)
         "windscreen_heat" -> sendToggleFrontWindscreenHeat(context)
         "rear_defrost" -> sendToggleRearWindowMirrorsDefrost(context)
         "hvac_auto" -> sendToggleHvacAuto(context)
-        "hvac_recirc" -> sendToggleHvacAirRecirculation(context)
+        "hvac_recirc", "recirc" -> sendToggleHvacAirRecirculation(context)
         "hvac_power" -> sendToggleHvacPower(context)
         "hvac_ac" -> sendToggleHvacAc(context)
         "hvac_sync" -> sendToggleHvacSync(context)
@@ -1278,10 +2144,113 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
         "hvac_fan_speed" -> sendCycleHvacFanSpeed(context)
         "hvac_fan_direction" -> sendCycleHvacFanDirection(context)
         "front_defrost" -> sendToggleHvacDefrosterFront(context)
-        "headlights" -> sendCycleHeadlightsSwitch(context, null)
+        "headlights" -> {
+            val currentRaw = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LIGHT_CONTROL) }.getOrNull() ?: LIGHT_CONTROL_OFF
+            sendCycleHeadlightsSwitch(context, currentRaw)
+        }
 
         // ADAS & Vehicle actions
-        "trunk_door" -> sendOpenCloseTrunk(context)
+        "trunk_door" -> {
+            val gearBoxMode = CanDataRepository.gearBoxMode.value
+            val gearBoxCurrentGear = CanDataRepository.gearBoxCurrentGear.value
+            val activeGear = LauncherDevVehicleState.gearSlotOverride ?: resolveActiveGearSlot(gearBoxMode, gearBoxCurrentGear)
+            if (activeGear == 'P') {
+                sendOpenCloseTrunk(context)
+            } else {
+                Toast.makeText(context, "Переключите передачу в P", Toast.LENGTH_SHORT).show()
+            }
+        }
+        "windows" -> triggerSequentialWindows(0)
+        "seat_memory_1" -> recallSeatMemorySlot(context, 1)
+        "seat_memory_2" -> recallSeatMemorySlot(context, 2)
+        "seat_memory_3" -> recallSeatMemorySlot(context, 3)
+        "seat_adjust" -> {
+            onClose()
+            launchMirrorAdjustSettingsEmbedded(context)
+        }
+        "passenger_seat_adjust" -> {
+            onClose()
+            PassengerSeatOverlayWindow.show(context)
+        }
+        "acc" -> LauncherCruisePresetController.launchStatusSingleTap(context)
+        "ngp" -> LauncherCruisePresetController.launchNgpWithSetMinus(context)
+        "adas_dist" -> {
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: LauncherAdasRepository.state.value
+            val rawGap = adas.timeGapLevel ?: LauncherDevVehicleState.adasTimeGapLevel
+            val nextRaw = when (rawGap) {
+                0 -> 1
+                1 -> 2
+                2 -> 0
+                else -> 0
+            }
+            LauncherCruisePresetController.setTimeGap(context, nextRaw)
+        }
+        "smart_acc" -> {
+            val navState = YandexNavRepository.state.value
+            val navSpeedVisible = LauncherAppConfigStore.navSpeedVisible(context)
+            val rawYandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
+            val yandexLimit = if (navSpeedVisible) rawYandexLimit else null
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: LauncherAdasRepository.state.value
+            val cameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+            val effectiveLimit = yandexLimit ?: cameraLimit
+            val offset = LauncherAppConfigStore.adasAccSpeedOffset(context)
+            if (effectiveLimit != null) {
+                LauncherCruisePresetController.applySpeedLimitPreset(context, effectiveLimit + offset)
+            } else {
+                Toast.makeText(context, "Ограничение скорости не определено", Toast.LENGTH_SHORT).show()
+            }
+        }
+        "ldw" -> {
+            val curMode = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) }.getOrNull()
+            if (curMode != 1) {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 2)
+            } else {
+                val curSens = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL) }.getOrNull() ?: 0
+                if (curSens == 0) {
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+                } else {
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 1)
+                }
+            }
+        }
+        "lka" -> {
+            val curMode = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION) }.getOrNull()
+            if (curMode != 2) {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 2)
+            } else {
+                val curSens = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL) }.getOrNull() ?: 0
+                if (curSens == 0) {
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 1)
+                } else {
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                    sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 1)
+                }
+            }
+        }
+        "bsd" -> {
+            val current = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.BSD_SWITCH) }.getOrNull()
+            val next = if (current == 2) 1 else 2
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.BSD_SWITCH, next)
+        }
+        "dow" -> {
+            val current = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.DOW_SWITCH) }.getOrNull()
+            val next = if (current == 2) 1 else 2
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.DOW_SWITCH, next)
+        }
+        "hma" -> {
+            val current = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HMA_SWITCH) }.getOrNull()
+            val next = if (current == 2) 1 else 2
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.HMA_SWITCH, next)
+        }
+        "rear_fog" -> sendToggleRearFogLight(context)
+        "wiper_sensitivity" -> {
+            val current = runCatching { MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.WIPER_SENSITIVITY) }.getOrNull() ?: 1
+            val next = if (current >= 4) 1 else current + 1
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.WIPER_SENSITIVITY, next)
+        }
         "avh" -> sendToggleAvh(context)
         "hdc" -> sendToggleHdc(context)
         "esc_off" -> sendToggleEscOff(context)
@@ -1423,7 +2392,7 @@ private fun AddTopShadeTileModal(
     onAdd: (TopShadeTileSpec) -> Unit,
 ) {
     val context = LocalContext.current
-    var selectedCategory by remember { mutableIntStateOf(0) } // 0: Auto, 1: Climate, 2: System, 3: Telemetry, 4: Apps, 5: TBM (optional)
+    var selectedCategory by remember { mutableIntStateOf(0) } // 0: Auto, 1: Climate, 2: System, 3: Apps, 4: TBM (optional)
 
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
     val tbmConnectionState by tbmRepo.connectionState.collectAsStateWithLifecycle()
@@ -1434,36 +2403,42 @@ private fun AddTopShadeTileModal(
 
     val categoryTabs = remember(hasTbmAutomations) {
         if (hasTbmAutomations) {
-            listOf("Автомобиль", "Климат", "Система", "Телеметрия", "Приложения", "Автоматизации TBM")
+            listOf("Автомобиль", "Климат", "Система", "Приложения", "Автоматизации TBM")
         } else {
-            listOf("Автомобиль", "Климат", "Система", "Телеметрия", "Приложения")
+            listOf("Автомобиль", "Климат", "Система", "Приложения")
         }
     }
 
     val carOptions = remember {
         listOf(
             TopShadeTileSpec("opt_avm_camera", "Камеры 360", TopShadeTileType.CAR_CONTROL, "avm_camera", "ic_launcher_avm", 1, 1),
-            TopShadeTileSpec("opt_trunk_door", "Багажник", TopShadeTileType.CAR_CONTROL, "trunk_door", "ic_widget_trunk", 1, 1),
-            TopShadeTileSpec("opt_avh", "Автохолд (AVH)", TopShadeTileType.CAR_CONTROL, "avh", "ic_widget_avh", 1, 1),
-            TopShadeTileSpec("opt_hdc", "Помощь при спуске (HDC)", TopShadeTileType.CAR_CONTROL, "hdc", "ic_widget_hdc", 1, 1),
-            TopShadeTileSpec("opt_esc_off", "Отключение ESP (ESC Off)", TopShadeTileType.CAR_CONTROL, "esc_off", "ic_widget_esp_off", 1, 1),
-            TopShadeTileSpec("opt_parking_radar", "Парковочный радар", TopShadeTileType.CAR_CONTROL, "parking_radar", "ic_widget_parking_radar", 1, 1),
-            TopShadeTileSpec("opt_fcw", "Предупреждение FCW", TopShadeTileType.CAR_CONTROL, "fcw", "ic_widget_fcw", 1, 1),
-            TopShadeTileSpec("opt_las", "Удержание в полосе (LAS)", TopShadeTileType.CAR_CONTROL, "las", "ic_widget_las", 1, 1),
-            TopShadeTileSpec("opt_acc_autobrake", "Аварийное торможение (AEB)", TopShadeTileType.CAR_CONTROL, "acc_autobrake", "ic_widget_aeb", 1, 1),
-            TopShadeTileSpec("opt_drive_mode", "Режим вождения", TopShadeTileType.CAR_CONTROL, "drive_mode", "ic_widget_drive_mode", 1, 1),
-            TopShadeTileSpec("opt_wiper_maintenance", "Сервисный режим дворников", TopShadeTileType.CAR_CONTROL, "wiper_maintenance", "ic_widget_wiper", 1, 1),
-            TopShadeTileSpec("opt_door_autolock", "Автоблокировка дверей", TopShadeTileType.CAR_CONTROL, "door_autolock", "ic_widget_door_lock", 1, 1),
-            TopShadeTileSpec("opt_door_ignoff_unlock", "Разблокировка при заглушении", TopShadeTileType.CAR_CONTROL, "door_ignoff_unlock", "ic_widget_door_lock", 1, 1),
-            TopShadeTileSpec("opt_mirror_autofold", "Автосложение зеркал", TopShadeTileType.CAR_CONTROL, "mirror_autofold", "ic_widget_mirror_fold", 1, 1),
-            TopShadeTileSpec("opt_mirror_reverse_turn", "Наклон зеркал при заднем ходе", TopShadeTileType.CAR_CONTROL, "mirror_reverse_turn", "ic_widget_mirror_fold", 1, 1),
-            TopShadeTileSpec("opt_homelight_delay", "Задержка фар (Follow Me Home)", TopShadeTileType.CAR_CONTROL, "homelight_delay", "ic_headlights_auto", 1, 1),
-            TopShadeTileSpec("opt_driver_unlock_mode", "Режим разблокировки дверей", TopShadeTileType.CAR_CONTROL, "driver_unlock_mode", "ic_widget_door_lock", 1, 1),
-            TopShadeTileSpec("opt_welcome_lamp", "Приветственный свет", TopShadeTileType.CAR_CONTROL, "welcome_lamp", "ic_headlights_auto", 1, 1),
-            TopShadeTileSpec("opt_wireless_charging", "Беспроводная зарядка", TopShadeTileType.CAR_CONTROL, "wireless_charging", "ic_widget_battery", 1, 1),
-            TopShadeTileSpec("opt_car_wash_mode", "Режим мойки", TopShadeTileType.CAR_CONTROL, "car_wash_mode", "ic_widget_wiper", 1, 1),
-            TopShadeTileSpec("opt_welcome_seat", "Комфортная посадка", TopShadeTileType.CAR_CONTROL, "welcome_seat", "ic_widget_seat_heat_left_3", 1, 1),
-            TopShadeTileSpec("opt_window_autoclose", "Автозакрытие окон", TopShadeTileType.CAR_CONTROL, "window_autoclose", "ic_widget_mirror_fold", 1, 1),
+            TopShadeTileSpec("opt_mirror_fold", "Сложение зеркал", TopShadeTileType.CAR_CONTROL, "mirror_fold", "ic_launcher_mirror", 1, 1),
+            TopShadeTileSpec("opt_headlights", "Переключатель фар", TopShadeTileType.CAR_CONTROL, "headlights", "ic_headlights_auto", 1, 1),
+            TopShadeTileSpec("opt_trunk", "Багажник", TopShadeTileType.CAR_CONTROL, "trunk_door", "ic_launcher_trunk", 1, 1),
+            TopShadeTileSpec("opt_windows", "Окна", TopShadeTileType.CAR_CONTROL, "windows", "ic_widget_side_window", 1, 1),
+            TopShadeTileSpec("opt_seat_memory_1", "Память DRV1", TopShadeTileType.CAR_CONTROL, "seat_memory_1", "ic_seat_memory_drv1", 1, 1),
+            TopShadeTileSpec("opt_seat_memory_2", "Память DRV2", TopShadeTileType.CAR_CONTROL, "seat_memory_2", "ic_seat_memory_drv2", 1, 1),
+            TopShadeTileSpec("opt_seat_memory_3", "Память DRV3", TopShadeTileType.CAR_CONTROL, "seat_memory_3", "ic_seat_memory_drv3", 1, 1),
+            TopShadeTileSpec("opt_seat_adjust", "Настройка сиденья", TopShadeTileType.CAR_CONTROL, "seat_adjust", "ic_seat_memory_btn", 1, 1),
+            TopShadeTileSpec("opt_pass_seat_adjust", "Пасс. сиденье", TopShadeTileType.CAR_CONTROL, "passenger_seat_adjust", "ic_seat_memory_btn", 1, 1),
+            TopShadeTileSpec("opt_acc", "ACC Круиз", TopShadeTileType.CAR_CONTROL, "acc", "ic_launcher_cruise", 1, 1),
+            TopShadeTileSpec("opt_ngp", "NGP Ассистент", TopShadeTileType.CAR_CONTROL, "ngp", "ic_adas_steering_wheel", 1, 1),
+            TopShadeTileSpec("opt_adas_dist", "Дистанция ACC", TopShadeTileType.CAR_CONTROL, "adas_dist", null, 1, 1),
+            TopShadeTileSpec("opt_smart_acc", "Умный ACC", TopShadeTileType.CAR_CONTROL, "smart_acc", null, 1, 1),
+            TopShadeTileSpec("opt_ldw", "LDW Полоса", TopShadeTileType.CAR_CONTROL, "ldw", "ic_adas_lka", 1, 1),
+            TopShadeTileSpec("opt_lka", "LKA Удержание", TopShadeTileType.CAR_CONTROL, "lka", "ic_adas_lka", 1, 1),
+            TopShadeTileSpec("opt_fcw", "FCW Дистанция", TopShadeTileType.CAR_CONTROL, "fcw", "ic_fcw_arcs", 1, 1),
+            TopShadeTileSpec("opt_bsd", "Слепые зоны BSD", TopShadeTileType.CAR_CONTROL, "bsd", "ic_bsd_blindspot", 1, 1),
+            TopShadeTileSpec("opt_dow", "Двери DOW", TopShadeTileType.CAR_CONTROL, "dow", "ic_dow_door", 1, 1),
+            TopShadeTileSpec("opt_parking_radar", "Парктроник", TopShadeTileType.CAR_CONTROL, "parking_radar", "ic_widget_parking_radar", 1, 1),
+            TopShadeTileSpec("opt_esc_off", "ESP Стабилизация", TopShadeTileType.CAR_CONTROL, "esc_off", "ic_esp_icon", 1, 1),
+            TopShadeTileSpec("opt_hdc", "Спуск с горы HDC", TopShadeTileType.CAR_CONTROL, "hdc", "ic_launcher_hdc", 1, 1),
+            TopShadeTileSpec("opt_avh", "Автохолд HLD", TopShadeTileType.CAR_CONTROL, "avh", "ic_hold_brake", 1, 1),
+            TopShadeTileSpec("opt_hma", "Авто дальний IHBC", TopShadeTileType.CAR_CONTROL, "hma", "ic_high_beam_auto", 1, 1),
+            TopShadeTileSpec("opt_rear_fog", "Задний ПТФ", TopShadeTileType.CAR_CONTROL, "rear_fog", "ic_launcher_rear_fog", 1, 1),
+            TopShadeTileSpec("opt_wiper_maintenance", "Сервис дворников", TopShadeTileType.CAR_CONTROL, "wiper_maintenance", "ic_wiper", 1, 1),
+            TopShadeTileSpec("opt_wiper_sensitivity", "Дворники Авто", TopShadeTileType.CAR_CONTROL, "wiper_sensitivity", "ic_windshield", 1, 1),
+            TopShadeTileSpec("opt_drive_mode", "Режим движения", TopShadeTileType.CAR_CONTROL, "drive_mode", null, 1, 1),
         )
     }
 
@@ -1471,27 +2446,25 @@ private fun AddTopShadeTileModal(
         listOf(
             TopShadeTileSpec("opt_hvac_power", "Питание климата", TopShadeTileType.CAR_CONTROL, "hvac_power", "ic_widget_hvac_power", 1, 1),
             TopShadeTileSpec("opt_hvac_ac", "Кондиционер AC", TopShadeTileType.CAR_CONTROL, "hvac_ac", "ic_widget_hvac_ac", 1, 1),
-            TopShadeTileSpec("opt_hvac_auto", "Климат AUTO", TopShadeTileType.CAR_CONTROL, "hvac_auto", "ic_widget_hvac_ac", 1, 1),
-            TopShadeTileSpec("opt_hvac_sync", "Синхронизация SYNC", TopShadeTileType.CAR_CONTROL, "hvac_sync", "ic_widget_hvac_ac", 1, 1),
-            TopShadeTileSpec("opt_temp_driver", "Температура водителя", TopShadeTileType.CAR_CONTROL, "temp_driver", "ic_widget_hvac_ac", 1, 1),
-            TopShadeTileSpec("opt_temp_pass", "Температура пассажира", TopShadeTileType.CAR_CONTROL, "temp_pass", "ic_widget_hvac_ac", 1, 1),
-            TopShadeTileSpec("opt_hvac_heater_level", "Уровень печки", TopShadeTileType.CAR_CONTROL, "hvac_heater_level", "ic_widget_fan", 1, 1),
+            TopShadeTileSpec("opt_hvac_auto", "Климат AUTO", TopShadeTileType.CAR_CONTROL, "hvac_auto", null, 1, 1),
+            TopShadeTileSpec("opt_hvac_sync", "Синхронизация SYNC", TopShadeTileType.CAR_CONTROL, "hvac_sync", null, 1, 1),
+            TopShadeTileSpec("opt_temp_driver", "Температура водителя", TopShadeTileType.CAR_CONTROL, "temp_driver", null, 2, 1),
+            TopShadeTileSpec("opt_temp_pass", "Температура пассажира", TopShadeTileType.CAR_CONTROL, "temp_pass", null, 2, 1),
+            TopShadeTileSpec("opt_hvac_heater_level", "Уровень печки", TopShadeTileType.CAR_CONTROL, "hvac_heater_level", null, 2, 1),
             TopShadeTileSpec("opt_hvac_pm25", "Очистка PM 2.5", TopShadeTileType.CAR_CONTROL, "hvac_pm25", "ic_widget_pm25_on", 1, 1),
             TopShadeTileSpec("opt_hvac_fan_speed", "Скорость вентилятора", TopShadeTileType.CAR_CONTROL, "hvac_fan_speed", "ic_widget_fan", 1, 1),
             TopShadeTileSpec("opt_hvac_fan_direction", "Направление обдува", TopShadeTileType.CAR_CONTROL, "hvac_fan_direction", "ic_widget_fan_face_feet", 1, 1),
-            TopShadeTileSpec("opt_seat_heat_left", "Подогрев водителя", TopShadeTileType.CAR_CONTROL, "seat_heat_left", "ic_widget_seat_heat_left_3", 1, 1),
-            TopShadeTileSpec("opt_seat_vent_left", "Вентиляция водителя", TopShadeTileType.CAR_CONTROL, "seat_vent_left", "ic_widget_seat_vent_left_3", 1, 1),
-            TopShadeTileSpec("opt_seat_heat_right", "Подогрев пассажира", TopShadeTileType.CAR_CONTROL, "seat_heat_right", "ic_widget_seat_heat_right_3", 1, 1),
-            TopShadeTileSpec("opt_seat_vent_right", "Вентиляция пассажира", TopShadeTileType.CAR_CONTROL, "seat_vent_right", "ic_widget_seat_vent_right_3", 1, 1),
-            TopShadeTileSpec("opt_seat_heat_rear_left", "Подогрев зад. лев.", TopShadeTileType.CAR_CONTROL, "seat_heat_rear_left", "ic_widget_seat_heat_left_3", 1, 1),
-            TopShadeTileSpec("opt_seat_heat_rear_right", "Подогрев зад. прав.", TopShadeTileType.CAR_CONTROL, "seat_heat_rear_right", "ic_widget_seat_heat_right_3", 1, 1),
-            TopShadeTileSpec("opt_hvac_recirc", "Рециркуляция", TopShadeTileType.CAR_CONTROL, "hvac_recirc", "ic_widget_hvac_air_recirculation", 1, 1),
+            TopShadeTileSpec("opt_seat_heat_left", "Подогрев водителя", TopShadeTileType.CAR_CONTROL, "seat_heat_left", "ic_widget_seat_heat_left", 1, 1),
+            TopShadeTileSpec("opt_seat_vent_left", "Вентиляция водителя", TopShadeTileType.CAR_CONTROL, "seat_vent_left", "ic_widget_seat_vent_left", 1, 1),
+            TopShadeTileSpec("opt_seat_heat_right", "Подогрев пассажира", TopShadeTileType.CAR_CONTROL, "seat_heat_right", "ic_widget_seat_heat_right", 1, 1),
+            TopShadeTileSpec("opt_seat_vent_right", "Вентиляция пассажира", TopShadeTileType.CAR_CONTROL, "seat_vent_right", "ic_widget_seat_vent_right", 1, 1),
+            TopShadeTileSpec("opt_seat_heat_rear_left", "Подогрев зад. лев.", TopShadeTileType.CAR_CONTROL, "seat_heat_rear_left", "ic_widget_seat_heat_left", 1, 1),
+            TopShadeTileSpec("opt_seat_heat_rear_right", "Подогрев зад. прав.", TopShadeTileType.CAR_CONTROL, "seat_heat_rear_right", "ic_widget_seat_heat_right", 1, 1),
+            TopShadeTileSpec("opt_hvac_recirc", "Рециркуляция", TopShadeTileType.CAR_CONTROL, "hvac_recirc", "ic_widget_hvac_recirc_on", 1, 1),
             TopShadeTileSpec("opt_steering_heat", "Подогрев руля", TopShadeTileType.CAR_CONTROL, "steering_heat", "ic_widget_steering_wheel_heat", 1, 1),
             TopShadeTileSpec("opt_windscreen_heat", "Подогрев лобового", TopShadeTileType.CAR_CONTROL, "windscreen_heat", "ic_widget_front_windscreen_heat", 1, 1),
             TopShadeTileSpec("opt_front_defrost", "Обдув лобового", TopShadeTileType.CAR_CONTROL, "front_defrost", "ic_widget_hvac_defroster_front", 1, 1),
             TopShadeTileSpec("opt_rear_defrost", "Обогрев заднего стекла", TopShadeTileType.CAR_CONTROL, "rear_defrost", "ic_widget_rear_window_mirrors_defrost", 1, 1),
-            TopShadeTileSpec("opt_mirror_fold", "Сложение зеркал", TopShadeTileType.CAR_CONTROL, "mirror_fold", "ic_widget_mirror_fold", 1, 1),
-            TopShadeTileSpec("opt_headlights", "Переключатель фар", TopShadeTileType.CAR_CONTROL, "headlights", "ic_headlights_auto", 1, 1),
         )
     }
 
@@ -1510,13 +2483,6 @@ private fun AddTopShadeTileModal(
             TopShadeTileSpec("opt_wifi", "Настройки Wi-Fi", TopShadeTileType.SYSTEM_TOGGLE, "wifi", "ic_widget_wifi", 1, 1),
             TopShadeTileSpec("opt_screen_off", "Экран выкл", TopShadeTileType.SYSTEM_TOGGLE, "screen_off", "ic_widget_screen_off", 1, 1),
             TopShadeTileSpec("opt_reboot_hu", "Перезагрузка ГУ", TopShadeTileType.SYSTEM_TOGGLE, "reboot_hu", "ic_widget_reboot", 1, 1),
-        )
-    }
-
-    val telemetryOptions = remember {
-        listOf(
-            TopShadeTileSpec("opt_engine_battery", "ДВС и АКБ", TopShadeTileType.TELEMETRY, "engine_battery", null, 1, 1),
-            TopShadeTileSpec("opt_tpms_info", "Давление в шинах", TopShadeTileType.TELEMETRY, "tpms_info", null, 1, 1),
         )
     }
 
@@ -1586,14 +2552,18 @@ private fun AddTopShadeTileModal(
                     Text(
                         text = "Добавить элемент",
                         color = textColor,
-                        fontSize = 18.sp,
+                        fontSize = 36.sp,
                         fontWeight = FontWeight.Bold,
                     )
-                    IconButton(onClick = onDismiss) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(56.dp),
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
                             tint = textColor,
+                            modifier = Modifier.size(36.dp),
                         )
                     }
                 }
@@ -1602,25 +2572,28 @@ private fun AddTopShadeTileModal(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     categoryTabs.forEachIndexed { idx, title ->
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
-                                .clip(CircleShape)
+                                .height(76.dp)
+                                .clip(RoundedCornerShape(38.dp))
                                 .background(if (selectedCategory == idx) LauncherColors.AccentBlue else if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f))
-                                .clickable { selectedCategory = idx },
+                                .clickable { selectedCategory = idx }
+                                .padding(horizontal = 8.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = title,
                                 color = if (selectedCategory == idx) Color.White else textColor,
-                                fontSize = 11.sp,
+                                fontSize = 33.sp,
+                                lineHeight = 36.sp,
                                 fontWeight = FontWeight.Medium,
-                                maxLines = 1,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
@@ -1632,30 +2605,63 @@ private fun AddTopShadeTileModal(
                     0 -> carOptions
                     1 -> climateOptions
                     2 -> systemOptions
-                    3 -> telemetryOptions
-                    4 -> appOptions
-                    5 -> tbmAutomationOptions
+                    3 -> appOptions
+                    4 -> tbmAutomationOptions
                     else -> emptyList()
                 }
 
-                LazyColumn(
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 170.dp),
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
                     items(currentList, key = { it.id }) { option ->
-                        Row(
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(CircleShape)
+                                .height(145.dp)
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(itemBg)
+                                .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
                                 .clickable { onAdd(option) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                                .padding(10.dp),
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f),
+                            if (option.spanX > 1 || option.spanY > 1) {
+                                Text(
+                                    text = "${option.spanX}×${option.spanY}",
+                                    color = textColor.copy(alpha = 0.65f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .background(if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(26.dp)
+                                    .background(LauncherColors.AccentBlue.copy(alpha = 0.18f), CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add",
+                                    tint = LauncherColors.AccentBlue,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
                             ) {
                                 val iconResId = remember(option.iconResName) {
                                     option.iconResName?.let { name ->
@@ -1672,22 +2678,137 @@ private fun AddTopShadeTileModal(
                                     else -> null
                                 }
 
-                                if (iconResId != null) {
+                                val isSeatHeat = option.actionKey.startsWith("seat_heat_")
+                                val isSeatVent = option.actionKey.startsWith("seat_vent_")
+                                val isAuto = option.actionKey == "hvac_auto"
+                                val isSync = option.actionKey == "hvac_sync"
+                                val isTempDriver = option.actionKey == "temp_driver"
+                                val isTempPass = option.actionKey == "temp_pass"
+                                val isHeaterLevel = option.actionKey == "hvac_heater_level"
+                                val isFanSpeed = option.actionKey == "hvac_fan_speed"
+
+                                if (isSeatHeat) {
+                                    LauncherSeatHeatIcon(
+                                        raw = 4,
+                                        mirrored = option.actionKey.endsWith("_right"),
+                                        badgeText = if (option.actionKey.contains("_rear_")) "REAR" else null,
+                                        iconSizeDp = 48.dp,
+                                        seatSizeDp = 40.dp,
+                                    )
+                                } else if (isSeatVent) {
+                                    LauncherSeatVentIcon(
+                                        raw = 7,
+                                        mirrored = option.actionKey.endsWith("_right"),
+                                        iconSizeDp = 48.dp,
+                                        seatSizeDp = 40.dp,
+                                    )
+                                } else if (isAuto || isSync) {
+                                    Box(
+                                        modifier = Modifier.size(46.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = if (isSync) "SYNC" else "AUTO",
+                                            color = if (isDark) Color.White else Color(0xFF374151),
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                } else if (isTempDriver || isTempPass) {
+                                    Box(
+                                        modifier = Modifier.size(46.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = if (isTempDriver) "t° В" else "t° П",
+                                            color = if (isDark) Color.White else Color(0xFF374151),
+                                            fontSize = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                } else if (isHeaterLevel) {
+                                    Box(
+                                        modifier = Modifier.size(46.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = "Печка",
+                                            color = if (isDark) Color.White else Color(0xFF374151),
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                } else if (isFanSpeed) {
+                                    Box(
+                                        modifier = Modifier.size(46.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        LauncherFanSpeedIcon(
+                                            speedLevel = 4,
+                                            activeColor = HvacOnColor,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                        Image(
+                                            painter = painterResource(id = R.drawable.ic_widget_fan),
+                                            contentDescription = null,
+                                            colorFilter = ColorFilter.tint(if (isDark) Color.White else Color(0xFF374151)),
+                                            modifier = Modifier.size(24.dp),
+                                        )
+                                    }
+                                } else if (option.actionKey == "adas_dist") {
+                                    ThreeChevronsIcon(
+                                        level = 3,
+                                        activeColor = LauncherColors.AccentCyan,
+                                        modifier = Modifier.size(42.dp),
+                                    )
+                                } else if (option.actionKey == "smart_acc") {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White)
+                                            .border(3.dp, Color(0xFFEF4444), CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = "60",
+                                            color = Color.Black,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                        )
+                                    }
+                                } else if (option.actionKey == "drive_mode") {
+                                    Box(
+                                        modifier = Modifier.size(46.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = "DRIVE",
+                                            color = if (isDark) Color.White else Color(0xFF374151),
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                } else if (iconResId != null) {
                                     Image(
                                         painter = painterResource(id = iconResId),
                                         contentDescription = null,
                                         colorFilter = ColorFilter.tint(if (isDark) Color.White else Color(0xFF374151)),
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .then(
+                                                if (option.actionKey == "passenger_seat_adjust") {
+                                                    Modifier.graphicsLayer { scaleX = -1f }
+                                                } else Modifier
+                                            ),
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
                                 } else if (vectorIcon != null) {
                                     Icon(
                                         imageVector = vectorIcon,
                                         contentDescription = null,
                                         tint = if (isDark) Color.White else Color(0xFF374151),
-                                        modifier = Modifier.size(24.dp),
+                                        modifier = Modifier.size(42.dp),
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
                                 } else if (option.type == TopShadeTileType.SHORTCUT && !option.actionKey.startsWith("tbm_auto:")) {
                                     val iconBitmap by produceState<ImageBitmap?>(initialValue = null, key1 = option.actionKey) {
                                         value = withContext(Dispatchers.IO) {
@@ -1700,27 +2821,24 @@ private fun AddTopShadeTileModal(
                                         Image(
                                             bitmap = iconBitmap!!,
                                             contentDescription = null,
-                                            modifier = Modifier.size(28.dp),
+                                            modifier = Modifier.size(46.dp),
                                         )
-                                        Spacer(modifier = Modifier.width(12.dp))
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(8.dp))
 
                                 Text(
                                     text = option.title,
                                     color = textColor,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
+                                    fontSize = 18.sp,
+                                    lineHeight = 22.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add",
-                                tint = LauncherColors.AccentBlue,
-                                modifier = Modifier.size(20.dp),
-                            )
                         }
                     }
                 }

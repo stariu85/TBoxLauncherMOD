@@ -387,7 +387,6 @@ private fun LauncherCarFilamentContent(
     val projectPdcRef = rememberUpdatedState(projectPdcRings)
     val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
     val isAvmRef = rememberUpdatedState(isAvmActive)
-    val carHiddenRef = rememberUpdatedState(carHidden)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
@@ -397,6 +396,8 @@ private fun LauncherCarFilamentContent(
     var dclLastCamX by remember(modelInstance) { mutableFloatStateOf(0f) }
     var lastDynamicNs by remember(modelInstance) { mutableLongStateOf(0L) }
     val inDriveGearRef = rememberUpdatedState(inDriveGear || steerPreview)
+    val topShadeOpen by LauncherCar3DModelTrigger.topShadeOpen.collectAsStateWithLifecycle()
+    val topShadeClosedEvent by LauncherCar3DModelTrigger.topShadeClosedEvent.collectAsStateWithLifecycle()
     val homePressedEvent by LauncherCar3DModelTrigger.homePressedEvent.collectAsStateWithLifecycle()
     val backPressedEvent by LauncherCar3DModelTrigger.backPressedEvent.collectAsStateWithLifecycle()
     val previousAppPressedEvent by LauncherCar3DModelTrigger.previousAppPressedEvent.collectAsStateWithLifecycle()
@@ -480,20 +481,22 @@ private fun LauncherCarFilamentContent(
         isTriggerActive,
         isAvmActive,
         carHidden,
+        topShadeOpen,
         homePressedEvent,
         backPressedEvent,
         previousAppPressedEvent,
         quickSettingsClosedEvent,
+        topShadeClosedEvent,
         paintChangedEvent,
     ) {
         val nowMs = SystemClock.uptimeMillis()
         val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
 
-        if (isAvmActive || (carHidden && !isPaintChangeRecent)) {
+        if (topShadeOpen || isAvmActive || (carHidden && !isPaintChangeRecent)) {
             customSceneLifecycleOwner.pauseScene()
         } else {
             // Resume scene immediately when exiting camera/settings, when triggers fire,
-            // or when Home/Back/PreviousApp/QuickSettingsClosed/PaintChanged is pressed/triggered
+            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged is pressed/triggered
             customSceneLifecycleOwner.resumeScene()
             if (!isTriggerActive && !isPaintChangeRecent) {
                 // Keep rendering active for 2 seconds after camera/settings exit, action completion, or Home/Back/PreviousApp press
@@ -589,22 +592,8 @@ private fun LauncherCarFilamentContent(
                         val paintChangedEventMs = LauncherCar3DModelTrigger.paintChangedEvent.value
                         val isPaintChangeRecent = (nowMs - paintChangedEventMs) < 2000L
 
-                        val topShadeOpenVal = LauncherCar3DModelTrigger.topShadeOpen.value
                         val topShadeClosedEventMs = LauncherCar3DModelTrigger.topShadeClosedEvent.value
                         val isTopShadeClosedRecent = (nowMs - topShadeClosedEventMs) < 2000L
-
-                        if (topShadeOpenVal || isAvmRef.value || (carHiddenRef.value && !isPaintChangeRecent)) {
-                            val node = modelNodeRef.get()
-                            if (node != null && node.isVisible) {
-                                node.isVisible = false
-                            }
-                            return@runCatching
-                        } else {
-                            val node = modelNodeRef.get()
-                            if (node != null && !node.isVisible) {
-                                node.isVisible = true
-                            }
-                        }
 
                         if (lastDynamicNs == 0L) {
                             lastDynamicNs = frameNs

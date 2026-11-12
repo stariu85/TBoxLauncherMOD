@@ -50,6 +50,8 @@
     <string name="launcher_car_model_scale_desc">Size of the 3D car model on screen in top view</string>
     <string name="launcher_car_model_drive_scale_title">3D Model scale (rear view)</string>
     <string name="launcher_car_model_drive_scale_desc">Size of the 3D car model on screen in drive mode</string>
+    <string name="launcher_car_model_visible_title">Car model display</string>
+    <string name="launcher_car_model_visible_desc">Display car model in top view, and car model and road in rear view</string>
     <string name="launcher_sidebar_width_title">Left panel width</string>
     <string name="launcher_sidebar_width_desc">Changes the width of the car panel and Freeform zone</string>
     <string name="launcher_about_app_short">About</string>

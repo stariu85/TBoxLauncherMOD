@@ -35,6 +35,7 @@ private val DEFAULT_TOP_BAR_RIGHT_ITEMS = listOf("connectivity", "time", "date")
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_CAR_MODEL_DRIVE_SCALE = "car_model_drive_scale"
+private const val KEY_CAR_MODEL_VISIBLE = "car_model_visible"
 private const val KEY_SIDEBAR_WIDTH = "sidebar_width_dp"
 private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
 private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
@@ -415,6 +416,8 @@ internal object LauncherAppConfigStore {
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
     private val carModelDriveScaleRevision = MutableStateFlow(0)
     internal val carModelDriveScaleRevisionFlow: StateFlow<Int> = carModelDriveScaleRevision
+    private val carModelVisibleRevision = MutableStateFlow(0)
+    internal val carModelVisibleRevisionFlow: StateFlow<Int> = carModelVisibleRevision
     private val carPaintRevision = MutableStateFlow(0)
     internal val carPaintRevisionFlow: StateFlow<Int> = carPaintRevision
     private val sidebarWidthRevision = MutableStateFlow(0)
@@ -987,6 +990,14 @@ internal object LauncherAppConfigStore {
         val next = scale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
         prefs(context).edit().putFloat(KEY_CAR_MODEL_DRIVE_SCALE, next).apply()
         carModelDriveScaleRevision.value++
+    }
+
+    fun carModelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAR_MODEL_VISIBLE, true)
+
+    fun setCarModelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAR_MODEL_VISIBLE, visible).apply()
+        carModelVisibleRevision.value++
     }
 
     fun navButtonsVisible(context: Context): Boolean =
@@ -2165,6 +2176,7 @@ internal object LauncherAppConfigStore {
         floatingHomeVisibleRevision.value++
         carModelScaleRevision.value++
         carModelDriveScaleRevision.value++
+        carModelVisibleRevision.value++
         sidebarWidthRevision.value++
         cameraSwitchModeRevision.value++
         cameraAnimationRevision.value++

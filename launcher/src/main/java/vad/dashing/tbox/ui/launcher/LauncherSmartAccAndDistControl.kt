@@ -386,7 +386,7 @@ private fun SmartPanelButton(
  * Level 3 = all 3 chevrons active
  */
 @Composable
-private fun ThreeChevronsIcon(
+internal fun ThreeChevronsIcon(
     level: Int,
     activeColor: Color = LauncherColors.AccentCyan,
     inactiveColor: Color = Color(0x35FFFFFF),
