@@ -99,7 +99,6 @@ import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.tbm.TbmConnectionState
 import vad.dashing.tbox.tbm.TbmRepositoryProvider
 import vad.dashing.tbox.ui.LauncherAppIconLoader
-import vad.dashing.tbox.ui.launchAppFromWidget
 import androidx.compose.ui.graphics.lerp
 import vad.dashing.tbox.ui.HvacTempZone
 import vad.dashing.tbox.ui.LIGHT_CONTROL_AUTO
@@ -381,6 +380,15 @@ internal fun LauncherTopShadeContent(
     val tiles = remember(context, revision) {
         LauncherTopShadeConfigStore.getTiles(context).toMutableList()
     }
+    val appearanceRevision by LauncherTopShadeConfigStore.appearanceRevisionFlow.collectAsStateWithLifecycle()
+    var fontScaleOffset by remember(appearanceRevision) {
+        mutableFloatStateOf(LauncherTopShadeConfigStore.getFontScaleOffset(context))
+    }
+    var iconScaleOffset by remember(appearanceRevision) {
+        mutableFloatStateOf(LauncherTopShadeConfigStore.getIconScaleOffset(context))
+    }
+    val fontScale = 1.0f + (fontScaleOffset / 100f)
+    val iconScale = 1.0f + (iconScaleOffset / 100f)
     var isEditMode by remember { mutableStateOf(false) }
     var showAddModal by remember { mutableStateOf(false) }
 
@@ -438,6 +446,52 @@ internal fun LauncherTopShadeContent(
                         fontSize = 13.sp,
                         fontWeight = if (isEditMode) FontWeight.SemiBold else FontWeight.Normal,
                     )
+                }
+
+                if (isEditMode) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TopShadeScaleSlider(
+                            label = "Размер шрифта",
+                            value = fontScaleOffset,
+                            isDark = isDark,
+                            onValueChange = { newVal ->
+                                fontScaleOffset = if (kotlin.math.abs(newVal) < 1.5f) 0f else newVal
+                            },
+                            onValueChangeFinished = {
+                                LauncherTopShadeConfigStore.setFontScaleOffset(context, fontScaleOffset)
+                            },
+                            onReset = {
+                                fontScaleOffset = 0f
+                                LauncherTopShadeConfigStore.setFontScaleOffset(context, 0f)
+                            },
+                            modifier = Modifier.width(220.dp),
+                        )
+
+                        Spacer(modifier = Modifier.width(24.dp))
+
+                        TopShadeScaleSlider(
+                            label = "Размер иконок",
+                            value = iconScaleOffset,
+                            isDark = isDark,
+                            onValueChange = { newVal ->
+                                iconScaleOffset = if (kotlin.math.abs(newVal) < 1.5f) 0f else newVal
+                            },
+                            onValueChangeFinished = {
+                                LauncherTopShadeConfigStore.setIconScaleOffset(context, iconScaleOffset)
+                            },
+                            onReset = {
+                                iconScaleOffset = 0f
+                                LauncherTopShadeConfigStore.setIconScaleOffset(context, 0f)
+                            },
+                            modifier = Modifier.width(220.dp),
+                        )
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -541,6 +595,9 @@ internal fun LauncherTopShadeContent(
                             yPx = yPx,
                             isEditMode = isEditMode,
                             isDark = isDark,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
+                            onClose = onClose,
                             onRemove = {
                                 val next = tiles.toMutableList().apply { removeAt(index) }
                                 LauncherTopShadeConfigStore.setTiles(context, next)
@@ -620,6 +677,9 @@ private fun TopShadeTileCanvasItemView(
     yPx: Float,
     isEditMode: Boolean,
     isDark: Boolean,
+    fontScale: Float,
+    iconScale: Float,
+    onClose: () -> Unit,
     onRemove: () -> Unit,
     onUpdateTile: (TopShadeTileSpec) -> Unit,
     onClick: () -> Unit,
@@ -923,12 +983,12 @@ private fun TopShadeTileCanvasItemView(
                 contentAlignment = Alignment.Center,
             ) {
                 when (spec.actionKey) {
-                    "brightness" -> BrightnessTileContent(spec = spec, isEditMode = isEditMode, isDark = isDark)
-                    "vol_media" -> ChannelVolumeTileContent(PlatformVolumeChannel.Media, spec = spec, isEditMode = isEditMode, isDark = isDark)
-                    "vol_phone" -> ChannelVolumeTileContent(PlatformVolumeChannel.Phone, spec = spec, isEditMode = isEditMode, isDark = isDark)
-                    "vol_navi" -> ChannelVolumeTileContent(PlatformVolumeChannel.Navi, spec = spec, isEditMode = isEditMode, isDark = isDark)
-                    "vol_voice" -> ChannelVolumeTileContent(PlatformVolumeChannel.Voice, spec = spec, isEditMode = isEditMode, isDark = isDark)
-                    "headrest_speaker" -> HeadrestTileContent(spec = spec, headrestMode = headrestMode, isDark = isDark)
+                    "brightness" -> BrightnessTileContent(spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
+                    "vol_media" -> ChannelVolumeTileContent(PlatformVolumeChannel.Media, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
+                    "vol_phone" -> ChannelVolumeTileContent(PlatformVolumeChannel.Phone, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
+                    "vol_navi" -> ChannelVolumeTileContent(PlatformVolumeChannel.Navi, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
+                    "vol_voice" -> ChannelVolumeTileContent(PlatformVolumeChannel.Voice, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
+                    "headrest_speaker" -> HeadrestTileContent(spec = spec, headrestMode = headrestMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
                     "seat_heat_left", "seat_vent_left", "seat_heat_right", "seat_vent_right", "seat_heat_rear_left", "seat_heat_rear_right" -> {
                         SeatTileContent(
                             spec = spec,
@@ -937,6 +997,8 @@ private fun TopShadeTileCanvasItemView(
                             rlSeatMode = rlSeatMode,
                             rrSeatMode = rrSeatMode,
                             isDark = isDark,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     "hvac_auto", "hvac_sync" -> {
@@ -946,6 +1008,8 @@ private fun TopShadeTileCanvasItemView(
                             isActive = isActive,
                             activeColor = activeColor,
                             isDark = isDark,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     "hvac_fan_speed" -> {
@@ -955,6 +1019,8 @@ private fun TopShadeTileCanvasItemView(
                             activeColor = activeColor,
                             isActive = isActive,
                             isDark = isDark,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     "temp_driver" -> {
@@ -964,6 +1030,9 @@ private fun TopShadeTileCanvasItemView(
                             zone = HvacTempZone.Driver,
                             isDark = isDark,
                             isEditMode = isEditMode,
+                            onClose = onClose,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     "temp_pass" -> {
@@ -973,6 +1042,9 @@ private fun TopShadeTileCanvasItemView(
                             zone = HvacTempZone.Passenger,
                             isDark = isDark,
                             isEditMode = isEditMode,
+                            onClose = onClose,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     "hvac_heater_level" -> {
@@ -981,6 +1053,9 @@ private fun TopShadeTileCanvasItemView(
                             driverTemp = driverTemp,
                             isDark = isDark,
                             isEditMode = isEditMode,
+                            onClose = onClose,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     "headlights" -> {
@@ -988,11 +1063,13 @@ private fun TopShadeTileCanvasItemView(
                             spec = spec,
                             raw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF,
                             isDark = isDark,
+                            fontScale = fontScale,
+                            iconScale = iconScale,
                         )
                     }
                     else -> {
                         if (spec.type == TopShadeTileType.TELEMETRY) {
-                            TelemetryTileContent(spec = spec, isDark = isDark)
+                            TelemetryTileContent(spec = spec, isDark = isDark, fontScale = fontScale)
                         } else {
                             StandardTileContent(
                                 spec = spec,
@@ -1006,6 +1083,8 @@ private fun TopShadeTileCanvasItemView(
                                 adas = adas,
                                 tboxCruise = tboxCruise,
                                 driveModeText = resolvedDriveMode,
+                                fontScale = fontScale,
+                                iconScale = iconScale,
                             )
                         }
                     }
@@ -1099,6 +1178,8 @@ private fun BrightnessTileContent(
     spec: TopShadeTileSpec,
     isEditMode: Boolean,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val context = LocalContext.current
     var brightnessLevel by remember {
@@ -1127,10 +1208,10 @@ private fun BrightnessTileContent(
                     imageVector = IconBrightnessSun,
                     contentDescription = "Brightness",
                     tint = iconColor,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size((24f * iconScale).dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Яркость: $percent%", color = textColor, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Яркость: $percent%", color = textColor, fontSize = (24f * fontScale).sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Slider(
@@ -1167,11 +1248,11 @@ private fun BrightnessTileContent(
                 imageVector = IconBrightnessSun,
                 contentDescription = "Brightness",
                 tint = iconColor,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size((20f * iconScale).dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
             if (spec.spanX >= 4) {
-                Text("Яркость: $percent%", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text("Яркость: $percent%", color = textColor, fontSize = (22f * fontScale).sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Slider(
@@ -1205,6 +1286,8 @@ private fun ChannelVolumeTileContent(
     spec: TopShadeTileSpec,
     isEditMode: Boolean,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val context = LocalContext.current
     val currentVolume by when (channel) {
@@ -1237,10 +1320,10 @@ private fun ChannelVolumeTileContent(
                     imageVector = iconVector,
                     contentDescription = channel.title,
                     tint = iconColor,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size((24f * iconScale).dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = (24f * fontScale).sp, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(4.dp))
             Slider(
@@ -1270,11 +1353,11 @@ private fun ChannelVolumeTileContent(
                 imageVector = iconVector,
                 contentDescription = channel.title,
                 tint = iconColor,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size((20f * iconScale).dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
             if (spec.spanX >= 4) {
-                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                Text("${channel.title}: $currentVolume / ${channel.maxVal}", color = textColor, fontSize = (22f * fontScale).sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Slider(
@@ -1292,6 +1375,66 @@ private fun ChannelVolumeTileContent(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+}
+
+@Composable
+private fun TopShadeScaleSlider(
+    label: String,
+    value: Float,
+    isDark: Boolean,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val textSecColor = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF4B5563)
+    val displayValue = if (kotlin.math.abs(value) < 1f) {
+        "0"
+    } else if (value > 0) {
+        "+${value.roundToInt()}%"
+    } else {
+        "${value.roundToInt()}%"
+    }
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            modifier = Modifier
+                .clickable(onClick = onReset),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = label,
+                color = textSecColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = displayValue,
+                color = if (displayValue == "0") textSecColor else LauncherColors.AccentBlue,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
+            valueRange = -50f..50f,
+            colors = SliderDefaults.colors(
+                thumbColor = if (isDark) Color.White else LauncherColors.AccentBlue,
+                activeTrackColor = LauncherColors.AccentBlue,
+                inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.12f),
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp),
+        )
     }
 }
 
@@ -1338,6 +1481,8 @@ private fun GeneralTileLayout(
     isDark: Boolean,
     title: String,
     hasIcon: Boolean = true,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
     iconContent: @Composable (iconModifier: Modifier) -> Unit,
 ) {
     val textColor = if (isDark) Color.White else Color(0xFF1F2937)
@@ -1353,8 +1498,8 @@ private fun GeneralTileLayout(
             AdaptiveTileText(
                 text = title,
                 color = textColor,
-                baseFontSize = 26.sp,
-                minFontSize = 13.sp,
+                baseFontSize = (26f * fontScale).sp,
+                minFontSize = (13f * fontScale).sp,
                 maxLines = if (spec.spanY >= 2) 4 else 2,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -1371,11 +1516,18 @@ private fun GeneralTileLayout(
                 .padding(vertical = 3.dp, horizontal = 3.dp),
             contentAlignment = Alignment.Center,
         ) {
-            iconContent(
-                Modifier
+            Box(
+                modifier = Modifier
                     .fillMaxHeight()
-                    .aspectRatio(1f),
-            )
+                    .aspectRatio(1f)
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                iconContent(Modifier.fillMaxSize())
+            }
         }
     } else if (spec.spanX >= 2 && spec.spanY == 1) {
         // Горизонтально: слева значок, справа название
@@ -1390,15 +1542,26 @@ private fun GeneralTileLayout(
                 modifier = Modifier
                     .fillMaxHeight()
                     .aspectRatio(1f),
+                contentAlignment = Alignment.Center,
             ) {
-                iconContent(Modifier.fillMaxSize())
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    iconContent(Modifier.fillMaxSize())
+                }
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp + if (iconScale > 1f) 8.dp * (iconScale - 1f) else 0.dp))
             AdaptiveTileText(
                 text = title,
                 color = textColor,
-                baseFontSize = 26.sp,
-                minFontSize = 13.sp,
+                baseFontSize = (26f * fontScale).sp,
+                minFontSize = (13f * fontScale).sp,
                 maxLines = 2,
                 textAlign = TextAlign.Start,
                 modifier = Modifier.weight(1f),
@@ -1419,17 +1582,24 @@ private fun GeneralTileLayout(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                iconContent(
-                    Modifier
+                Box(
+                    modifier = Modifier
                         .fillMaxHeight()
-                        .aspectRatio(1f),
-                )
+                        .aspectRatio(1f)
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    iconContent(Modifier.fillMaxSize())
+                }
             }
             AdaptiveTileText(
                 text = title,
                 color = textColor,
-                baseFontSize = 26.sp,
-                minFontSize = 13.sp,
+                baseFontSize = (26f * fontScale).sp,
+                minFontSize = (13f * fontScale).sp,
                 maxLines = if (spec.spanY >= 3) 3 else 2,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -1445,6 +1615,8 @@ private fun HeadrestTileContent(
     spec: TopShadeTileSpec,
     headrestMode: Int,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val modeTitle = when (headrestMode) {
         1 -> "Подголовник: Вкл"
@@ -1459,6 +1631,8 @@ private fun HeadrestTileContent(
         isDark = isDark,
         title = modeTitle,
         hasIcon = true,
+        fontScale = fontScale,
+        iconScale = iconScale,
     ) { iconModifier ->
         BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
             val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -1480,6 +1654,8 @@ private fun SeatTileContent(
     rlSeatMode: MbCanSeatModeState,
     rrSeatMode: MbCanSeatModeState,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val raw = when (spec.actionKey) {
         "seat_heat_left", "seat_vent_left" -> launcherSeatModeToRaw(flSeatMode) ?: 1
@@ -1499,6 +1675,8 @@ private fun SeatTileContent(
         isDark = isDark,
         title = displayTitle,
         hasIcon = true,
+        fontScale = fontScale,
+        iconScale = iconScale,
     ) { iconModifier ->
         BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
             val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -1529,6 +1707,8 @@ private fun HvacTextTileContent(
     isActive: Boolean,
     activeColor: Color,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val textColor = if (isActive) activeColor else if (isDark) Color.White else Color(0xFF374151)
 
@@ -1537,6 +1717,8 @@ private fun HvacTextTileContent(
         isDark = isDark,
         title = spec.title,
         hasIcon = true,
+        fontScale = fontScale,
+        iconScale = iconScale,
     ) { iconModifier ->
         BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
             val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -1559,6 +1741,8 @@ private fun HvacFanSpeedTileContent(
     activeColor: Color,
     isActive: Boolean,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val iconTint = if (isActive) activeColor else (if (isDark) Color.White else Color(0xFF374151))
     val displayTitle = if (speedRaw > 0) "Скорость $speedRaw" else spec.title
@@ -1568,6 +1752,8 @@ private fun HvacFanSpeedTileContent(
         isDark = isDark,
         title = displayTitle,
         hasIcon = true,
+        fontScale = fontScale,
+        iconScale = iconScale,
     ) { iconModifier ->
         BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
             val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -1598,6 +1784,9 @@ private fun HvacTempStepperTileContent(
     zone: HvacTempZone,
     isDark: Boolean,
     isEditMode: Boolean,
+    onClose: () -> Unit = {},
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val context = LocalContext.current
     val tempColorIndicationRevision by LauncherAppConfigStore.climateTempColorIndicationRevisionFlow.collectAsStateWithLifecycle()
@@ -1631,7 +1820,8 @@ private fun HvacTempStepperTileContent(
     }
     val onOpenApp = {
         if (!isEditMode) {
-            launchClimateApp(context)
+            onClose()
+            launchClimateAppEmbedded(context)
         }
     }
 
@@ -1643,8 +1833,8 @@ private fun HvacTempStepperTileContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = onDown, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = downTint, modifier = Modifier.size(24.dp))
+            IconButton(onClick = onDown, modifier = Modifier.size((36f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = downTint, modifier = Modifier.size((24f * iconScale).dp))
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1655,19 +1845,19 @@ private fun HvacTempStepperTileContent(
                 Text(
                     text = if (zone == HvacTempZone.Driver) "Водитель" else "Пассажир",
                     color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280),
-                    fontSize = 18.sp,
+                    fontSize = (18f * fontScale).sp,
                     maxLines = 1,
                 )
                 Text(
                     text = formattedTemp,
                     color = textColor,
-                    fontSize = if (spec.spanY >= 2) 36.sp else 28.sp,
+                    fontSize = ((if (spec.spanY >= 2) 36f else 28f) * fontScale).sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
                 )
             }
-            IconButton(onClick = onUp, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = upTint, modifier = Modifier.size(24.dp))
+            IconButton(onClick = onUp, modifier = Modifier.size((36f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = upTint, modifier = Modifier.size((24f * iconScale).dp))
             }
         }
     } else {
@@ -1678,19 +1868,19 @@ private fun HvacTempStepperTileContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = onUp, modifier = Modifier.size(22.dp)) {
-                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = upTint, modifier = Modifier.size(18.dp))
+            IconButton(onClick = onUp, modifier = Modifier.size((22f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = upTint, modifier = Modifier.size((18f * iconScale).dp))
             }
             Text(
                 text = formattedTemp,
                 color = textColor,
-                fontSize = 26.sp,
+                fontSize = (26f * fontScale).sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.clickable(onClick = onOpenApp),
             )
-            IconButton(onClick = onDown, modifier = Modifier.size(22.dp)) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = downTint, modifier = Modifier.size(18.dp))
+            IconButton(onClick = onDown, modifier = Modifier.size((22f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = downTint, modifier = Modifier.size((18f * iconScale).dp))
             }
         }
     }
@@ -1702,6 +1892,9 @@ private fun HvacHeaterLevelTileContent(
     driverTemp: Float?,
     isDark: Boolean,
     isEditMode: Boolean,
+    onClose: () -> Unit = {},
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val context = LocalContext.current
     val currentTemp = driverTemp
@@ -1728,7 +1921,8 @@ private fun HvacHeaterLevelTileContent(
     }
     val onOpenApp = {
         if (!isEditMode) {
-            launchClimateApp(context)
+            onClose()
+            launchClimateAppEmbedded(context)
         }
     }
 
@@ -1740,8 +1934,8 @@ private fun HvacHeaterLevelTileContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = onDown, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = blueColor, modifier = Modifier.size(24.dp))
+            IconButton(onClick = onDown, modifier = Modifier.size((36f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = blueColor, modifier = Modifier.size((24f * iconScale).dp))
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1752,19 +1946,19 @@ private fun HvacHeaterLevelTileContent(
                 Text(
                     text = "Печка",
                     color = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280),
-                    fontSize = 18.sp,
+                    fontSize = (18f * fontScale).sp,
                     maxLines = 1,
                 )
                 Text(
                     text = "$heaterLevel / 15",
                     color = levelColor,
-                    fontSize = if (spec.spanY >= 2) 36.sp else 28.sp,
+                    fontSize = ((if (spec.spanY >= 2) 36f else 28f) * fontScale).sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
             }
-            IconButton(onClick = onUp, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = redColor, modifier = Modifier.size(24.dp))
+            IconButton(onClick = onUp, modifier = Modifier.size((36f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = redColor, modifier = Modifier.size((24f * iconScale).dp))
             }
         }
     } else {
@@ -1775,19 +1969,19 @@ private fun HvacHeaterLevelTileContent(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconButton(onClick = onUp, modifier = Modifier.size(22.dp)) {
-                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = redColor, modifier = Modifier.size(18.dp))
+            IconButton(onClick = onUp, modifier = Modifier.size((22f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = redColor, modifier = Modifier.size((18f * iconScale).dp))
             }
             Text(
                 text = "$heaterLevel",
                 color = levelColor,
-                fontSize = 28.sp,
+                fontSize = (28f * fontScale).sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.clickable(onClick = onOpenApp),
             )
-            IconButton(onClick = onDown, modifier = Modifier.size(22.dp)) {
-                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = blueColor, modifier = Modifier.size(18.dp))
+            IconButton(onClick = onDown, modifier = Modifier.size((22f * iconScale).dp)) {
+                Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = blueColor, modifier = Modifier.size((18f * iconScale).dp))
             }
         }
     }
@@ -1798,6 +1992,8 @@ private fun HeadlightsTileContent(
     spec: TopShadeTileSpec,
     raw: Int,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val (iconRes, tintColor) = when (raw) {
         LIGHT_CONTROL_AUTO -> R.drawable.ic_headlights_auto to Color(0xFF22C55E)
@@ -1811,6 +2007,8 @@ private fun HeadlightsTileContent(
         isDark = isDark,
         title = spec.title,
         hasIcon = true,
+        fontScale = fontScale,
+        iconScale = iconScale,
     ) { iconModifier ->
         BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
             val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -1837,6 +2035,8 @@ private fun StandardTileContent(
     adas: LauncherAdasState = LauncherAdasState(),
     tboxCruise: UInt? = null,
     driveModeText: String = "",
+    fontScale: Float = 1.0f,
+    iconScale: Float = 1.0f,
 ) {
     val context = LocalContext.current
 
@@ -1955,6 +2155,8 @@ private fun StandardTileContent(
         isDark = isDark,
         title = displayTitle,
         hasIcon = hasIcon,
+        fontScale = fontScale,
+        iconScale = iconScale,
     ) { iconModifier ->
         BoxWithConstraints(modifier = iconModifier, contentAlignment = Alignment.Center) {
             val iconSize = if (maxWidth < maxHeight) maxWidth else maxHeight
@@ -2023,13 +2225,14 @@ private fun StandardTileContent(
 private fun TelemetryTileContent(
     spec: TopShadeTileSpec,
     isDark: Boolean,
+    fontScale: Float = 1.0f,
 ) {
     val engineTemp by CanDataRepository.engineTemperature.collectAsStateWithLifecycle()
     val voltage by CanDataRepository.voltage.collectAsStateWithLifecycle()
     val wheelsPressure by CanDataRepository.wheelsPressure.collectAsStateWithLifecycle()
 
-    val labelFontSize = if (spec.spanY >= 2) 26.sp else 18.sp
-    val valueFontSize = if (spec.spanY >= 2) 36.sp else 22.sp
+    val labelFontSize = ((if (spec.spanY >= 2) 26f else 18f) * fontScale).sp
+    val valueFontSize = ((if (spec.spanY >= 2) 36f else 22f) * fontScale).sp
     val textColor = if (isDark) Color.White else Color(0xFF1F2937)
     val labelColor = if (isDark) Color.White.copy(alpha = 0.7f) else Color(0xFF6B7280)
 
@@ -2130,7 +2333,8 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
             sendCycleFrontSeatHeat(context, MbCanKnownVehiclePropertyId.REAR_RIGHT_SEAT_HEAT_SWITCH, raw)
         }
         "temp_driver", "temp_pass", "hvac_heater_level" -> {
-            launchClimateApp(context)
+            onClose()
+            launchClimateAppEmbedded(context)
         }
         "steering_heat" -> sendToggleSteeringWheelHeat(context)
         "windscreen_heat" -> sendToggleFrontWindscreenHeat(context)
@@ -2308,11 +2512,11 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
         }
         "car_dialer" -> {
             onClose()
-            launchAppFromWidget(context, "com.autopai.car.dialer")
+            launchLauncherAppEmbedded(context, "com.autopai.car.dialer")
         }
         "radio_app" -> {
             onClose()
-            launchAppFromWidget(context, "com.wt.multimedia.local")
+            launchLauncherAppEmbedded(context, "com.wt.multimedia.local")
         }
         "theme" -> LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme)
         "wifi" -> {
@@ -2347,7 +2551,7 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
                 }
             } else if (spec.type == TopShadeTileType.SHORTCUT) {
                 onClose()
-                launchAppFromWidget(context, spec.actionKey)
+                launchLauncherAppEmbedded(context, spec.actionKey)
             }
         }
     }

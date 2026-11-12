@@ -327,6 +327,15 @@ internal fun launchClimateApp(context: Context) {
     }
 }
 
+internal fun launchClimateAppEmbedded(context: Context) {
+    for (pkg in LAUNCHER_CLIMATE_PACKAGES) {
+        if (resolveLaunchIntent(context, pkg) != null) {
+            launchLauncherAppEmbedded(context, pkg)
+            return
+        }
+    }
+}
+
 internal fun discoverAllMediaPlayerPackages(
     context: Context,
     preferredPackage: String? = LauncherAppConfigStore.defaultMediaPackage(context),

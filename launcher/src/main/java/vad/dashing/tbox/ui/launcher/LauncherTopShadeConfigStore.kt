@@ -31,12 +31,41 @@ internal object LauncherTopShadeConfigStore {
     private const val TAG = "TopShadeConfigStore"
     private const val PREFS_NAME = "launcher_top_shade_prefs"
     private const val KEY_TILES_JSON = "top_shade_tiles_json"
+    private const val KEY_FONT_SCALE_OFFSET = "top_shade_font_scale_offset"
+    private const val KEY_ICON_SCALE_OFFSET = "top_shade_icon_scale_offset"
 
     const val GRID_COLS = 12
     const val GRID_ROWS = 12
 
     private val tilesRevision = MutableStateFlow(0)
     val tilesRevisionFlow: StateFlow<Int> = tilesRevision
+
+    private val appearanceRevision = MutableStateFlow(0)
+    val appearanceRevisionFlow: StateFlow<Int> = appearanceRevision
+
+    fun getFontScaleOffset(context: Context): Float =
+        prefs(context).getFloat(KEY_FONT_SCALE_OFFSET, 0f).coerceIn(-50f, 50f)
+
+    fun setFontScaleOffset(context: Context, offset: Float) {
+        val clamped = offset.coerceIn(-50f, 50f)
+        prefs(context).edit().putFloat(KEY_FONT_SCALE_OFFSET, clamped).apply()
+        appearanceRevision.value++
+    }
+
+    fun getIconScaleOffset(context: Context): Float =
+        prefs(context).getFloat(KEY_ICON_SCALE_OFFSET, 0f).coerceIn(-50f, 50f)
+
+    fun setIconScaleOffset(context: Context, offset: Float) {
+        val clamped = offset.coerceIn(-50f, 50f)
+        prefs(context).edit().putFloat(KEY_ICON_SCALE_OFFSET, clamped).apply()
+        appearanceRevision.value++
+    }
+
+    fun fontScale(context: Context): Float =
+        1.0f + (getFontScaleOffset(context) / 100f)
+
+    fun iconScale(context: Context): Float =
+        1.0f + (getIconScaleOffset(context) / 100f)
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -130,8 +159,13 @@ internal object LauncherTopShadeConfigStore {
     }
 
     fun resetToDefault(context: Context) {
-        prefs(context).edit().remove(KEY_TILES_JSON).apply()
+        prefs(context).edit()
+            .remove(KEY_TILES_JSON)
+            .remove(KEY_FONT_SCALE_OFFSET)
+            .remove(KEY_ICON_SCALE_OFFSET)
+            .apply()
         tilesRevision.value++
+        appearanceRevision.value++
     }
 
     private fun ensureValidGridCoordinates(

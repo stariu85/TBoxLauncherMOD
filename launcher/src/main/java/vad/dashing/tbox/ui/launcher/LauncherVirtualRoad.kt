@@ -1532,8 +1532,10 @@ fun LauncherSpeedLimitOverlay(
     }
 
     val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
+    val isSmartDeactivating by LauncherCruisePresetController.isSmartAccDeactivating.collectAsStateWithLifecycle()
     val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
-    val showSmartUi = enabled && isSmartActive && cruiseState == AccCruiseState.Active
+    val isCruiseActiveOrOverride = cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override
+    val showSmartUi = enabled && isSmartActive && (isCruiseActiveOrOverride || isSmartDeactivating)
 
     var isDragging by remember { mutableStateOf(false) }
 

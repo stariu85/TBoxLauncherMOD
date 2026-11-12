@@ -103,18 +103,29 @@ internal fun LauncherSmartAccAndDistControl(
     val effectiveSpeedLimit = yandexLimit ?: cameraLimit
 
     val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
+    val isSmartDeactivating by LauncherCruisePresetController.isSmartAccDeactivating.collectAsStateWithLifecycle()
     val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
+
+    var lastKnownSpeedLimit by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(effectiveSpeedLimit) {
+        if (effectiveSpeedLimit != null) {
+            lastKnownSpeedLimit = effectiveSpeedLimit
+        }
+    }
+
+    val isCruiseActiveOrOverride = cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override
+    val isCruiseEngaged = isCruiseActiveOrOverride || isSmartDeactivating
 
     // Auto-adapt ACC speed on speed limit change when Smart ACC is active
     var lastAppliedLimit by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(effectiveSpeedLimit, offset, isSmartActive, cruiseState) {
-        if (adasAccBySpeedLimitEnabled && cruiseState == AccCruiseState.Active && isSmartActive && effectiveSpeedLimit != null) {
-            if (effectiveSpeedLimit != lastAppliedLimit) {
+    LaunchedEffect(effectiveSpeedLimit, offset, isSmartActive, isCruiseActiveOrOverride) {
+        if (adasAccBySpeedLimitEnabled && isCruiseActiveOrOverride && isSmartActive) {
+            if (effectiveSpeedLimit != null && effectiveSpeedLimit != lastAppliedLimit) {
                 lastAppliedLimit = effectiveSpeedLimit
                 val targetSpeed = effectiveSpeedLimit + offset
                 LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
             }
-        } else if (!isSmartActive || cruiseState != AccCruiseState.Active) {
+        } else if (!isSmartActive || !isCruiseActiveOrOverride) {
             lastAppliedLimit = null
         }
     }
@@ -158,17 +169,19 @@ internal fun LauncherSmartAccAndDistControl(
 
             // --- BUTTON 2: SMART ACC (Only if enabled in settings) ---
             if (adasAccBySpeedLimitEnabled) {
-                val hasLimit = effectiveSpeedLimit != null
-                val isActive = isSmartActive && cruiseState == AccCruiseState.Active
+                val displayedLimit = effectiveSpeedLimit ?: (if (isSmartActive) lastKnownSpeedLimit else null)
+                val hasLimit = displayedLimit != null || isSmartActive
+                val isActive = isSmartActive && isCruiseEngaged
 
                 SmartAccButton(
-                    speedLimit = effectiveSpeedLimit,
+                    speedLimit = displayedLimit,
                     offset = offset,
                     enabled = hasLimit,
                     isActive = isActive,
                     onClick = {
-                        if (effectiveSpeedLimit != null) {
-                            val targetSpeed = effectiveSpeedLimit + offset
+                        val limit = displayedLimit ?: lastKnownSpeedLimit
+                        if (limit != null) {
+                            val targetSpeed = limit + offset
                             LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
                         }
                     },

@@ -43,7 +43,7 @@ internal object LauncherCruisePresetController {
     private const val PULSE_HOLD_MS = 80L
     private const val POST_CONVERGE_VERIFY_MS = 1000L
     private const val MAX_PULSES = 50
-    private const val SMART_ACC_DEACTIVATE_DELAY_MS = 2000L
+    private const val SMART_ACC_DEACTIVATE_DELAY_MS = 3000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
@@ -56,9 +56,13 @@ internal object LauncherCruisePresetController {
     private val _isSmartSpeedLimitActive = MutableStateFlow(false)
     val isSmartSpeedLimitActive: StateFlow<Boolean> = _isSmartSpeedLimitActive.asStateFlow()
 
+    private val _isSmartAccDeactivating = MutableStateFlow(false)
+    val isSmartAccDeactivating: StateFlow<Boolean> = _isSmartAccDeactivating.asStateFlow()
+
     private fun setSmartSpeedLimitActive(active: Boolean) {
         smartAccExitJob?.cancel()
         smartAccExitJob = null
+        _isSmartAccDeactivating.value = false
         _isSmartSpeedLimitActive.value = active
     }
 
@@ -88,32 +92,25 @@ internal object LauncherCruisePresetController {
             combine(
                 LauncherAdasRepository.state,
                 CanDataRepository.cruiseSetSpeed,
-                LauncherVehicleAlertsRepository.state,
-            ) { adas, _, alerts ->
-                val isAlertBrake = alerts.alerts.any { it.id == LauncherAlertId.PressBrake }
-                val isMbCanBrake = MbCanEngineFacade.readBrakePedalPressed()
-                val isBrakePressed = isAlertBrake || isMbCanBrake
-                Triple(computeAccCruiseState(), isBrakePressed, adas)
-            }.collect { (newState, isBrakePressed, adas) ->
+            ) { _, _ ->
+                computeAccCruiseState()
+            }.collect { newState ->
                 val previousState = _accCruiseState.value
                 _accCruiseState.value = newState
-
-                if (isBrakePressed && _isSmartSpeedLimitActive.value) {
-                    DiagFileLog.i(TAG, "Brake pressed -> turning off smart speed limit mode")
-                    setSmartSpeedLimitActive(false)
-                }
 
                 if (newState == AccCruiseState.Active || newState == AccCruiseState.Override) {
                     if (smartAccExitJob?.isActive == true) {
                         DiagFileLog.i(TAG, "ACC returned to $newState before ${SMART_ACC_DEACTIVATE_DELAY_MS}ms timeout -> cancelling smart speed limit deactivation")
                         smartAccExitJob?.cancel()
                         smartAccExitJob = null
+                        _isSmartAccDeactivating.value = false
                     }
                 } else if ((previousState == AccCruiseState.Active || previousState == AccCruiseState.Override) &&
                     _isSmartSpeedLimitActive.value
                 ) {
                     DiagFileLog.i(TAG, "ACC transitioned from $previousState to $newState -> scheduling smart speed limit deactivation in ${SMART_ACC_DEACTIVATE_DELAY_MS}ms")
                     smartAccExitJob?.cancel()
+                    _isSmartAccDeactivating.value = true
                     smartAccExitJob = scope.launch {
                         delay(SMART_ACC_DEACTIVATE_DELAY_MS)
                         val currentState = _accCruiseState.value
@@ -121,6 +118,7 @@ internal object LauncherCruisePresetController {
                             DiagFileLog.i(TAG, "ACC remained in $currentState for ${SMART_ACC_DEACTIVATE_DELAY_MS}ms -> turning off smart speed limit mode")
                             _isSmartSpeedLimitActive.value = false
                         }
+                        _isSmartAccDeactivating.value = false
                     }
                 }
             }
