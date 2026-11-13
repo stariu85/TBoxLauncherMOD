@@ -78,12 +78,13 @@ fun LauncherCruisePresetControl(
 
 
 
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
     val chipState = when {
         LauncherDevVehicleState.simulateEnabled -> {
             if (LauncherDevVehicleState.adasCruiseActive) CruiseChipState.Active else CruiseChipState.Off
         }
-        adas.accActive || pendingTargetSpeed != null -> CruiseChipState.Active
-        adas.accStandby -> CruiseChipState.Standby
+        cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override || pendingTargetSpeed != null -> CruiseChipState.Active
+        cruiseState == AccCruiseState.Standby -> CruiseChipState.Standby
         else -> CruiseChipState.Off
     }
 

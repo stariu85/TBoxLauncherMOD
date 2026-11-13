@@ -89,14 +89,14 @@ fun LauncherAssistControlBar(
     }
 
     // 1. ACC (Cruise Control) State
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
     val accDisplaySpeed = adas.accSetSpeedKmh ?: tboxCruise?.toInt()?.takeIf { it > 0 }
     val accState = when {
         LauncherDevVehicleState.simulateEnabled -> {
             if (LauncherDevVehicleState.adasCruiseActive) AssistChipState.Active else AssistChipState.Off
         }
-        adas.accActive -> AssistChipState.Active
-        adas.accStandby -> AssistChipState.Standby
-        (tboxCruise ?: 0u) > 0u -> AssistChipState.Active
+        cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override -> AssistChipState.Active
+        cruiseState == AccCruiseState.Standby -> AssistChipState.Standby
         else -> AssistChipState.Off
     }
 

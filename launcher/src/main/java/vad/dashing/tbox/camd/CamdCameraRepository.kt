@@ -7,12 +7,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.mbcan.TurnSignalSide
+import vad.dashing.tbox.mbcan.TurnSignalsLatch
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
+import vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger
 import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
 import java.util.Locale
 
@@ -44,7 +46,17 @@ object CamdCameraRepository {
     private val _activeTurnSignalCamera = MutableStateFlow<Int?>(null)
     val activeTurnSignalCamera: StateFlow<Int?> = _activeTurnSignalCamera.asStateFlow()
 
-    private var turnOffDebounceJob: Job? = null
+    @Volatile
+    private var appContext: Context? = null
+
+    private val turnSignalsLatch = TurnSignalsLatch(
+        scope = scope,
+        holdMs = TurnSignalsLatch.HOLD_MS,
+        onSideChanged = { side ->
+            handleLatchedTurnSignal(side)
+        }
+    )
+
     private var desktopOperationJob: Job? = null
 
     fun refreshStatus(context: Context) {
@@ -57,6 +69,12 @@ object CamdCameraRepository {
                 _isDesktopCamerasOpen.value = hasAllFour
             }
         }
+    }
+
+    suspend fun setHoldStockAvm(context: Context, holdOff: Boolean): Result<String> {
+        val res = CamdSocketClient.setAvmHold(context, holdOff)
+        refreshStatus(context)
+        return res
     }
 
     /**
@@ -163,6 +181,8 @@ object CamdCameraRepository {
         }
         _isDesktopCamerasOpen.value = false
         _activeTurnSignalCamera.value = null
+        turnSignalsLatch.reset()
+        LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
     }
 
     suspend fun closeCamera(context: Context, id: Int?) {
@@ -171,19 +191,45 @@ object CamdCameraRepository {
         if (id == null) {
             _isDesktopCamerasOpen.value = false
             _activeTurnSignalCamera.value = null
+            turnSignalsLatch.reset()
         } else {
             if (_activeTurnSignalCamera.value == id) {
                 _activeTurnSignalCamera.value = null
             }
         }
+        LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
     }
 
     /**
-     * Handles turn-light signals from mbCAN:
+     * Handles turn-light signals from mbCAN (type 2, eMBCAN_VEHICLE_TURNLIGHT):
      * If stock AVM is disabled and turn-signal cameras option is enabled,
      * opens the corresponding side camera (#4 left, #5 right) in the ADAS zone.
+     * Uses [TurnSignalsLatch] with 2.5s hold time.
      */
     fun onTurnLightSignal(context: Context, leftLight: Byte, rightLight: Byte) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
+
+        val useStock = LauncherAppConfigStore.camdUseStockAvm(appCtx)
+        val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(appCtx)
+
+        if (useStock || !turnSignalCameras) {
+            turnSignalsLatch.reset()
+            if (_activeTurnSignalCamera.value != null) {
+                scope.launch {
+                    val active = _activeTurnSignalCamera.value
+                    if (active != null) closeCamera(appCtx, active)
+                    _activeTurnSignalCamera.value = null
+                }
+            }
+            return
+        }
+
+        turnSignalsLatch.onRawTurnLights(leftLight.toInt(), rightLight.toInt())
+    }
+
+    private fun handleLatchedTurnSignal(side: TurnSignalSide?) {
+        val context = appContext ?: return
         val useStock = LauncherAppConfigStore.camdUseStockAvm(context)
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
 
@@ -198,44 +244,38 @@ object CamdCameraRepository {
             return
         }
 
-        val isLeft = leftLight > 0
-        val isRight = rightLight > 0
-
-        if (isLeft) {
-            turnOffDebounceJob?.cancel()
-            turnOffDebounceJob = null
-            if (_activeTurnSignalCamera.value != CAMERA_ID_LEFT) {
-                scope.launch {
-                    if (_activeTurnSignalCamera.value == CAMERA_ID_RIGHT) {
-                        closeCamera(context, CAMERA_ID_RIGHT)
+        when (side) {
+            TurnSignalSide.Left -> {
+                if (_activeTurnSignalCamera.value != CAMERA_ID_LEFT) {
+                    scope.launch {
+                        if (_activeTurnSignalCamera.value == CAMERA_ID_RIGHT) {
+                            closeCamera(context, CAMERA_ID_RIGHT)
+                        }
+                        openAdasSideCamera(context, CAMERA_ID_LEFT)
+                        _activeTurnSignalCamera.value = CAMERA_ID_LEFT
                     }
-                    openAdasSideCamera(context, CAMERA_ID_LEFT)
-                    _activeTurnSignalCamera.value = CAMERA_ID_LEFT
                 }
             }
-        } else if (isRight) {
-            turnOffDebounceJob?.cancel()
-            turnOffDebounceJob = null
-            if (_activeTurnSignalCamera.value != CAMERA_ID_RIGHT) {
-                scope.launch {
-                    if (_activeTurnSignalCamera.value == CAMERA_ID_LEFT) {
-                        closeCamera(context, CAMERA_ID_LEFT)
+            TurnSignalSide.Right -> {
+                if (_activeTurnSignalCamera.value != CAMERA_ID_RIGHT) {
+                    scope.launch {
+                        if (_activeTurnSignalCamera.value == CAMERA_ID_LEFT) {
+                            closeCamera(context, CAMERA_ID_LEFT)
+                        }
+                        openAdasSideCamera(context, CAMERA_ID_RIGHT)
+                        _activeTurnSignalCamera.value = CAMERA_ID_RIGHT
                     }
-                    openAdasSideCamera(context, CAMERA_ID_RIGHT)
-                    _activeTurnSignalCamera.value = CAMERA_ID_RIGHT
                 }
             }
-        } else {
-            // Both off -> debounce to avoid flickering between turn signal blink pulses
-            if (_activeTurnSignalCamera.value != null && turnOffDebounceJob == null) {
-                turnOffDebounceJob = scope.launch {
-                    delay(1200L)
-                    val active = _activeTurnSignalCamera.value
-                    if (active != null) {
-                        closeCamera(context, active)
-                        _activeTurnSignalCamera.value = null
+            null, TurnSignalSide.Hazard -> {
+                if (_activeTurnSignalCamera.value != null) {
+                    scope.launch {
+                        val active = _activeTurnSignalCamera.value
+                        if (active != null) {
+                            closeCamera(context, active)
+                            _activeTurnSignalCamera.value = null
+                        }
                     }
-                    turnOffDebounceJob = null
                 }
             }
         }
@@ -288,9 +328,10 @@ object CamdCameraRepository {
     }
 
     fun getCameraRotation(cameraId: Int): Int = when (cameraId) {
-        CAMERA_ID_LEFT -> 270 // -90° (270° по часовой)
-        CAMERA_ID_RIGHT -> 90 // +90° по часовой
-        CAMERA_ID_REAR -> 180 // 180°
+        CAMERA_ID_LEFT -> 90 // +180° от 270° = 90°
+        CAMERA_ID_RIGHT -> 270 // +180° от 90° = 270°
+        CAMERA_ID_REAR -> 0 // +180° от 180° = 0°
+        CAMERA_ID_FRONT -> 0 // передняя (верхняя) как есть = 0°
         else -> 0
     }
 

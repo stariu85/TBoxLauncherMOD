@@ -705,19 +705,33 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
     }.getOrNull() ?: return false
 
     val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
+    val foreignTasks = tasks.filter { task ->
+        task.packageName != launcherPackage &&
+            task.packageName !in SYSTEM_PROTECTED_PACKAGES &&
+            !task.packageName.startsWith("com.android.system")
+    }
+
+    // Protection: If all foreign tasks are already off-screen (left >= 2000), don't send redundant MINIMIZE commands
+    val tasksToMinimize = foreignTasks.filter { task ->
+        task.left < DclwmProtocol.OFF_LEFT
+    }
+
+    if (tasksToMinimize.isEmpty()) {
+        Log.w("LauncherAppLaunch", "dclwm minimize: all ${foreignTasks.size} foreign tasks already off-screen (left >= ${DclwmProtocol.OFF_LEFT}) or no foreign tasks open (source=$source)")
+        return true
+    }
+
     var minimizedCount = 0
-    for (task in tasks) {
-        if (task.packageName == launcherPackage) continue
-        if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
+    for (task in tasksToMinimize) {
         runCatching {
             client.minimize(task.id)
             minimizedCount++
-            Log.w("LauncherAppLaunch", "dclwm minimized task id=${task.id} pkg=${task.packageName}")
+            Log.w("LauncherAppLaunch", "dclwm minimized task id=${task.id} pkg=${task.packageName} (previous left=${task.left})")
         }.onFailure { err ->
             Log.w("LauncherAppLaunch", "dclwm minimize failed for task id=${task.id} pkg=${task.packageName}", err)
         }
     }
-    Log.w("LauncherAppLaunch", "dclwm minimize complete: minimized $minimizedCount tasks (source=$source)")
+    Log.w("LauncherAppLaunch", "dclwm minimize complete: minimized $minimizedCount tasks of ${tasksToMinimize.size} (source=$source)")
     return true
 }
 

@@ -19,6 +19,7 @@ import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.DiagFileLog
 import vad.dashing.tbox.HeadUnitCanMode
 import vad.dashing.tbox.mbcan.Android10VhalRepository
+import vad.dashing.tbox.mbcan.CcsRememberedSetpoint
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
@@ -67,10 +68,19 @@ internal object LauncherCruisePresetController {
     }
 
     private var rememberedSetpointKmh: Int? = null
+    private var conventionalCruiseStandby = false
+    private var lastSeenTboxSpeed: UInt? = null
 
     private fun isConventionalCruise(): Boolean {
         val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull ?: return false
         return LauncherAppConfigStore.isConventionalCruise(ctx)
+    }
+
+    private fun isBrakeActive(): Boolean {
+        val breakingForce = CanDataRepository.breakingForce.value ?: 0u
+        if (breakingForce > 0u) return true
+        if (MbCanEngineFacade.readBrakePedalPressed()) return true
+        return false
     }
 
     private fun computeAccCruiseState(): AccCruiseState {
@@ -79,10 +89,68 @@ internal object LauncherCruisePresetController {
         val isTboxActive = tboxCruise != null && tboxCruise > 0u
 
         if (isConventionalCruise()) {
-            return if (isTboxActive) AccCruiseState.Active else AccCruiseState.Off
+            val ccsStatus = CanDataRepository.ccsCruiseStatus.value
+            if (ccsStatus != null) {
+                return when (ccsStatus) {
+                    1 -> {
+                        conventionalCruiseStandby = false
+                        AccCruiseState.Active
+                    }
+                    2 -> {
+                        conventionalCruiseStandby = true
+                        AccCruiseState.Standby
+                    }
+                    else -> {
+                        conventionalCruiseStandby = false
+                        AccCruiseState.Off
+                    }
+                }
+            }
+
+            // Fallback for packet 0x305 if GaspedStatus is not yet received
+            val statusByte = CanDataRepository.cruiseStatusByte.value
+            if (statusByte != null && statusByte > 0) {
+                val status = statusByte and 0x0F
+                when (status) {
+                    2 -> {
+                        conventionalCruiseStandby = false
+                        return AccCruiseState.Active
+                    }
+                    3 -> {
+                        conventionalCruiseStandby = false
+                        return AccCruiseState.Override
+                    }
+                    1 -> {
+                        conventionalCruiseStandby = true
+                        return AccCruiseState.Standby
+                    }
+                    0 -> {
+                        conventionalCruiseStandby = false
+                        return AccCruiseState.Off
+                    }
+                }
+            }
+
+            if (!isTboxActive) {
+                conventionalCruiseStandby = false
+                lastSeenTboxSpeed = null
+                return AccCruiseState.Off
+            }
+
+            if (isBrakeActive()) {
+                conventionalCruiseStandby = true
+            }
+
+            if (tboxCruise != lastSeenTboxSpeed && lastSeenTboxSpeed != null && !isBrakeActive()) {
+                conventionalCruiseStandby = false
+            }
+            lastSeenTboxSpeed = tboxCruise
+
+            return if (conventionalCruiseStandby) AccCruiseState.Standby else AccCruiseState.Active
         }
 
         return when {
+            adas.accMode == LauncherAdasAccMode.Fault -> AccCruiseState.Fault
             adas.accActive -> AccCruiseState.Active
             adas.accOverride -> AccCruiseState.Override
             adas.accStandby -> AccCruiseState.Standby
@@ -101,8 +169,11 @@ internal object LauncherCruisePresetController {
             combine(
                 LauncherAdasRepository.state,
                 CanDataRepository.cruiseSetSpeed,
+                CanDataRepository.breakingForce,
+                CanDataRepository.cruiseStatusByte,
+                CanDataRepository.ccsCruiseStatus,
                 LauncherAppConfigStore.cruiseTypeRevisionFlow,
-            ) { _, _, _ ->
+            ) { _ ->
                 computeAccCruiseState()
             }.collect { newState ->
                 val previousState = _accCruiseState.value
@@ -137,6 +208,8 @@ internal object LauncherCruisePresetController {
 
     fun currentSetSpeedKmh(): Int? {
         if (isConventionalCruise()) {
+            val ccsSetpoint = CcsRememberedSetpoint.kmh.value?.takeIf { it > 0 }
+            if (ccsSetpoint != null) return ccsSetpoint
             val tboxSpeed = CanDataRepository.cruiseSetSpeed.value?.toInt()?.takeIf { it > 0 }
             if (tboxSpeed != null) return tboxSpeed
         }
@@ -190,6 +263,9 @@ internal object LauncherCruisePresetController {
         isFromSpeedLimit: Boolean = false,
     ) {
         setSmartSpeedLimitActive(isFromSpeedLimit)
+        if (isConventionalCruise()) {
+            conventionalCruiseStandby = false
+        }
         val target = targetKmh.coerceIn(30, 160)
         val ngpOn = UniversalCanRepository.tjaIcaState.value is MbCanBinaryState.On
         val ngpConfig = LauncherAppConfigStore.ngpEnabled(context)
@@ -268,16 +344,18 @@ internal object LauncherCruisePresetController {
 
                 while (abs(current - target) > 0 && pulses < MAX_PULSES) {
                     val currentState = currentAccCruiseState()
-                    if (currentState == AccCruiseState.Off || currentState == AccCruiseState.Fault) {
-                        DiagFileLog.i(TAG, "Cruise turned off or faulted ($currentState), stopping loop")
+                    if (currentState != AccCruiseState.Active && currentState != AccCruiseState.Override) {
+                        DiagFileLog.i(TAG, "Cruise no longer active ($currentState), stopping loop")
                         break
                     }
 
                     if (current < target) {
                         pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
+                        if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(1, "preset_stepping")
                         delay(increaseIntervalMs)
                     } else {
                         pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                        if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(-1, "preset_stepping")
                         delay(decreaseIntervalMs)
                     }
 
@@ -301,12 +379,14 @@ internal object LauncherCruisePresetController {
                     var catchCurrent: Int = postCheck
                     while (catchCurrent != target && catchUpPulses < 5) {
                         val cs = currentAccCruiseState()
-                        if (cs == AccCruiseState.Off || cs == AccCruiseState.Fault) break
+                        if (cs != AccCruiseState.Active && cs != AccCruiseState.Override) break
                         if (catchCurrent < target) {
                             pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
+                            if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(1, "catchup_stepping")
                             delay(increaseIntervalMs)
                         } else {
                             pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                            if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(-1, "catchup_stepping")
                             delay(decreaseIntervalMs)
                         }
                         val fresh = currentSetSpeedKmh()
@@ -345,6 +425,9 @@ internal object LauncherCruisePresetController {
                 AccCruiseState.Active, AccCruiseState.Override -> {
                     DiagFileLog.i(TAG, "Single tap in Active/Override -> pulse MFS_CANCEL (212)")
                     pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
+                    if (isConventionalCruise()) {
+                        conventionalCruiseStandby = true
+                    }
                 }
                 AccCruiseState.Off -> {
                     DiagFileLog.i(TAG, "Single tap in Off -> pulse MFS_CRUISE_CONTROL (210) then delay 500ms -> pulse MFS_SET_MINUS (214)")
@@ -353,12 +436,18 @@ internal object LauncherCruisePresetController {
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
                     val speed = vehicleSpeedKmh().coerceAtLeast(30)
                     updateRememberedSetpoint(context, speed)
+                    if (isConventionalCruise()) {
+                        conventionalCruiseStandby = false
+                    }
                 }
                 AccCruiseState.Standby -> {
                     DiagFileLog.i(TAG, "Single tap in Standby -> pulse MFS_SET_MINUS (214)")
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
                     val speed = vehicleSpeedKmh().coerceAtLeast(30)
                     updateRememberedSetpoint(context, speed)
+                    if (isConventionalCruise()) {
+                        conventionalCruiseStandby = false
+                    }
                 }
             }
         }
@@ -419,6 +508,9 @@ internal object LauncherCruisePresetController {
                 AccCruiseState.Standby -> {
                     DiagFileLog.i(TAG, "SwipeUp in Standby -> pulse MFS_RES_PLUS (213)")
                     pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
+                    if (isConventionalCruise()) {
+                        conventionalCruiseStandby = false
+                    }
                 }
                 AccCruiseState.Active, AccCruiseState.Override -> {
                     DiagFileLog.i(TAG, "SwipeUp in Active/Override -> pulse MFS_RES_PLUS (213) (+1 km/h)")
@@ -453,6 +545,9 @@ internal object LauncherCruisePresetController {
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
                     val speed = vehicleSpeedKmh().coerceAtLeast(30)
                     updateRememberedSetpoint(context, speed)
+                    if (isConventionalCruise()) {
+                        conventionalCruiseStandby = false
+                    }
                 }
                 AccCruiseState.Active, AccCruiseState.Override -> {
                     DiagFileLog.i(TAG, "SwipeDown in Active/Override -> pulse MFS_SET_MINUS (214) (-1 km/h)")
@@ -469,6 +564,9 @@ internal object LauncherCruisePresetController {
 
     fun launchFullOff(context: Context) {
         setSmartSpeedLimitActive(false)
+        if (isConventionalCruise()) {
+            conventionalCruiseStandby = false
+        }
         adjustJob?.cancel()
         _adjustingTargetSpeed.value = null
         LauncherAdasRepository.clearTimeGapFlash()

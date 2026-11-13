@@ -1696,6 +1696,13 @@ internal object LauncherAppConfigStore {
         camdConfigRevision.value++
     }
 
+    fun camdDisableStockAvm(context: Context): Boolean =
+        !camdUseStockAvm(context)
+
+    fun setCamdDisableStockAvm(context: Context, disableStock: Boolean) {
+        setCamdUseStockAvm(context, !disableStock)
+    }
+
     fun camdTurnSignalCameras(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CAMD_TURN_SIGNAL_CAMERAS, false)
 

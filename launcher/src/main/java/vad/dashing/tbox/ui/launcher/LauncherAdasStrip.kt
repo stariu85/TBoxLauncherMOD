@@ -153,7 +153,7 @@ fun LauncherAdasStrip(
 
     val pasOn = (parkingRadar is MbCanBinaryState.On) || showAll
     val cruiseActive = (cruiseSpeed ?: 0u) > 0u || showAll
-    val showAcc = adas.accActive || adas.accStandby || showAll
+    val showAcc = adas.accActive || adas.accStandby || adas.accOverride || adas.accMode == LauncherAdasAccMode.Fault || showAll
     val showAlerts = adas.fcwActive || adas.distanceWarning || adas.aebHint ||
         adas.accTakeOver || adas.adasTakeOver || adas.accOverride || adas.speedLimitWarning || showAll
     val showLanes = adas.laneAssistEngaged || showAll
@@ -294,6 +294,7 @@ fun LauncherAdasStrip(
         }
         if (showAcc) {
             val accTint = when {
+                adas.accMode == LauncherAdasAccMode.Fault -> Color(0xFFF59E0B)
                 adas.accOverride || adas.accTakeOver -> Color(0xFFF59E0B)
                 adas.accStandby -> Color(0xFFEAB308)
                 adas.accMode == LauncherAdasAccMode.ActiveBlue -> LauncherColors.AccentCyan

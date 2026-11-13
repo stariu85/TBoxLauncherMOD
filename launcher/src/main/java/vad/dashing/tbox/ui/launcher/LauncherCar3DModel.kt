@@ -77,6 +77,9 @@ object LauncherCar3DModelTrigger {
     private val _quickSettingsClosedEvent = MutableStateFlow(0L)
     val quickSettingsClosedEvent: StateFlow<Long> = _quickSettingsClosedEvent.asStateFlow()
 
+    private val _camdCamerasClosedEvent = MutableStateFlow(0L)
+    val camdCamerasClosedEvent: StateFlow<Long> = _camdCamerasClosedEvent.asStateFlow()
+
     private val _paintChangedEvent = MutableStateFlow(0L)
     val paintChangedEvent: StateFlow<Long> = _paintChangedEvent.asStateFlow()
 
@@ -100,6 +103,10 @@ object LauncherCar3DModelTrigger {
 
     fun notifyQuickSettingsClosed() {
         _quickSettingsClosedEvent.value = SystemClock.uptimeMillis()
+    }
+
+    fun notifyCamdCamerasClosed() {
+        _camdCamerasClosedEvent.value = SystemClock.uptimeMillis()
     }
 
     fun notifyPaintChanged() {
@@ -402,6 +409,7 @@ private fun LauncherCarFilamentContent(
     val backPressedEvent by LauncherCar3DModelTrigger.backPressedEvent.collectAsStateWithLifecycle()
     val previousAppPressedEvent by LauncherCar3DModelTrigger.previousAppPressedEvent.collectAsStateWithLifecycle()
     val quickSettingsClosedEvent by LauncherCar3DModelTrigger.quickSettingsClosedEvent.collectAsStateWithLifecycle()
+    val camdCamerasClosedEvent by LauncherCar3DModelTrigger.camdCamerasClosedEvent.collectAsStateWithLifecycle()
     val paintChangedEvent by LauncherCar3DModelTrigger.paintChangedEvent.collectAsStateWithLifecycle()
     val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
@@ -486,6 +494,7 @@ private fun LauncherCarFilamentContent(
         backPressedEvent,
         previousAppPressedEvent,
         quickSettingsClosedEvent,
+        camdCamerasClosedEvent,
         topShadeClosedEvent,
         paintChangedEvent,
     ) {
@@ -633,10 +642,12 @@ private fun LauncherCarFilamentContent(
                         val backEventMs = LauncherCar3DModelTrigger.backPressedEvent.value
                         val prevAppEventMs = LauncherCar3DModelTrigger.previousAppPressedEvent.value
                         val quickSettingsClosedEventMs = LauncherCar3DModelTrigger.quickSettingsClosedEvent.value
+                        val camdCamerasClosedEventMs = LauncherCar3DModelTrigger.camdCamerasClosedEvent.value
                         val isActionRecent = (nowMs - homeEventMs) < 2000L ||
                             (nowMs - backEventMs) < 2000L ||
                             (nowMs - prevAppEventMs) < 2000L ||
                             (nowMs - quickSettingsClosedEventMs) < 2000L ||
+                            (nowMs - camdCamerasClosedEventMs) < 2000L ||
                             isTopShadeClosedRecent ||
                             isPaintChangeRecent
 

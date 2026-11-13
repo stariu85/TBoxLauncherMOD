@@ -272,7 +272,7 @@ fun LauncherVirtualRoad(
     val leadVisual = rememberLeadObjectVisual(adas)
     val lanesActive = adas.leftLane != LauncherAdasLaneVisualization.Hidden ||
         adas.rightLane != LauncherAdasLaneVisualization.Hidden
-    val isCruiseActive = adas.accActive || adas.accStandby || ((adas.accSetSpeedKmh ?: 0) > 0)
+    val isCruiseActive = adas.accActive || adas.accStandby || adas.accOverride || ((adas.accSetSpeedKmh ?: 0) > 0)
 
     val laneAnimProgress by animateFloatAsState(
         targetValue = if (lanesActive) 1f else 0f,

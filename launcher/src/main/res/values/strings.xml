@@ -452,6 +452,8 @@
     <string name="camd_status_check_button">Проверить связь</string>
     <string name="camd_use_stock_avm_title">Использовать штатную систему камер 360</string>
     <string name="camd_use_stock_avm_desc">При выключении используется система Camd</string>
+    <string name="camd_disable_stock_avm_title">Выключить штатную систему 360</string>
+    <string name="camd_disable_stock_avm_desc">Принудительное удержание выключенным com.mengbo.avm в vad.dashing.camd (AVM ON / AVM OFF)</string>
     <string name="camd_turn_signals_title">Включение боковых камер по поворотникам</string>
     <string name="camd_turn_signals_desc">Выводить соответствующую боковую камеру в зону ADAS при включении поворотника</string>
     <string name="camd_dock_test_button_title">Камеры Camd (Тест)</string>

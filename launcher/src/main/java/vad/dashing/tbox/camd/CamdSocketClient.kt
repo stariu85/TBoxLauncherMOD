@@ -123,10 +123,15 @@ object CamdSocketClient {
 
     /**
      * Sends AVM command (spec §3.3):
-     * AVM 1 - enable OEM AVM
-     * AVM 0 - disable OEM AVM
+     * AVM ON (or AVM 1) - keep OEM AVM (com.mengbo.avm) stopped
+     * AVM OFF (or AVM 0) - restore/start OEM AVM (com.mengbo.avm)
      * AVM (no arg) - query current status
      */
+    suspend fun setAvmHold(context: Context, holdOff: Boolean): Result<String> {
+        val cmd = if (holdOff) "AVM ON" else "AVM OFF"
+        return sendCommandWithWakeup(context, cmd)
+    }
+
     suspend fun setAvm(enabled: Boolean? = null): Result<String> {
         val cmd = if (enabled != null) "AVM ${if (enabled) "1" else "0"}" else "AVM"
         return sendCommand(cmd)

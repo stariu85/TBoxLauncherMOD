@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -45,8 +44,8 @@ fun LauncherCamerasSettingsContent(
     var isChecking by remember { mutableStateOf(false) }
 
     val camdConfigRevision by LauncherAppConfigStore.camdConfigRevisionFlow.collectAsStateWithLifecycle()
-    val useStockAvm = remember(context, camdConfigRevision) {
-        LauncherAppConfigStore.camdUseStockAvm(context)
+    val disableStockAvm = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdDisableStockAvm(context)
     }
     val turnSignalCameras = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdTurnSignalCameras(context)
@@ -56,6 +55,15 @@ fun LauncherCamerasSettingsContent(
 
     LaunchedEffect(Unit) {
         CamdCameraRepository.refreshStatus(context)
+    }
+
+    LaunchedEffect(status) {
+        val s = status
+        if (s is CamdConnectionStatus.Connected) {
+            if (s.keepAvm != disableStockAvm) {
+                LauncherAppConfigStore.setCamdDisableStockAvm(context, s.keepAvm)
+            }
+        }
     }
 
     Column(
@@ -74,11 +82,12 @@ fun LauncherCamerasSettingsContent(
             }
             is CamdConnectionStatus.Connected -> {
                 val detail = if (s.openWindows.isNotEmpty()) {
-                    " (открыты окна: ${s.openWindows.joinToString()})"
+                    " (окна: ${s.openWindows.joinToString()})"
                 } else {
                     ""
                 }
-                "${stringResource(R.string.camd_status_connected)}$detail" to Color(0xFF10B981)
+                val avmDetail = if (s.keepAvm) " • Штатная AVM выключена" else " • Штатная AVM активна"
+                "${stringResource(R.string.camd_status_connected)}$detail$avmDetail" to Color(0xFF10B981)
             }
             is CamdConnectionStatus.NoConnection -> {
                 stringResource(R.string.camd_status_no_connection, s.errorMessage) to Color(0xFFEF4444)
@@ -140,21 +149,24 @@ fun LauncherCamerasSettingsContent(
 
         val isInstalled = status !is CamdConnectionStatus.NotInstalled
 
-        // Option 1: "Использовать штатную систему камер 360"
+        // Option 1: "Выключить штатную систему 360"
         LauncherSettingsToggleRow(
-            label = stringResource(R.string.camd_use_stock_avm_title),
-            active = useStockAvm,
+            label = stringResource(R.string.camd_disable_stock_avm_title),
+            active = disableStockAvm,
             enabled = isInstalled,
             onClick = if (isInstalled) {
                 {
-                    val next = !useStockAvm
-                    LauncherAppConfigStore.setCamdUseStockAvm(context, next)
+                    val next = !disableStockAvm
+                    LauncherAppConfigStore.setCamdDisableStockAvm(context, next)
+                    scope.launch {
+                        CamdCameraRepository.setHoldStockAvm(context, next)
+                    }
                 }
             } else null,
         )
 
         Text(
-            text = stringResource(R.string.camd_use_stock_avm_desc),
+            text = stringResource(R.string.camd_disable_stock_avm_desc),
             color = LauncherColors.TextMuted,
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 12.dp),
@@ -163,7 +175,7 @@ fun LauncherCamerasSettingsContent(
         Spacer(modifier = Modifier.height(4.dp))
 
         // Option 2: "Включение боковых камер по поворотникам"
-        val canEnableTurnSignals = isInstalled && !useStockAvm
+        val canEnableTurnSignals = isInstalled && disableStockAvm
         LauncherSettingsToggleRow(
             label = stringResource(R.string.camd_turn_signals_title),
             active = turnSignalCameras,

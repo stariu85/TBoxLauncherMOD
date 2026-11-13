@@ -21,6 +21,7 @@ enum class LauncherAdasAccMode {
     ActiveDark,
     ActiveBlue,
     Override,
+    Fault,
     Unknown,
 }
 
@@ -208,14 +209,16 @@ data class LauncherAdasState(
         get() = lkaStatusCode != 0 ||
             leftLane != LauncherAdasLaneVisualization.Hidden ||
             rightLane != LauncherAdasLaneVisualization.Hidden ||
-            accActive
+            accActive ||
+            accOverride
 }
 
 internal fun decodeAccMode(raw: Byte): LauncherAdasAccMode = when (byteToUnsigned(raw)) {
     0 -> LauncherAdasAccMode.Off
-    9 -> LauncherAdasAccMode.Standby
-    1, 2, 6, 7 -> LauncherAdasAccMode.ActiveDark
+    1, 2, 6 -> LauncherAdasAccMode.Standby
     3, 4, 5 -> LauncherAdasAccMode.ActiveBlue
+    7 -> LauncherAdasAccMode.Override
+    9 -> LauncherAdasAccMode.Fault
     else -> LauncherAdasAccMode.Unknown
 }
 
@@ -297,7 +300,7 @@ internal fun buildLauncherAdasState(
     val accMode = decodeAccMode(accModeRaw)
     val accModeCode = byteToUnsigned(accModeRaw)
     val setSpeed = when {
-        accMode == LauncherAdasAccMode.Off -> null
+        accMode == LauncherAdasAccMode.Off || accMode == LauncherAdasAccMode.Fault -> null
         vSetDisRaw < 0 -> byteToUnsigned(vSetDisRaw)
         byteToUnsigned(vSetDisRaw) <= 0 -> null
         else -> byteToUnsigned(vSetDisRaw)
@@ -313,7 +316,7 @@ internal fun buildLauncherAdasState(
     val distWarn = byteToUnsigned(distanceWarningRaw) == 2 || byteToUnsigned(textInfoRaw) == 17
     val aeb = byteToUnsigned(textInfoRaw) == 11
     val takeOver = byteToUnsigned(takeOverRaw) == 2
-    val override = accModeCode == 7
+    val override = accMode == LauncherAdasAccMode.Override || accModeCode == 7
     val accActive = accMode == LauncherAdasAccMode.ActiveBlue || accMode == LauncherAdasAccMode.ActiveDark
     val accStandby = accMode == LauncherAdasAccMode.Standby
     val timeGap = byteToUnsigned(timeGapRaw).takeIf { it in 0..2 }
@@ -358,7 +361,7 @@ internal fun buildLauncherAdasState(
         hma == LauncherAdasAssistIcon.Warning ||
         tja == LauncherAdasAssistIcon.Warning ||
         srrSystem == LauncherSrrSystemState.Fault
-    val hasAssist = accActive || accStandby || frontObject.valid || effectiveLkaStatusCode != 0 ||
+    val hasAssist = accActive || accStandby || override || frontObject.valid || effectiveLkaStatusCode != 0 ||
         leftLane != LauncherAdasLaneVisualization.Hidden ||
         rightLane != LauncherAdasLaneVisualization.Hidden ||
         slaLimit != null || tsr.valid || hasAlert ||

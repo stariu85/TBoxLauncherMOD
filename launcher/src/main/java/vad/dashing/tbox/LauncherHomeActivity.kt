@@ -41,8 +41,10 @@ import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
 import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
 import vad.dashing.tbox.ui.launcher.findForeignAppTask
 import vad.dashing.tbox.ui.launcher.goLauncherHome
+import vad.dashing.tbox.ui.launcher.hasActiveForeignApp
 import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
 import vad.dashing.tbox.ui.launcher.minimizeForeignFreeformTasks
+import vad.dashing.tbox.ui.launcher.wasHomeRecentlyHandled
 
 /**
  * Android HOME handler — Tesla-style launcher surface for the head unit.
@@ -184,6 +186,12 @@ class LauncherHomeActivity : ComponentActivity() {
             Log.w(TAG, "onNewIntent HOME")
             LauncherAppDrawerWindow.hide()
             LauncherForegroundHandoff.restoreLauncherWindow()
+            val recentlyHandled = wasHomeRecentlyHandled(600L)
+            val isAlreadyActive = LauncherHomeActivityHolder.isResumed && !hasActiveForeignApp(this)
+            if (recentlyHandled || isAlreadyActive) {
+                Log.w(TAG, "onNewIntent: skipping redundant home processing (recentlyHandled=$recentlyHandled, isAlreadyActive=$isAlreadyActive)")
+                return
+            }
             goLauncherHome(this, fromHomeIntent = true, source = "onNewIntent")
         }
     }

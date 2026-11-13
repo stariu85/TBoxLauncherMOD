@@ -20,10 +20,14 @@ import vad.dashing.tbox.MainActivity
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LauncherNav"
-private const val HOME_DEBOUNCE_MS = 200L
+internal const val HOME_DEBOUNCE_MS = 600L
 
 @Volatile
-private var lastHomeAtMs = 0L
+internal var lastHomeAtMs = 0L
+
+internal fun wasHomeRecentlyHandled(thresholdMs: Long = HOME_DEBOUNCE_MS): Boolean {
+    return (SystemClock.uptimeMillis() - lastHomeAtMs) < thresholdMs
+}
 
 /** Prevents Compose BackHandler ↔ inject KEYCODE_BACK recursion on the launcher. */
 private val backDispatchInProgress = AtomicBoolean(false)
@@ -43,13 +47,13 @@ internal fun goLauncherHome(
 ) {
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
     val now = SystemClock.uptimeMillis()
-    if (!fromHomeIntent && (now - lastHomeAtMs < HOME_DEBOUNCE_MS)) {
-        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source")
+    if (now - lastHomeAtMs < HOME_DEBOUNCE_MS) {
+        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source (elapsed=${now - lastHomeAtMs}ms < ${HOME_DEBOUNCE_MS}ms)")
         LauncherNavLogger.logNavAction(
             action = "HOME",
             source = source,
             stateBefore = stateBefore,
-            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms)",
+            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms, elapsed=${now - lastHomeAtMs}ms)",
         )
         return
     }
@@ -151,8 +155,11 @@ internal fun goLauncherHome(
         }
     }
 
-    if (!fromHomeIntent) {
-        runCatching {
+    // Only invoke fallback intent/accessibility dispatch if moveTaskToFront did NOT already succeed.
+    // If moveTaskToFront already brought launcher to front, dispatching startActivity/dispatchGlobalHome
+    // is redundant and causes duplicate onNewIntent cycles.
+    if (!fromHomeIntent && !broughtToFront) {
+        val started = runCatching {
             context.startActivity(
                 Intent(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_HOME)
@@ -162,11 +169,15 @@ internal fun goLauncherHome(
                         Intent.FLAG_ACTIVITY_SINGLE_TOP
                 },
             )
+            true
         }.onFailure {
-            Log.w(TAG, "goLauncherHome: startActivity failed", it)
+            Log.w(TAG, "goLauncherHome: startActivity failed, falling back to dispatchGlobalHome", it)
             LauncherNavLogger.logNavError("HOME", source, "startActivity(CATEGORY_HOME) failed", it, stateBefore)
+        }.getOrDefault(false)
+
+        if (!started) {
+            LauncherNavAccessibilityService.dispatchGlobalHome()
         }
-        LauncherNavAccessibilityService.dispatchGlobalHome()
     }
 
     LauncherRightPanelOverlayWindow.hide()

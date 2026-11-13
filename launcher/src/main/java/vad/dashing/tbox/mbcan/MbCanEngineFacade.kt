@@ -54,6 +54,9 @@ object MbCanEngineFacade {
     private var unRegistHardKeyListenerMethod: Method? = null
     private var hardKeyCallback: ((keyCode: Int, keyAction: Int, extra: Byte) -> Unit)? = null
     private var hardKeyListenerProxy: Any? = null
+    private var registGaspedStatusListenerMethod: Method? = null
+    private var unRegistGaspedStatusListenerMethod: Method? = null
+    private var gaspedStatusListenerProxy: Any? = null
     private var registVehicleListenerMethod: Method? = null
     private var unRegistVehicleListenerMethod: Method? = null
     private var turnLightCallback: ((left: Byte, right: Byte) -> Unit)? = null
@@ -165,11 +168,14 @@ object MbCanEngineFacade {
             unRegistHardKeyListenerMethod = runCatching {
                 engineClass.getMethod("unRegistHardKeyListener")
             }.getOrNull()
-            registVehicleListenerMethod = runCatching {
-                engineClass.getMethod("registVehicleListener", Class.forName("com.mengbo.mbCan.interfaces.IMBVehicleListener"))
+            registGaspedStatusListenerMethod = runCatching {
+                engineClass.getMethod(
+                    "registIMBCanVehicleGaspedStatusListener",
+                    Class.forName("com.mengbo.mbCan.interfaces.IMBCanVehicleGaspedStatusCallback")
+                )
             }.getOrNull()
-            unRegistVehicleListenerMethod = runCatching {
-                engineClass.getMethod("unRegistVehicleListener")
+            unRegistGaspedStatusListenerMethod = runCatching {
+                engineClass.getMethod("unRegistIMBCanVehicleGaspedStatusListener")
             }.getOrNull()
             val dataTypeClass = Class.forName(DATA_TYPE_CLASS) as Class<out Enum<*>>
             cfgVehicleDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_VEHICLE")
@@ -178,6 +184,9 @@ object MbCanEngineFacade {
             availabilityRef.set(MbCanAvailability.Available)
             Log.i(LOG_TAG, "ensureInitialized: OK")
             runCatching { unsubscribeUnusedChannels() }
+            runCatching { syncGaspedStatusListener(true) }
+            runCatching { ensureHardKeyListener() }
+            CcsRememberedSetpoint.ensureStarted()
         } catch (t: Throwable) {
             initialized = false
             availabilityRef.set(MbCanAvailability.Unavailable("${t.javaClass.simpleName}: ${t.message ?: "unknown"}"))
@@ -893,12 +902,7 @@ object MbCanEngineFacade {
      * Registers [IMBHardKeyListener] for steering wheel / hardware key events.
      */
     @Synchronized
-    fun setHardKeyCallback(callback: ((keyCode: Int, keyAction: Int, extra: Byte) -> Unit)?) {
-        hardKeyCallback = callback
-        if (callback == null) {
-            unregisterHardKeyListener()
-            return
-        }
+    fun ensureHardKeyListener() {
         if (hardKeyListenerProxy != null) return
         if (ensureInitialized() !is MbCanAvailability.Available) return
         val inst = engineInstance ?: return
@@ -914,6 +918,7 @@ object MbCanEngineFacade {
                 val keyCode = (args[0] as Number).toInt()
                 val keyAction = (args[1] as Number).toInt()
                 val extra = (args[2] as Number).toByte()
+                CcsRememberedSetpoint.onHardKey(keyCode, keyAction, extra.toInt())
                 hardKeyCallback?.invoke(keyCode, keyAction, extra)
             }
             null
@@ -922,11 +927,17 @@ object MbCanEngineFacade {
         hardKeyListenerProxy = proxy
         try {
             registHardKeyListenerMethod?.invoke(inst, proxy)
-            Log.i(LOG_TAG, "setHardKeyCallback: registered IMBHardKeyListener")
+            Log.i(LOG_TAG, "ensureHardKeyListener: registered IMBHardKeyListener")
         } catch (t: Throwable) {
-            Log.w(LOG_TAG, "setHardKeyCallback failed: ${t.message}")
+            Log.w(LOG_TAG, "ensureHardKeyListener failed: ${t.message}")
             hardKeyListenerProxy = null
         }
+    }
+
+    @Synchronized
+    fun setHardKeyCallback(callback: ((keyCode: Int, keyAction: Int, extra: Byte) -> Unit)?) {
+        hardKeyCallback = callback
+        ensureHardKeyListener()
     }
 
     @Synchronized
@@ -940,6 +951,60 @@ object MbCanEngineFacade {
             }
         }
         hardKeyListenerProxy = null
+    }
+
+    @Synchronized
+    fun syncGaspedStatusListener(active: Boolean = true) {
+        unregisterGaspedStatusListener()
+        if (!active) return
+        if (gaspedStatusListenerProxy != null) return
+        if (ensureInitialized() !is MbCanAvailability.Available) return
+        val inst = engineInstance ?: return
+        val iface = try {
+            Class.forName("com.mengbo.mbCan.interfaces.IMBCanVehicleGaspedStatusCallback")
+        } catch (_: Throwable) {
+            return
+        }
+        val loader = iface.classLoader ?: return
+        val register = registGaspedStatusListenerMethod ?: return
+        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            vad.dashing.tbox.DclLogRecorder.recordCanRx()
+            if (method.name == "onVehicleGaspedStatus" && args != null && args.isNotEmpty()) {
+                val info = args[0]
+                if (info != null) {
+                    val cruiseStatus = runCatching {
+                        (info.javaClass.getMethod("getnCruiseControlStatus").invoke(info) as? Number)?.toInt()?.and(0xFF)
+                    }.getOrNull()
+                    if (cruiseStatus != null) {
+                        CanDataRepository.updateCcsCruiseStatus(cruiseStatus)
+                    }
+                }
+            }
+            null
+        }
+        val proxy = Proxy.newProxyInstance(loader, arrayOf(iface), handler)
+        gaspedStatusListenerProxy = proxy
+        try {
+            register.invoke(inst, proxy)
+            Log.i(LOG_TAG, "syncGaspedStatusListener: registered IMBCanVehicleGaspedStatusCallback")
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "syncGaspedStatusListener failed: ${t.message}")
+            gaspedStatusListenerProxy = null
+        }
+    }
+
+    @Synchronized
+    private fun unregisterGaspedStatusListener() {
+        val inst = engineInstance
+        val unregister = unRegistGaspedStatusListenerMethod
+        if (inst != null && gaspedStatusListenerProxy != null && unregister != null) {
+            try {
+                unregister.invoke(inst)
+                Log.i(LOG_TAG, "unregisterGaspedStatusListener: unregistered IMBCanVehicleGaspedStatusCallback")
+            } catch (_: Throwable) {
+            }
+        }
+        gaspedStatusListenerProxy = null
     }
 
     /**
@@ -966,6 +1031,7 @@ object MbCanEngineFacade {
             if (method.name == "onVehicleTurnLightChange" && args != null && args.size >= 2) {
                 val left = (args[0] as? Number)?.toByte() ?: 0
                 val right = (args[1] as? Number)?.toByte() ?: 0
+                Log.d(LOG_TAG, "onVehicleTurnLightChange: left=$left right=$right")
                 turnLightCallback?.invoke(left, right)
             }
             null

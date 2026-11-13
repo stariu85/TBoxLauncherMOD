@@ -53,6 +53,12 @@ object CanDataRepository {
     private val _cruiseSetSpeed = MutableStateFlow<UInt?>(null)
     val cruiseSetSpeed: StateFlow<UInt?> = _cruiseSetSpeed.asStateFlow()
 
+    private val _cruiseStatusByte = MutableStateFlow<Int?>(null)
+    val cruiseStatusByte: StateFlow<Int?> = _cruiseStatusByte.asStateFlow()
+
+    private val _ccsCruiseStatus = MutableStateFlow<Int?>(null)
+    val ccsCruiseStatus: StateFlow<Int?> = _ccsCruiseStatus.asStateFlow()
+
     private val _wheelsSpeed = MutableStateFlow(Wheels())
     val wheelsSpeed: StateFlow<Wheels> = _wheelsSpeed.asStateFlow()
 
@@ -528,6 +534,14 @@ object CanDataRepository {
 
     fun updateCruiseSetSpeed(newValue: UInt) {
         _cruiseSetSpeed.setIfChanged(newValue)
+    }
+
+    fun updateCruiseStatusByte(newValue: Int) {
+        _cruiseStatusByte.setIfChanged(newValue)
+    }
+
+    fun updateCcsCruiseStatus(newValue: Int?) {
+        _ccsCruiseStatus.setIfChanged(newValue)
     }
 
     fun updateWheelsSpeed(newValue: Wheels) {

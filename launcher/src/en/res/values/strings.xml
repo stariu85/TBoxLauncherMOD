@@ -225,6 +225,8 @@
     <string name="camd_status_check_button">Check connection</string>
     <string name="camd_use_stock_avm_title">Use OEM 360 camera system</string>
     <string name="camd_use_stock_avm_desc">When disabled, Camd service is used</string>
+    <string name="camd_disable_stock_avm_title">Disable OEM 360 system</string>
+    <string name="camd_disable_stock_avm_desc">Force holding com.mengbo.avm disabled via vad.dashing.camd (AVM ON / AVM OFF)</string>
     <string name="camd_turn_signals_title">Enable side cameras on turn signals</string>
     <string name="camd_turn_signals_desc">Show corresponding side camera in ADAS zone when turn signal is on</string>
     <string name="camd_dock_test_button_title">Camd Cameras (Test)</string>

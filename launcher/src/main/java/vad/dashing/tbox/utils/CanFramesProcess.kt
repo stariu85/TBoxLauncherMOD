@@ -203,7 +203,9 @@ object CanFramesProcess {
                 } else if (canId == CAN_ID_CRUISE) {
                     carType = "1.6"
                     val cruiseSpeed = unsignedByte(b0).toUInt()
+                    val cruiseStatus = unsignedByte(b1)
                     CanDataRepository.updateCruiseSetSpeed(cruiseSpeed)
+                    CanDataRepository.updateCruiseStatusByte(cruiseStatus)
                 } else if (canId == CAN_ID_WHEEL_SPEED) {
                     val speed1 = readUInt16BigEndian(rawValue, payloadStart).toFloat() / 16f
                     val speed2 = readUInt16BigEndian(rawValue, payloadStart + 2).toFloat() / 16f

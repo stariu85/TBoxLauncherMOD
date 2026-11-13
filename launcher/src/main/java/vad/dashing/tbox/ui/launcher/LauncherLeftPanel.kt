@@ -1271,8 +1271,8 @@ internal fun LauncherAssistAndPresetsPanel(
     }
 
     // Auto-flip logic on cruise activation / deactivation
-    val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
-    val isCruiseEngaged = adas.accActive || adas.accStandby || (tboxCruise ?: 0u) > 0u
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
+    val isCruiseEngaged = cruiseState != AccCruiseState.Off
 
     var prevEngaged by remember { mutableStateOf(isCruiseEngaged) }
 
