@@ -1810,6 +1810,18 @@ private fun NavTrafficLightScaleSlider() {
 @Composable
 fun CruiseControlSettingsContent() {
     val context = LocalContext.current
+    val cruiseTypeRevision by LauncherAppConfigStore.cruiseTypeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val isConventional = remember(context, cruiseTypeRevision) {
+        LauncherAppConfigStore.isConventionalCruise(context)
+    }
+
+    val cruiseEngageActionRevision by LauncherAppConfigStore.cruiseEngageActionRevisionFlow
+        .collectAsStateWithLifecycle()
+    val cruiseEngageAction = remember(context, cruiseEngageActionRevision) {
+        LauncherAppConfigStore.cruiseEngageAction(context)
+    }
+
     val carModelVisibleRevision by LauncherAppConfigStore.carModelVisibleRevisionFlow
         .collectAsStateWithLifecycle()
     val carModelVisible = remember(context, carModelVisibleRevision) {
@@ -1829,6 +1841,90 @@ fun CruiseControlSettingsContent() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            Text(
+                text = stringResource(R.string.launcher_cruise_type_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.launcher_cruise_type_desc),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LauncherSettingsOptionButton(
+                    text = stringResource(R.string.launcher_cruise_type_adaptive),
+                    selected = !isConventional,
+                    onClick = {
+                        LauncherAppConfigStore.setCruiseType(context, CRUISE_TYPE_ADAPTIVE)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                LauncherSettingsOptionButton(
+                    text = stringResource(R.string.launcher_cruise_type_conventional),
+                    selected = isConventional,
+                    onClick = {
+                        LauncherAppConfigStore.setCruiseType(context, CRUISE_TYPE_CONVENTIONAL)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            Text(
+                text = stringResource(R.string.launcher_cruise_engage_action_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 2.dp),
+            )
+            Text(
+                text = stringResource(R.string.launcher_cruise_engage_action_desc),
+                color = LauncherColors.TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LauncherSettingsOptionButton(
+                    text = stringResource(R.string.launcher_cruise_engage_action_none),
+                    selected = cruiseEngageAction == CRUISE_ENGAGE_ACTION_NONE,
+                    onClick = {
+                        LauncherAppConfigStore.setCruiseEngageAction(context, CRUISE_ENGAGE_ACTION_NONE)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                LauncherSettingsOptionButton(
+                    text = stringResource(R.string.launcher_cruise_engage_action_presets),
+                    selected = cruiseEngageAction == CRUISE_ENGAGE_ACTION_PRESETS,
+                    onClick = {
+                        LauncherAppConfigStore.setCruiseEngageAction(context, CRUISE_ENGAGE_ACTION_PRESETS)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                if (!isConventional) {
+                    LauncherSettingsOptionButton(
+                        text = stringResource(R.string.launcher_cruise_engage_action_smart_acc),
+                        selected = cruiseEngageAction == CRUISE_ENGAGE_ACTION_SMART_ACC,
+                        onClick = {
+                            LauncherAppConfigStore.setCruiseEngageAction(context, CRUISE_ENGAGE_ACTION_SMART_ACC)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
         LauncherSettingsToggleRow(
             label = stringResource(R.string.launcher_car_model_visible_title),
             active = carModelVisible,

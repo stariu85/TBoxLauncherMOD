@@ -42,6 +42,8 @@ private const val KEY_CAMERA_SWITCH_MODE = "camera_switch_mode"
 private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
 private const val KEY_TRUNK_LONG_PRESS_ENABLED = "trunk_long_press_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
+private const val KEY_CAMD_USE_STOCK_AVM = "camd_use_stock_avm"
+private const val KEY_CAMD_TURN_SIGNAL_CAMERAS = "camd_turn_signal_cameras"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
 private const val KEY_EDGE_GESTURES_ENABLED = "edge_gestures_enabled"
 private const val KEY_EDGE_GESTURES_WIDTH = "edge_gestures_width_dp"
@@ -93,6 +95,13 @@ private const val KEY_PASSENGER_SEAT_BUTTON_OFFSET_Y = "passenger_seat_button_of
 private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
 private const val KEY_SPEED_LIMIT_Y_RATIO = "speed_limit_y_ratio"
 private const val KEY_GEARBOX_TYPE_IS_6DCT = "gearbox_type_is_6dct"
+private const val KEY_CRUISE_TYPE = "cruise_control_type"
+internal const val CRUISE_TYPE_ADAPTIVE = 0
+internal const val CRUISE_TYPE_CONVENTIONAL = 1
+private const val KEY_CRUISE_ENGAGE_ACTION = "cruise_engage_action"
+internal const val CRUISE_ENGAGE_ACTION_NONE = 0
+internal const val CRUISE_ENGAGE_ACTION_PRESETS = 1
+internal const val CRUISE_ENGAGE_ACTION_SMART_ACC = 2
 private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 private const val KEY_FULL_WIDTH = "full_width_packages"
@@ -127,7 +136,7 @@ internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
     "windscreen_heat",
     "front_defrost",
     "rear_defrost",
-    null,
+    "camd_test_cameras",
     null,
     null,
     null,
@@ -433,6 +442,8 @@ internal object LauncherAppConfigStore {
     internal val trunkLongPressRevisionFlow: StateFlow<Int> = trunkLongPressRevision
     private val avmCameraActionRevision = MutableStateFlow(0)
     internal val avmCameraActionRevisionFlow: StateFlow<Int> = avmCameraActionRevision
+    private val camdConfigRevision = MutableStateFlow(0)
+    internal val camdConfigRevisionFlow: StateFlow<Int> = camdConfigRevision
     private val pdcVisualModeRevision = MutableStateFlow(0)
     internal val pdcVisualModeRevisionFlow: StateFlow<Int> = pdcVisualModeRevision
     private val navButtonsRevision = MutableStateFlow(0)
@@ -539,6 +550,10 @@ internal object LauncherAppConfigStore {
     internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
     private val gearboxTypeRevision = MutableStateFlow(0)
     internal val gearboxTypeRevisionFlow: StateFlow<Int> = gearboxTypeRevision
+    private val cruiseTypeRevision = MutableStateFlow(0)
+    internal val cruiseTypeRevisionFlow: StateFlow<Int> = cruiseTypeRevision
+    private val cruiseEngageActionRevision = MutableStateFlow(0)
+    internal val cruiseEngageActionRevisionFlow: StateFlow<Int> = cruiseEngageActionRevision
     private val launcherSettingsOnDoubleTapRevision = MutableStateFlow(0)
     internal val launcherSettingsOnDoubleTapRevisionFlow: StateFlow<Int> = launcherSettingsOnDoubleTapRevision
     private val headlightBeamsRevision = MutableStateFlow(0)
@@ -1673,6 +1688,22 @@ internal object LauncherAppConfigStore {
         avmCameraActionRevision.value++
     }
 
+    fun camdUseStockAvm(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_USE_STOCK_AVM, true)
+
+    fun setCamdUseStockAvm(context: Context, useStock: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_USE_STOCK_AVM, useStock).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdTurnSignalCameras(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_TURN_SIGNAL_CAMERAS, false)
+
+    fun setCamdTurnSignalCameras(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_TURN_SIGNAL_CAMERAS, enabled).apply()
+        camdConfigRevision.value++
+    }
+
     fun pdcVisualMode(context: Context): Int =
         prefs(context).getInt(KEY_PDC_VISUAL_MODE, PDC_VISUAL_ARCS)
             .coerceIn(PDC_VISUAL_ARCS, PDC_VISUAL_OFF)
@@ -1938,6 +1969,25 @@ internal object LauncherAppConfigStore {
         prefs(context).edit().putBoolean(KEY_GEARBOX_TYPE_IS_6DCT, is6Dct).apply()
         gearboxTypeRevision.value++
         CanDataRepository.set6DctGearbox(is6Dct)
+    }
+
+    fun cruiseType(context: Context): Int =
+        prefs(context).getInt(KEY_CRUISE_TYPE, CRUISE_TYPE_ADAPTIVE)
+
+    fun setCruiseType(context: Context, type: Int) {
+        prefs(context).edit().putInt(KEY_CRUISE_TYPE, type).apply()
+        cruiseTypeRevision.value++
+    }
+
+    fun isConventionalCruise(context: Context): Boolean =
+        cruiseType(context) == CRUISE_TYPE_CONVENTIONAL
+
+    fun cruiseEngageAction(context: Context): Int =
+        prefs(context).getInt(KEY_CRUISE_ENGAGE_ACTION, CRUISE_ENGAGE_ACTION_PRESETS)
+
+    fun setCruiseEngageAction(context: Context, action: Int) {
+        prefs(context).edit().putInt(KEY_CRUISE_ENGAGE_ACTION, action).apply()
+        cruiseEngageActionRevision.value++
     }
 
     fun launcherSettingsOnDoubleTap(context: Context): Boolean =

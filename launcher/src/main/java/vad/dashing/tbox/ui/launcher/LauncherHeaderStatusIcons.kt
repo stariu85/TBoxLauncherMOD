@@ -73,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -142,7 +143,7 @@ private fun isSpacerSmall(itemId: String): Boolean = itemId == "spacer_small" ||
 private fun isTimeSignalIndicator(itemId: String): Boolean = itemId in setOf("time", "date", "connectivity")
 
 private fun isStandardIndicator(itemId: String): Boolean = itemId in setOf(
-    "temp", "inside_temp", "combined_temp", "engine_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance", "vehicle_status"
+    "temp", "inside_temp", "combined_temp", "engine_temp", "gearbox_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance", "vehicle_status"
 )
 
 private enum class TopBarGroupType {
@@ -382,11 +383,14 @@ internal fun LauncherTopHeaderBar(
     val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
     val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
     val engineTemp by canViewModel.engineTemperature.collectAsStateWithLifecycle()
+    val canGearboxTemp by canViewModel.gearBoxOilTemperature.collectAsStateWithLifecycle()
     val insideAirQuality by canViewModel.insideAirQuality.collectAsStateWithLifecycle()
     val outsideAirQuality by canViewModel.outsideAirQuality.collectAsStateWithLifecycle()
     val displayedAvgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
     val activeTripDistanceKm by tbmRepo.activeTripDistanceKm.collectAsStateWithLifecycle()
+    val tbmGearboxTemp by tbmRepo.gearboxOilTemperature.collectAsStateWithLifecycle()
+    val gearboxTemp = canGearboxTemp?.toFloat() ?: tbmGearboxTemp
     val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
     val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
 
@@ -464,9 +468,26 @@ internal fun LauncherTopHeaderBar(
     val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
     val headlightsRaw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF
 
-    val buttonDiameterDp = (topBarHeightDp - 10).coerceAtLeast(16)
-    val indicatorFontSizeSp = 18.sp
-    val indicatorIconSizeDp = 18.dp
+    val groupVerticalPaddingDp = when {
+        topBarHeightDp <= 30 -> 2.dp
+        topBarHeightDp <= 38 -> 3.dp
+        topBarHeightDp <= 44 -> 4.dp
+        else -> 5.dp
+    }
+    val buttonDiameterDp = (topBarHeightDp - (groupVerticalPaddingDp.value * 2).toInt()).coerceAtLeast(16)
+    val indicatorFontSizeSp = (13f + ((topBarHeightDp - 28f) / 20f) * 5f).coerceIn(13f, 20f).sp
+    val indicatorIconSizeDp = (13f + ((topBarHeightDp - 28f) / 20f) * 5f).coerceIn(13f, 20f).dp
+
+    val indicatorTextStyle = MaterialTheme.typography.tboxCaption.copy(
+        fontSize = indicatorFontSizeSp,
+        fontWeight = FontWeight.Light,
+        lineHeight = indicatorFontSizeSp,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
+    )
 
     var fuelShowsRange by remember {
         mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
@@ -535,7 +556,7 @@ internal fun LauncherTopHeaderBar(
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(vertical = 5.dp)
+                                    .padding(vertical = groupVerticalPaddingDp)
                                     .then(
                                         if (isBorderOn) {
                                             Modifier
@@ -549,6 +570,7 @@ internal fun LauncherTopHeaderBar(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Row(
+                                    modifier = Modifier.fillMaxHeight(),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center,
                                 ) {
@@ -556,9 +578,8 @@ internal fun LauncherTopHeaderBar(
                                         if (itemIndex > 0) {
                                             Text(
                                                 text = "·",
-                                                style = MaterialTheme.typography.tboxCaption,
+                                                style = indicatorTextStyle,
                                                 color = LauncherColors.TextPrimary.copy(alpha = 0.5f),
-                                                fontSize = indicatorFontSizeSp,
                                                 modifier = Modifier.padding(horizontal = 8.dp),
                                             )
                                         }
@@ -588,6 +609,7 @@ internal fun LauncherTopHeaderBar(
                                                 outsideTemp = outsideTemp,
                                                 insideTemp = insideTemp,
                                                 engineTemp = engineTemp,
+                                                gearboxTemp = gearboxTemp,
                                                 insideAirQuality = insideAirQuality,
                                                 outsideAirQuality = outsideAirQuality,
                                                 displayedAvgFuel = displayedAvgFuel,
@@ -615,6 +637,7 @@ internal fun LauncherTopHeaderBar(
                                                 buttonDiameterDp = buttonDiameterDp,
                                                 indicatorFontSizeSp = indicatorFontSizeSp,
                                                 indicatorIconSizeDp = indicatorIconSizeDp,
+                                                indicatorTextStyle = indicatorTextStyle,
                                                 isSpacerHighlighted = isSpacerHighlighted,
                                                 context = context,
                                             )
@@ -650,6 +673,7 @@ internal fun LauncherTopHeaderBar(
                                         outsideTemp = outsideTemp,
                                         insideTemp = insideTemp,
                                         engineTemp = engineTemp,
+                                        gearboxTemp = gearboxTemp,
                                         insideAirQuality = insideAirQuality,
                                         outsideAirQuality = outsideAirQuality,
                                         displayedAvgFuel = displayedAvgFuel,
@@ -677,6 +701,7 @@ internal fun LauncherTopHeaderBar(
                                         buttonDiameterDp = buttonDiameterDp,
                                         indicatorFontSizeSp = indicatorFontSizeSp,
                                         indicatorIconSizeDp = indicatorIconSizeDp,
+                                        indicatorTextStyle = indicatorTextStyle,
                                         isSpacerHighlighted = isSpacerHighlighted,
                                         context = context,
                                     )
@@ -733,7 +758,7 @@ internal fun LauncherTopHeaderBar(
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
-                                .padding(vertical = 5.dp)
+                                .padding(vertical = groupVerticalPaddingDp)
                                 .then(
                                     if (isBorderOn) {
                                         Modifier
@@ -747,6 +772,7 @@ internal fun LauncherTopHeaderBar(
                             contentAlignment = Alignment.Center,
                         ) {
                             Row(
+                                modifier = Modifier.fillMaxHeight(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
                             ) {
@@ -754,9 +780,8 @@ internal fun LauncherTopHeaderBar(
                                     if (itemIndex > 0) {
                                         Text(
                                             text = "·",
-                                            style = MaterialTheme.typography.tboxCaption,
+                                            style = indicatorTextStyle,
                                             color = LauncherColors.TextPrimary.copy(alpha = 0.5f),
-                                            fontSize = indicatorFontSizeSp,
                                             modifier = Modifier.padding(horizontal = 8.dp),
                                         )
                                     }
@@ -786,6 +811,7 @@ internal fun LauncherTopHeaderBar(
                                             outsideTemp = outsideTemp,
                                             insideTemp = insideTemp,
                                             engineTemp = engineTemp,
+                                            gearboxTemp = gearboxTemp,
                                             insideAirQuality = insideAirQuality,
                                             outsideAirQuality = outsideAirQuality,
                                             displayedAvgFuel = displayedAvgFuel,
@@ -813,6 +839,7 @@ internal fun LauncherTopHeaderBar(
                                             buttonDiameterDp = buttonDiameterDp,
                                             indicatorFontSizeSp = indicatorFontSizeSp,
                                             indicatorIconSizeDp = indicatorIconSizeDp,
+                                            indicatorTextStyle = indicatorTextStyle,
                                             isSpacerHighlighted = isSpacerHighlighted,
                                             context = context,
                                         )
@@ -848,6 +875,7 @@ internal fun LauncherTopHeaderBar(
                                     outsideTemp = outsideTemp,
                                     insideTemp = insideTemp,
                                     engineTemp = engineTemp,
+                                    gearboxTemp = gearboxTemp,
                                     insideAirQuality = insideAirQuality,
                                     outsideAirQuality = outsideAirQuality,
                                     displayedAvgFuel = displayedAvgFuel,
@@ -875,6 +903,7 @@ internal fun LauncherTopHeaderBar(
                                     buttonDiameterDp = buttonDiameterDp,
                                     indicatorFontSizeSp = indicatorFontSizeSp,
                                     indicatorIconSizeDp = indicatorIconSizeDp,
+                                    indicatorTextStyle = indicatorTextStyle,
                                     isSpacerHighlighted = isSpacerHighlighted,
                                     context = context,
                                 )
@@ -893,6 +922,7 @@ private fun RenderTopBarItemContent(
     outsideTemp: Float?,
     insideTemp: Float?,
     engineTemp: Float? = null,
+    gearboxTemp: Float? = null,
     insideAirQuality: UInt? = null,
     outsideAirQuality: UInt? = null,
     displayedAvgFuel: Float?,
@@ -916,6 +946,16 @@ private fun RenderTopBarItemContent(
     buttonDiameterDp: Int,
     indicatorFontSizeSp: TextUnit,
     indicatorIconSizeDp: Dp,
+    indicatorTextStyle: TextStyle = MaterialTheme.typography.tboxCaption.copy(
+        fontSize = indicatorFontSizeSp,
+        fontWeight = FontWeight.Light,
+        lineHeight = indicatorFontSizeSp,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
+    ),
     isSpacerHighlighted: Boolean,
     context: Context,
 ) {
@@ -950,16 +990,14 @@ private fun RenderTopBarItemContent(
             Text(
                 text = timeText,
                 color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Light,
+                style = indicatorTextStyle,
             )
         }
         itemId == "date" -> {
             Text(
                 text = dateText,
                 color = LauncherColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Light,
+                style = indicatorTextStyle,
             )
         }
         itemId == "connectivity" -> {
@@ -967,6 +1005,7 @@ private fun RenderTopBarItemContent(
                 LauncherHeaderStatusIcons(
                     tboxViewModel = tboxViewModel,
                     showVehicleAlerts = false,
+                    indicatorIconSizeDp = indicatorIconSizeDp,
                     modifier = Modifier
                         .fillMaxHeight()
                         .clickable(
@@ -983,6 +1022,7 @@ private fun RenderTopBarItemContent(
             LauncherTopBarModemCellularWidget(
                 indicatorIconSizeDp = indicatorIconSizeDp,
                 indicatorFontSizeSp = indicatorFontSizeSp,
+                indicatorTextStyle = indicatorTextStyle,
                 modifier = Modifier
                     .fillMaxHeight()
                     .clickable(
@@ -1007,10 +1047,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1027,10 +1065,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = insideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1049,10 +1085,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = "$outsideStr/$insideStr°",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1071,10 +1105,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = "$outsideStr/$insideStr",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1100,17 +1132,16 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = avgNum,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
                 Text(
                     text = unitStr,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle.copy(
+                        fontSize = (indicatorFontSizeSp / 2f),
+                        lineHeight = (indicatorFontSizeSp / 2f),
+                    ),
                     color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
-                    fontSize = (indicatorFontSizeSp / 2f),
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1136,17 +1167,16 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = costStr,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
                 Text(
                     text = unitStr,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle.copy(
+                        fontSize = (indicatorFontSizeSp / 2f),
+                        lineHeight = (indicatorFontSizeSp / 2f),
+                    ),
                     color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
-                    fontSize = (indicatorFontSizeSp / 2f),
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1164,10 +1194,27 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = engineTempStr,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
+                )
+            }
+        }
+        itemId == "gearbox_temp" -> {
+            val gearboxTempStr = gearboxTemp?.let { "${valueToString(it, 0)}°" } ?: "—°"
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_gearbox_temp),
+                    contentDescription = "Температура коробки передач",
+                    modifier = Modifier.size(indicatorIconSizeDp),
+                    colorFilter = ColorFilter.tint(IndicatorIconTint),
+                )
+                Text(
+                    text = gearboxTempStr,
+                    style = indicatorTextStyle,
+                    color = LauncherColors.TextPrimary,
                 )
             }
         }
@@ -1197,33 +1244,31 @@ private fun RenderTopBarItemContent(
                 if (hours > 0L) {
                     Text(
                         text = "$hours",
-                        style = MaterialTheme.typography.tboxCaption,
+                        style = indicatorTextStyle,
                         color = LauncherColors.TextPrimary,
-                        fontSize = indicatorFontSizeSp,
-                        fontWeight = FontWeight.Light,
                     )
                     Text(
                         text = unitHours,
-                        style = MaterialTheme.typography.tboxCaption,
+                        style = indicatorTextStyle.copy(
+                            fontSize = (indicatorFontSizeSp / 2f),
+                            lineHeight = (indicatorFontSizeSp / 2f),
+                        ),
                         color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
-                        fontSize = (indicatorFontSizeSp / 2f),
-                        fontWeight = FontWeight.Light,
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                 }
                 Text(
                     text = "$mins",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
                 Text(
                     text = unitMins,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle.copy(
+                        fontSize = (indicatorFontSizeSp / 2f),
+                        lineHeight = (indicatorFontSizeSp / 2f),
+                    ),
                     color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
-                    fontSize = (indicatorFontSizeSp / 2f),
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1250,10 +1295,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = fuelText,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = fuelColor ?: LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1270,10 +1313,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = voltageText,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1290,10 +1331,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = "$cpuUsage%",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1310,10 +1349,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = "$ramUsage%",
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1336,10 +1373,8 @@ private fun RenderTopBarItemContent(
                 if (satInfo.hasFix || satInfo.isInertial) {
                     Text(
                         text = "${satInfo.visibleSatellites}/${satInfo.usingSatellites}",
-                        style = MaterialTheme.typography.tboxCaption,
+                        style = indicatorTextStyle,
                         color = LauncherColors.TextPrimary,
-                        fontSize = indicatorFontSizeSp,
-                        fontWeight = FontWeight.Light,
                     )
                 }
             }
@@ -1359,17 +1394,16 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = distStr,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
                 Text(
                     text = unitStr,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle.copy(
+                        fontSize = (indicatorFontSizeSp / 2f),
+                        lineHeight = (indicatorFontSizeSp / 2f),
+                    ),
                     color = LauncherColors.TextPrimary.copy(alpha = 0.8f),
-                    fontSize = (indicatorFontSizeSp / 2f),
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1414,10 +1448,8 @@ private fun RenderTopBarItemContent(
                 )
                 Text(
                     text = labelText,
-                    style = MaterialTheme.typography.tboxCaption,
+                    style = indicatorTextStyle,
                     color = statusTint,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Light,
                 )
             }
         }
@@ -1684,7 +1716,9 @@ private fun LauncherDraggableTopBarItem(
     val isRemoving = isDragging && offsetY > removeThresholdPx
 
     Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
+            .fillMaxHeight()
             .zIndex(if (isDragging) 100f else 0f)
             .onGloballyPositioned { coordinates ->
                 itemWidthPx = coordinates.size.width.toFloat()
@@ -1748,6 +1782,7 @@ internal fun LauncherHeaderStatusIcons(
     tboxViewModel: TboxViewModel,
     modifier: Modifier = Modifier,
     showVehicleAlerts: Boolean = true,
+    indicatorIconSizeDp: Dp = 18.dp,
 ) {
     val context = LocalContext.current
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
@@ -1800,9 +1835,22 @@ internal fun LauncherHeaderStatusIcons(
         )
     }
 
+    val iconSpacing = (indicatorIconSizeDp.value * (7f / 18f)).dp.coerceAtLeast(3.dp)
+    val cellularTextSize = (indicatorIconSizeDp.value * (11f / 18f)).sp
+    val cellularTextStyle = TextStyle(
+        fontSize = cellularTextSize,
+        lineHeight = cellularTextSize,
+        fontWeight = FontWeight.Bold,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
+    )
+
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(iconSpacing),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showVehicleAlerts) {
@@ -1810,7 +1858,7 @@ internal fun LauncherHeaderStatusIcons(
         }
         Box(
             modifier = Modifier
-                .size(9.dp)
+                .size((indicatorIconSizeDp.value * 0.5f).dp.coerceAtLeast(5.dp))
                 .clip(CircleShape)
                 .background(
                     if (tboxConnected || isTbmConnected) Color(0xFF22C55E) else Color(0xFFEF4444),
@@ -1824,11 +1872,11 @@ internal fun LauncherHeaderStatusIcons(
         Image(
             painter = painterResource(R.drawable.ic_launcher_bluetooth),
             contentDescription = stringResource(R.string.launcher_vs_bluetooth),
-            modifier = Modifier.size((18 * 1.15f).dp),
+            modifier = Modifier.size((indicatorIconSizeDp.value * 1.15f).dp),
             colorFilter = ColorFilter.tint(bluetoothTint),
         )
         if (wifiConnected) {
-            WifiArcsIcon(level = wifiLevel.coerceIn(1, 4), tint = StatusIconTint, modifier = Modifier.size(18.dp))
+            WifiArcsIcon(level = wifiLevel.coerceIn(1, 4), tint = StatusIconTint, modifier = Modifier.size(indicatorIconSizeDp))
         }
         if (tbmCellularInfo.hasData && modemCellularVisible) {
             Row(
@@ -1839,8 +1887,7 @@ internal fun LauncherHeaderStatusIcons(
                     Text(
                         text = tbmCellularInfo.networkType,
                         color = StatusIconTint,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = cellularTextStyle,
                     )
                 }
                 val signalRes = when (tbmCellularInfo.signalLevel.coerceIn(0, 4)) {
@@ -1853,7 +1900,7 @@ internal fun LauncherHeaderStatusIcons(
                 Image(
                     painter = painterResource(signalRes),
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(indicatorIconSizeDp),
                     colorFilter = ColorFilter.tint(StatusIconTint),
                 )
             }
@@ -1867,8 +1914,7 @@ internal fun LauncherHeaderStatusIcons(
                     Text(
                         text = tboxCellularInfo.networkType,
                         color = StatusIconTint,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = cellularTextStyle,
                     )
                 }
                 val signalRes = when (tboxCellularInfo.signalLevel.coerceIn(0, 4)) {
@@ -1881,7 +1927,7 @@ internal fun LauncherHeaderStatusIcons(
                 Image(
                     painter = painterResource(signalRes),
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(indicatorIconSizeDp),
                     colorFilter = ColorFilter.tint(StatusIconTint),
                 )
             }
@@ -2003,7 +2049,7 @@ private fun WifiArcsIcon(
     tint: Color,
     modifier: Modifier = Modifier,
 ) {
-    Canvas(modifier = modifier.size(18.dp)) {
+    Canvas(modifier = Modifier.size(18.dp).then(modifier)) {
         val cx = size.width * 0.5f
         val cy = size.height * 0.86f
         val stroke = size.minDimension * 0.13f
@@ -2105,6 +2151,7 @@ internal fun LauncherTopBarModemCellularWidget(
     indicatorIconSizeDp: Dp,
     indicatorFontSizeSp: TextUnit,
     modifier: Modifier = Modifier,
+    indicatorTextStyle: TextStyle? = null,
 ) {
     val context = LocalContext.current
     val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
@@ -2124,11 +2171,24 @@ internal fun LauncherTopBarModemCellularWidget(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (cellularInfo.networkType != null) {
+                val textStyle = indicatorTextStyle?.copy(
+                    fontSize = indicatorFontSizeSp,
+                    lineHeight = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Bold,
+                ) ?: TextStyle(
+                    fontSize = indicatorFontSizeSp,
+                    lineHeight = indicatorFontSizeSp,
+                    fontWeight = FontWeight.Bold,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both,
+                    ),
+                )
                 Text(
                     text = cellularInfo.networkType,
                     color = LauncherColors.TextPrimary,
-                    fontSize = indicatorFontSizeSp,
-                    fontWeight = FontWeight.Bold,
+                    style = textStyle,
                 )
             }
             val signalRes = when (cellularInfo.signalLevel.coerceIn(0, 4)) {

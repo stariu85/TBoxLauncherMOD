@@ -1241,8 +1241,20 @@ internal fun LauncherAssistAndPresetsPanel(
     adas: LauncherAdasState,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val cruiseTypeRevision by LauncherAppConfigStore.cruiseTypeRevisionFlow.collectAsStateWithLifecycle()
+    val isConventional = remember(context, cruiseTypeRevision) {
+        LauncherAppConfigStore.isConventionalCruise(context)
+    }
+
     var activeTab by remember { mutableStateOf(AssistPresetsTab.Main) }
     var totalDragAmount by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(isConventional) {
+        if (isConventional && activeTab == AssistPresetsTab.SmartControl) {
+            activeTab = AssistPresetsTab.Main
+        }
+    }
 
     LaunchedEffect(activeTab) {
         val visibleSub = when (activeTab) {
@@ -1253,6 +1265,11 @@ internal fun LauncherAssistAndPresetsPanel(
         LauncherAppConfigStore.setVisibleSubPanel("assist", visibleSub)
     }
 
+    val cruiseEngageActionRevision by LauncherAppConfigStore.cruiseEngageActionRevisionFlow.collectAsStateWithLifecycle()
+    val cruiseEngageAction = remember(context, cruiseEngageActionRevision) {
+        LauncherAppConfigStore.cruiseEngageAction(context)
+    }
+
     // Auto-flip logic on cruise activation / deactivation
     val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val isCruiseEngaged = adas.accActive || adas.accStandby || (tboxCruise ?: 0u) > 0u
@@ -1261,13 +1278,20 @@ internal fun LauncherAssistAndPresetsPanel(
 
     LaunchedEffect(isCruiseEngaged) {
         if (isCruiseEngaged && !prevEngaged) {
-            // Cruise activated from ANY source -> wait 1s then flip to Presets page
-            delay(1000L)
-            if (isCruiseEngaged) {
-                activeTab = AssistPresetsTab.Presets
+            val targetTab = when (cruiseEngageAction) {
+                CRUISE_ENGAGE_ACTION_NONE -> null
+                CRUISE_ENGAGE_ACTION_PRESETS -> AssistPresetsTab.Presets
+                CRUISE_ENGAGE_ACTION_SMART_ACC -> if (!isConventional) AssistPresetsTab.SmartControl else null
+                else -> AssistPresetsTab.Presets
+            }
+            if (targetTab != null) {
+                delay(1000L)
+                if (isCruiseEngaged) {
+                    activeTab = targetTab
+                }
             }
         } else if (!isCruiseEngaged && prevEngaged) {
-            // Cruise deactivated -> immediately return to Central Main page (ACC + NGP)
+            // Cruise deactivated -> immediately return to Central Main page
             activeTab = AssistPresetsTab.Main
         }
         prevEngaged = isCruiseEngaged
@@ -1290,7 +1314,7 @@ internal fun LauncherAssistAndPresetsPanel(
                             // Swipe Left -> next page
                             activeTab = when (activeTab) {
                                 AssistPresetsTab.Main -> AssistPresetsTab.Presets
-                                AssistPresetsTab.Presets -> AssistPresetsTab.SmartControl
+                                AssistPresetsTab.Presets -> if (isConventional) AssistPresetsTab.Presets else AssistPresetsTab.SmartControl
                                 AssistPresetsTab.SmartControl -> AssistPresetsTab.SmartControl
                             }
                         } else if (totalDragAmount > 30f) {

@@ -72,6 +72,81 @@ internal fun LauncherSmartAccAndDistControl(
         else -> 3 - rawGap.coerceIn(0, 2)
     }
 
+    val cruiseTypeRevision by LauncherAppConfigStore.cruiseTypeRevisionFlow.collectAsStateWithLifecycle()
+    val isConventional = remember(context, cruiseTypeRevision) {
+        LauncherAppConfigStore.isConventionalCruise(context)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(60.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // --- BUTTON 1: DIST (Time Gap / Distance) - only for Adaptive Cruise ---
+            if (!isConventional) {
+                SmartPanelButton(
+                    label = "DIST",
+                    icon = {
+                        ThreeChevronsIcon(
+                            level = displayChevronLevel,
+                            activeColor = LauncherColors.AccentCyan,
+                        )
+                    },
+                    onClick = {
+                        val nextRaw = when (rawGap) {
+                            0 -> 1
+                            1 -> 2
+                            2 -> 0
+                            else -> 0
+                        }
+                        LauncherCruisePresetController.setTimeGap(context, nextRaw)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(60.dp),
+                )
+            }
+
+            // --- BUTTON 2: SMART ACC (Only for Adaptive Cruise here, as Conventional Cruise has it on main bar) ---
+            if (!isConventional && adasAccBySpeedLimitEnabled) {
+                SmartAccSpeedLimitButton(
+                    adas = adas,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(60.dp),
+                    cornerRadius = 30.dp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SmartAccSpeedLimitButton(
+    adas: LauncherAdasState,
+    modifier: Modifier = Modifier,
+    cornerRadius: androidx.compose.ui.unit.Dp = 12.dp,
+) {
+    val context = LocalContext.current
+
+    val enabledRevision by LauncherAppConfigStore.adasAccBySpeedLimitRevisionFlow.collectAsStateWithLifecycle()
+    val offsetRevision by LauncherAppConfigStore.adasAccSpeedOffsetRevisionFlow.collectAsStateWithLifecycle()
+    val adasAccBySpeedLimitEnabled = remember(context, enabledRevision) {
+        LauncherAppConfigStore.adasAccBySpeedLimitEnabled(context)
+    }
+    val offset = remember(context, offsetRevision) {
+        LauncherAppConfigStore.adasAccSpeedOffset(context)
+    }
+
     val classicSpeedLimitRevision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()
     val classicSpeedLimitVisible = remember(context, classicSpeedLimitRevision) {
         LauncherAppConfigStore.classicSpeedLimitVisible(context)
@@ -130,78 +205,36 @@ internal fun LauncherSmartAccAndDistControl(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(60.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp)
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // --- BUTTON 1: DIST (Time Gap / Distance) ---
-            SmartPanelButton(
-                label = "DIST",
-                icon = {
-                    ThreeChevronsIcon(
-                        level = displayChevronLevel,
-                        activeColor = LauncherColors.AccentCyan,
-                    )
-                },
-                onClick = {
-                    val nextRaw = when (rawGap) {
-                        0 -> 1
-                        1 -> 2
-                        2 -> 0
-                        else -> 0
-                    }
-                    LauncherCruisePresetController.setTimeGap(context, nextRaw)
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(60.dp),
-            )
+    val displayedLimit = effectiveSpeedLimit ?: (if (isSmartActive) lastKnownSpeedLimit else null)
+    val hasLimit = displayedLimit != null || isSmartActive
+    val isActive = isSmartActive && isCruiseEngaged
 
-            // --- BUTTON 2: SMART ACC (Only if enabled in settings) ---
-            if (adasAccBySpeedLimitEnabled) {
-                val displayedLimit = effectiveSpeedLimit ?: (if (isSmartActive) lastKnownSpeedLimit else null)
-                val hasLimit = displayedLimit != null || isSmartActive
-                val isActive = isSmartActive && isCruiseEngaged
-
-                SmartAccButton(
-                    speedLimit = displayedLimit,
-                    offset = offset,
-                    enabled = hasLimit,
-                    isActive = isActive,
-                    onClick = {
-                        val limit = displayedLimit ?: lastKnownSpeedLimit
-                        if (limit != null) {
-                            val targetSpeed = limit + offset
-                            LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
-                        }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(60.dp),
-                )
+    SmartAccButton(
+        speedLimit = displayedLimit,
+        offset = offset,
+        enabled = hasLimit,
+        isActive = isActive,
+        cornerRadius = cornerRadius,
+        onClick = {
+            val limit = displayedLimit ?: lastKnownSpeedLimit
+            if (limit != null) {
+                val targetSpeed = limit + offset
+                LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
             }
-        }
-    }
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
-private fun SmartAccButton(
+internal fun SmartAccButton(
     speedLimit: Int?,
     offset: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     isActive: Boolean = false,
+    cornerRadius: androidx.compose.ui.unit.Dp = 12.dp,
 ) {
     val activeGreen = Color(0xFF10B981)
     val bg = when {
@@ -219,17 +252,17 @@ private fun SmartAccButton(
     val offsetText = offset.toString()
     val limitText = speedLimit?.toString() ?: "--"
 
-    // Both icons have 44.dp diameter following the 30.dp button curvature.
+    // Both icons have 44.dp diameter following button curvature.
     // Identical font size for both icons; reduced to 14.sp if 3 digits to fit perfectly inside circle.
     val iconFontSize = if (limitText.length >= 3 || offsetText.length >= 3) 14.sp else 16.sp
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(30.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(bg)
             .then(
                 if (isActive) {
-                    Modifier.border(1.5.dp, border, RoundedCornerShape(30.dp))
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(cornerRadius))
                 } else {
                     Modifier
                 }

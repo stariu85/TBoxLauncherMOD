@@ -54,6 +54,10 @@ object MbCanEngineFacade {
     private var unRegistHardKeyListenerMethod: Method? = null
     private var hardKeyCallback: ((keyCode: Int, keyAction: Int, extra: Byte) -> Unit)? = null
     private var hardKeyListenerProxy: Any? = null
+    private var registVehicleListenerMethod: Method? = null
+    private var unRegistVehicleListenerMethod: Method? = null
+    private var turnLightCallback: ((left: Byte, right: Byte) -> Unit)? = null
+    private var vehicleListenerProxy: Any? = null
     private var initialized = false
 
     private val reflectionMethodCache = java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, Method>()
@@ -160,6 +164,12 @@ object MbCanEngineFacade {
             }.getOrNull()
             unRegistHardKeyListenerMethod = runCatching {
                 engineClass.getMethod("unRegistHardKeyListener")
+            }.getOrNull()
+            registVehicleListenerMethod = runCatching {
+                engineClass.getMethod("registVehicleListener", Class.forName("com.mengbo.mbCan.interfaces.IMBVehicleListener"))
+            }.getOrNull()
+            unRegistVehicleListenerMethod = runCatching {
+                engineClass.getMethod("unRegistVehicleListener")
             }.getOrNull()
             val dataTypeClass = Class.forName(DATA_TYPE_CLASS) as Class<out Enum<*>>
             cfgVehicleDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_VEHICLE")
@@ -930,6 +940,58 @@ object MbCanEngineFacade {
             }
         }
         hardKeyListenerProxy = null
+    }
+
+    /**
+     * Registers [com.mengbo.mbCan.interfaces.IMBVehicleListener] for turn signal events.
+     */
+    @Synchronized
+    fun setTurnLightCallback(callback: ((left: Byte, right: Byte) -> Unit)?) {
+        turnLightCallback = callback
+        if (callback == null) {
+            unregisterVehicleListener()
+            return
+        }
+        if (vehicleListenerProxy != null) return
+        if (ensureInitialized() !is MbCanAvailability.Available) return
+        val inst = engineInstance ?: return
+        val iface = try {
+            Class.forName("com.mengbo.mbCan.interfaces.IMBVehicleListener")
+        } catch (_: Throwable) {
+            return
+        }
+        val loader = iface.classLoader ?: return
+        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
+            vad.dashing.tbox.DclLogRecorder.recordCanRx()
+            if (method.name == "onVehicleTurnLightChange" && args != null && args.size >= 2) {
+                val left = (args[0] as? Number)?.toByte() ?: 0
+                val right = (args[1] as? Number)?.toByte() ?: 0
+                turnLightCallback?.invoke(left, right)
+            }
+            null
+        }
+        val proxy = Proxy.newProxyInstance(loader, arrayOf(iface), handler)
+        vehicleListenerProxy = proxy
+        try {
+            registVehicleListenerMethod?.invoke(inst, proxy)
+            Log.i(LOG_TAG, "setTurnLightCallback: registered IMBVehicleListener")
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "setTurnLightCallback failed: ${t.message}")
+            vehicleListenerProxy = null
+        }
+    }
+
+    @Synchronized
+    private fun unregisterVehicleListener() {
+        val inst = engineInstance
+        if (inst != null && vehicleListenerProxy != null) {
+            try {
+                unRegistVehicleListenerMethod?.invoke(inst)
+                Log.i(LOG_TAG, "unregisterVehicleListener: unregistered IMBVehicleListener")
+            } catch (_: Throwable) {
+            }
+        }
+        vehicleListenerProxy = null
     }
 }
 

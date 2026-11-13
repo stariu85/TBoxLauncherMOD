@@ -210,7 +210,7 @@ internal fun LauncherFanSpeedIcon(
 ) {
     Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = size.minDimension / 2f * 0.82f
+        val radius = size.minDimension / 2f * 0.738f
         val dotRadius = size.minDimension * 0.065f
 
         for (i in 0 until 7) {
@@ -263,6 +263,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("car_dialer", "Телефон", R.drawable.ic_widget_phone),
     LauncherDockButtonDescriptor("radio_app", "Радио", R.drawable.radio_vtkb246z55e9),
     LauncherDockButtonDescriptor("avm_camera", "Камеры 360", R.drawable.ic_launcher_avm),
+    LauncherDockButtonDescriptor("camd_test_cameras", "Камеры Camd (Тест)", R.drawable.ic_launcher_avm),
 )
 
 @Composable
@@ -1568,7 +1569,12 @@ private fun LauncherBottomDockButtonContent(
         }
         "avm_camera", "avm", "camera_360", "cameras", "com.mengbo.avm" -> LauncherDockIcon(
             onClick = {
-                launchLauncherAppEmbedded(context, "com.mengbo.avm")
+                val useStock = LauncherAppConfigStore.camdUseStockAvm(context)
+                if (useStock) {
+                    launchLauncherAppEmbedded(context, "com.mengbo.avm")
+                } else {
+                    vad.dashing.tbox.camd.CamdCameraRepository.toggleDesktopCameras(context)
+                }
             },
         ) {
             Image(
@@ -1577,6 +1583,30 @@ private fun LauncherBottomDockButtonContent(
                 colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
                 modifier = Modifier.size(dockDp(26f)),
             )
+        }
+        "camd_test_cameras", "camd_test", "camd_cameras" -> LauncherDockIcon(
+            onClick = {
+                vad.dashing.tbox.camd.CamdCameraRepository.toggleDesktopCameras(context)
+            },
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_avm),
+                    contentDescription = "Камеры Camd (Тест)",
+                    colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
+                    modifier = Modifier.size(dockDp(20f)),
+                )
+                Text(
+                    text = "test",
+                    fontSize = dockSp(9.5f),
+                    color = if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151),
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = dockSp(10.5f),
+                )
+            }
         }
         "temp_driver" -> LauncherTempStepper(
             tempText = formatHvacSetTempAnnotated(driverTemp),

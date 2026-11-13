@@ -860,6 +860,16 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
+            title = stringResource(R.string.launcher_vs_section_cameras),
+            subtitle = stringResource(R.string.launcher_vs_section_cameras_sub),
+            iconPainter = painterResource(R.drawable.ic_launcher_avm),
+            expanded = expandedSection == VehicleSettingsSection.Cameras,
+            onToggle = { onSectionToggle(VehicleSettingsSection.Cameras) },
+        ) {
+            LauncherCamerasSettingsContent()
+        }
+
+        LauncherVehicleSectionCard(
             title = stringResource(R.string.settings_tbm_api_section_title),
             subtitle = stringResource(R.string.settings_tbm_api_desc),
             icon = VehicleSettingsSectionIcons.TbmApi,

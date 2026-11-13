@@ -47,6 +47,9 @@ class BackgroundService : Service() {
         startAsForeground()
         YandexNavRepository.start(applicationContext)
         MbCanEngineFacade.ensureInitialized()
+        MbCanEngineFacade.setTurnLightCallback { left, right ->
+            vad.dashing.tbox.camd.CamdCameraRepository.onTurnLightSignal(applicationContext, left, right)
+        }
         scope.launch {
             UniversalCanRepository.bind(scope)
         }
@@ -125,6 +128,7 @@ class BackgroundService : Service() {
     }
 
     override fun onDestroy() {
+        MbCanEngineFacade.setTurnLightCallback(null)
         tboxLink?.stop()
         tboxLink = null
         scope.cancel()

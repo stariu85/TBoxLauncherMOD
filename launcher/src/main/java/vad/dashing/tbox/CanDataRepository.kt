@@ -114,10 +114,6 @@ object CanDataRepository {
     private var previousAvgConsumption: Float? = null
     @Volatile
     private var tripStartTimeMs: Long = System.currentTimeMillis()
-    @Volatile
-    private var lastFilteredFuelUpdateMs: Long = 0L
-
-    private const val FILTERED_FUEL_TIMEOUT_MS = 600_000L // 10 мин тайм-аут резервного переключения
 
     @Volatile
     private var overallAccumulatedDistanceKm: Float = 0f
@@ -410,15 +406,7 @@ object CanDataRepository {
     }
 
     private fun getEffectiveFuelPercentage(): Float? {
-        val filtered = _fuelLevelPercentageFiltered.value
-        val raw = _fuelLevelPercentage.value
-        if (filtered != null) {
-            val isFresh = (SystemClock.elapsedRealtime() - lastFilteredFuelUpdateMs) < FILTERED_FUEL_TIMEOUT_MS
-            if (isFresh) {
-                return filtered.toFloat()
-            }
-        }
-        return raw?.toFloat() ?: filtered?.toFloat()
+        return _fuelLevelPercentageFiltered.value?.toFloat()
     }
 
     fun resetLocalTripDistance() {
@@ -438,8 +426,6 @@ object CanDataRepository {
         overallAccumulatedDistanceKm = 0f
         overallAccumulatedFuelLiters = 0f
         currentSegmentDistKm = 0f
-        _fuelLevelPercentageFiltered.value = null
-        lastFilteredFuelUpdateMs = 0L
         val currentPercent = getEffectiveFuelPercentage()
         initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
         lastKnownFuelLiters = initialFuelLiters
@@ -509,12 +495,10 @@ object CanDataRepository {
 
     fun updateFuelLevelPercentage(newValue: UInt) {
         _fuelLevelPercentage.setIfChanged(newValue)
-        recalculateLocalAverageFuelConsumption()
         vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository.refresh()
     }
 
     fun updateFuelLevelPercentageFiltered(newValue: UInt) {
-        lastFilteredFuelUpdateMs = SystemClock.elapsedRealtime()
         _fuelLevelPercentageFiltered.setIfChanged(newValue)
         recalculateLocalAverageFuelConsumption()
         vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository.refresh()
@@ -522,10 +506,12 @@ object CanDataRepository {
 
     fun updateFuelLevelCalibratedLiters(newValue: Float?) {
         _fuelLevelCalibratedLiters.setIfChanged(newValue)
+        recalculateLocalAverageFuelConsumption()
     }
 
     fun updateFuelLevelCalibratedLitersActual(newValue: Float?) {
         _fuelLevelCalibratedLitersActual.setIfChanged(newValue)
+        recalculateLocalAverageFuelConsumption()
     }
 
     fun updateFuelCalibrationConfidence(newValue: Float?) {

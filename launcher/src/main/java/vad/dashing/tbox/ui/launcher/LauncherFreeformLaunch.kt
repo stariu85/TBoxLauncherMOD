@@ -669,7 +669,7 @@ internal fun listForeignFreeformTaskIds(
     return out.toList()
 }
 
-private val SYSTEM_PROTECTED_PACKAGES = setOf(
+internal val SYSTEM_PROTECTED_PACKAGES = setOf(
     "android",
     "com.android.systemui",
     "com.wt.launcher3",

@@ -68,10 +68,19 @@ internal object LauncherCruisePresetController {
 
     private var rememberedSetpointKmh: Int? = null
 
+    private fun isConventionalCruise(): Boolean {
+        val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull ?: return false
+        return LauncherAppConfigStore.isConventionalCruise(ctx)
+    }
+
     private fun computeAccCruiseState(): AccCruiseState {
         val adas = LauncherAdasRepository.state.value
         val tboxCruise = CanDataRepository.cruiseSetSpeed.value
         val isTboxActive = tboxCruise != null && tboxCruise > 0u
+
+        if (isConventionalCruise()) {
+            return if (isTboxActive) AccCruiseState.Active else AccCruiseState.Off
+        }
 
         return when {
             adas.accActive -> AccCruiseState.Active
@@ -92,7 +101,8 @@ internal object LauncherCruisePresetController {
             combine(
                 LauncherAdasRepository.state,
                 CanDataRepository.cruiseSetSpeed,
-            ) { _, _ ->
+                LauncherAppConfigStore.cruiseTypeRevisionFlow,
+            ) { _, _, _ ->
                 computeAccCruiseState()
             }.collect { newState ->
                 val previousState = _accCruiseState.value
@@ -126,6 +136,10 @@ internal object LauncherCruisePresetController {
     }
 
     fun currentSetSpeedKmh(): Int? {
+        if (isConventionalCruise()) {
+            val tboxSpeed = CanDataRepository.cruiseSetSpeed.value?.toInt()?.takeIf { it > 0 }
+            if (tboxSpeed != null) return tboxSpeed
+        }
         val adasSpeed = LauncherAdasRepository.state.value.accSetSpeedKmh?.takeIf { it > 0 }
         if (adasSpeed != null) return adasSpeed
         val tboxSpeed = CanDataRepository.cruiseSetSpeed.value?.toInt()?.takeIf { it > 0 }
@@ -220,11 +234,16 @@ internal object LauncherCruisePresetController {
                     DiagFileLog.i(TAG, "Cruise Off -> pulse MFS_CRUISE_CONTROL")
                     pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
 
-                    val waitStart = SystemClock.uptimeMillis()
-                    while (SystemClock.uptimeMillis() - waitStart < 4000L) {
-                        delay(100L)
-                        state = currentAccCruiseState()
-                        if (state == AccCruiseState.Standby || state == AccCruiseState.Active) break
+                    if (isConventionalCruise()) {
+                        delay(250L)
+                        state = AccCruiseState.Standby
+                    } else {
+                        val waitStart = SystemClock.uptimeMillis()
+                        while (SystemClock.uptimeMillis() - waitStart < 4000L) {
+                            delay(100L)
+                            state = currentAccCruiseState()
+                            if (state == AccCruiseState.Standby || state == AccCruiseState.Active) break
+                        }
                     }
                 }
 

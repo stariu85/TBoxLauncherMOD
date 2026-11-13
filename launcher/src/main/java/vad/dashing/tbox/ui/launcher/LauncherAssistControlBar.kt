@@ -77,6 +77,17 @@ fun LauncherAssistControlBar(
     val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val tjaIcaState by UniversalCanRepository.tjaIcaState.collectAsStateWithLifecycle()
 
+    val cruiseTypeRevision by LauncherAppConfigStore.cruiseTypeRevisionFlow.collectAsStateWithLifecycle()
+    val isConventional = remember(context, cruiseTypeRevision) {
+        LauncherAppConfigStore.isConventionalCruise(context)
+    }
+
+    val adasAccBySpeedLimitRevision by LauncherAppConfigStore.adasAccBySpeedLimitRevisionFlow
+        .collectAsStateWithLifecycle()
+    val adasAccBySpeedLimitEnabled = remember(context, adasAccBySpeedLimitRevision) {
+        LauncherAppConfigStore.adasAccBySpeedLimitEnabled(context)
+    }
+
     // 1. ACC (Cruise Control) State
     val accDisplaySpeed = adas.accSetSpeedKmh ?: tboxCruise?.toInt()?.takeIf { it > 0 }
     val accState = when {
@@ -114,6 +125,16 @@ fun LauncherAssistControlBar(
             "ACC"
         }
 
+        val accModifier = if (isConventional && !adasAccBySpeedLimitEnabled) {
+            Modifier
+                .fillMaxWidth()
+                .height(ButtonHeight)
+        } else {
+            Modifier
+                .weight(1f)
+                .height(ButtonHeight)
+        }
+
         AssistButtonChip(
             label = accLabel,
             iconRes = R.drawable.ic_launcher_cruise,
@@ -123,26 +144,36 @@ fun LauncherAssistControlBar(
             },
             iconSize = 22.dp,
             fontSize = 19.sp,
-            modifier = Modifier
-                .weight(1f)
-                .height(ButtonHeight),
+            modifier = accModifier,
         )
 
-        // Slot 2: NGP Button
-        AssistButtonChip(
-            label = stringResource(R.string.launcher_cruise_ngp_title),
-            iconRes = R.drawable.ic_adas_steering_wheel,
-            state = ngpState,
-            onClick = {
-                if (ngpState == AssistChipState.Unavailable) return@AssistButtonChip
-                LauncherCruisePresetController.launchNgpWithSetMinus(context)
-            },
-            iconSize = 22.dp,
-            fontSize = 19.sp,
-            modifier = Modifier
-                .weight(1f)
-                .height(ButtonHeight),
-        )
+        // Slot 2: NGP Button (Adaptive Cruise) OR Smart Cruise Button (Conventional Cruise with Smart Cruise enabled)
+        if (isConventional) {
+            if (adasAccBySpeedLimitEnabled) {
+                SmartAccSpeedLimitButton(
+                    adas = adas,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                    cornerRadius = 12.dp,
+                )
+            }
+        } else {
+            AssistButtonChip(
+                label = stringResource(R.string.launcher_cruise_ngp_title),
+                iconRes = R.drawable.ic_adas_steering_wheel,
+                state = ngpState,
+                onClick = {
+                    if (ngpState == AssistChipState.Unavailable) return@AssistButtonChip
+                    LauncherCruisePresetController.launchNgpWithSetMinus(context)
+                },
+                iconSize = 22.dp,
+                fontSize = 19.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(ButtonHeight),
+            )
+        }
     }
 }
 

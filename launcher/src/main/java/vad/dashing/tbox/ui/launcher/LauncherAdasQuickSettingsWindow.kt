@@ -399,7 +399,12 @@ private fun LauncherAdasQuickSettingsContent(
         visibleSubPanels
     }
 
-    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible) {
+    val cruiseTypeRevision by LauncherAppConfigStore.cruiseTypeRevisionFlow.collectAsStateWithLifecycle()
+    val isConventional = remember(context, cruiseTypeRevision) {
+        LauncherAppConfigStore.isConventionalCruise(context)
+    }
+
+    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible, isConventional) {
         val allCandidates = listOf(
             "media_player",
             "drive_mode",
@@ -421,6 +426,7 @@ private fun LauncherAdasQuickSettingsContent(
             if (candidate == "smart_panel") return@filter false
             if (candidate == "car_color" && !carColorPanelVisible) return@filter false
             if (candidate == "presets" && !accPresetsInQuickSettingsVisible) return@filter false
+            if (candidate == "smart_control" && isConventional) return@filter false
             candidate !in directlyVisiblePanels
         }
     }

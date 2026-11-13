@@ -82,6 +82,7 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("inside_temp", "Температура в салоне", isButton = false, iconRes = R.drawable.ic_launcher_temp_down),
         LauncherTopBarItemDescriptor("combined_temp", "Температура внутри / снаружи", isButton = false, iconRes = R.drawable.ic_launcher_temp_combined),
         LauncherTopBarItemDescriptor("engine_temp", "Температура двигателя", isButton = false, iconRes = R.drawable.ic_launcher_engine_temp),
+        LauncherTopBarItemDescriptor("gearbox_temp", "Температура коробки передач", isButton = false, iconRes = R.drawable.ic_launcher_gearbox_temp),
         LauncherTopBarItemDescriptor("fuel", "Бензин / Запас хода", isButton = false, iconRes = R.drawable.ic_launcher_fuel),
         LauncherTopBarItemDescriptor("avg_fuel", "Средний расход", isButton = false, iconRes = R.drawable.ic_launcher_fuel_drop),
         LauncherTopBarItemDescriptor("trip_cost", "Стоимость поездки", isButton = false, iconRes = R.drawable.ic_launcher_trip_cost),
