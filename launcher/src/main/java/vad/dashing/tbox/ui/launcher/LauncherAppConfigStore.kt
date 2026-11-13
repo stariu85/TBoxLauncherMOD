@@ -23,6 +23,7 @@ private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
+private const val KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME = "exp_hide_apps_on_home"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
@@ -388,6 +389,8 @@ internal object LauncherAppConfigStore {
     internal val showPlayerNameInWidgetRevisionFlow: StateFlow<Int> = showPlayerNameInWidgetRevision
     private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
+    private val experimentalHideAppsOnHomeRevision = MutableStateFlow(0)
+    internal val experimentalHideAppsOnHomeRevisionFlow: StateFlow<Int> = experimentalHideAppsOnHomeRevision
     private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
     internal val seatMirrorLaunchModeRevisionFlow: StateFlow<Int> = seatMirrorLaunchModeRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
@@ -727,6 +730,14 @@ internal object LauncherAppConfigStore {
     fun setSeatMirrorLaunchMode(context: Context, mode: SeatAndMirrorLaunchMode) {
         prefs(context).edit().putString(KEY_SEAT_MIRROR_LAUNCH_MODE, mode.code).apply()
         seatMirrorLaunchModeRevision.value++
+    }
+
+    fun experimentalHideAppsOnHome(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
+
+    fun setExperimentalHideAppsOnHome(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, enabled).apply()
+        experimentalHideAppsOnHomeRevision.value++
     }
 
     fun disableMediaCardCoverColor(context: Context): Boolean =
@@ -2164,6 +2175,7 @@ internal object LauncherAppConfigStore {
         mediaMiniPlayerRevision.value++
         showPlayerNameInWidgetRevision.value++
         experimentalPlayerLaunchModeRevision.value++
+        experimentalHideAppsOnHomeRevision.value++
         disableMediaCardCoverColorRevision.value++
         dockIconScaleRevision.value++
         topBarHeightRevision.value++

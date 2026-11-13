@@ -129,7 +129,7 @@ internal fun goLauncherHome(
     }
 
     val hasForeignApp = hasActiveForeignApp(context)
-    runCatching { minimizeForeignFreeformTasks(context) }
+    runCatching { minimizeForeignFreeformTasks(context, source = source) }
     LauncherActiveAppTracker.onHomePressed()
 
     runCatching { LauncherForegroundHandoff.restoreLauncherWindow() }

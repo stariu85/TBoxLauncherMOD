@@ -1400,6 +1400,9 @@
     <string name="launcher_exp_seat_mirror_mode_embedded">1. Embedded window in right panel (Embedded)</string>
     <string name="launcher_exp_seat_mirror_mode_fullscreen">2. Fullscreen mode (Fullscreen)</string>
     <string name="launcher_exp_seat_mirror_mode_overlay">3. System dialog popup (Overlay)</string>
+    <string name="launcher_vs_exp_hide_apps_on_home_title">Hide apps on Home button</string>
+    <string name="launcher_vs_exp_hide_apps_on_home_desc">Move windows off-screen without killing apps (dclwm). Background music and navigation stay alive without extra CPU load</string>
+    <string name="launcher_vs_exp_hide_apps_on_home_toggle">Hide apps instead of closing</string>
     <string name="launcher_vs_section_lights">Lights</string>
     <string name="launcher_vs_section_lights_sub">Headlights and path illumination</string>
     <string name="launcher_vs_section_model">3D Model</string>

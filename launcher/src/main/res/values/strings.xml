@@ -576,6 +576,9 @@
     <string name="launcher_exp_seat_mirror_mode_embedded">1. Встроенное окно в правой части (Embedded)</string>
     <string name="launcher_exp_seat_mirror_mode_fullscreen">2. Полноэкранный режим (Fullscreen)</string>
     <string name="launcher_exp_seat_mirror_mode_overlay">3. Системный диалог оверлей (Overlay)</string>
+    <string name="launcher_vs_exp_hide_apps_on_home_title">Скрывать приложения по кнопке «Домой»</string>
+    <string name="launcher_vs_exp_hide_apps_on_home_desc">Уводить окна за экран без закрытия приложений (dclwm). Фоновая музыка и навигация продолжают работать, а приложение не нагружает процессор</string>
+    <string name="launcher_vs_exp_hide_apps_on_home_toggle">Скрывать приложения вместо закрытия</string>
     <string name="launcher_vs_exp_welcome_lamp">Подсветка встречи / прощания</string>
     <string name="launcher_vs_exp_breathing_unlock">Дыхание при отпирании</string>
     <string name="launcher_vs_exp_breathing_lock">Дыхание при запирании</string>

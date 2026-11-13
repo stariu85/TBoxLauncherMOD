@@ -170,6 +170,32 @@ private fun UiClickSoundsSettingToggle() {
 @Composable
 internal fun LauncherHomeSettingsContent() {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val expHideAppsOnHomeRevision by LauncherAppConfigStore.experimentalHideAppsOnHomeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val isExpHideAppsOnHome = remember(context, expHideAppsOnHomeRevision) {
+        LauncherAppConfigStore.experimentalHideAppsOnHome(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_hide_apps_on_home_title),
+        active = isExpHideAppsOnHome,
+        onClick = {
+            val next = !isExpHideAppsOnHome
+            LauncherAppConfigStore.setExperimentalHideAppsOnHome(context, next)
+            if (next) {
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { vad.dashing.dclwm.Starter.ensure(context.applicationContext) }
+                }
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_hide_apps_on_home_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
     val miniPlayerVisible = remember(context, miniPlayerRevision) {

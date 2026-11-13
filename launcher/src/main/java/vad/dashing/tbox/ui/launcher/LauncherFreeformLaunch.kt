@@ -16,6 +16,9 @@ import kotlinx.coroutines.withContext
 import android.view.WindowManager
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LastAppTracker
+import vad.dashing.dclwm.Client as DclwmClient
+import vad.dashing.dclwm.Protocol as DclwmProtocol
+import vad.dashing.dclwm.Starter as DclwmStarter
 import java.lang.reflect.Method
 import java.util.concurrent.TimeUnit
 
@@ -433,6 +436,17 @@ internal fun forceFreeformBoundsByTaskId(
     }
     setTaskWindowingModeFreeform(am, taskId)
 
+    if (LauncherAppConfigStore.experimentalHideAppsOnHome(context)) {
+        val dclwmResized = runCatching {
+            DclwmClient().resize(taskId, rect.left, rect.top, rect.right, rect.bottom)
+            true
+        }.getOrDefault(false)
+        if (dclwmResized) {
+            Log.w("LauncherAppLaunch", "dclwm resize ok task=$taskId label=$label bounds=$rect")
+            return
+        }
+    }
+
     val resized = runCatching {
         val method = ActivityManager::class.java.getMethod(
             "resizeTask",
@@ -559,6 +573,16 @@ internal fun resizeRunningTaskToBounds(
 
 @Suppress("DEPRECATION")
 internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int? {
+    runCatching {
+        val client = DclwmClient()
+        val tasks = client.list()
+        for (task in tasks) {
+            if (task.packageName == packageName) {
+                return task.id
+            }
+        }
+    }
+
     // Prefer visible freeform stack via hidden getAllStackInfos (works for HOME on this HU).
     findTaskIdFromStackInfos(packageName)?.let { return it }
 
@@ -664,6 +688,40 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
 }
 
 /**
+ * Hide foreign app windows by moving their stacks off-screen (2000,2000-2200,2200)
+ * via dclwm root helper, keeping them alive in the background (audio & navigation continue).
+ */
+internal fun minimizeForeignFreeformTasksViaDclwm(
+    context: Context,
+    source: String = "unknown",
+): Boolean {
+    val client = DclwmClient()
+    val tasks = runCatching {
+        client.list()
+    }.recoverCatching { err ->
+        Log.w("LauncherAppLaunch", "dclwm client.list() failed: ${err.message}, trying Starter.ensure")
+        DclwmStarter.ensure(context.applicationContext)
+        client.list()
+    }.getOrNull() ?: return false
+
+    val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
+    var minimizedCount = 0
+    for (task in tasks) {
+        if (task.packageName == launcherPackage) continue
+        if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
+        runCatching {
+            client.minimize(task.id)
+            minimizedCount++
+            Log.w("LauncherAppLaunch", "dclwm minimized task id=${task.id} pkg=${task.packageName}")
+        }.onFailure { err ->
+            Log.w("LauncherAppLaunch", "dclwm minimize failed for task id=${task.id} pkg=${task.packageName}", err)
+        }
+    }
+    Log.w("LauncherAppLaunch", "dclwm minimize complete: minimized $minimizedCount tasks (source=$source)")
+    return true
+}
+
+/**
  * Hide/minimize freeform, full-width, or split windows when Home is pressed.
  * Moves foreign app tasks to the background (moveTaskToBack / moveTaskBackwards)
  * WITHOUT force-stopping them, so apps continue running in the background.
@@ -680,6 +738,26 @@ internal fun minimizeForeignFreeformTasks(
 
     CoroutineScope(Dispatchers.IO).launch {
         runCatching {
+            if (LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
+                val dclwmOk = runCatching {
+                    minimizeForeignFreeformTasksViaDclwm(appCtx, source)
+                }.getOrDefault(false)
+
+                if (dclwmOk) {
+                    LauncherNavLogger.logNavAction(
+                        action = "MINIMIZE_APPS_DCLWM",
+                        source = source,
+                        stateBefore = stateBefore,
+                        result = "Successfully minimized foreign tasks off-screen via dclwm",
+                    )
+                    withContext(Dispatchers.Main) {
+                        onComplete()
+                    }
+                    return@launch
+                }
+                Log.w("LauncherAppLaunch", "dclwm minimize failed or returned false, falling back to legacy cleanup")
+            }
+
             val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val taskIdsToMinimize = mutableSetOf<Int>()
 
@@ -838,6 +916,17 @@ internal fun dismissForeignFreeformTasks(
 
             // Shell fallback: am stack remove
             val removedStacks = LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
+            if (LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
+                runCatching {
+                    val client = DclwmClient()
+                    val tasks = client.list()
+                    for (task in tasks) {
+                        if (task.packageName != launcherPackage && task.packageName !in SYSTEM_PROTECTED_PACKAGES) {
+                            runCatching { client.dismiss(task.id) }
+                        }
+                    }
+                }
+            }
             LauncherNavLogger.logNavAction(
                 action = "CLOSE_APPS",
                 source = source,

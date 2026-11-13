@@ -56,6 +56,12 @@ class BackgroundService : Service() {
             tbmRepo.checkHealth()
         }
         tboxLink = TboxLinkManager(applicationContext).also { it.start() }
+        if (vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.experimentalHideAppsOnHome(applicationContext)) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { vad.dashing.dclwm.Starter.ensure(applicationContext) }
+                    .onFailure { Log.w("BackgroundService", "dclwm Starter.ensure failed: ${it.message}") }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
