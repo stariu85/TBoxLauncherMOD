@@ -60,11 +60,25 @@ internal object LauncherCruisePresetController {
     private val _isSmartAccDeactivating = MutableStateFlow(false)
     val isSmartAccDeactivating: StateFlow<Boolean> = _isSmartAccDeactivating.asStateFlow()
 
-    private fun setSmartSpeedLimitActive(active: Boolean) {
+    private var wasSmartActiveBeforeOverride = false
+    private var lastKnownSpeedLimit: Int? = null
+
+    fun setSmartSpeedLimitActive(active: Boolean) {
         smartAccExitJob?.cancel()
         smartAccExitJob = null
         _isSmartAccDeactivating.value = false
+        val changed = _isSmartSpeedLimitActive.value != active
         _isSmartSpeedLimitActive.value = active
+        if (!active) {
+            wasSmartActiveBeforeOverride = false
+        }
+        DiagFileLog.i(TAG, "Smart speed limit active set to $active")
+        if (changed) {
+            val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull
+            if (ctx != null) {
+                vad.dashing.tbox.api.DclUiStateNotifier.notifyUiStateChanged(ctx, immediate = false)
+            }
+        }
     }
 
     private var rememberedSetpointKmh: Int? = null
@@ -99,6 +113,10 @@ internal object LauncherCruisePresetController {
                     2 -> {
                         conventionalCruiseStandby = true
                         AccCruiseState.Standby
+                    }
+                    3 -> {
+                        conventionalCruiseStandby = false
+                        AccCruiseState.Override
                     }
                     else -> {
                         conventionalCruiseStandby = false
@@ -178,6 +196,28 @@ internal object LauncherCruisePresetController {
             }.collect { newState ->
                 val previousState = _accCruiseState.value
                 _accCruiseState.value = newState
+                if (previousState != newState) {
+                    val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull
+                    if (ctx != null) {
+                        vad.dashing.tbox.api.DclUiStateNotifier.notifyUiStateChanged(ctx, immediate = false)
+                    }
+                }
+
+                if (previousState == AccCruiseState.Active && newState == AccCruiseState.Override) {
+                    wasSmartActiveBeforeOverride = _isSmartSpeedLimitActive.value
+                    DiagFileLog.i(TAG, "ACC transition Active -> Override (wasSmartActiveBeforeOverride=$wasSmartActiveBeforeOverride)")
+                } else if (previousState == AccCruiseState.Override && newState == AccCruiseState.Active) {
+                    DiagFileLog.i(TAG, "ACC transition Override -> Active (wasSmartActiveBeforeOverride=$wasSmartActiveBeforeOverride)")
+                    if (wasSmartActiveBeforeOverride) {
+                        wasSmartActiveBeforeOverride = false
+                        val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull
+                        if (ctx != null) {
+                            triggerSmartAccOnOverrideExit(ctx)
+                        }
+                    }
+                } else if (newState == AccCruiseState.Off || newState == AccCruiseState.Fault) {
+                    wasSmartActiveBeforeOverride = false
+                }
 
                 if (newState == AccCruiseState.Active || newState == AccCruiseState.Override) {
                     if (smartAccExitJob?.isActive == true) {
@@ -590,7 +630,47 @@ internal object LauncherCruisePresetController {
         launchEngageToTarget(context, targetKmh, isFromSpeedLimit = false)
     }
 
+    fun currentEffectiveSpeedLimit(context: Context): Int? {
+        val navState = YandexNavRepository.state.value
+        val navSpeedVisible = LauncherAppConfigStore.navSpeedVisible(context)
+        val rawYandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
+        val yandexLimit = if (navSpeedVisible) rawYandexLimit else null
+        val tsrSystemEnabled = LauncherAppConfigStore.tsrSystemEnabled(context)
+        val classicSpeedLimitVisible = LauncherAppConfigStore.classicSpeedLimitVisible(context)
+        val adas = LauncherDevVehicleState.adasStateOrNull() ?: LauncherAdasRepository.state.value
+        val rawCameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+        val cameraLimit = if (tsrSystemEnabled && (classicSpeedLimitVisible || navSpeedVisible)) {
+            if (yandexLimit != null) null else rawCameraLimit
+        } else null
+        val effective = yandexLimit ?: cameraLimit
+        if (effective != null) {
+            lastKnownSpeedLimit = effective
+        }
+        return effective ?: lastKnownSpeedLimit
+    }
+
+    private fun triggerSmartAccOnOverrideExit(context: Context) {
+        val adasAccBySpeedLimitEnabled = LauncherAppConfigStore.adasAccBySpeedLimitEnabled(context)
+        if (!adasAccBySpeedLimitEnabled) {
+            DiagFileLog.i(TAG, "Override -> Active: adasAccBySpeedLimitEnabled is false, keeping active state only")
+            setSmartSpeedLimitActive(true)
+            return
+        }
+        val limit = currentEffectiveSpeedLimit(context) ?: lastKnownSpeedLimit
+        val offset = LauncherAppConfigStore.adasAccSpeedOffset(context)
+        if (limit != null) {
+            val targetSpeed = limit + offset
+            DiagFileLog.i(TAG, "Override -> Active: trigger Smart ACC target=$targetSpeed km/h (limit=$limit, offset=$offset)")
+            applySpeedLimitPreset(context, targetSpeed)
+        } else {
+            DiagFileLog.i(TAG, "Override -> Active: no speed limit known, keeping smart speed limit active")
+            setSmartSpeedLimitActive(true)
+        }
+    }
+
     fun applySpeedLimitPreset(context: Context, targetKmh: Int) {
+        val offset = LauncherAppConfigStore.adasAccSpeedOffset(context)
+        lastKnownSpeedLimit = targetKmh - offset
         setSmartSpeedLimitActive(true)
         launchEngageToTarget(context, targetKmh, isFromSpeedLimit = true)
     }

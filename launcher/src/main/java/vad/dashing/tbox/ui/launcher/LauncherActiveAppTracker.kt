@@ -63,6 +63,7 @@ internal object LauncherActiveAppTracker {
         if (!topActivityClass.isNullOrBlank()) {
             currentTopClass = topActivityClass
         }
+        YandexNavWindowTracker.onAppLaunched(packageName)
         Log.w(TAG, "onAppLaunched pkg=$packageName taskId=$taskId topClass=$topActivityClass fullscreen=$isFullscreen mode=$currentLaunchMode")
     }
 
@@ -100,6 +101,7 @@ internal object LauncherActiveAppTracker {
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
+        YandexNavWindowTracker.onHomePressed()
         Log.w(TAG, "onHomePressed activePkg=$activePkg previousPkg=$previousAppPackage")
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
     }
@@ -134,16 +136,19 @@ internal object LauncherActiveAppTracker {
     }
 
     fun clearActiveApp(context: Context? = null) {
-        Log.w(TAG, "clearActiveApp wasPkg=$currentAppPackage")
+        val wasPkg = currentAppPackage
+        Log.w(TAG, "clearActiveApp wasPkg=$wasPkg")
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
         currentIsFullscreen = false
         currentLaunchMode = null
+        YandexNavWindowTracker.onAppClosed(wasPkg)
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
     }
 
     fun clearAll() {
+        val wasPkg = currentAppPackage
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
@@ -151,5 +156,6 @@ internal object LauncherActiveAppTracker {
         previousAppPackage = null
         previousTaskId = null
         previousTopClass = null
+        YandexNavWindowTracker.onAppClosed(wasPkg)
     }
 }

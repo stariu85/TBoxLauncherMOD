@@ -50,13 +50,19 @@ internal object LauncherHomeStore {
             .apply()
     }
 
+    const val DEFAULT_HOME_ITEMS_RAW = "[{\"type\":\"app\",\"package\":\"ru.yandex.yandexnavi\",\"slot\":0}]"
+
     fun loadItems(context: Context): List<LauncherHomeItem> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_HOME, null)
         if (!raw.isNullOrBlank()) {
             return parseItems(raw)
         }
-        return migrateFromGrid(context)
+        val fromGrid = migrateFromGrid(context)
+        if (fromGrid.isNotEmpty()) {
+            return fromGrid
+        }
+        return parseItems(DEFAULT_HOME_ITEMS_RAW).also { saveItems(context, it) }
     }
 
     fun saveItems(context: Context, items: List<LauncherHomeItem>) {

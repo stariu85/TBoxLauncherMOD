@@ -175,7 +175,7 @@ fun LauncherCamerasSettingsContent(
         Spacer(modifier = Modifier.height(4.dp))
 
         // Option 2: "Включение боковых камер по поворотникам"
-        val canEnableTurnSignals = isInstalled && disableStockAvm
+        val canEnableTurnSignals = isInstalled
         LauncherSettingsToggleRow(
             label = stringResource(R.string.camd_turn_signals_title),
             active = turnSignalCameras,

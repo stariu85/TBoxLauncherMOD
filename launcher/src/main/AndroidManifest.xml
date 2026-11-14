@@ -157,7 +157,7 @@
             android:windowSoftInputMode="adjustNothing"
             android:resizeableActivity="false"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
             android:theme="@style/Theme.TBox.Launcher">
             <meta-data
                 android:name="flagActivityFullScreen"

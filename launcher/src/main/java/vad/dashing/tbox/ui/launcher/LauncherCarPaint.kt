@@ -28,7 +28,7 @@ object LauncherCarPaint {
         LauncherCarPaintOption("cheqi06", R.string.launcher_paint_green, 0xFF000C08.toInt()),
     )
 
-    val defaultId: String = "cheqi01"
+    val defaultId: String = "cheqi04"
 
     fun optionFor(id: String): LauncherCarPaintOption =
         options.firstOrNull { it.id == id } ?: options.first()

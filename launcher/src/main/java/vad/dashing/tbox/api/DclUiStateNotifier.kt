@@ -10,6 +10,7 @@ import vad.dashing.tbox.MainActivity
 import vad.dashing.tbox.ui.launcher.LauncherActiveAppTracker
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import vad.dashing.tbox.ui.launcher.LauncherAppLaunchMode
+import vad.dashing.tbox.ui.launcher.LauncherCruisePresetController
 import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
 import vad.dashing.tbox.ui.launcher.LauncherRightPanelOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherTopShadeWindow
@@ -195,6 +196,21 @@ object DclUiStateNotifier {
             // System info
             putBoolean("isDefaultLauncher", true)
             putBoolean("isLauncherResumed", true)
+
+            // Smart ACC / Cruise state
+            val isSmartAccActive = LauncherCruisePresetController.isSmartSpeedLimitActive.value
+            val isSmartAccConfigEnabled = if (appCtx != null) LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx) else true
+            val cruiseState = LauncherCruisePresetController.accCruiseState.value.name
+            val speedLimit = if (appCtx != null) LauncherCruisePresetController.currentEffectiveSpeedLimit(appCtx) else null
+
+            putBoolean("smartAccActive", isSmartAccActive)
+            putBoolean("isSmartAccActive", isSmartAccActive)
+            putBoolean("smartAccConfigEnabled", isSmartAccConfigEnabled)
+            putBoolean("adasAccBySpeedLimitEnabled", isSmartAccConfigEnabled)
+            putString("cruiseState", cruiseState)
+            if (speedLimit != null) {
+                putInt("effectiveSpeedLimit", speedLimit)
+            }
         }
 
         cachedUiStateBundle = bundle
@@ -266,6 +282,8 @@ object DclUiStateNotifier {
         val bottomVisible = bundle.getBoolean("bottomBarVisible")
         val adasBounds = bundle.getString("adasPanelBounds").orEmpty()
         val appBounds = bundle.getString("appAreaBounds").orEmpty()
-        return (mode + "|" + pkg + "|" + overlay + "|" + adasVisible + "|" + topVisible + "|" + bottomVisible + "|" + adasBounds + "|" + appBounds).hashCode()
+        val smartAcc = bundle.getBoolean("smartAccActive")
+        val cruise = bundle.getString("cruiseState").orEmpty()
+        return (mode + "|" + pkg + "|" + overlay + "|" + adasVisible + "|" + topVisible + "|" + bottomVisible + "|" + adasBounds + "|" + appBounds + "|" + smartAcc + "|" + cruise).hashCode()
     }
 }

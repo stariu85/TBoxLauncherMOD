@@ -202,7 +202,7 @@ object CamdCameraRepository {
 
     /**
      * Handles turn-light signals from mbCAN (type 2, eMBCAN_VEHICLE_TURNLIGHT):
-     * If stock AVM is disabled and turn-signal cameras option is enabled,
+     * If turn-signal cameras option is enabled,
      * opens the corresponding side camera (#4 left, #5 right) in the ADAS zone.
      * Uses [TurnSignalsLatch] with 2.5s hold time.
      */
@@ -210,10 +210,9 @@ object CamdCameraRepository {
         val appCtx = context.applicationContext
         appContext = appCtx
 
-        val useStock = LauncherAppConfigStore.camdUseStockAvm(appCtx)
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(appCtx)
 
-        if (useStock || !turnSignalCameras) {
+        if (!turnSignalCameras) {
             turnSignalsLatch.reset()
             if (_activeTurnSignalCamera.value != null) {
                 scope.launch {
@@ -230,10 +229,9 @@ object CamdCameraRepository {
 
     private fun handleLatchedTurnSignal(side: TurnSignalSide?) {
         val context = appContext ?: return
-        val useStock = LauncherAppConfigStore.camdUseStockAvm(context)
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
 
-        if (useStock || !turnSignalCameras) {
+        if (!turnSignalCameras) {
             if (_activeTurnSignalCamera.value != null) {
                 scope.launch {
                     val active = _activeTurnSignalCamera.value

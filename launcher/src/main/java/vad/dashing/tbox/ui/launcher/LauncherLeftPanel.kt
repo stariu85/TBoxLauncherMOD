@@ -859,10 +859,15 @@ fun LauncherLeftPanel(
 
                         // Freely Movable Navigation Overlay 3: Current Speed & Speed Limit
                         if (navSpeedVisible) {
+                            val isYandexOpen by YandexNavWindowTracker.isWindowOpen.collectAsStateWithLifecycle()
                             val yandexLimit = navState.speedLimit?.filter { it.isDigit() }?.takeIf { it.isNotEmpty() }
                             val cameraLimitRaw = (adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid })?.toString()
                             val cameraLimit = if (tsrSystemEnabled && !classicSpeedLimitVisible && yandexLimit == null) cameraLimitRaw else null
-                            val effectiveSpeedLimit = yandexLimit ?: cameraLimit
+                            val effectiveSpeedLimit = resolveEffectiveNavSpeedLimit(
+                                isYandexWindowOpen = isYandexOpen,
+                                yandexLimit = yandexLimit,
+                                cameraLimit = cameraLimit,
+                            )
                             val spWidthDp = if (effectiveSpeedLimit != null) 114.dp else 60.dp
                             val spHeightDp = 60.dp
                             val spWidthPx = with(density) { spWidthDp.toPx() }

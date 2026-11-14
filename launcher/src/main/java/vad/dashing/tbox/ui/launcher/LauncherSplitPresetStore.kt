@@ -19,9 +19,12 @@ internal object LauncherSplitPresetStore {
     private const val PREFS = "tbox_launcher_split_presets"
     private const val KEY_PRESETS = "presets_json"
 
+    const val DEFAULT_PRESETS_JSON =
+        "[{\"id\":\"4488b291-962c-4093-ab23-9ef74b448078\",\"name\":\"Новый пресет\",\"leftPackage\":\"com.google.android.deskclock\",\"rightPackage\":\"com.android.calculator2\",\"leftRatio\":0.25876837968826294},{\"id\":\"b95d8931-4b83-4d54-85d0-3d84518a8b74\",\"name\":\"New Preset\",\"leftPackage\":\"com.android.contacts\",\"rightPackage\":\"com.google.android.youtube\",\"leftRatio\":0.5034602880477905},{\"id\":\"381dac2b-4967-4a75-b338-e33b39d80659\",\"name\":\"New Preset\",\"leftPackage\":\"com.google.android.apps.messaging\",\"rightPackage\":\"com.google.android.deskclock\",\"leftRatio\":0.696075975894928},{\"id\":\"7f9a7eab-df3d-4f85-9e8f-8d323598c3ca\",\"name\":\"New Preset\",\"leftPackage\":\"com.android.contacts\",\"rightPackage\":\"com.android.calculator2\",\"leftRatio\":0.5},{\"id\":\"996c2b28-8239-46fa-aa1c-0eaac7a865ea\",\"name\":\"New Preset\",\"leftPackage\":\"com.google.android.apps.maps\",\"rightPackage\":\"com.android.settings\",\"leftRatio\":0.5}]"
+
     fun loadPresets(context: Context): List<LauncherSplitPreset> =
         runCatching {
-            val raw = prefs(context).getString(KEY_PRESETS, null) ?: return emptyList()
+            val raw = prefs(context).getString(KEY_PRESETS, null) ?: DEFAULT_PRESETS_JSON
             val array = JSONArray(raw)
             buildList {
                 for (i in 0 until array.length()) {

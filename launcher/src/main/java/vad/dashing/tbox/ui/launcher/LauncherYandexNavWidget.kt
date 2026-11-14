@@ -69,6 +69,8 @@ internal fun LauncherNavSpeedOverlay(
     val carSpeedState by CanDataRepository.carSpeed.collectAsStateWithLifecycle()
     val currentSpeedKmh = (carSpeedState ?: 0f).roundToInt().coerceAtLeast(0)
 
+    val isYandexOpen by YandexNavWindowTracker.isWindowOpen.collectAsStateWithLifecycle()
+
     val yandexLimit = navState.speedLimit?.filter { it.isDigit() }?.takeIf { it.isNotEmpty() }
 
     val classicSpeedLimitRevision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()
@@ -82,7 +84,11 @@ internal fun LauncherNavSpeedOverlay(
 
     val rawCameraLimit = (adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid })?.toString()
     val cameraLimit = if (tsrSystemEnabled && !classicSpeedLimitVisible && yandexLimit == null) rawCameraLimit else null
-    val effectiveSpeedLimit = yandexLimit ?: cameraLimit
+    val effectiveSpeedLimit = resolveEffectiveNavSpeedLimit(
+        isYandexWindowOpen = isYandexOpen,
+        yandexLimit = yandexLimit,
+        cameraLimit = cameraLimit,
+    )
 
     val offsetRevision by LauncherAppConfigStore.adasAccSpeedOffsetRevisionFlow.collectAsStateWithLifecycle()
     val speedOffset = remember(context, offsetRevision) {
@@ -144,6 +150,7 @@ internal fun LauncherNavSpeedOverlay(
 }
 
 private const val TRAFFIC_LIGHT_STALE_TIMEOUT_MS = 180_000L // 180s backup timeout
+private const val TRAFFIC_LIGHT_TIMER_STALE_TIMEOUT_MS = 3_000L // 3s backup timeout for timer
 
 /**
  * Freely movable Overlay 4: Next Traffic Light Signal & Distance.
@@ -171,11 +178,30 @@ internal fun LauncherNavTrafficLightOverlay(
         }
     }
 
+    LaunchedEffect(navState.trafficLightCountdownLastUpdateMs) {
+        if (navState.trafficLightCountdownLastUpdateMs > 0L) {
+            val elapsed = System.currentTimeMillis() - navState.trafficLightCountdownLastUpdateMs
+            val remaining = TRAFFIC_LIGHT_TIMER_STALE_TIMEOUT_MS - elapsed
+            if (remaining > 0) {
+                delay(remaining + 50L)
+            }
+            currentTimeMs = System.currentTimeMillis()
+        }
+    }
+
     val isTrafficLightStale = navState.trafficLightLastUpdateMs == 0L ||
             (currentTimeMs - navState.trafficLightLastUpdateMs) > TRAFFIC_LIGHT_STALE_TIMEOUT_MS
+
+    val effectiveCountdownSeconds = resolveEffectiveTrafficLightTimer(
+        countdownSeconds = navState.trafficLightCountdownSeconds,
+        lastUpdateMs = navState.trafficLightCountdownLastUpdateMs,
+        currentTimeMs = currentTimeMs,
+        timeoutMs = TRAFFIC_LIGHT_TIMER_STALE_TIMEOUT_MS,
+    )
+
     val hasTrafficLightData = !isTrafficLightStale &&
             (!navState.trafficLightColor.isNullOrBlank() ||
-             navState.trafficLightCountdownSeconds != null ||
+             effectiveCountdownSeconds != null ||
              (navState.trafficLightDistanceMeters != null && navState.trafficLightDistanceMeters!! > 0))
     if (!hasTrafficLightData) return
 
@@ -211,7 +237,7 @@ internal fun LauncherNavTrafficLightOverlay(
         ) {
             TrafficLightHousing(
                 colorStr = navState.trafficLightColor,
-                countdownSeconds = navState.trafficLightCountdownSeconds,
+                countdownSeconds = effectiveCountdownSeconds,
                 arrowStr = navState.trafficLightArrow,
                 scale = scale,
                 isDark = isDark,
@@ -238,6 +264,33 @@ internal fun LauncherNavTrafficLightOverlay(
             }
         }
     }
+}
+
+internal fun resolveEffectiveNavSpeedLimit(
+    isYandexWindowOpen: Boolean,
+    yandexLimit: String?,
+    cameraLimit: String?,
+): String? {
+    if (!isYandexWindowOpen) return null
+    return yandexLimit ?: cameraLimit
+}
+
+internal fun resolveEffectiveTrafficLightTimer(
+    countdownSeconds: Int?,
+    lastUpdateMs: Long,
+    currentTimeMs: Long,
+    timeoutMs: Long = TRAFFIC_LIGHT_TIMER_STALE_TIMEOUT_MS,
+): Int? {
+    if (countdownSeconds == null || lastUpdateMs <= 0L) return null
+    if (currentTimeMs >= lastUpdateMs && (currentTimeMs - lastUpdateMs) > timeoutMs) return null
+    return countdownSeconds.takeIf { it >= 0 }
+}
+
+internal fun resolveTrafficLightTimerFontSizeSp(
+    timerText: String,
+    scale: Float = 1.0f,
+): Float {
+    return if (timerText.length >= 3) 7f * scale else 10f * scale
 }
 
 @Composable
@@ -275,7 +328,7 @@ private fun TrafficLightHousing(
         else -> if (!arrowStr.isNullOrBlank() && arrowStr.length <= 3 && !arrowStr.all { it.isDigit() }) arrowStr else ""
     }
 
-    val timerText = countdownSeconds?.toString() ?: ""
+    val timerText = countdownSeconds?.takeIf { it >= 0 }?.toString() ?: ""
 
     Row(
         modifier = Modifier
@@ -324,13 +377,16 @@ private fun TrafficLightHousing(
             contentAlignment = Alignment.Center,
         ) {
             if (timerText.isNotEmpty()) {
+                val timerFontSize = resolveTrafficLightTimerFontSizeSp(timerText, scale).sp
                 @Suppress("DEPRECATION")
                 Text(
                     text = timerText,
                     color = Color.White,
-                    fontSize = (10 * scale).sp,
+                    fontSize = timerFontSize,
                     fontWeight = FontWeight.ExtraBold,
                     textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
                     style = TextStyle(
                         platformStyle = PlatformTextStyle(includeFontPadding = false),
                         lineHeightStyle = LineHeightStyle(

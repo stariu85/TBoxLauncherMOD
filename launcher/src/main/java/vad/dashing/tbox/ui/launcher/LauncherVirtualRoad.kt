@@ -1591,8 +1591,12 @@ fun LauncherSpeedLimitOverlay(
                         currentOnDragEnd()
                     } else if (!isDragging) {
                         if (enabled) {
-                            val targetSpeed = limit + offset
-                            LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
+                            if (isSmartActive) {
+                                LauncherCruisePresetController.setSmartSpeedLimitActive(false)
+                            } else {
+                                val targetSpeed = limit + offset
+                                LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
+                            }
                         }
                     }
                 }

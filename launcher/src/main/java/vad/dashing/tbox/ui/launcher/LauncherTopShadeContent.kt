@@ -785,7 +785,7 @@ private fun TopShadeTileCanvasItemView(
             "acc" -> accActive || accStandby
             "ngp" -> ngpActive || ngpStandby || ngpUnavailable
             "adas_dist" -> true
-            "smart_acc" -> isSmartActive && cruiseState == AccCruiseState.Active
+            "smart_acc" -> isSmartActive && (cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override)
             "ldw" -> isLdwActive
             "lka" -> isLkaActive
             "fcw" -> isFcwActive
@@ -2390,18 +2390,22 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
             LauncherCruisePresetController.setTimeGap(context, nextRaw)
         }
         "smart_acc" -> {
-            val navState = YandexNavRepository.state.value
-            val navSpeedVisible = LauncherAppConfigStore.navSpeedVisible(context)
-            val rawYandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
-            val yandexLimit = if (navSpeedVisible) rawYandexLimit else null
-            val adas = LauncherDevVehicleState.adasStateOrNull() ?: LauncherAdasRepository.state.value
-            val cameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
-            val effectiveLimit = yandexLimit ?: cameraLimit
-            val offset = LauncherAppConfigStore.adasAccSpeedOffset(context)
-            if (effectiveLimit != null) {
-                LauncherCruisePresetController.applySpeedLimitPreset(context, effectiveLimit + offset)
+            if (LauncherCruisePresetController.isSmartSpeedLimitActive.value) {
+                LauncherCruisePresetController.setSmartSpeedLimitActive(false)
             } else {
-                Toast.makeText(context, "Ограничение скорости не определено", Toast.LENGTH_SHORT).show()
+                val navState = YandexNavRepository.state.value
+                val navSpeedVisible = LauncherAppConfigStore.navSpeedVisible(context)
+                val rawYandexLimit = navState.speedLimit?.filter { it.isDigit() }?.toIntOrNull()
+                val yandexLimit = if (navSpeedVisible) rawYandexLimit else null
+                val adas = LauncherDevVehicleState.adasStateOrNull() ?: LauncherAdasRepository.state.value
+                val cameraLimit = adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid }
+                val effectiveLimit = yandexLimit ?: cameraLimit
+                val offset = LauncherAppConfigStore.adasAccSpeedOffset(context)
+                if (effectiveLimit != null) {
+                    LauncherCruisePresetController.applySpeedLimitPreset(context, effectiveLimit + offset)
+                } else {
+                    Toast.makeText(context, "Ограничение скорости не определено", Toast.LENGTH_SHORT).show()
+                }
             }
         }
         "ldw" -> {

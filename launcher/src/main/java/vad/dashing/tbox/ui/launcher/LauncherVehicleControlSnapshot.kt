@@ -115,8 +115,8 @@ private fun readVehicleControlSnapshot(includeExperimental: Boolean): LauncherVe
 
         val low = readProp(lightSts, "lowBeamSts") ?: readProp(lightSts, "nLowBeamSts") ?: 0
         val high = readProp(lightSts, "highBeamSts") ?: readProp(lightSts, "nHighBeamSts") ?: 0
-        // mbCAN: 2 or 1 means ON (0 = OFF)
-        (low > 0) to (high > 0)
+        // OEM CEM mbCAN: 2 = ON, 1 / 0 = OFF (High beam flash pulses 1 -> 2 -> 1)
+        (low == 2) to (high == 2)
     }.getOrNull()
 
     val pushLowBeam = vad.dashing.tbox.mbcan.UniversalCanRepository.bcmLowBeamState.value

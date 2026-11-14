@@ -477,6 +477,9 @@ private fun LauncherCarFilamentContent(
     }
     val cameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f || transition > 0.001f
 
+    val startupUptimeMs = remember { SystemClock.uptimeMillis() }
+    var initialStartupDone by remember { mutableStateOf(false) }
+
     // Trigger 3: User orbit interaction
     val orbitInteracting = settingsOrbit?.interacting == true
 
@@ -508,8 +511,17 @@ private fun LauncherCarFilamentContent(
             // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged is pressed/triggered
             customSceneLifecycleOwner.resumeScene()
             if (!isTriggerActive && !isPaintChangeRecent) {
-                // Keep rendering active for 2 seconds after camera/settings exit, action completion, or Home/Back/PreviousApp press
-                delay(2_000L)
+                // At system startup, keep rendering active for 5 seconds before freezing.
+                // For subsequent events (e.g. camera/settings exit, action completion, Home/Back press), keep active for 2 seconds.
+                val waitMs = if (!initialStartupDone) {
+                    val elapsed = SystemClock.uptimeMillis() - startupUptimeMs
+                    val remaining = (5_000L - elapsed).coerceAtLeast(0L)
+                    maxOf(remaining, 5_000L)
+                } else {
+                    2_000L
+                }
+                delay(waitMs)
+                initialStartupDone = true
                 customSceneLifecycleOwner.pauseScene()
             }
         }
@@ -651,9 +663,11 @@ private fun LauncherCarFilamentContent(
                             isTopShadeClosedRecent ||
                             isPaintChangeRecent
 
+                        val isStartupRecent = (nowMs - startupUptimeMs) < 5000L
+
                         val wasDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
 
-                        if (bodyStateChanged || isCameraSwitching || isInitializing || isActionRecent) {
+                        if (bodyStateChanged || isCameraSwitching || isInitializing || isActionRecent || isStartupRecent) {
                             lastDynamicNs = frameNs
                         }
 

@@ -48,11 +48,16 @@ internal object FreeformLaunchRegistry {
     fun remove(packageName: String) {
         packages -= packageName
         lastBounds -= packageName
+        YandexNavWindowTracker.onFreeformRemoved(packageName)
     }
 
     fun clear() {
+        val hadYandex = packages.any { isYandexNavigationPackage(it) }
         packages.clear()
         lastBounds.clear()
+        if (hadYandex) {
+            YandexNavWindowTracker.onAppClosed()
+        }
     }
 }
 
@@ -726,6 +731,9 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
         runCatching {
             client.minimize(task.id)
             minimizedCount++
+            if (isYandexNavigationPackage(task.packageName)) {
+                YandexNavWindowTracker.onWindowMinimized(task.packageName)
+            }
             Log.w("LauncherAppLaunch", "dclwm minimized task id=${task.id} pkg=${task.packageName} (previous left=${task.left})")
         }.onFailure { err ->
             Log.w("LauncherAppLaunch", "dclwm minimize failed for task id=${task.id} pkg=${task.packageName}", err)
@@ -830,13 +838,15 @@ internal fun minimizeForeignFreeformTasks(
                 }
             }
 
-            // Shell stack dismiss for OEM HU freeform / split / embedded stacks
-            val removed = LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
+            // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
+            val moved = if (tracked.isNotEmpty()) {
+                LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
+            } else 0
             LauncherNavLogger.logNavAction(
                 action = "MINIMIZE_APPS",
                 source = source,
                 stateBefore = stateBefore,
-                result = "Removed taskIds count=${taskIdsToMinimize.size}, shell removed stacks count=$removed",
+                result = "Removed taskIds count=${taskIdsToMinimize.size}, shell moved stacks count=$moved",
             )
         }.onFailure { err ->
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", err)

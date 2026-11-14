@@ -124,10 +124,10 @@ internal fun resolveBestGpsCoordinates(context: Context): Pair<Double, Double>? 
     val live = resolveLiveGpsCoordinates(context)
     if (live != null) return live
 
-    // Fallback to last saved coordinates
+    // Fallback to last saved coordinates (or default Moscow coords from backup)
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    val savedLat = prefs.getFloat(KEY_LAST_LAT, Float.MIN_VALUE).toDouble()
-    val savedLon = prefs.getFloat(KEY_LAST_LON, Float.MIN_VALUE).toDouble()
+    val savedLat = prefs.getFloat(KEY_LAST_LAT, 55.629299f).toDouble()
+    val savedLon = prefs.getFloat(KEY_LAST_LON, 37.629051f).toDouble()
     if (abs(savedLat) > 0.001 || abs(savedLon) > 0.001) {
         return Pair(savedLat, savedLon)
     }

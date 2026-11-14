@@ -76,6 +76,7 @@ class LauncherNavAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString().orEmpty()
         if (pkg.isNotEmpty()) {
             LauncherCarSurfaceRecovery.onWindowPackage(pkg)
+            YandexNavWindowTracker.onWindowStateChanged(pkg, applicationContext)
         }
     }
 

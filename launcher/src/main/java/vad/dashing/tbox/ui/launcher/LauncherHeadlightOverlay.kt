@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -10,6 +11,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.LIGHT_CONTROL_LOW_BEAM
 
 data class LauncherHeadlightBeams(
@@ -37,14 +40,18 @@ fun rememberHeadlightBeams(): LauncherHeadlightBeams {
     val simLow = LauncherDevVehicleState.lowBeam
     val simHigh = LauncherDevVehicleState.highBeam
     val snapshot = rememberLauncherVehicleControlSnapshot(enabled = !simulate)
+    val pushHighBeam by UniversalCanRepository.bcmHighBeamState.collectAsStateWithLifecycle()
+    val pushLowBeam by UniversalCanRepository.bcmLowBeamState.collectAsStateWithLifecycle()
+    val effectiveLow = if (simulate) simLow else (pushLowBeam ?: snapshot.bcmLowBeam)
+    val effectiveHigh = if (simulate) simHigh else (pushHighBeam ?: snapshot.bcmHighBeam)
     return remember(
         simulate,
         simLow,
         simHigh,
         snapshot.lightControlRaw,
         snapshot.headlightsSwitch,
-        snapshot.bcmLowBeam,
-        snapshot.bcmHighBeam,
+        effectiveLow,
+        effectiveHigh,
     ) {
         resolveHeadlightBeams(
             simulateEnabled = simulate,
@@ -52,8 +59,8 @@ fun rememberHeadlightBeams(): LauncherHeadlightBeams {
             simHighBeam = simHigh,
             lightControlRaw = snapshot.lightControlRaw,
             headlightsSwitch = snapshot.headlightsSwitch,
-            bcmLowBeam = snapshot.bcmLowBeam,
-            bcmHighBeam = snapshot.bcmHighBeam,
+            bcmLowBeam = effectiveLow,
+            bcmHighBeam = effectiveHigh,
         )
     }
 }

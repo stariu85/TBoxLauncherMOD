@@ -31,7 +31,13 @@ private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
 private const val KEY_TOP_BAR_ITEMS = "top_bar_items"
 private const val KEY_TOP_BAR_RIGHT_ITEMS = "top_bar_right_items"
-private val DEFAULT_TOP_BAR_ITEMS = listOf("temp", "fuel", "voltage", "cpu", "ram", "maintenance")
+internal val DEFAULT_TOP_BAR_ITEMS = listOf(
+    "headlights", "trunk", "mirrors", "rear_fog", "hdc", "pdc", "avm",
+    "spacer_small_1794639492605", "gps", "combined_temp", "air_quality",
+    "spacer_small_1794639527728", "avg_fuel", "fuel", "trip_cost",
+    "spacer_small_1794639591091", "engine_temp", "gearbox_temp", "voltage",
+    "spacer_small_1794639626549", "vehicle_status", "maintenance"
+)
 private val DEFAULT_TOP_BAR_RIGHT_ITEMS = listOf("connectivity", "time", "date")
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
@@ -120,27 +126,41 @@ private const val KEY_WALLPAPER_SCALE_MODE = "wallpaper_scale_mode"
 internal const val GRID_SLOTS_TOTAL_COUNT = 20
 
 internal val DEFAULT_BOTTOM_SLOTS_UNIFIED: List<String?> = listOf(
-    null,          // Slot 0 (1st cell left): Reserved for floating Home button
-    "all_apps",    // Slot 1 (2nd cell left): "Все приложения" by default
-    "seat_heat_left",
-    "seat_vent_left",
-    "temp_driver", // Occupies slots 4 and 5 (span = 2)
-    null,          // Slot 5 absorbed by temp_driver
-    "hvac_auto",
-    "temp_pass",   // Occupies slots 7 and 8 (span = 2)
-    null,          // Slot 8 absorbed by temp_pass
-    "seat_heat_right",
-    "seat_vent_right",
-    "recirc",
-    "steering_heat",
-    "windscreen_heat",
-    "front_defrost",
-    "rear_defrost",
-    "camd_test_cameras",
-    null,
-    null,
-    null,
+    null,                  // Slot 0 (1st cell left): Reserved for floating Home button
+    "all_apps",            // Slot 1
+    "car_dialer",          // Slot 2
+    null,                  // Slot 3
+    "windscreen_heat",     // Slot 4
+    "steering_heat",       // Slot 5
+    "seat_heat_left",      // Slot 6
+    "temp_driver",         // Slot 7
+    null,                  // Slot 8 absorbed by temp_driver
+    "hvac_auto",           // Slot 9
+    "hvac_fan_speed",      // Slot 10
+    "hvac_sync",           // Slot 11
+    "temp_pass",           // Slot 12
+    null,                  // Slot 13 absorbed by temp_pass
+    "seat_heat_right",     // Slot 14
+    "front_defrost",       // Slot 15
+    "rear_defrost",        // Slot 16
+    "hvac_fan_direction",  // Slot 17
+    "recirc",              // Slot 18
+    "hvac_pm25",           // Slot 19
 )
+
+internal const val DEFAULT_BOTTOM_SLOTS_PRESET_GENERAL =
+    "null,null,audio_volume,temp_driver,home_nav,hvac_auto,hvac_fan_direction,temp_pass,null,hvac_fan_speed,seat_vent_left,steering_heat,windscreen_heat,hvac_pm25,front_defrost,rear_defrost,null,undo_nav,null,null"
+internal const val DEFAULT_BOTTOM_SLOTS_PRESET_SUMMER =
+    "null,undo_nav,null,temp_pass,null,seat_vent_left,null,null,hvac_ac,recirc,hvac_auto,hvac_fan_speed,hvac_fan_direction,null,null,null,null,seat_vent_right,temp_driver,null"
+internal const val DEFAULT_BOTTOM_SLOTS_PRESET_WINTER =
+    "null,null,audio_volume,temp_driver,null,hvac_auto,hvac_fan_direction,temp_pass,null,hvac_fan_speed,seat_vent_left,steering_heat,windscreen_heat,hvac_pm25,front_defrost,rear_defrost,null,undo_nav,null,null"
+
+fun defaultBottomSlotsPreset(presetKey: String): String? = when (presetKey) {
+    "general" -> DEFAULT_BOTTOM_SLOTS_PRESET_GENERAL
+    "summer" -> DEFAULT_BOTTOM_SLOTS_PRESET_SUMMER
+    "winter" -> DEFAULT_BOTTOM_SLOTS_PRESET_WINTER
+    else -> null
+}
 
 enum class LauncherAppLaunchMode(val code: String) {
     EMBEDDED("embedded"),
@@ -200,12 +220,12 @@ enum class LauncherTireBadgeShape(val code: String) {
 
     companion object {
         fun fromCode(code: String?): LauncherTireBadgeShape = when (code) {
-            ROUND.code -> ROUND
-            else -> RECTANGLE
+            RECTANGLE.code -> RECTANGLE
+            else -> ROUND
         }
     }
 }
-internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
+internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.79613615f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
 internal const val MEDIA_CARD_HEIGHT_SCALE_DEFAULT = 1.00f
@@ -217,19 +237,19 @@ internal const val DOCK_ICON_SCALE_MAX = 2.00f
 internal const val DOCK_COLUMNS_DEFAULT = 20
 internal const val DOCK_COLUMNS_MIN = 10
 internal const val DOCK_COLUMNS_MAX = 20
-internal const val TOP_BAR_HEIGHT_DEFAULT = 32
+internal const val TOP_BAR_HEIGHT_DEFAULT = 40
 internal const val TOP_BAR_HEIGHT_MIN = 28
 internal const val TOP_BAR_HEIGHT_MAX = 72
-internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 70
+internal const val BOTTOM_BAR_HEIGHT_DEFAULT = 65
 internal const val BOTTOM_BAR_HEIGHT_MIN = 48
 internal const val BOTTOM_BAR_HEIGHT_MAX = 110
-internal const val FLOATING_HOME_SIZE_DEFAULT = 55
+internal const val FLOATING_HOME_SIZE_DEFAULT = 65
 internal const val FLOATING_HOME_SIZE_MIN = 32
 internal const val FLOATING_HOME_SIZE_MAX = 150
-internal const val CAR_MODEL_SCALE_DEFAULT = 1.00f
+internal const val CAR_MODEL_SCALE_DEFAULT = 1.804931f
 internal const val CAR_MODEL_SCALE_MIN = 1.00f
 internal const val CAR_MODEL_SCALE_MAX = 2.50f
-internal const val CAR_MODEL_DRIVE_SCALE_DEFAULT = 1.00f
+internal const val CAR_MODEL_DRIVE_SCALE_DEFAULT = 1.10f
 internal const val CAR_MODEL_DRIVE_SCALE_MIN = 0.70f
 internal const val CAR_MODEL_DRIVE_SCALE_MAX = 1.30f
 internal const val SIDEBAR_WIDTH_DEFAULT = 300
@@ -248,28 +268,28 @@ internal const val ADAS_DISTANCE_TEXT_SIZE_MAX = 40
 internal const val ADAS_ICON_SCALE_DEFAULT = 100
 internal const val ADAS_ICON_SCALE_MIN = 100
 internal const val ADAS_ICON_SCALE_MAX = 200
-internal const val ADAS_ACC_SPEED_OFFSET_DEFAULT = 10
+internal const val ADAS_ACC_SPEED_OFFSET_DEFAULT = 20
 internal const val ADAS_ACC_SPEED_OFFSET_MIN = 0
 internal const val ADAS_ACC_SPEED_OFFSET_MAX = 20
 internal const val ADAS_DISTANCE_LABEL_OFFSET_DEFAULT = 0.50f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MIN = 0.00f
 internal const val ADAS_DISTANCE_LABEL_OFFSET_MAX = 1.00f
-internal const val CLIMATE_SCALE_DEFAULT = 1.50f
+internal const val CLIMATE_SCALE_DEFAULT = 1.3485069f
 internal const val CLIMATE_SCALE_MIN = 1.05f
 internal const val CLIMATE_SCALE_MAX = 1.70f
 internal const val GRID_COLUMNS_DEFAULT = 12
 internal const val GRID_COLUMNS_MIN = 5
 internal const val GRID_COLUMNS_MAX = 20
-internal const val GRID_ROWS_DEFAULT = 7
+internal const val GRID_ROWS_DEFAULT = 8
 internal const val GRID_ROWS_MIN = 1
 internal const val GRID_ROWS_MAX = 10
-internal const val GRID_ROW_SPACING_DEFAULT = 4
+internal const val GRID_ROW_SPACING_DEFAULT = 21
 internal const val GRID_ROW_SPACING_MIN = 0
 internal const val GRID_ROW_SPACING_MAX = 32
-internal const val HOME_ICON_SCALE_DEFAULT = 1.35f
+internal const val HOME_ICON_SCALE_DEFAULT = 1.25f
 internal const val HOME_ICON_SCALE_MIN = 0.60f
 internal const val HOME_ICON_SCALE_MAX = 1.80f
-internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 90, 80, 60)
+internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(80, 100, 110, 130)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
 internal const val CRUISE_PRESET_STEP_KMH = 1
@@ -346,7 +366,7 @@ private const val KEY_SAVED_TIRE_TEMP_FL = "saved_tire_temp_fl"
 private const val KEY_SAVED_TIRE_TEMP_FR = "saved_tire_temp_fr"
 private const val KEY_SAVED_TIRE_TEMP_RL = "saved_tire_temp_rl"
 private const val KEY_SAVED_TIRE_TEMP_RR = "saved_tire_temp_rr"
-internal const val TIRE_PRESSURE_LOW_THRESHOLD_DEFAULT = 2.0f
+internal const val TIRE_PRESSURE_LOW_THRESHOLD_DEFAULT = 2.1f
 internal const val TIRE_PRESSURE_LOW_THRESHOLD_MIN = 1.8f
 internal const val TIRE_PRESSURE_LOW_THRESHOLD_MAX = 2.4f
 internal const val GRID_SLOT_COUNT = 9
@@ -600,12 +620,19 @@ internal object LauncherAppConfigStore {
 
     val activeSubPanelsState: Map<String, String> get() = activeSubPanelsMap
 
+    val DEFAULT_QUICK_SETTINGS_TOP_PANELS = listOf(
+        "car_color", "drive_mode_offroad", "smart_control", "lanes", "chassis", "radars"
+    )
+    val DEFAULT_QUICK_SETTINGS_BOTTOM_PANELS = listOf(
+        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats"
+    )
+
     fun quickSettingsTopPanels(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_QUICK_SETTINGS_TOP_PANELS, null)
         if (raw != null) {
             return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
         }
-        return emptyList()
+        return DEFAULT_QUICK_SETTINGS_TOP_PANELS
     }
 
     fun quickSettingsBottomPanels(context: Context): List<String> {
@@ -613,7 +640,7 @@ internal object LauncherAppConfigStore {
         if (raw != null) {
             return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
         }
-        return emptyList()
+        return DEFAULT_QUICK_SETTINGS_BOTTOM_PANELS
     }
 
     fun setQuickSettingsPanelsLayout(context: Context, top: List<String>, bottom: List<String>) {
@@ -638,7 +665,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun edgeGesturesWidthDp(context: Context): Int =
-        prefs(context).getInt(KEY_EDGE_GESTURES_WIDTH, 20).coerceIn(5, 50)
+        prefs(context).getInt(KEY_EDGE_GESTURES_WIDTH, 15).coerceIn(5, 50)
 
     fun setEdgeGesturesWidthDp(context: Context, widthDp: Int) {
         prefs(context).edit().putInt(KEY_EDGE_GESTURES_WIDTH, widthDp.coerceIn(5, 50)).apply()
@@ -654,7 +681,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun edgeGestureActionRight(context: Context): String =
-        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_RIGHT, EDGE_GESTURE_ACTION_HOME) ?: EDGE_GESTURE_ACTION_HOME
+        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_RIGHT, EDGE_GESTURE_ACTION_CLOSE_ALL) ?: EDGE_GESTURE_ACTION_CLOSE_ALL
 
     fun setEdgeGestureActionRight(context: Context, action: String) {
         prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_RIGHT, action).apply()
@@ -662,7 +689,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun edgeGestureActionBottom(context: Context): String =
-        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_BOTTOM, EDGE_GESTURE_ACTION_PREVIOUS_APP) ?: EDGE_GESTURE_ACTION_PREVIOUS_APP
+        prefs(context).getString(KEY_EDGE_GESTURE_ACTION_BOTTOM, EDGE_GESTURE_ACTION_HOME) ?: EDGE_GESTURE_ACTION_HOME
 
     fun setEdgeGestureActionBottom(context: Context, action: String) {
         prefs(context).edit().putString(KEY_EDGE_GESTURE_ACTION_BOTTOM, action).apply()
@@ -688,8 +715,10 @@ internal object LauncherAppConfigStore {
         LauncherCar3DModelTrigger.notifyPaintChanged()
     }
 
+    internal const val DEFAULT_MEDIA_PACKAGE = "ru.yandex.music"
+
     fun defaultMediaPackage(context: Context): String? =
-        prefs(context).getString(KEY_DEFAULT_MEDIA, null)?.takeIf { it.isNotBlank() }
+        prefs(context).getString(KEY_DEFAULT_MEDIA, DEFAULT_MEDIA_PACKAGE)?.takeIf { it.isNotBlank() }
 
     fun setDefaultMediaPackage(context: Context, packageName: String) {
         prefs(context).edit().putString(KEY_DEFAULT_MEDIA, packageName).apply()
@@ -803,7 +832,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun topBarModemCellularVisible(context: Context): Boolean =
-        prefs(context).getBoolean("top_bar_modem_cellular_visible", true)
+        prefs(context).getBoolean("top_bar_modem_cellular_visible", false)
 
     fun setTopBarModemCellularVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean("top_bar_modem_cellular_visible", visible).apply()
@@ -1073,7 +1102,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun adasAccBySpeedLimitEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED, false)
+        prefs(context).getBoolean(KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED, true)
 
     fun setAdasAccBySpeedLimitEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_ADAS_ACC_BY_SPEED_LIMIT_ENABLED, enabled).apply()
@@ -1250,7 +1279,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun tirePressureOnlyLow(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ONLY_LOW, true)
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ONLY_LOW, false)
 
     fun setTirePressureOnlyLow(context: Context, onlyLow: Boolean) {
         prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ONLY_LOW, onlyLow).apply()
@@ -1276,7 +1305,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun tirePressureAlwaysInSettings(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS, false)
+        prefs(context).getBoolean(KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS, true)
 
     fun setTirePressureAlwaysInSettings(context: Context, always: Boolean) {
         prefs(context).edit().putBoolean(KEY_TIRE_PRESSURE_ALWAYS_IN_SETTINGS, always).apply()
@@ -1359,10 +1388,10 @@ internal object LauncherAppConfigStore {
     }
 
     fun speedLimitXRatio(context: Context): Float =
-        prefs(context).getFloat(KEY_SPEED_LIMIT_X_RATIO, 0.5f).coerceIn(0f, 1f)
+        prefs(context).getFloat(KEY_SPEED_LIMIT_X_RATIO, 0.4962414f).coerceIn(0f, 1f)
 
     fun speedLimitYRatio(context: Context): Float =
-        prefs(context).getFloat(KEY_SPEED_LIMIT_Y_RATIO, 0.14f).coerceIn(0f, 1f)
+        prefs(context).getFloat(KEY_SPEED_LIMIT_Y_RATIO, 0.2085478f).coerceIn(0f, 1f)
 
     fun setSpeedLimitPosition(context: Context, xRatio: Float, yRatio: Float) {
         prefs(context).edit()
@@ -1401,10 +1430,10 @@ internal object LauncherAppConfigStore {
     }
 
     fun navSpeedXRatio(context: Context): Float =
-        prefs(context).getFloat(KEY_NAV_SPEED_X_RATIO, 0.50f).coerceIn(0f, 1f)
+        prefs(context).getFloat(KEY_NAV_SPEED_X_RATIO, 0.48231482f).coerceIn(0f, 1f)
 
     fun navSpeedYRatio(context: Context): Float =
-        prefs(context).getFloat(KEY_NAV_SPEED_Y_RATIO, 0.88f).coerceIn(0f, 1f)
+        prefs(context).getFloat(KEY_NAV_SPEED_Y_RATIO, 0.21664971f).coerceIn(0f, 1f)
 
     fun setNavSpeedPosition(context: Context, xRatio: Float, yRatio: Float) {
         prefs(context).edit()
@@ -1429,7 +1458,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun navTrafficLightScale(context: Context): Float =
-        prefs(context).getFloat(KEY_NAV_TRAFFIC_LIGHT_SCALE, 1.0f).coerceIn(0.5f, 1.5f)
+        prefs(context).getFloat(KEY_NAV_TRAFFIC_LIGHT_SCALE, 1.5f).coerceIn(0.5f, 1.5f)
 
     fun setNavTrafficLightScale(context: Context, scale: Float) {
         prefs(context).edit().putFloat(KEY_NAV_TRAFFIC_LIGHT_SCALE, scale.coerceIn(0.5f, 1.5f)).apply()
@@ -1477,7 +1506,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun climateTempColorIndication(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CLIMATE_TEMP_COLOR_INDICATION, false)
+        prefs(context).getBoolean(KEY_CLIMATE_TEMP_COLOR_INDICATION, true)
 
     fun setClimateTempColorIndication(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CLIMATE_TEMP_COLOR_INDICATION, enabled).apply()
@@ -1551,11 +1580,13 @@ internal object LauncherAppConfigStore {
 
     fun hasBottomSlotsPreset(context: Context, presetKey: String): Boolean {
         val raw = prefs(context).getString("bottom_slots_preset_$presetKey", null)
-        return !raw.isNullOrBlank()
+        if (!raw.isNullOrBlank()) return true
+        return defaultBottomSlotsPreset(presetKey) != null
     }
 
     fun applyBottomSlotsPreset(context: Context, presetKey: String): Boolean {
         val raw = prefs(context).getString("bottom_slots_preset_$presetKey", null)
+            ?: defaultBottomSlotsPreset(presetKey)
         if (raw.isNullOrBlank()) return false
         val secondRow = dockSecondRowEnabled(context)
         val cols = dockColumns(context)
@@ -1671,7 +1702,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun trunkLongPressEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_TRUNK_LONG_PRESS_ENABLED, false)
+        prefs(context).getBoolean(KEY_TRUNK_LONG_PRESS_ENABLED, true)
 
     fun setTrunkLongPressEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_TRUNK_LONG_PRESS_ENABLED, enabled).apply()
@@ -1722,7 +1753,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun fuelShowsRange(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_FUEL_SHOWS_RANGE, false)
+        prefs(context).getBoolean(KEY_FUEL_SHOWS_RANGE, true)
 
     fun setFuelShowsRange(context: Context, showRange: Boolean) {
         prefs(context).edit().putBoolean(KEY_FUEL_SHOWS_RANGE, showRange).apply()
@@ -1748,11 +1779,11 @@ internal object LauncherAppConfigStore {
     }
 
     fun lastCruiseSpeedKmh(context: Context): Int {
-        val saved = prefs(context).getInt(KEY_LAST_CRUISE_SPEED, 0)
+        val saved = prefs(context).getInt(KEY_LAST_CRUISE_SPEED, 120)
         if (saved in CRUISE_PRESET_MIN_KMH..CRUISE_PRESET_MAX_KMH) {
             return saved
         }
-        return cruisePresetsKmh(context).firstOrNull() ?: 110
+        return cruisePresetsKmh(context).firstOrNull() ?: 120
     }
 
     fun setLastCruiseSpeedKmh(context: Context, kmh: Int) {
@@ -1762,7 +1793,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun cruisePanelVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CRUISE_PANEL_VISIBLE, false)
+        prefs(context).getBoolean(KEY_CRUISE_PANEL_VISIBLE, true)
 
     fun setCruisePanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CRUISE_PANEL_VISIBLE, visible).apply()
@@ -1770,7 +1801,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun cruisePanelPosition(context: Context): String =
-        prefs(context).getString(KEY_CRUISE_PANEL_POSITION, "bottom") ?: "bottom"
+        prefs(context).getString(KEY_CRUISE_PANEL_POSITION, "top") ?: "top"
 
     fun setCruisePanelPosition(context: Context, position: String) {
         prefs(context).edit().putString(KEY_CRUISE_PANEL_POSITION, position).apply()
@@ -1802,7 +1833,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun bodyControlsPanelVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_BODY_CONTROLS_PANEL_VISIBLE, true)
+        prefs(context).getBoolean(KEY_BODY_CONTROLS_PANEL_VISIBLE, false)
 
     fun setBodyControlsPanelVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_BODY_CONTROLS_PANEL_VISIBLE, visible).apply()
@@ -1857,7 +1888,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun navSpeedVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_NAV_SPEED_VISIBLE, false)
+        prefs(context).getBoolean(KEY_NAV_SPEED_VISIBLE, true)
 
     fun setNavSpeedVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_SPEED_VISIBLE, visible).apply()
@@ -1865,7 +1896,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun navTrafficLightVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_NAV_TRAFFIC_LIGHT_VISIBLE, false)
+        prefs(context).getBoolean(KEY_NAV_TRAFFIC_LIGHT_VISIBLE, true)
 
     fun setNavTrafficLightVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_TRAFFIC_LIGHT_VISIBLE, visible).apply()
@@ -1883,7 +1914,7 @@ internal object LauncherAppConfigStore {
 
 
     fun accPresetsInQuickSettingsVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, true)
+        prefs(context).getBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, false)
 
     fun setAccPresetsInQuickSettingsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE, visible).apply()
@@ -1912,7 +1943,7 @@ internal object LauncherAppConfigStore {
             raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
                 .map { if (it == "presets") "assist" else it }.distinct().toMutableList()
         } else {
-            mutableListOf("drive_mode")
+            mutableListOf("drive_mode", "assist")
         }
         return list
     }
@@ -1922,7 +1953,7 @@ internal object LauncherAppConfigStore {
         val list = if (raw != null) {
             raw.split(',').map { it.trim() }.filter { it.isNotBlank() }
         } else {
-            listOf("media_player", "assist", "body_controls")
+            listOf("media_player")
         }
         val mapped = list.map { if (it == "presets") "assist" else it }.distinct().toMutableList()
         val top = adasTopPanels(context)
@@ -1998,7 +2029,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun launcherSettingsOnDoubleTap(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_LAUNCHER_SETTINGS_ON_DOUBLE_TAP, false)
+        prefs(context).getBoolean(KEY_LAUNCHER_SETTINGS_ON_DOUBLE_TAP, true)
 
     fun setLauncherSettingsOnDoubleTap(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_LAUNCHER_SETTINGS_ON_DOUBLE_TAP, enabled).apply()
@@ -2011,10 +2042,10 @@ internal object LauncherAppConfigStore {
     fun headlightBeamsMode(context: Context): Int {
         val prefs = prefs(context)
         if (prefs.contains(KEY_HEADLIGHT_BEAMS_MODE)) {
-            return prefs.getInt(KEY_HEADLIGHT_BEAMS_MODE, HEADLIGHT_BEAMS_DARK_THEME).coerceIn(0, 2)
+            return prefs.getInt(KEY_HEADLIGHT_BEAMS_MODE, HEADLIGHT_BEAMS_NIGHT_ONLY).coerceIn(0, 2)
         }
         val legacy = prefs.getBoolean(KEY_HEADLIGHT_BEAMS_VISIBLE, true)
-        return if (legacy) HEADLIGHT_BEAMS_DARK_THEME else HEADLIGHT_BEAMS_OFF
+        return if (legacy) HEADLIGHT_BEAMS_NIGHT_ONLY else HEADLIGHT_BEAMS_OFF
     }
 
     fun setHeadlightBeamsMode(context: Context, mode: Int) {
@@ -2028,7 +2059,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun ngpEnabled(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_NGP_ENABLED, true)
+        prefs(context).getBoolean(KEY_NGP_ENABLED, false)
 
     fun setNgpEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_NGP_ENABLED, enabled).apply()
@@ -2036,7 +2067,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun timeGapLevel(context: Context): Int =
-        prefs(context).getInt(KEY_TIME_GAP_LEVEL, 2).coerceIn(1, 3)
+        prefs(context).getInt(KEY_TIME_GAP_LEVEL, 1).coerceIn(1, 3)
 
     fun setTimeGapLevel(context: Context, level: Int) {
         val valid = level.coerceIn(1, 3)
@@ -2046,7 +2077,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun cruiseIncreaseIntervalMs(context: Context): Long =
-        prefs(context).getLong(KEY_CRUISE_INCREASE_INTERVAL, 150L).coerceIn(50L, 1500L)
+        prefs(context).getLong(KEY_CRUISE_INCREASE_INTERVAL, 50L).coerceIn(50L, 1500L)
 
     fun setCruiseIncreaseIntervalMs(context: Context, intervalMs: Long) {
         val valid = intervalMs.coerceIn(50L, 1500L)
@@ -2056,7 +2087,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun cruiseDecreaseIntervalMs(context: Context): Long =
-        prefs(context).getLong(KEY_CRUISE_DECREASE_INTERVAL, 150L).coerceIn(50L, 1500L)
+        prefs(context).getLong(KEY_CRUISE_DECREASE_INTERVAL, 50L).coerceIn(50L, 1500L)
 
     fun setCruiseDecreaseIntervalMs(context: Context, intervalMs: Long) {
         val valid = intervalMs.coerceIn(50L, 1500L)
@@ -2091,8 +2122,10 @@ internal object LauncherAppConfigStore {
     fun fullscreenPackages(context: Context): Set<String> =
         prefs(context).getStringSet(KEY_FULLSCREEN, emptySet()).orEmpty()
 
+    val DEFAULT_FULL_WIDTH_PACKAGES = setOf("vad.dashing.tbox", "com.android.settings")
+
     fun fullWidthPackages(context: Context): Set<String> =
-        prefs(context).getStringSet(KEY_FULL_WIDTH, emptySet()).orEmpty()
+        prefs(context).getStringSet(KEY_FULL_WIDTH, DEFAULT_FULL_WIDTH_PACKAGES).orEmpty()
 
     fun appLaunchMode(context: Context, packageName: String): LauncherAppLaunchMode {
         if (packageName.isBlank()) return LauncherAppLaunchMode.EMBEDDED

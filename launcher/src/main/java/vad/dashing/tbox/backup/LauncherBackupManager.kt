@@ -20,6 +20,7 @@ import org.json.JSONObject
 import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.settingsDataStore
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
+import vad.dashing.tbox.ui.launcher.LauncherFirstInstallDefaults
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -115,6 +116,35 @@ object LauncherBackupManager {
             val filePrefix = if (isAuto) "AUTO_dcl_backup_" else "dcl_backup_"
             val backupFile = File(dir, "$filePrefix$timeStamp.json")
 
+            // 0. Ensure all defaults are materialized in SharedPreferences and DataStore before export
+            LauncherFirstInstallDefaults.seedMissingDefaults(context)
+            context.settingsDataStore.edit { mutableDs ->
+                if (!mutableDs.contains(booleanPreferencesKey("auto_backup_enabled"))) {
+                    mutableDs[booleanPreferencesKey("auto_backup_enabled")] = true
+                }
+                if (!mutableDs.contains(booleanPreferencesKey("update_check_enabled"))) {
+                    mutableDs[booleanPreferencesKey("update_check_enabled")] = false
+                }
+                if (!mutableDs.contains(booleanPreferencesKey("ui_click_sounds_enabled"))) {
+                    mutableDs[booleanPreferencesKey("ui_click_sounds_enabled")] = true
+                }
+                if (!mutableDs.contains(booleanPreferencesKey("can_auto_bind_enabled"))) {
+                    mutableDs[booleanPreferencesKey("can_auto_bind_enabled")] = true
+                }
+                if (!mutableDs.contains(booleanPreferencesKey("can_auto_bind_locked"))) {
+                    mutableDs[booleanPreferencesKey("can_auto_bind_locked")] = false
+                }
+                if (!mutableDs.contains(stringPreferencesKey("head_unit_can_mode"))) {
+                    mutableDs[stringPreferencesKey("head_unit_can_mode")] = "android9_mbcan"
+                }
+                if (!mutableDs.contains(stringPreferencesKey("update_channel"))) {
+                    mutableDs[stringPreferencesKey("update_channel")] = "release"
+                }
+                if (!mutableDs.contains(intPreferencesKey("tbm_api_port"))) {
+                    mutableDs[intPreferencesKey("tbm_api_port")] = 8765
+                }
+            }
+
             val rootJson = JSONObject().apply {
                 put("version", 1)
                 put("app", "TBox Launcher")
@@ -131,8 +161,12 @@ object LauncherBackupManager {
                     "tbox_launcher_state",
                     "tbox_launcher_solar",
                     "tbox_launcher_split_preset",
+                    "tbox_launcher_split_presets",
+                    "tbox_mirror_fold_store",
+                    "launcher_top_shade_prefs",
                     "tbox_launcher_wifi_ap",
                     "tbox_launcher_history",
+                    "tbox_can_data_persistence",
                 )
 
                 val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
@@ -165,6 +199,21 @@ object LauncherBackupManager {
                 for ((key, value) in dsPrefs.asMap()) {
                     if (value != null) {
                         dataStoreJson.put(key.name, serializeTypedValue(value))
+                    }
+                }
+                val defaultDataStoreValues = mapOf<String, Any>(
+                    "auto_backup_enabled" to true,
+                    "update_check_enabled" to false,
+                    "ui_click_sounds_enabled" to true,
+                    "can_auto_bind_enabled" to true,
+                    "can_auto_bind_locked" to false,
+                    "head_unit_can_mode" to "android9_mbcan",
+                    "update_channel" to "release",
+                    "tbm_api_port" to 8765,
+                )
+                for ((keyName, defaultVal) in defaultDataStoreValues) {
+                    if (!dataStoreJson.has(keyName)) {
+                        dataStoreJson.put(keyName, serializeTypedValue(defaultVal))
                     }
                 }
                 put("datastore", dataStoreJson)

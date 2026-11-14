@@ -136,7 +136,7 @@ fun LauncherAdasStrip(
     val showLowBeam = isLowBeamBurning && !isAutoMode
     val showAutoMode = isAutoMode
     val showHmaMode = isHmaOn
-    val showManualHighBeam = !isAutoMode && isHighBeamBurning
+    val showManualHighBeam = !isHmaOn && isHighBeamBurning
     val showHeadlights = showLowBeam || showAutoMode || showHmaMode || showManualHighBeam || showAll
 
     val rawWiperStatus = if (LauncherDevVehicleState.simulateEnabled) {
@@ -232,7 +232,7 @@ fun LauncherAdasStrip(
             )
         }
         if (showHmaMode || showAll) {
-            val hmaTint = Color(0xFF22C55E)
+            val hmaTint = if (isHighBeamBurning) LauncherColors.AccentBlue else Color(0xFF22C55E)
             LauncherAdasIcon(
                 contentDescription = stringResource(R.string.launcher_adas_hma),
                 tint = hmaTint,

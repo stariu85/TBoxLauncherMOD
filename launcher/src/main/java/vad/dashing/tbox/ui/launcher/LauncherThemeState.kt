@@ -26,35 +26,20 @@ internal fun refocusYandexAppIfActive(context: Context) {
     val appCtx = context.applicationContext
     Handler(Looper.getMainLooper()).postDelayed({
         runCatching {
-            val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-
-            // 1. Check currently tracked active app first
+            // Only refocus if a Yandex navigation app is ACTUALLY currently active on screen
             val activePkg = LauncherActiveAppTracker.activeAppPackage()
-            var targetPkg: String? = if (!activePkg.isNullOrBlank() && isYandexPackage(activePkg)) {
-                activePkg
-            } else null
-
-            // 2. If activePkg is not Yandex, search running stacks/tasks for Yandex Navigation/Maps
-            if (targetPkg == null) {
-                targetPkg = YANDEX_NAVIGATION_PACKAGES.firstOrNull { pkg ->
-                    findTaskIdForPackage(am, pkg) != null
-                }
+            if (activePkg.isNullOrBlank() || !isYandexPackage(activePkg)) {
+                return@runCatching
             }
 
-            if (targetPkg != null) {
-                var taskId: Int? = if (targetPkg == activePkg) {
-                    LauncherActiveAppTracker.activeTaskId()?.takeIf { it > 0 }
-                } else null
+            val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val taskId = LauncherActiveAppTracker.activeTaskId()?.takeIf { it > 0 }
+                ?: findTaskIdForPackage(am, activePkg)
 
-                if (taskId == null) {
-                    taskId = findTaskIdForPackage(am, targetPkg)
-                }
-
-                if (taskId != null && taskId > 0) {
-                    Log.w("LauncherThemeState", "Refocusing Yandex task=$taskId pkg=$targetPkg on theme change")
-                    moveTaskToFrontId(appCtx, taskId)
-                    LauncherAmStackShell.focusTask(taskId)
-                }
+            if (taskId != null && taskId > 0) {
+                Log.w("LauncherThemeState", "Refocusing active Yandex task=$taskId pkg=$activePkg on theme change")
+                moveTaskToFrontId(appCtx, taskId)
+                LauncherAmStackShell.focusTask(taskId)
             }
         }.onFailure {
             Log.w("LauncherThemeState", "Failed to refocus Yandex on theme change", it)
@@ -76,32 +61,32 @@ object LauncherThemeState {
     private const val KEY_WINTER_THEME = "winter_theme_enabled"
     private const val KEY_WINTER_TEMP_ZERO = "winter_theme_temp_zero_enabled"
 
-    var darkTheme by mutableStateOf(true)
+    var darkTheme by mutableStateOf(false)
         private set
 
-    var autoThemeSystemEnabled by mutableStateOf(true)
+    var autoThemeSystemEnabled by mutableStateOf(false)
         private set
 
-    var autoThemeSolarEnabled by mutableStateOf(false)
+    var autoThemeSolarEnabled by mutableStateOf(true)
         private set
 
-    var themeButtonVisible by mutableStateOf(true)
+    var themeButtonVisible by mutableStateOf(false)
         private set
 
     var winterThemeEnabled by mutableStateOf(false)
         private set
 
-    var winterThemeTempBelowZeroEnabled by mutableStateOf(false)
+    var winterThemeTempBelowZeroEnabled by mutableStateOf(true)
         private set
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        darkTheme = prefs.getBoolean(KEY_DARK, true)
-        autoThemeSystemEnabled = prefs.getBoolean(KEY_AUTO_SYSTEM, true)
-        autoThemeSolarEnabled = prefs.getBoolean(KEY_AUTO_SOLAR, false)
-        themeButtonVisible = prefs.getBoolean(KEY_THEME_BUTTON_VISIBLE, true)
+        darkTheme = prefs.getBoolean(KEY_DARK, false)
+        autoThemeSystemEnabled = prefs.getBoolean(KEY_AUTO_SYSTEM, false)
+        autoThemeSolarEnabled = prefs.getBoolean(KEY_AUTO_SOLAR, true)
+        themeButtonVisible = prefs.getBoolean(KEY_THEME_BUTTON_VISIBLE, false)
         winterThemeEnabled = prefs.getBoolean(KEY_WINTER_THEME, false)
-        winterThemeTempBelowZeroEnabled = prefs.getBoolean(KEY_WINTER_TEMP_ZERO, false)
+        winterThemeTempBelowZeroEnabled = prefs.getBoolean(KEY_WINTER_TEMP_ZERO, true)
 
         if (autoThemeSystemEnabled && autoThemeSolarEnabled) {
             autoThemeSolarEnabled = false
@@ -119,8 +104,11 @@ object LauncherThemeState {
             if (coords != null) {
                 val (lat, lon) = coords
                 val isDaytime = SolarTwilightCalculator.isDaytime(latitude = lat, longitude = lon)
-                darkTheme = !isDaytime
-                HeadUnitDayNightRepository.setSystemDark(context, darkTheme)
+                val targetDark = !isDaytime
+                if (darkTheme != targetDark) {
+                    darkTheme = targetDark
+                    HeadUnitDayNightRepository.setSystemDark(context, darkTheme)
+                }
             }
         }
     }

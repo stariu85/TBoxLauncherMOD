@@ -213,6 +213,11 @@ class LauncherHomeActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyLauncherWindowFlags()
+    }
+
     private fun applyLauncherWindowFlags() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {

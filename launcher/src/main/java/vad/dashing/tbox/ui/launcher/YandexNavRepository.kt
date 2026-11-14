@@ -17,11 +17,18 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import java.util.Locale
 
@@ -48,11 +55,38 @@ data class YandexNavState(
     val trafficLightDistanceMeters: Int? = null,
     val trafficLightArrow: String? = null,
     val trafficLightLastUpdateMs: Long = 0L,
+    val trafficLightCountdownLastUpdateMs: Long = 0L,
     val lastUpdateMs: Long = 0L,
 )
 
 object YandexNavRepository {
     private const val TAG = "YandexNavRepository"
+    private const val TRAFFIC_LIGHT_TIMER_TIMEOUT_MS = 3_000L
+
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var timerStaleJob: Job? = null
+
+    private fun cancelTimerStaleJob() {
+        timerStaleJob?.cancel()
+        timerStaleJob = null
+    }
+
+    private fun scheduleTimerStaleJob(timestampMs: Long) {
+        timerStaleJob?.cancel()
+        timerStaleJob = repositoryScope.launch {
+            delay(TRAFFIC_LIGHT_TIMER_TIMEOUT_MS)
+            _state.update { current ->
+                if (current.trafficLightCountdownLastUpdateMs == timestampMs) {
+                    current.copy(
+                        trafficLightCountdownSeconds = null,
+                        trafficLightCountdownLastUpdateMs = 0L,
+                    )
+                } else {
+                    current
+                }
+            }
+        }
+    }
 
     private val _state = MutableStateFlow(YandexNavState())
     val state: StateFlow<YandexNavState> = _state.asStateFlow()
@@ -170,6 +204,7 @@ object YandexNavRepository {
                     val isCleared = (colorRaw != null && colorClean == null) || dist == -1 || dist == 0
 
                     if (isCleared) {
+                        cancelTimerStaleJob()
                         _state.update {
                             it.copy(
                                 trafficLightColor = null,
@@ -177,17 +212,38 @@ object YandexNavRepository {
                                 trafficLightDistanceMeters = null,
                                 trafficLightArrow = null,
                                 trafficLightLastUpdateMs = 0L,
+                                trafficLightCountdownLastUpdateMs = 0L,
                                 lastUpdateMs = now,
                             )
                         }
                     } else if (colorClean != null || secs != null || dist != null || arrow != null) {
+                        val validSecs = secs?.takeIf { it >= 0 }
+                        val timerExplicitlyProvided = secs != null
+                        if (validSecs != null) {
+                            scheduleTimerStaleJob(now)
+                        } else if (timerExplicitlyProvided) {
+                            cancelTimerStaleJob()
+                        }
                         _state.update {
+                            val newCountdownSeconds = when {
+                                validSecs != null -> validSecs
+                                timerExplicitlyProvided -> null
+                                it.trafficLightCountdownLastUpdateMs > 0L && (now - it.trafficLightCountdownLastUpdateMs) > TRAFFIC_LIGHT_TIMER_TIMEOUT_MS -> null
+                                else -> it.trafficLightCountdownSeconds
+                            }
+                            val newCountdownLastUpdateMs = when {
+                                validSecs != null -> now
+                                timerExplicitlyProvided -> 0L
+                                it.trafficLightCountdownLastUpdateMs > 0L && (now - it.trafficLightCountdownLastUpdateMs) > TRAFFIC_LIGHT_TIMER_TIMEOUT_MS -> 0L
+                                else -> it.trafficLightCountdownLastUpdateMs
+                            }
                             it.copy(
                                 trafficLightColor = colorClean ?: it.trafficLightColor,
-                                trafficLightCountdownSeconds = secs ?: it.trafficLightCountdownSeconds,
+                                trafficLightCountdownSeconds = newCountdownSeconds,
                                 trafficLightDistanceMeters = dist?.takeIf { d -> d > 0 } ?: it.trafficLightDistanceMeters,
                                 trafficLightArrow = arrow?.takeIf { a -> a.isNotBlank() && a != "null" } ?: it.trafficLightArrow,
                                 trafficLightLastUpdateMs = now,
+                                trafficLightCountdownLastUpdateMs = newCountdownLastUpdateMs,
                                 lastUpdateMs = now,
                             )
                         }
@@ -215,6 +271,7 @@ object YandexNavRepository {
                     }
                 }
                 "NAVIGATION_ENDED", "NAVIGATION_STOPPED" -> {
+                    cancelTimerStaleJob()
                     _state.update {
                         YandexNavState(isNavigating = false)
                     }
@@ -271,14 +328,28 @@ object YandexNavRepository {
         }.onFailure {
             Log.e(TAG, "Failed to register YandexNavRepository broadcast receiver", it)
         }
+        YandexNavWindowTracker.start(appContext)
     }
 
     fun stop(context: Context) {
         if (!registered) return
+        cancelTimerStaleJob()
+        YandexNavWindowTracker.stop()
         runCatching {
             context.applicationContext.unregisterReceiver(receiver)
             registered = false
         }
+    }
+
+    @VisibleForTesting
+    internal fun handleIntentForTest(context: Context, intent: Intent) {
+        receiver.onReceive(context, intent)
+    }
+
+    @VisibleForTesting
+    internal fun resetForTest() {
+        cancelTimerStaleJob()
+        _state.value = YandexNavState()
     }
 
     private fun extractIntExtra(intent: Intent, vararg keys: String): Int? {

@@ -37,6 +37,10 @@
 | `displayWidthPx` | Int | Ширина экрана в пикселях (например, `1920`). |
 | `displayHeightPx` | Int | Высота экрана в пикселях (например, `1080`). |
 | `notificationShadeExpanded` | Boolean | `true`, если открыта верхняя шторка управления DCL. |
+| `smartAccActive` | Boolean | `true`, если Умный ACC по знакам ограничения скорости активен в данный момент. |
+| `smartAccConfigEnabled` | Boolean | `true`, если в настройках лаунчера включена опция «Скорость АСС по ограничению скорости». |
+| `cruiseState` | String | Текущий статус круиз-контроля (`"Off"`, `"Standby"`, `"Active"`, `"Override"`, `"Fault"`). |
+| `effectiveSpeedLimit` | Int | Текущее распознанное ограничение скорости в км/ч (со знака или Навигатора), если доступно. |
 | `revision` | Long | Монотонно растущий счетчик ревизий снимка экрана. |
 | `updatedAtEpochMs` | Long | Метка времени формирования снимка (Unix epoch ms). |
 
@@ -264,3 +268,87 @@ object LocalAccessCaller {
 ```
 
 *Примечание: HTTP API Token TBox Monitor сохраняется лаунчером и автоматически сохраняется между обновлениями приложений.*
+
+---
+
+## 8. Управление Умным ACC по знакам (`setSmartAcc`, `toggleSmartAcc`, `getSmartAccState`)
+
+DCL Launcher предоставляет ContentProvider API для управления адаптацией скорости круиз-контроля под знаки ограничения скорости (Smart ACC):
+
+### 1. Включение / выключение Умного АСС (`setSmartAcc`)
+
+```kotlin
+fun setSmartAcc(
+    context: Context,
+    enabled: Boolean,
+    targetSpeed: Int? = null,
+    configEnabled: Boolean? = null
+): Boolean {
+    val extras = Bundle().apply {
+        putBoolean("enabled", enabled)
+        if (targetSpeed != null) {
+            putInt("targetSpeed", targetSpeed)
+        }
+        if (configEnabled != null) {
+            putBoolean("configEnabled", configEnabled)
+        }
+    }
+    return try {
+        val response = context.contentResolver.call(
+            Uri.parse("content://ras.dashing.tbox.launcher.api"),
+            "setSmartAcc",
+            if (enabled) "true" else "false",
+            extras
+        )
+        response?.getString("status") == "ok"
+    } catch (e: Exception) {
+        false
+    }
+}
+```
+
+### 2. Переключение Умного АСС (Toggle)
+
+Повторный вызов переключает состояние системы (включает, если была выключена; выключает, если была включена):
+
+```kotlin
+fun toggleSmartAcc(context: Context): Boolean {
+    return try {
+        val response = context.contentResolver.call(
+            Uri.parse("content://ras.dashing.tbox.launcher.api"),
+            "toggleSmartAcc",
+            null,
+            null
+        )
+        response?.getString("status") == "ok"
+    } catch (e: Exception) {
+        false
+    }
+}
+```
+
+### 3. Запрос подробного состояния Умного АСС (`getSmartAccState`)
+
+```kotlin
+fun getSmartAccState(context: Context): Bundle? {
+    return try {
+        context.contentResolver.call(
+            Uri.parse("content://ras.dashing.tbox.launcher.api"),
+            "getSmartAccState",
+            null,
+            null
+        )
+    } catch (e: Exception) {
+        null
+    }
+}
+```
+
+**Поля в ответе `getSmartAccState`:**
+- `smartAccActive` (Boolean): активен ли режим в данный момент.
+- `smartAccConfigEnabled` (Boolean): включена ли опция в настройках лаунчера.
+- `adasAccSpeedOffset` (Int): текущий оффсет к знаку скорости (например, `+19` или `+0` км/ч).
+- `cruiseState` (String): статус круиз-контроля (`"Off"`, `"Standby"`, `"Active"`, `"Override"`).
+- `effectiveSpeedLimit` (Int, опционально): текущее эффективное ограничение скорости со знака или Навигатора.
+- `targetSpeed` (Int, опционально): целевая скорость круиза с учетом оффсета (`limit + offset`).
+

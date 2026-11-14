@@ -44,7 +44,7 @@ internal object LauncherTopShadeConfigStore {
     val appearanceRevisionFlow: StateFlow<Int> = appearanceRevision
 
     fun getFontScaleOffset(context: Context): Float =
-        prefs(context).getFloat(KEY_FONT_SCALE_OFFSET, 0f).coerceIn(-50f, 50f)
+        prefs(context).getFloat(KEY_FONT_SCALE_OFFSET, 29.96199f).coerceIn(-50f, 50f)
 
     fun setFontScaleOffset(context: Context, offset: Float) {
         val clamped = offset.coerceIn(-50f, 50f)
@@ -53,7 +53,7 @@ internal object LauncherTopShadeConfigStore {
     }
 
     fun getIconScaleOffset(context: Context): Float =
-        prefs(context).getFloat(KEY_ICON_SCALE_OFFSET, 0f).coerceIn(-50f, 50f)
+        prefs(context).getFloat(KEY_ICON_SCALE_OFFSET, -16.528717f).coerceIn(-50f, 50f)
 
     fun setIconScaleOffset(context: Context, offset: Float) {
         val clamped = offset.coerceIn(-50f, 50f)
@@ -70,28 +70,28 @@ internal object LauncherTopShadeConfigStore {
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    const val DEFAULT_TILES_JSON =
+        "[{\"id\":\"brightness\",\"title\":\"Яркость\",\"type\":\"SYSTEM_TOGGLE\",\"actionKey\":\"brightness\",\"iconResName\":\"\",\"spanX\":4,\"spanY\":2,\"col\":0,\"row\":0},{\"id\":\"vol_media\",\"title\":\"Громкость Медиа\",\"type\":\"SYSTEM_TOGGLE\",\"actionKey\":\"vol_media\",\"iconResName\":\"\",\"spanX\":4,\"spanY\":2,\"col\":0,\"row\":2},{\"id\":\"vol_phone\",\"title\":\"Громкость Звонков\",\"type\":\"SYSTEM_TOGGLE\",\"actionKey\":\"vol_phone\",\"iconResName\":\"\",\"spanX\":4,\"spanY\":2,\"col\":4,\"row\":2},{\"id\":\"vol_navi\",\"title\":\"Громкость Навигации\",\"type\":\"SYSTEM_TOGGLE\",\"actionKey\":\"vol_navi\",\"iconResName\":\"\",\"spanX\":4,\"spanY\":2,\"col\":4,\"row\":0},{\"id\":\"opt_mirror_fold\",\"title\":\"Сложение зеркал\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"mirror_fold\",\"iconResName\":\"ic_widget_mirror_fold\",\"spanX\":1,\"spanY\":2,\"col\":0,\"row\":8},{\"id\":\"opt_seat_memory_1\",\"title\":\"Память DRV1\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"seat_memory_1\",\"iconResName\":\"ic_seat_memory_drv1\",\"spanX\":1,\"spanY\":2,\"col\":0,\"row\":6},{\"id\":\"opt_seat_memory_2\",\"title\":\"Память DRV2\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"seat_memory_2\",\"iconResName\":\"ic_seat_memory_drv2\",\"spanX\":1,\"spanY\":2,\"col\":1,\"row\":6},{\"id\":\"opt_seat_adjust\",\"title\":\"Настройка сиденья\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"seat_adjust\",\"iconResName\":\"ic_seat_memory_btn\",\"spanX\":1,\"spanY\":2,\"col\":2,\"row\":6},{\"id\":\"opt_wiper_maintenance\",\"title\":\"Сервис дворников\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"wiper_maintenance\",\"iconResName\":\"ic_wiper\",\"spanX\":1,\"spanY\":2,\"col\":1,\"row\":8},{\"id\":\"opt_trunk\",\"title\":\"Багажник\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"trunk_door\",\"iconResName\":\"ic_launcher_trunk\",\"spanX\":1,\"spanY\":2,\"col\":2,\"row\":8},{\"id\":\"opt_rear_fog\",\"title\":\"Задний ПТФ\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"rear_fog\",\"iconResName\":\"ic_launcher_rear_fog\",\"spanX\":1,\"spanY\":2,\"col\":3,\"row\":8},{\"id\":\"opt_esc_off\",\"title\":\"ESP Стабилизация\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"esc_off\",\"iconResName\":\"ic_esp_icon\",\"spanX\":1,\"spanY\":2,\"col\":0,\"row\":10},{\"id\":\"opt_parking_radar\",\"title\":\"Парктроник\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"parking_radar\",\"iconResName\":\"ic_widget_parking_radar\",\"spanX\":1,\"spanY\":2,\"col\":2,\"row\":10},{\"id\":\"opt_pass_seat_adjust\",\"title\":\"Пасс. сиденье\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"passenger_seat_adjust\",\"iconResName\":\"ic_seat_memory_btn\",\"spanX\":1,\"spanY\":2,\"col\":3,\"row\":6},{\"id\":\"opt_windows\",\"title\":\"Окна\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"windows\",\"iconResName\":\"ic_widget_side_window\",\"spanX\":1,\"spanY\":2,\"col\":3,\"row\":10},{\"id\":\"opt_hdc\",\"title\":\"Спуск с горы HDC\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"hdc\",\"iconResName\":\"ic_launcher_hdc\",\"spanX\":1,\"spanY\":2,\"col\":1,\"row\":10},{\"id\":\"opt_dcl_log\",\"title\":\"Запись лога (5 мин)\",\"type\":\"SYSTEM_TOGGLE\",\"actionKey\":\"dcl_log\",\"iconResName\":\"menu_icon_log\",\"spanX\":2,\"spanY\":2,\"col\":2,\"row\":4},{\"id\":\"opt_avm_camera\",\"title\":\"Камеры 360\",\"type\":\"CAR_CONTROL\",\"actionKey\":\"avm_camera\",\"iconResName\":\"ic_launcher_avm\",\"spanX\":2,\"spanY\":2,\"col\":0,\"row\":4}]"
+
     val DEFAULT_TILES = listOf(
-        TopShadeTileSpec("brightness", "Яркость", TopShadeTileType.SYSTEM_TOGGLE, "brightness", null, 2, 1, 0, 0),
-        TopShadeTileSpec("vol_media", "Громкость Медиа", TopShadeTileType.SYSTEM_TOGGLE, "vol_media", null, 2, 1, 2, 0),
-
-        TopShadeTileSpec("mirror_fold", "Зеркала", TopShadeTileType.CAR_CONTROL, "mirror_fold", "ic_widget_mirror_fold", 1, 1, 4, 0),
-        TopShadeTileSpec("seat_heat_left", "Подогрев водит.", TopShadeTileType.CAR_CONTROL, "seat_heat_left", "ic_widget_seat_heat_left", 1, 1, 5, 0),
-        TopShadeTileSpec("seat_vent_left", "Вент. водит.", TopShadeTileType.CAR_CONTROL, "seat_vent_left", "ic_widget_seat_vent_left", 1, 1, 6, 0),
-        TopShadeTileSpec("seat_heat_right", "Подогрев пасс.", TopShadeTileType.CAR_CONTROL, "seat_heat_right", "ic_widget_seat_heat_right", 1, 1, 7, 0),
-        TopShadeTileSpec("seat_vent_right", "Вент. пасс.", TopShadeTileType.CAR_CONTROL, "seat_vent_right", "ic_widget_seat_vent_right", 1, 1, 8, 0),
-        TopShadeTileSpec("steering_heat", "Руль", TopShadeTileType.CAR_CONTROL, "steering_heat", "ic_widget_steering_wheel_heat", 1, 1, 9, 0),
-        TopShadeTileSpec("windscreen_heat", "Лобовое", TopShadeTileType.CAR_CONTROL, "windscreen_heat", "ic_widget_front_windscreen_heat", 1, 1, 10, 0),
-        TopShadeTileSpec("rear_defrost", "Заднее стекло", TopShadeTileType.CAR_CONTROL, "rear_defrost", "ic_widget_rear_window_mirrors_defrost", 1, 1, 11, 0),
-
-        TopShadeTileSpec("vol_phone", "Громкость Звонков", TopShadeTileType.SYSTEM_TOGGLE, "vol_phone", null, 2, 1, 0, 1),
-        TopShadeTileSpec("vol_navi", "Громкость Навигации", TopShadeTileType.SYSTEM_TOGGLE, "vol_navi", null, 2, 1, 2, 1),
-        TopShadeTileSpec("vol_voice", "Громкость Голоса", TopShadeTileType.SYSTEM_TOGGLE, "vol_voice", null, 2, 1, 4, 1),
-        TopShadeTileSpec("headrest_speaker", "Подголовник", TopShadeTileType.SYSTEM_TOGGLE, "headrest_speaker", "ic_widget_reboot", 1, 1, 6, 1),
-        TopShadeTileSpec("hvac_auto", "Климат AUTO", TopShadeTileType.CAR_CONTROL, "hvac_auto", null, 1, 1, 7, 1),
-        TopShadeTileSpec("hvac_recirc", "Рециркуляция", TopShadeTileType.CAR_CONTROL, "hvac_recirc", "ic_widget_hvac_recirc_on", 1, 1, 8, 1),
-        TopShadeTileSpec("wifi_toggle", "Wi-Fi", TopShadeTileType.SYSTEM_TOGGLE, "wifi", "ic_widget_wifi", 1, 1, 9, 1),
-        TopShadeTileSpec("theme_toggle", "Тема День/Ночь", TopShadeTileType.SYSTEM_TOGGLE, "theme", "ic_widget_theme", 1, 1, 10, 1),
-        TopShadeTileSpec("screen_off", "Экран выкл", TopShadeTileType.SYSTEM_TOGGLE, "screen_off", "ic_widget_screen_off", 1, 1, 11, 1),
+        TopShadeTileSpec("brightness", "Яркость", TopShadeTileType.SYSTEM_TOGGLE, "brightness", null, 4, 2, 0, 0),
+        TopShadeTileSpec("vol_media", "Громкость Медиа", TopShadeTileType.SYSTEM_TOGGLE, "vol_media", null, 4, 2, 0, 2),
+        TopShadeTileSpec("vol_phone", "Громкость Звонков", TopShadeTileType.SYSTEM_TOGGLE, "vol_phone", null, 4, 2, 4, 2),
+        TopShadeTileSpec("vol_navi", "Громкость Навигации", TopShadeTileType.SYSTEM_TOGGLE, "vol_navi", null, 4, 2, 4, 0),
+        TopShadeTileSpec("opt_mirror_fold", "Сложение зеркал", TopShadeTileType.CAR_CONTROL, "mirror_fold", "ic_widget_mirror_fold", 1, 2, 0, 8),
+        TopShadeTileSpec("opt_seat_memory_1", "Память DRV1", TopShadeTileType.CAR_CONTROL, "seat_memory_1", "ic_seat_memory_drv1", 1, 2, 0, 6),
+        TopShadeTileSpec("opt_seat_memory_2", "Память DRV2", TopShadeTileType.CAR_CONTROL, "seat_memory_2", "ic_seat_memory_drv2", 1, 2, 1, 6),
+        TopShadeTileSpec("opt_seat_adjust", "Настройка сиденья", TopShadeTileType.CAR_CONTROL, "seat_adjust", "ic_seat_memory_btn", 1, 2, 2, 6),
+        TopShadeTileSpec("opt_wiper_maintenance", "Сервис дворников", TopShadeTileType.CAR_CONTROL, "wiper_maintenance", "ic_wiper", 1, 2, 1, 8),
+        TopShadeTileSpec("opt_trunk", "Багажник", TopShadeTileType.CAR_CONTROL, "trunk_door", "ic_launcher_trunk", 1, 2, 2, 8),
+        TopShadeTileSpec("opt_rear_fog", "Задний ПТФ", TopShadeTileType.CAR_CONTROL, "rear_fog", "ic_launcher_rear_fog", 1, 2, 3, 8),
+        TopShadeTileSpec("opt_esc_off", "ESP Стабилизация", TopShadeTileType.CAR_CONTROL, "esc_off", "ic_esp_icon", 1, 2, 0, 10),
+        TopShadeTileSpec("opt_parking_radar", "Парктроник", TopShadeTileType.CAR_CONTROL, "parking_radar", "ic_widget_parking_radar", 1, 2, 2, 10),
+        TopShadeTileSpec("opt_pass_seat_adjust", "Пасс. сиденье", TopShadeTileType.CAR_CONTROL, "passenger_seat_adjust", "ic_seat_memory_btn", 1, 2, 3, 6),
+        TopShadeTileSpec("opt_windows", "Окна", TopShadeTileType.CAR_CONTROL, "windows", "ic_widget_side_window", 1, 2, 3, 10),
+        TopShadeTileSpec("opt_hdc", "Спуск с горы HDC", TopShadeTileType.CAR_CONTROL, "hdc", "ic_launcher_hdc", 1, 2, 1, 10),
+        TopShadeTileSpec("opt_dcl_log", "Запись лога (5 мин)", TopShadeTileType.SYSTEM_TOGGLE, "dcl_log", "menu_icon_log", 2, 2, 2, 4),
+        TopShadeTileSpec("opt_avm_camera", "Камеры 360", TopShadeTileType.CAR_CONTROL, "avm_camera", "ic_launcher_avm", 2, 2, 0, 4),
     )
 
     fun getTiles(context: Context): List<TopShadeTileSpec> {

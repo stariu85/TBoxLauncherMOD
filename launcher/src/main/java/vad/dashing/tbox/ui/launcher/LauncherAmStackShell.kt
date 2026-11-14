@@ -148,7 +148,7 @@ internal object LauncherAmStackShell {
                     FreeformLaunchRegistry.remove(pkg)
                     Log.w(TAG, "removed freeform stack=${s.stackId} pkg=$pkg mode=${s.windowingMode}")
                 }
-            } else {
+            } else if (packages.isNotEmpty() && pkg in packages) {
                 if (removeStack(s.stackId)) {
                     removed++
                     FreeformLaunchRegistry.remove(pkg)

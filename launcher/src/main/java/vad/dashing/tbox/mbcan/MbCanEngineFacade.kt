@@ -177,6 +177,12 @@ object MbCanEngineFacade {
             unRegistGaspedStatusListenerMethod = runCatching {
                 engineClass.getMethod("unRegistIMBCanVehicleGaspedStatusListener")
             }.getOrNull()
+            registVehicleListenerMethod = runCatching {
+                engineClass.getMethod("registVehicleListener", Class.forName("com.mengbo.mbCan.interfaces.IMBVehicleListener"))
+            }.getOrNull()
+            unRegistVehicleListenerMethod = runCatching {
+                engineClass.getMethod("unRegistVehicleListener")
+            }.getOrNull()
             val dataTypeClass = Class.forName(DATA_TYPE_CLASS) as Class<out Enum<*>>
             cfgVehicleDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_VEHICLE")
             cfgAudioDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_AUDIO")
@@ -186,6 +192,7 @@ object MbCanEngineFacade {
             runCatching { unsubscribeUnusedChannels() }
             runCatching { syncGaspedStatusListener(true) }
             runCatching { ensureHardKeyListener() }
+            runCatching { ensureVehicleListener() }
             CcsRememberedSetpoint.ensureStarted()
         } catch (t: Throwable) {
             initialized = false
@@ -522,27 +529,40 @@ object MbCanEngineFacade {
                         val low = if (lightSts != null) {
                             runCatching {
                                 (getCachedZeroArgMethod(lightSts.javaClass, "getLowBeamSts")?.invoke(lightSts) as? Number)?.toInt()
+                            }.getOrNull() ?: runCatching {
+                                val field = lightSts.javaClass.getDeclaredField("nLowBeamSts")
+                                field.isAccessible = true
+                                (field.get(lightSts) as? Number)?.toInt()
                             }.getOrNull() ?: 0
                         } else 0
                         val high = if (lightSts != null) {
                             runCatching {
                                 (getCachedZeroArgMethod(lightSts.javaClass, "getHighBeamSts")?.invoke(lightSts) as? Number)?.toInt()
+                            }.getOrNull() ?: runCatching {
+                                val field = lightSts.javaClass.getDeclaredField("nHighBeamSts")
+                                field.isAccessible = true
+                                (field.get(lightSts) as? Number)?.toInt()
                             }.getOrNull() ?: 0
                         } else 0
                         val hmaVal = runCatching {
                             (getCachedZeroArgMethod(bcm.javaClass, "getHMA_Status")?.invoke(bcm) as? Number)?.toInt()
                         }.getOrNull() ?: 0
 
-                        val key = (if (low > 0) 1 else 0) or (if (high > 0) 2 else 0) or (if (hmaVal > 0) 4 else 0)
+                        // OEM CEM A9: 2 = ON, 1 / 0 = OFF (High beam flash pulses 1 -> 2 -> 1)
+                        val lowOn = low == 2
+                        val highOn = high == 2
+                        val hmaOn = hmaVal == 2
+
+                        val key = (if (lowOn) 1 else 0) or (if (highOn) 2 else 0) or (if (hmaOn) 4 else 0)
                         if (lastBcmLightKey == key) {
                             return@InvocationHandler null
                         }
                         lastBcmLightKey = key
 
                         MbCanRepository.scheduleBcmLightPush(
-                            lowBeam = low > 0,
-                            highBeam = high > 0,
-                            hmaOn = hmaVal > 0,
+                            lowBeam = lowOn,
+                            highBeam = highOn,
+                            hmaOn = hmaOn,
                         )
                     }
                 }
@@ -1007,16 +1027,7 @@ object MbCanEngineFacade {
         gaspedStatusListenerProxy = null
     }
 
-    /**
-     * Registers [com.mengbo.mbCan.interfaces.IMBVehicleListener] for turn signal events.
-     */
-    @Synchronized
-    fun setTurnLightCallback(callback: ((left: Byte, right: Byte) -> Unit)?) {
-        turnLightCallback = callback
-        if (callback == null) {
-            unregisterVehicleListener()
-            return
-        }
+    fun ensureVehicleListener() {
         if (vehicleListenerProxy != null) return
         if (ensureInitialized() !is MbCanAvailability.Available) return
         val inst = engineInstance ?: return
@@ -1040,11 +1051,24 @@ object MbCanEngineFacade {
         vehicleListenerProxy = proxy
         try {
             registVehicleListenerMethod?.invoke(inst, proxy)
-            Log.i(LOG_TAG, "setTurnLightCallback: registered IMBVehicleListener")
+            Log.i(LOG_TAG, "ensureVehicleListener: registered IMBVehicleListener")
         } catch (t: Throwable) {
-            Log.w(LOG_TAG, "setTurnLightCallback failed: ${t.message}")
+            Log.w(LOG_TAG, "ensureVehicleListener failed: ${t.message}")
             vehicleListenerProxy = null
         }
+    }
+
+    /**
+     * Registers [com.mengbo.mbCan.interfaces.IMBVehicleListener] for turn signal events.
+     */
+    @Synchronized
+    fun setTurnLightCallback(callback: ((left: Byte, right: Byte) -> Unit)?) {
+        turnLightCallback = callback
+        if (callback == null) {
+            unregisterVehicleListener()
+            return
+        }
+        ensureVehicleListener()
     }
 
     @Synchronized

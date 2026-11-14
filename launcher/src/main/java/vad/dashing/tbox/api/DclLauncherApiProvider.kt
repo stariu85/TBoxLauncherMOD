@@ -11,7 +11,9 @@ import android.os.Looper
 import android.os.Process
 import android.util.Log
 import vad.dashing.tbox.ui.launcher.LauncherActiveAppTracker
+import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import vad.dashing.tbox.ui.launcher.LauncherAppLaunchMode
+import vad.dashing.tbox.ui.launcher.LauncherCruisePresetController
 import vad.dashing.tbox.ui.launcher.launchLauncherAppEmbedded
 import vad.dashing.tbox.ui.launcher.launchLauncherAppFullscreen
 import vad.dashing.tbox.ui.launcher.launchLauncherAppFullWidth
@@ -25,8 +27,11 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Methods:
  * - `launchApp`: Opens applications in specified mode (`fullscreen` or `app_area`).
- * - `getUiState` / `getUiChrome`: Returns desktop geometry, panel heights, ADAS bounds, and screen mode.
+ * - `getUiState` / `getUiChrome`: Returns desktop geometry, panel heights, ADAS bounds, screen mode and Smart ACC state.
  * - `getCapabilities`: Returns launcher API capabilities.
+ * - `setSmartAcc` / `setSmartSpeedLimit`: Enables or disables Smart ACC by speed limit signs.
+ * - `toggleSmartAcc` / `toggleSmartSpeedLimit`: Toggles Smart ACC on/off.
+ * - `getSmartAccState`: Returns detailed Smart ACC status and speed limit info.
  */
 class DclLauncherApiProvider : ContentProvider() {
 
@@ -55,6 +60,9 @@ class DclLauncherApiProvider : ContentProvider() {
             "launchApp" -> handleLaunchApp(arg, extras)
             "getUiState", "getUiChrome" -> handleGetUiState()
             "getCapabilities" -> handleGetCapabilities()
+            "setSmartAcc", "setSmartSpeedLimit" -> handleSetSmartAcc(arg, extras)
+            "toggleSmartAcc", "toggleSmartSpeedLimit" -> handleToggleSmartAcc()
+            "getSmartAccState", "getSmartSpeedLimitState" -> handleGetSmartAccState()
             else -> Bundle().apply {
                 putString("status", "error")
                 putString("errorCode", "unsupported")
@@ -157,6 +165,126 @@ class DclLauncherApiProvider : ContentProvider() {
         return DclUiStateNotifier.getUiState(ctx)
     }
 
+    private fun handleSetSmartAcc(arg: String?, extras: Bundle?): Bundle {
+        val appCtx = context?.applicationContext ?: return Bundle().apply {
+            putString("status", "error")
+            putString("errorCode", "internal")
+            putString("message", "Application context is null")
+        }
+
+        val enabled = when {
+            extras?.containsKey("enabled") == true -> extras.getBoolean("enabled")
+            extras?.containsKey("active") == true -> extras.getBoolean("active")
+            arg != null -> arg.equals("true", ignoreCase = true) || arg == "1" || arg.equals("on", ignoreCase = true) || arg.equals("enable", ignoreCase = true)
+            else -> true
+        }
+
+        val targetSpeed = extras?.getInt("targetSpeed")?.takeIf { it in 30..160 }
+
+        if (extras?.containsKey("configEnabled") == true) {
+            LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, extras.getBoolean("configEnabled"))
+        }
+
+        Handler(Looper.getMainLooper()).post {
+            try {
+                if (enabled) {
+                    LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, true)
+                    if (targetSpeed != null) {
+                        LauncherCruisePresetController.applySpeedLimitPreset(appCtx, targetSpeed)
+                    } else {
+                        val limit = LauncherCruisePresetController.currentEffectiveSpeedLimit(appCtx)
+                        val offset = LauncherAppConfigStore.adasAccSpeedOffset(appCtx)
+                        if (limit != null) {
+                            LauncherCruisePresetController.applySpeedLimitPreset(appCtx, limit + offset)
+                        } else {
+                            LauncherCruisePresetController.setSmartSpeedLimitActive(true)
+                        }
+                    }
+                } else {
+                    LauncherCruisePresetController.setSmartSpeedLimitActive(false)
+                    if (extras?.getBoolean("disableSetting") == true || arg == "disable_setting") {
+                        LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, false)
+                    }
+                }
+                DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set smart ACC state to $enabled", e)
+            }
+        }
+
+        return Bundle().apply {
+            putString("status", "ok")
+            putBoolean("requestedEnabled", enabled)
+            putBoolean("smartAccActive", enabled)
+            putBoolean("smartAccConfigEnabled", LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx))
+        }
+    }
+
+    private fun handleToggleSmartAcc(): Bundle {
+        val appCtx = context?.applicationContext ?: return Bundle().apply {
+            putString("status", "error")
+            putString("errorCode", "internal")
+            putString("message", "Application context is null")
+        }
+
+        val wasActive = LauncherCruisePresetController.isSmartSpeedLimitActive.value
+        val willBeActive = !wasActive
+
+        Handler(Looper.getMainLooper()).post {
+            try {
+                if (wasActive) {
+                    LauncherCruisePresetController.setSmartSpeedLimitActive(false)
+                } else {
+                    LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, true)
+                    val limit = LauncherCruisePresetController.currentEffectiveSpeedLimit(appCtx)
+                    val offset = LauncherAppConfigStore.adasAccSpeedOffset(appCtx)
+                    if (limit != null) {
+                        LauncherCruisePresetController.applySpeedLimitPreset(appCtx, limit + offset)
+                    } else {
+                        LauncherCruisePresetController.setSmartSpeedLimitActive(true)
+                    }
+                }
+                DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to toggle smart ACC state", e)
+            }
+        }
+
+        return Bundle().apply {
+            putString("status", "ok")
+            putBoolean("smartAccActive", willBeActive)
+            putBoolean("smartAccConfigEnabled", LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx))
+        }
+    }
+
+    private fun handleGetSmartAccState(): Bundle {
+        val appCtx = context?.applicationContext ?: return Bundle().apply {
+            putString("status", "error")
+            putString("errorCode", "internal")
+            putString("message", "Application context is null")
+        }
+
+        val limit = LauncherCruisePresetController.currentEffectiveSpeedLimit(appCtx)
+        val offset = LauncherAppConfigStore.adasAccSpeedOffset(appCtx)
+        val isSmartActive = LauncherCruisePresetController.isSmartSpeedLimitActive.value
+        val configEnabled = LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx)
+        val cruiseState = LauncherCruisePresetController.accCruiseState.value.name
+
+        return Bundle().apply {
+            putString("status", "ok")
+            putBoolean("smartAccActive", isSmartActive)
+            putBoolean("isSmartAccActive", isSmartActive)
+            putBoolean("smartAccConfigEnabled", configEnabled)
+            putBoolean("adasAccBySpeedLimitEnabled", configEnabled)
+            putInt("adasAccSpeedOffset", offset)
+            putString("cruiseState", cruiseState)
+            if (limit != null) {
+                putInt("effectiveSpeedLimit", limit)
+                putInt("targetSpeed", limit + offset)
+            }
+        }
+    }
+
     private fun handleGetCapabilities(): Bundle {
         return Bundle().apply {
             putString("status", "ok")
@@ -168,6 +296,8 @@ class DclLauncherApiProvider : ContentProvider() {
             putBoolean("uiStateEvents", true)
             putBoolean("adasPanel", true)
             putBoolean("splitSupported", true)
+            putBoolean("smartAccControl", true)
+            putBoolean("smartAccBySpeedLimit", true)
             putString("screenModes", "home,single,full_width,fullscreen,split")
         }
     }

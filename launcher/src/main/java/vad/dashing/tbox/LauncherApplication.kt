@@ -20,6 +20,7 @@ class LauncherApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppContextHolder.init(this)
+        vad.dashing.tbox.ui.launcher.LauncherFirstInstallDefaults.applyIfNeeded(this)
         DclLogRecorder.stopLogging("Launcher restarted")
         DiagFileLog.install(this)
         val settings = SettingsManager(this)

@@ -74,7 +74,7 @@ class SettingsManager(private val context: Context) {
     val launcherAppIconRevisionFlow: Flow<Int> = _iconRevision.asStateFlow()
 
     val autoBackupEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_AUTO_BACKUP_ENABLED] ?: false
+        prefs[KEY_AUTO_BACKUP_ENABLED] ?: true
     }
 
     val uiClickSoundsEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
@@ -98,7 +98,7 @@ class SettingsManager(private val context: Context) {
     }
 
     val updateCheckEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_UPDATE_CHECK_ENABLED] ?: true
+        prefs[KEY_UPDATE_CHECK_ENABLED] ?: false
     }
 
     val tbmApiTokenFlow: Flow<String?> = context.settingsDataStore.data.map { prefs ->
