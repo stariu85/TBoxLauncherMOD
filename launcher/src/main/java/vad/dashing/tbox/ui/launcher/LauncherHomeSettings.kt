@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import vad.dashing.tbox.GearboxType
 import vad.dashing.tbox.valueToString
 import kotlin.math.roundToInt
 import kotlin.math.roundToInt
@@ -1830,8 +1831,8 @@ fun CruiseControlSettingsContent() {
 
     val gearboxTypeRevision by LauncherAppConfigStore.gearboxTypeRevisionFlow
         .collectAsStateWithLifecycle()
-    val is6Dct = remember(context, gearboxTypeRevision) {
-        LauncherAppConfigStore.is6DctGearbox(context)
+    val gearboxType = remember(context, gearboxTypeRevision) {
+        LauncherAppConfigStore.gearboxType(context)
     }
 
     val driveModeGlowRevision by LauncherAppConfigStore.driveModeGlowRevisionFlow
@@ -1958,17 +1959,25 @@ fun CruiseControlSettingsContent() {
             ) {
                 LauncherSettingsOptionButton(
                     text = "7DCT",
-                    selected = !is6Dct,
+                    selected = gearboxType == GearboxType.DCT_7,
                     onClick = {
-                        LauncherAppConfigStore.set6DctGearbox(context, false)
+                        LauncherAppConfigStore.setGearboxType(context, GearboxType.DCT_7)
                     },
                     modifier = Modifier.weight(1f),
                 )
                 LauncherSettingsOptionButton(
                     text = "6DCT",
-                    selected = is6Dct,
+                    selected = gearboxType == GearboxType.DCT_6,
                     onClick = {
-                        LauncherAppConfigStore.set6DctGearbox(context, true)
+                        LauncherAppConfigStore.setGearboxType(context, GearboxType.DCT_6)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                LauncherSettingsOptionButton(
+                    text = "Manual",
+                    selected = gearboxType == GearboxType.MANUAL,
+                    onClick = {
+                        LauncherAppConfigStore.setGearboxType(context, GearboxType.MANUAL)
                     },
                     modifier = Modifier.weight(1f),
                 )

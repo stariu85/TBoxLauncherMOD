@@ -45,6 +45,8 @@ internal object LauncherCruisePresetController {
     private const val POST_CONVERGE_VERIFY_MS = 1000L
     private const val MAX_PULSES = 50
     private const val SMART_ACC_DEACTIVATE_DELAY_MS = 3000L
+    private const val CCS_ENGAGE_TIMEOUT_MS = 4000L
+    private const val CCS_STATE_POLL_MS = 50L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
@@ -88,6 +90,15 @@ internal object LauncherCruisePresetController {
     private fun isConventionalCruise(): Boolean {
         val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull ?: return false
         return LauncherAppConfigStore.isConventionalCruise(ctx)
+    }
+
+    private suspend fun waitPredicate(timeoutMs: Long, predicate: () -> Boolean): Boolean {
+        val start = SystemClock.uptimeMillis()
+        while (SystemClock.uptimeMillis() - start < timeoutMs) {
+            if (predicate()) return true
+            delay(CCS_STATE_POLL_MS)
+        }
+        return predicate()
     }
 
     private fun isBrakeActive(): Boolean {
@@ -348,11 +359,18 @@ internal object LauncherCruisePresetController {
                 // Enable: Off -> Standby
                 if (state == AccCruiseState.Off) {
                     DiagFileLog.i(TAG, "Cruise Off -> pulse MFS_CRUISE_CONTROL")
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
                     pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
 
                     if (isConventionalCruise()) {
-                        delay(250L)
-                        state = AccCruiseState.Standby
+                        val waitStart = SystemClock.uptimeMillis()
+                        while (SystemClock.uptimeMillis() - waitStart < CCS_ENGAGE_TIMEOUT_MS) {
+                            delay(CCS_STATE_POLL_MS)
+                            state = currentAccCruiseState()
+                            if (state == AccCruiseState.Standby || state == AccCruiseState.Active) break
+                        }
                     } else {
                         val waitStart = SystemClock.uptimeMillis()
                         while (SystemClock.uptimeMillis() - waitStart < 4000L) {
@@ -366,8 +384,11 @@ internal object LauncherCruisePresetController {
                 // Activate: Standby -> Active
                 if (state == AccCruiseState.Standby) {
                     DiagFileLog.i(TAG, "Cruise Standby -> pulse MFS_SET_MINUS")
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                    delay(250L)
+                    delay(if (isConventionalCruise()) 100L else 250L)
                     state = currentAccCruiseState()
                 }
 
@@ -470,23 +491,62 @@ internal object LauncherCruisePresetController {
                     }
                 }
                 AccCruiseState.Off -> {
-                    DiagFileLog.i(TAG, "Single tap in Off -> pulse MFS_CRUISE_CONTROL (210) then delay 500ms -> pulse MFS_SET_MINUS (214)")
-                    pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
-                    delay(500L)
-                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
-                    updateRememberedSetpoint(context, speed)
                     if (isConventionalCruise()) {
-                        conventionalCruiseStandby = false
+                        DiagFileLog.i(TAG, "Single tap in Off (CCS) -> pulse MFS_CRUISE_CONTROL (210), wait Standby/Active, then pulse MFS_SET_MINUS (214)")
+                        CcsRememberedSetpoint.markOurPulse()
+                        pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
+                        val enteredReady = waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                            val s = currentAccCruiseState()
+                            s == AccCruiseState.Standby || s == AccCruiseState.Active
+                        }
+                        if (!enteredReady) {
+                            DiagFileLog.w(TAG, "CCS enable timeout waiting for Standby/Active")
+                            return@launchExclusive
+                        }
+                        if (currentAccCruiseState() == AccCruiseState.Active) {
+                            DiagFileLog.i(TAG, "CCS became Active immediately")
+                            val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                            updateRememberedSetpoint(context, speed)
+                            conventionalCruiseStandby = false
+                            return@launchExclusive
+                        }
+                        if (currentAccCruiseState() == AccCruiseState.Standby) {
+                            delay(50L)
+                            CcsRememberedSetpoint.markOurPulse()
+                            pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                            val becameActive = waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                                currentAccCruiseState() == AccCruiseState.Active
+                            }
+                            DiagFileLog.i(TAG, "CCS SET- finished becameActive=$becameActive")
+                            val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                            updateRememberedSetpoint(context, speed)
+                            conventionalCruiseStandby = false
+                        }
+                    } else {
+                        DiagFileLog.i(TAG, "Single tap in Off -> pulse MFS_CRUISE_CONTROL (210) then delay 500ms -> pulse MFS_SET_MINUS (214)")
+                        pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
+                        delay(500L)
+                        pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                        val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                        updateRememberedSetpoint(context, speed)
                     }
                 }
                 AccCruiseState.Standby -> {
-                    DiagFileLog.i(TAG, "Single tap in Standby -> pulse MFS_SET_MINUS (214)")
-                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
-                    updateRememberedSetpoint(context, speed)
                     if (isConventionalCruise()) {
+                        DiagFileLog.i(TAG, "Single tap in Standby (CCS) -> pulse MFS_SET_MINUS (214)")
+                        CcsRememberedSetpoint.markOurPulse()
+                        pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                        waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                            currentAccCruiseState() == AccCruiseState.Active
+                        }
+                        val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                        updateRememberedSetpoint(context, speed)
                         conventionalCruiseStandby = false
+                    } else {
+                        DiagFileLog.i(TAG, "Single tap in Standby -> pulse MFS_SET_MINUS (214)")
+                        pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                        val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                        updateRememberedSetpoint(context, speed)
                     }
                 }
             }

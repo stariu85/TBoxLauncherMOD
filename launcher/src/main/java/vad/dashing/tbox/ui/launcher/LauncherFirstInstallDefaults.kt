@@ -197,6 +197,7 @@ object LauncherFirstInstallDefaults {
         putIfMissing("smart_panel_enabled", false)
         putIfMissing("drive_mode_glow_visible", true)
         putIfMissing("gearbox_type_is_6dct", false)
+        putIfMissing("launcher_gearbox_type", "7dct")
         putIfMissing("cruise_control_type", 0)
         putIfMissing("cruise_engage_action", 0)
         putIfMissing("fuel_price_rub", 55.0f)

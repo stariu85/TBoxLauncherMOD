@@ -254,7 +254,7 @@
     <string name="launcher_assist_panel_visible_desc">Show quick activation panel for cruise control (ACC &amp; NGP) in left zone</string>
     <string name="launcher_reset_adas_panels_layout_title">Reset ADAS panels layout</string>
     <string name="launcher_gearbox_type_title">Transmission type</string>
-    <string name="launcher_gearbox_type_desc">Select drive mode display and switching algorithm (7DCT or 6DCT)</string>
+    <string name="launcher_gearbox_type_desc">Select drive mode display and switching algorithm (7DCT, 6DCT or Manual)</string>
     <string name="launcher_cruise_type_title">Cruise control type</string>
     <string name="launcher_cruise_type_desc">Select vehicle cruise control type: adaptive (with radar) or standard</string>
     <string name="launcher_cruise_type_adaptive">Adaptive</string>

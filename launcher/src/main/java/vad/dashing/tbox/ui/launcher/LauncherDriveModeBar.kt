@@ -67,6 +67,7 @@ fun LauncherDriveModeBar(
     val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
     val gearBoxDriveMode by canViewModel.gearBoxDriveMode.collectAsStateWithLifecycle()
     val is6Dct by canViewModel.is6DctGearbox.collectAsStateWithLifecycle()
+    val isManual by canViewModel.isManualGearbox.collectAsStateWithLifecycle()
 
     val resolvedLabel = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct) {
         resolveDriveModeDisplayLabel(
@@ -98,7 +99,8 @@ fun LauncherDriveModeBar(
     val isMud = activeMode == "MUD" || activeMode == "ГРЯЗЬ"
     val isSand = activeMode == "SAND" || activeMode == "ПЕСОК"
 
-    val startPage = initialPage ?: (if (isSnow || isMud || isSand) 1 else 0)
+    val shouldStartOnPage1 = if (isManual) (isMud || isSand) else (isSnow || isMud || isSand)
+    val startPage = initialPage ?: (if (shouldStartOnPage1) 1 else 0)
     val pagerState = rememberPagerState(initialPage = startPage) { 2 }
     LaunchedEffect(pagerState.currentPage, reportSubPanel) {
         if (reportSubPanel) {
@@ -107,9 +109,14 @@ fun LauncherDriveModeBar(
         }
     }
 
-    LaunchedEffect(isSnow, isMud, isSand) {
-        if (initialPage == null && (isSnow || isMud || isSand)) {
-            pagerState.animateScrollToPage(1)
+    LaunchedEffect(isSnow, isMud, isSand, isManual) {
+        if (initialPage == null) {
+            val shouldBeOnPage1 = if (isManual) (isMud || isSand) else (isSnow || isMud || isSand)
+            if (shouldBeOnPage1 && pagerState.currentPage != 1) {
+                pagerState.animateScrollToPage(1)
+            } else if (!shouldBeOnPage1 && pagerState.currentPage != 0) {
+                pagerState.animateScrollToPage(0)
+            }
         }
     }
 
@@ -129,9 +136,11 @@ fun LauncherDriveModeBar(
             UniversalCanRepository.execute(
                 MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE, stdValue)
             )
-            UniversalCanRepository.execute(
-                MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET, wetValue)
-            )
+            if (!isManual) {
+                UniversalCanRepository.execute(
+                    MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET, wetValue)
+                )
+            }
         }
     }
 
@@ -148,17 +157,19 @@ fun LauncherDriveModeBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Slot 1: Active Gear Indicator
-            GearIndicatorChip(
-                activeGear = activeGear,
-                currentGearNum = gearBoxCurrentGear,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(ButtonHeight),
-            )
+            if (!isManual) {
+                // Slot 1: Active Gear Indicator
+                GearIndicatorChip(
+                    activeGear = activeGear,
+                    currentGearNum = gearBoxCurrentGear,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(ButtonHeight),
+                )
+            }
 
             if (page == 0) {
-                // Slot 2: ECO Button
+                // Slot 2 (or 1): ECO Button
                 DriveModeChip(
                     label = "ECO",
                     selected = isEco,
@@ -169,7 +180,7 @@ fun LauncherDriveModeBar(
                         .height(ButtonHeight),
                 )
 
-                // Slot 3: NOR Button
+                // Slot 3 (or 2): NOR Button
                 DriveModeChip(
                     label = "NOR",
                     selected = isNor,
@@ -180,7 +191,7 @@ fun LauncherDriveModeBar(
                         .height(ButtonHeight),
                 )
 
-                // Slot 4: SPT Button
+                // Slot 4 (or 3): SPT Button
                 DriveModeChip(
                     label = "SPT",
                     selected = isSpt,
@@ -190,19 +201,34 @@ fun LauncherDriveModeBar(
                         .weight(1f)
                         .height(ButtonHeight),
                 )
-            } else {
-                // Slot 2: SNOW Button
-                DriveModeChip(
-                    label = "SNOW",
-                    selected = isSnow,
-                    activeColor = Color(0xFF38BDF8), // Bright blue
-                    onClick = { onSelectMode("SNOW") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(ButtonHeight),
-                )
 
-                // Slot 3: MUD Button
+                if (isManual) {
+                    // Slot 4: SNOW Button (moved from page 1 to the right on page 0 for Manual)
+                    DriveModeChip(
+                        label = "SNOW",
+                        selected = isSnow,
+                        activeColor = Color(0xFF38BDF8), // Bright blue
+                        onClick = { onSelectMode("SNOW") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight),
+                    )
+                }
+            } else {
+                if (!isManual) {
+                    // Slot 2: SNOW Button
+                    DriveModeChip(
+                        label = "SNOW",
+                        selected = isSnow,
+                        activeColor = Color(0xFF38BDF8), // Bright blue
+                        onClick = { onSelectMode("SNOW") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(ButtonHeight),
+                    )
+                }
+
+                // Slot 3 (or 1): MUD Button
                 DriveModeChip(
                     label = "MUD",
                     selected = isMud,
@@ -213,7 +239,7 @@ fun LauncherDriveModeBar(
                         .height(ButtonHeight),
                 )
 
-                // Slot 4: SAND Button
+                // Slot 4 (or 2): SAND Button
                 DriveModeChip(
                     label = "SAND",
                     selected = isSand,

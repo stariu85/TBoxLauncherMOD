@@ -307,8 +307,14 @@ object CanDataRepository {
     private val _maxGearSeen = MutableStateFlow(0)
     val maxGearSeen: StateFlow<Int> = _maxGearSeen.asStateFlow()
 
-    private val _is6DctGearbox = MutableStateFlow(is6DctBySystemConfig())
+    private val _gearboxType = MutableStateFlow(gearboxTypeBySystemConfig())
+    val gearboxType: StateFlow<GearboxType> = _gearboxType.asStateFlow()
+
+    private val _is6DctGearbox = MutableStateFlow(gearboxTypeBySystemConfig() == GearboxType.DCT_6)
     val is6DctGearbox: StateFlow<Boolean> = _is6DctGearbox.asStateFlow()
+
+    private val _isManualGearbox = MutableStateFlow(gearboxTypeBySystemConfig() == GearboxType.MANUAL)
+    val isManualGearbox: StateFlow<Boolean> = _isManualGearbox.asStateFlow()
 
     private val _frontLeftSeatMode = MutableStateFlow<UInt?>(null)
     val frontLeftSeatMode: StateFlow<UInt?> = _frontLeftSeatMode.asStateFlow()
@@ -631,7 +637,7 @@ object CanDataRepository {
         _gearBoxWork.setIfChanged(newValue)
     }
 
-    fun is6DctBySystemConfig(): Boolean {
+    fun gearboxTypeBySystemConfig(): GearboxType {
         return try {
             val pm = PropManager.getInstance()
             val c1 = pm.config ?: ""
@@ -641,19 +647,37 @@ object CanDataRepository {
             val c5 = pm.getProp(MBConfigConstant.PERSIST_MB_CAN_CONFIG)
             val combined = "$c1 $c2 $c3 $c4 $c5".uppercase(Locale.ROOT)
 
-            if (combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_7DCT)) {
-                return false
+            if (combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_6MT) ||
+                combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_5MT) ||
+                combined.contains("6MT") ||
+                combined.contains("5MT") ||
+                combined.contains("1.5_6MT") ||
+                combined.contains("MANUAL")
+            ) {
+                return GearboxType.MANUAL
             }
-            combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_6DCT) ||
+            if (combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_6DCT) ||
                 combined.contains("6DCT") ||
                 combined.contains("1.5_6DCT")
+            ) {
+                return GearboxType.DCT_6
+            }
+            GearboxType.DCT_7
         } catch (_: Throwable) {
-            false
+            GearboxType.DCT_7
         }
     }
 
+    fun is6DctBySystemConfig(): Boolean = gearboxTypeBySystemConfig() == GearboxType.DCT_6
+
+    fun setGearboxType(type: GearboxType) {
+        _gearboxType.setIfChanged(type)
+        _is6DctGearbox.setIfChanged(type == GearboxType.DCT_6)
+        _isManualGearbox.setIfChanged(type == GearboxType.MANUAL)
+    }
+
     fun set6DctGearbox(is6Dct: Boolean) {
-        _is6DctGearbox.setIfChanged(is6Dct)
+        setGearboxType(if (is6Dct) GearboxType.DCT_6 else GearboxType.DCT_7)
     }
 
     fun updateMaxGearSeen(newValue: Int) {

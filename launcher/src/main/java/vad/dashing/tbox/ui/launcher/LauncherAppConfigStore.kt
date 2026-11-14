@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import vad.dashing.tbox.CanDataRepository
+import vad.dashing.tbox.GearboxType
 import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.mbcan.MbCanCommand
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
@@ -101,6 +102,7 @@ private const val KEY_PASSENGER_SEAT_BUTTON_OFFSET_Y = "passenger_seat_button_of
 private const val KEY_SPEED_LIMIT_X_RATIO = "speed_limit_x_ratio"
 private const val KEY_SPEED_LIMIT_Y_RATIO = "speed_limit_y_ratio"
 private const val KEY_GEARBOX_TYPE_IS_6DCT = "gearbox_type_is_6dct"
+private const val KEY_GEARBOX_TYPE = "launcher_gearbox_type"
 private const val KEY_CRUISE_TYPE = "cruise_control_type"
 internal const val CRUISE_TYPE_ADAPTIVE = 0
 internal const val CRUISE_TYPE_CONVENTIONAL = 1
@@ -1992,21 +1994,35 @@ internal object LauncherAppConfigStore {
         driveModeGlowRevision.value++
     }
 
-    fun is6DctGearbox(context: Context): Boolean {
+    fun gearboxType(context: Context): GearboxType {
         val prefs = prefs(context)
-        val result = if (prefs.contains(KEY_GEARBOX_TYPE_IS_6DCT)) {
-            prefs.getBoolean(KEY_GEARBOX_TYPE_IS_6DCT, false)
+        val result = if (prefs.contains(KEY_GEARBOX_TYPE)) {
+            GearboxType.fromCode(prefs.getString(KEY_GEARBOX_TYPE, null))
+        } else if (prefs.contains(KEY_GEARBOX_TYPE_IS_6DCT)) {
+            if (prefs.getBoolean(KEY_GEARBOX_TYPE_IS_6DCT, false)) GearboxType.DCT_6 else GearboxType.DCT_7
         } else {
-            CanDataRepository.is6DctBySystemConfig()
+            CanDataRepository.gearboxTypeBySystemConfig()
         }
-        CanDataRepository.set6DctGearbox(result)
+        CanDataRepository.setGearboxType(result)
         return result
     }
 
-    fun set6DctGearbox(context: Context, is6Dct: Boolean) {
-        prefs(context).edit().putBoolean(KEY_GEARBOX_TYPE_IS_6DCT, is6Dct).apply()
+    fun setGearboxType(context: Context, type: GearboxType) {
+        prefs(context).edit()
+            .putString(KEY_GEARBOX_TYPE, type.code)
+            .putBoolean(KEY_GEARBOX_TYPE_IS_6DCT, type == GearboxType.DCT_6)
+            .apply()
         gearboxTypeRevision.value++
-        CanDataRepository.set6DctGearbox(is6Dct)
+        cruiseTypeRevision.value++
+        CanDataRepository.setGearboxType(type)
+    }
+
+    fun is6DctGearbox(context: Context): Boolean = gearboxType(context) == GearboxType.DCT_6
+
+    fun isManualGearbox(context: Context): Boolean = gearboxType(context) == GearboxType.MANUAL
+
+    fun set6DctGearbox(context: Context, is6Dct: Boolean) {
+        setGearboxType(context, if (is6Dct) GearboxType.DCT_6 else GearboxType.DCT_7)
     }
 
     fun cruiseType(context: Context): Int =
@@ -2018,7 +2034,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun isConventionalCruise(context: Context): Boolean =
-        cruiseType(context) == CRUISE_TYPE_CONVENTIONAL
+        isManualGearbox(context) || cruiseType(context) == CRUISE_TYPE_CONVENTIONAL
 
     fun cruiseEngageAction(context: Context): Int =
         prefs(context).getInt(KEY_CRUISE_ENGAGE_ACTION, CRUISE_ENGAGE_ACTION_PRESETS)
