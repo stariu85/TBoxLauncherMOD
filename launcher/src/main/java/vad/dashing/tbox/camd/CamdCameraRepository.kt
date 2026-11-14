@@ -325,13 +325,7 @@ object CamdCameraRepository {
         }
     }
 
-    fun getCameraRotation(cameraId: Int): Int = when (cameraId) {
-        CAMERA_ID_LEFT -> 90 // +180° от 270° = 90°
-        CAMERA_ID_RIGHT -> 270 // +180° от 90° = 270°
-        CAMERA_ID_REAR -> 0 // +180° от 180° = 0°
-        CAMERA_ID_FRONT -> 0 // передняя (верхняя) как есть = 0°
-        else -> 0
-    }
+    fun getCameraRotation(cameraId: Int): Int = 0
 
     fun getCameraFlipH(cameraId: Int): Int = 0
 
