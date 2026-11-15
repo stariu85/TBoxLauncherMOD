@@ -5,6 +5,8 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 
+import kotlinx.coroutines.flow.MutableStateFlow
+
 /**
  * Weak link to the active [LauncherHomeActivity] so [BackgroundService] can hide HOME after
  * starting another app (some head units keep HOME visible even when startActivity succeeds).
@@ -13,8 +15,21 @@ object LauncherHomeActivityHolder {
     @Volatile
     var instance: LauncherHomeActivity? = null
 
-    @Volatile
-    var isResumed: Boolean = false
+    val isResumedFlow = MutableStateFlow(false)
+
+    var isResumed: Boolean
+        get() = isResumedFlow.value
+        set(value) {
+            isResumedFlow.value = value
+        }
+
+    val firstDrawFlow = MutableStateFlow(false)
+
+    var isFirstDrawComplete: Boolean
+        get() = firstDrawFlow.value
+        set(value) {
+            firstDrawFlow.value = value
+        }
 }
 
 object LauncherWindowState {

@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import vad.dashing.tbox.DclLogRecorder
+import vad.dashing.tbox.LauncherHomeActivityHolder
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.exp
@@ -181,6 +182,20 @@ fun LauncherCar3DModel(
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
 ) {
+    val firstDrawComplete by LauncherHomeActivityHolder.firstDrawFlow.collectAsStateWithLifecycle()
+    var filamentReady by remember { mutableStateOf(firstDrawComplete || settingsView) }
+
+    LaunchedEffect(firstDrawComplete, settingsView) {
+        if (settingsView || firstDrawComplete) {
+            if (!filamentReady) {
+                // Defer Filament engine startup and SurfaceView creation until after the initial
+                // window draw pass has completed, avoiding WindowManager launch timeout (10s).
+                delay(400L)
+                filamentReady = true
+            }
+        }
+    }
+
     Box(modifier = modifier) {
         if (showRoad) {
             LauncherVirtualRoad(
@@ -191,39 +206,41 @@ fun LauncherCar3DModel(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        LauncherCarFilamentModel(
-            modifier = Modifier.fillMaxSize(),
-            onClick = onClick,
-            onLongClick = onLongClick,
-            onDoubleClick = onDoubleClick,
-            onTrunkClick = onTrunkClick,
-            onTrunkLongClick = onTrunkLongClick,
-            modelRevision = modelRevision,
-            paintId = paintId,
-            rigState = rigState,
-            speedKmh = speedKmh,
-            steeringDeg = steeringDeg,
-            steerPreview = steerPreview,
-            inDriveGear = inDriveGear,
-            settingsProgress = settingsProgress,
-            settingsUserYawDeg = settingsUserYawDeg,
-            settingsUserScale = settingsUserScale,
-            customModelScale = customModelScale,
-            customModelDriveScale = customModelDriveScale,
-            cameraSwitchMode = cameraSwitchMode,
-            settingsOrbit = settingsOrbit,
-            onWheelAnchorsChanged = onWheelAnchorsChanged,
-            onDoorAnchorsChanged = onDoorAnchorsChanged,
-            onPdcRingsChanged = onPdcRingsChanged,
-            onHeadlightFrameChanged = onHeadlightFrameChanged,
-            onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
-            projectPdcRings = projectPdcRings,
-            projectHeadlights = projectHeadlights,
-            textureSurface = textureSurface,
-            isAvmActive = isAvmActive,
-            carHidden = carHidden,
-            lowPowerPreview = settingsView || settingsProgress > 0.5f,
-        )
+        if (filamentReady) {
+            LauncherCarFilamentModel(
+                modifier = Modifier.fillMaxSize(),
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onDoubleClick = onDoubleClick,
+                onTrunkClick = onTrunkClick,
+                onTrunkLongClick = onTrunkLongClick,
+                modelRevision = modelRevision,
+                paintId = paintId,
+                rigState = rigState,
+                speedKmh = speedKmh,
+                steeringDeg = steeringDeg,
+                steerPreview = steerPreview,
+                inDriveGear = inDriveGear,
+                settingsProgress = settingsProgress,
+                settingsUserYawDeg = settingsUserYawDeg,
+                settingsUserScale = settingsUserScale,
+                customModelScale = customModelScale,
+                customModelDriveScale = customModelDriveScale,
+                cameraSwitchMode = cameraSwitchMode,
+                settingsOrbit = settingsOrbit,
+                onWheelAnchorsChanged = onWheelAnchorsChanged,
+                onDoorAnchorsChanged = onDoorAnchorsChanged,
+                onPdcRingsChanged = onPdcRingsChanged,
+                onHeadlightFrameChanged = onHeadlightFrameChanged,
+                onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
+                projectPdcRings = projectPdcRings,
+                projectHeadlights = projectHeadlights,
+                textureSurface = textureSurface,
+                isAvmActive = isAvmActive,
+                carHidden = carHidden,
+                lowPowerPreview = settingsView || settingsProgress > 0.5f,
+            )
+        }
     }
 }
 

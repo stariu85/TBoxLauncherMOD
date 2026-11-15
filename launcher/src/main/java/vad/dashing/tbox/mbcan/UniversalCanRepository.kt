@@ -1,5 +1,6 @@
 package vad.dashing.tbox.mbcan
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -436,6 +437,26 @@ object UniversalCanRepository {
             MbCanRepository.audioVolumeRestoreCandidate(defaultValue)
         } else {
             Android10VhalRepository.audioVolumeRestoreCandidate(defaultValue)
+        }
+    }
+
+    @Volatile
+    private var startupAutoBindStarted = false
+
+    fun triggerStartupCanAutoBind(
+        settingsManager: SettingsManager,
+        scope: CoroutineScope,
+    ) {
+        synchronized(this) {
+            if (startupAutoBindStarted) return
+            startupAutoBindStarted = true
+        }
+        scope.launch {
+            runCatching {
+                autoResolveModeOnStartup(settingsManager, scope)
+            }.onFailure {
+                Log.w("UniversalCanRepository", "CAN auto-bind failed", it)
+            }
         }
     }
 

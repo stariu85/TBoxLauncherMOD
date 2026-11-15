@@ -136,10 +136,11 @@ class DclLauncherApiProvider : ContentProvider() {
                     isFullWidth -> LauncherAppLaunchMode.FULL_WIDTH
                     else -> LauncherAppLaunchMode.EMBEDDED
                 }
+                val launchCtx = vad.dashing.tbox.LauncherHomeActivityHolder.instance ?: appCtx
                 when (launchMode) {
-                    LauncherAppLaunchMode.FULLSCREEN -> launchLauncherAppFullscreen(appCtx, pkg, activityClass)
-                    LauncherAppLaunchMode.FULL_WIDTH -> launchLauncherAppFullWidth(appCtx, pkg, activityClass)
-                    LauncherAppLaunchMode.EMBEDDED -> launchLauncherAppEmbedded(appCtx, pkg, activityClass)
+                    LauncherAppLaunchMode.FULLSCREEN -> launchLauncherAppFullscreen(launchCtx, pkg, activityClass)
+                    LauncherAppLaunchMode.FULL_WIDTH -> launchLauncherAppFullWidth(launchCtx, pkg, activityClass)
+                    LauncherAppLaunchMode.EMBEDDED -> launchLauncherAppEmbedded(launchCtx, pkg, activityClass)
                 }
                 LauncherActiveAppTracker.onAppLaunched(
                     packageName = pkg,

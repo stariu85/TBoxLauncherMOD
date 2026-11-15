@@ -20,14 +20,10 @@ import vad.dashing.tbox.MainActivity
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LauncherNav"
-internal const val HOME_DEBOUNCE_MS = 600L
+private const val HOME_DEBOUNCE_MS = 200L
 
 @Volatile
-internal var lastHomeAtMs = 0L
-
-internal fun wasHomeRecentlyHandled(thresholdMs: Long = HOME_DEBOUNCE_MS): Boolean {
-    return (SystemClock.uptimeMillis() - lastHomeAtMs) < thresholdMs
-}
+private var lastHomeAtMs = 0L
 
 /** Prevents Compose BackHandler ↔ inject KEYCODE_BACK recursion on the launcher. */
 private val backDispatchInProgress = AtomicBoolean(false)
@@ -47,13 +43,13 @@ internal fun goLauncherHome(
 ) {
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
     val now = SystemClock.uptimeMillis()
-    if (now - lastHomeAtMs < HOME_DEBOUNCE_MS) {
-        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source (elapsed=${now - lastHomeAtMs}ms < ${HOME_DEBOUNCE_MS}ms)")
+    if (!fromHomeIntent && (now - lastHomeAtMs < HOME_DEBOUNCE_MS)) {
+        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source")
         LauncherNavLogger.logNavAction(
             action = "HOME",
             source = source,
             stateBefore = stateBefore,
-            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms, elapsed=${now - lastHomeAtMs}ms)",
+            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms)",
         )
         return
     }
@@ -120,10 +116,6 @@ internal fun goLauncherHome(
             closedList += "MainActivity"
         }
     }
-    runCatching {
-        vad.dashing.tbox.camd.CamdCameraRepository.closeDesktopCamerasIfOpen(context)
-        closedList += "CamdDesktopCameras"
-    }
 
     val home = LauncherHomeActivityHolder.instance
     if (home != null) {
@@ -159,52 +151,22 @@ internal fun goLauncherHome(
         }
     }
 
-    // In regular mode (without dclwm hide), moveTaskToFront alone does NOT minimize freeform windows
-    // because freeform windows (mode=5) float above the fullscreen home stack (mode=1).
-    // We must dispatch the system Home event so Android's WindowManager minimizes foreign freeform tasks.
-    // When dclwm hide is active and launcher was already brought to front, foreign tasks are already
-    // parked off-screen, so skipping global Home avoids redundant onNewIntent cycles.
-    val expHide = LauncherAppConfigStore.experimentalHideAppsOnHome(context)
     if (!fromHomeIntent) {
-        if (!expHide) {
-            if (!broughtToFront) {
-                runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_MAIN).apply {
-                            addCategory(Intent.CATEGORY_HOME)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP
-                        },
-                    )
-                }.onFailure {
-                    Log.w(TAG, "goLauncherHome: startActivity failed", it)
-                    LauncherNavLogger.logNavError("HOME", source, "startActivity(CATEGORY_HOME) failed", it, stateBefore)
-                }
-            }
-            dispatchPhysicalHome(source)
-        } else if (!broughtToFront) {
-            val started = runCatching {
-                context.startActivity(
-                    Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
-                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    },
-                )
-                true
-            }.onFailure {
-                Log.w(TAG, "goLauncherHome: startActivity failed, falling back to dispatchGlobalHome", it)
-                LauncherNavLogger.logNavError("HOME", source, "startActivity(CATEGORY_HOME) failed", it, stateBefore)
-            }.getOrDefault(false)
-
-            if (!started) {
-                dispatchPhysicalHome(source)
-            }
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                },
+            )
+        }.onFailure {
+            Log.w(TAG, "goLauncherHome: startActivity failed", it)
+            LauncherNavLogger.logNavError("HOME", source, "startActivity(CATEGORY_HOME) failed", it, stateBefore)
         }
+        LauncherNavAccessibilityService.dispatchGlobalHome()
     }
 
     LauncherRightPanelOverlayWindow.hide()
@@ -357,44 +319,6 @@ internal fun dispatchPhysicalBack(source: String = "unknown") {
         source = source,
         reason = "Failed to deliver KEYCODE_BACK: AccessibilityService not connected and InputManager inject failed",
     )
-}
-
-/** Sends the system Home action: accessibility global action -> injectKeyEvent -> input keyevent. */
-internal fun dispatchPhysicalHome(source: String = "unknown"): Boolean {
-    if (!LauncherNavAccessibilityService.isConnected()) {
-        LauncherHomeActivityHolder.instance?.let {
-            LauncherAccessibilityHelper.ensureNavBackServiceEnabled(it)
-        }
-    }
-    if (LauncherNavAccessibilityService.dispatchGlobalHome()) {
-        Log.w(TAG, "HOME via accessibility global action source=$source")
-        LauncherNavLogger.logNavAction("HOME_DELIVER", source, result = "Dispatched via AccessibilityService GLOBAL_ACTION_HOME")
-        return true
-    }
-    if (injectKeyEvent(KeyEvent.KEYCODE_HOME)) {
-        Log.w(TAG, "HOME via InputManager inject source=$source")
-        LauncherNavLogger.logNavAction("HOME_DELIVER", source, result = "Dispatched via InputManager KEYCODE_HOME inject")
-        return true
-    }
-    val viaShell = runCatching {
-        val proc = ProcessBuilder("input", "keyevent", KeyEvent.KEYCODE_HOME.toString())
-            .redirectErrorStream(true)
-            .start()
-        val exit = proc.waitFor()
-        Log.w(TAG, "HOME via input keyevent exit=$exit source=$source")
-        exit == 0
-    }.getOrDefault(false)
-    if (viaShell) {
-        LauncherNavLogger.logNavAction("HOME_DELIVER", source, result = "Dispatched via shell input keyevent 3")
-        return true
-    }
-    Log.e(TAG, "HOME FAILED: could not deliver KEYCODE_HOME source=$source")
-    LauncherNavLogger.logNavError(
-        action = "HOME_DELIVER",
-        source = source,
-        reason = "Failed to deliver KEYCODE_HOME: AccessibilityService not connected and InputManager inject failed",
-    )
-    return false
 }
 
 internal fun injectKeyEvent(keyCode: Int): Boolean {

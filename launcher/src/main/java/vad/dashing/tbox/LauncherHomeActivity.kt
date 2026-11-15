@@ -37,14 +37,15 @@ import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherVehicleStatusOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
+import android.os.Looper
+import android.view.ViewTreeObserver
+import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
 import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
 import vad.dashing.tbox.ui.launcher.findForeignAppTask
 import vad.dashing.tbox.ui.launcher.goLauncherHome
-import vad.dashing.tbox.ui.launcher.hasActiveForeignApp
 import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
 import vad.dashing.tbox.ui.launcher.minimizeForeignFreeformTasks
-import vad.dashing.tbox.ui.launcher.wasHomeRecentlyHandled
 
 /**
  * Android HOME handler — Tesla-style launcher surface for the head unit.
@@ -58,44 +59,17 @@ class LauncherHomeActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
     private lateinit var appDataManager: AppDataManager
+    private var firstDrawComplete = false
+    private var stagedWarmupStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LauncherHomeActivityHolder.instance = this
         Log.w("LauncherAppLaunch", "LauncherHomeActivity onCreate")
-        // ActivityViewCapabilityProbe: construct+VD OK; startActivity on launchDisplayId still denied
-        // even with MANAGE_ACTIVITY_STACKS+ACTIVITY_EMBEDDING granted. Needs INJECT_EVENTS (signature).
-        applyLauncherWindowFlags()
-        ensureFreeformImmersivePolicy(this)
-        // Dock Back = accessibility GLOBAL_ACTION_BACK (no INJECT_EVENTS on user builds).
-        val a11y = LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
-        Log.w(TAG, "nav-back a11y enabled=$a11y connected=${vad.dashing.tbox.ui.launcher.LauncherNavAccessibilityService.isConnected()}")
-        LauncherAppListVersion.ensurePackageChangeReceiver(applicationContext)
-        // After reinstall / process death OEM freeform stacks often survive alone on top.
-        // Delay slightly so WM finishes enumerating stacks post-install.
-        val appCtx = applicationContext
-        vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
-        window.decorView.postDelayed({ minimizeForeignFreeformTasks(appCtx) }, 400L)
 
+        applyLauncherWindowFlags()
         settingsManager = SettingsManager(this)
         appDataManager = AppDataManager(this)
-
-        // SoftAP params are broadcast into mbCAN only for ~10–30 s after boot — poll eagerly.
-        LauncherWifiApRepository.init(appCtx)
-        LauncherThemeState.init(appCtx)
-        LauncherCarModelCache.preload(appCtx)
-        vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
-        // Home-dock autostart shortcut (long-tap icon). Once per process start; delayed so
-        // freeform machinery and the 400ms stack cleanup above settle first.
-        if (!autostartFired) {
-            autostartFired = true
-            window.decorView.postDelayed({ launchAutostartShortcut(appCtx) }, 1600L)
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            delay(2000L)
-            vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
-        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -104,6 +78,7 @@ class LauncherHomeActivity : ComponentActivity() {
             }
         })
 
+        // 1. Initial minimal HOME frame: immediate background & UI composition
         setContent {
             DisposableEffect(Unit) {
                 onDispose { disposeAppLauncherPickerIconCache() }
@@ -119,44 +94,122 @@ class LauncherHomeActivity : ComponentActivity() {
                 )
             }
         }
-        startBackgroundService()
-        if (findForeignAppTask(this) == null) {
-            LauncherRightPanelOverlayWindow.ensureShowing(this)
+
+        // 2. Defer all heavy initialization until after the first frame is rendered
+        setupFirstDrawAndStagedWarmup()
+    }
+
+    private fun setupFirstDrawAndStagedWarmup() {
+        val decorView = window.decorView
+        decorView.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                decorView.viewTreeObserver.removeOnPreDrawListener(this)
+                decorView.post {
+                    onFirstFrameDrawn()
+                }
+                return true
+            }
+        })
+    }
+
+    private fun onFirstFrameDrawn() {
+        if (firstDrawComplete || isFinishing || isDestroyed) return
+        firstDrawComplete = true
+        LauncherHomeActivityHolder.isFirstDrawComplete = true
+        Log.i(TAG, "First HOME frame drawn -> calling reportFullyDrawn and scheduling warmup on idle")
+        runCatching { reportFullyDrawn() }
+
+        Looper.myQueue().addIdleHandler {
+            if (!isFinishing && !isDestroyed && !stagedWarmupStarted) {
+                scheduleStagedWarmup()
+            }
+            false
         }
-        LauncherOverlayBar.ensureShowing(this)
+    }
+
+    private fun scheduleStagedWarmup() {
+        stagedWarmupStarted = true
+        lifecycleScope.launch(Dispatchers.Main) {
+            val appCtx = applicationContext
+
+            // --- Stage 1: Freeform policy, a11y nav back, background service, overlays ---
+            ensureFreeformImmersivePolicy(this@LauncherHomeActivity)
+            val a11y = LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this@LauncherHomeActivity)
+            Log.w(TAG, "nav-back a11y enabled=$a11y connected=${vad.dashing.tbox.ui.launcher.LauncherNavAccessibilityService.isConnected()}")
+            LauncherAppListVersion.ensurePackageChangeReceiver(appCtx)
+            startBackgroundService()
+
+            if (findForeignAppTask(this@LauncherHomeActivity) == null) {
+                LauncherRightPanelOverlayWindow.ensureShowing(this@LauncherHomeActivity)
+            }
+            LauncherOverlayBar.ensureShowing(this@LauncherHomeActivity)
+            LauncherEdgeGestureOverlay.ensureShowing(this@LauncherHomeActivity)
+            DclUiStateNotifier.notifyUiStateChanged(this@LauncherHomeActivity)
+
+            // Foreign stack cleanup slightly after overlays mount
+            delay(300L)
+            vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
+            minimizeForeignFreeformTasks(appCtx)
+
+            // --- Stage 2: Heavy subsystems, mbCAN & caches (+500ms after Stage 1) ---
+            delay(500L)
+            LauncherThemeState.init(appCtx)
+            LauncherCarModelCache.preload(appCtx)
+            LauncherWifiApRepository.init(appCtx)
+            vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
+
+            // Start CAN auto-bind now that desktop and UI thread are completely unblocked
+            UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
+
+            // --- Stage 3: Auto backup (+1000ms after Stage 2) ---
+            delay(1000L)
+            vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
+
+            // --- Stage 4: Autostart shortcut (+1500ms after everything is settled and desktop is ready) ---
+            delay(1500L)
+            if (!autostartFired && LauncherHomeActivityHolder.isResumed && !isFinishing && !isDestroyed) {
+                autostartFired = true
+                Log.i(TAG, "Triggering autostart shortcut with Activity context after desktop is fully ready")
+                launchAutostartShortcut(this@LauncherHomeActivity)
+            }
+        }
     }
 
     override fun onRestart() {
         super.onRestart()
         LauncherHomeActivityHolder.instance = this
-        LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
-        startBackgroundService()
-        if (findForeignAppTask(this) == null) {
-            LauncherRightPanelOverlayWindow.ensureShowing(this)
+        if (firstDrawComplete) {
+            LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
+            startBackgroundService()
+            if (findForeignAppTask(this) == null) {
+                LauncherRightPanelOverlayWindow.ensureShowing(this)
+            }
+            LauncherOverlayBar.ensureShowing(this)
         }
-        LauncherOverlayBar.ensureShowing(this)
     }
 
     override fun onResume() {
         super.onResume()
         LauncherHomeActivityHolder.isResumed = true
         DclLogRecorder.attachWindow(window)
-        LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
-        val foreign = findForeignAppTask(this)
-        val inAppView = foreign != null && !LauncherRightPanelOverlayWindow.isShowing()
-        if (inAppView) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-            LauncherForegroundHandoff.restoreLauncherWindow()
-            window.decorView.visibility = View.VISIBLE
+        if (firstDrawComplete) {
+            LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
+            val foreign = findForeignAppTask(this)
+            val inAppView = foreign != null && !LauncherRightPanelOverlayWindow.isShowing()
+            if (inAppView) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                LauncherForegroundHandoff.restoreLauncherWindow()
+                window.decorView.visibility = View.VISIBLE
+            }
+            if (foreign == null) {
+                LauncherRightPanelOverlayWindow.ensureShowing(this)
+            }
+            LauncherOverlayBar.ensureShowing(this)
+            LauncherEdgeGestureOverlay.ensureShowing(this)
+            DclUiStateNotifier.notifyUiStateChanged(this)
         }
-        if (foreign == null) {
-            LauncherRightPanelOverlayWindow.ensureShowing(this)
-        }
-        LauncherOverlayBar.ensureShowing(this)
-        LauncherEdgeGestureOverlay.ensureShowing(this)
-        DclUiStateNotifier.notifyUiStateChanged(this)
     }
 
     override fun onPause() {
@@ -186,17 +239,12 @@ class LauncherHomeActivity : ComponentActivity() {
             Log.w(TAG, "onNewIntent HOME")
             LauncherAppDrawerWindow.hide()
             LauncherForegroundHandoff.restoreLauncherWindow()
-            val recentlyHandled = wasHomeRecentlyHandled(600L)
-            val isAlreadyActive = LauncherHomeActivityHolder.isResumed && !hasActiveForeignApp(this)
-            if (recentlyHandled || isAlreadyActive) {
-                Log.w(TAG, "onNewIntent: skipping redundant home processing (recentlyHandled=$recentlyHandled, isAlreadyActive=$isAlreadyActive)")
-                return
-            }
             goLauncherHome(this, fromHomeIntent = true, source = "onNewIntent")
         }
     }
 
     override fun onDestroy() {
+        LauncherHomeActivityHolder.isFirstDrawComplete = false
         LauncherRightPanelOverlayWindow.destroy()
         LauncherAppDrawerWindow.hide()
         LauncherAppPickerOverlayWindow.hide()

@@ -7,6 +7,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.launcher.YandexNavRepository
@@ -30,11 +31,11 @@ class LauncherApplication : Application() {
                 .onFailure { Log.w(TAG, "App cache clear on update failed", it) }
             runCatching { syncHuRebootAfterUpdate(settings) }
                 .onFailure { Log.w(TAG, "HU reboot-after-update sync failed", it) }
-            runCatching {
-                UniversalCanRepository.autoResolveModeOnStartup(settings, appScope)
-            }.onFailure {
-                Log.w(TAG, "CAN auto-bind failed", it)
-            }
+            // Defer mbCAN startup from Application.onCreate() to prioritize the initial HOME frame draw.
+            // If LauncherHomeActivity starts, it will trigger CAN auto-bind right after first draw.
+            // This 10s fallback ensures CAN connects even if started for a background service only.
+            delay(10_000L)
+            UniversalCanRepository.triggerStartupCanAutoBind(settings, appScope)
         }
     }
 

@@ -710,36 +710,22 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
     }.getOrNull() ?: return false
 
     val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
-    val foreignTasks = tasks.filter { task ->
-        task.packageName != launcherPackage &&
-            task.packageName !in SYSTEM_PROTECTED_PACKAGES &&
-            !task.packageName.startsWith("com.android.system")
-    }
-
-    // Protection: If all foreign tasks are already off-screen (left >= 2000), don't send redundant MINIMIZE commands
-    val tasksToMinimize = foreignTasks.filter { task ->
-        task.left < DclwmProtocol.OFF_LEFT
-    }
-
-    if (tasksToMinimize.isEmpty()) {
-        Log.w("LauncherAppLaunch", "dclwm minimize: all ${foreignTasks.size} foreign tasks already off-screen (left >= ${DclwmProtocol.OFF_LEFT}) or no foreign tasks open (source=$source)")
-        return true
-    }
-
     var minimizedCount = 0
-    for (task in tasksToMinimize) {
+    for (task in tasks) {
+        if (task.packageName == launcherPackage) continue
+        if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
         runCatching {
             client.minimize(task.id)
             minimizedCount++
             if (isYandexNavigationPackage(task.packageName)) {
                 YandexNavWindowTracker.onWindowMinimized(task.packageName)
             }
-            Log.w("LauncherAppLaunch", "dclwm minimized task id=${task.id} pkg=${task.packageName} (previous left=${task.left})")
+            Log.w("LauncherAppLaunch", "dclwm minimized task id=${task.id} pkg=${task.packageName}")
         }.onFailure { err ->
             Log.w("LauncherAppLaunch", "dclwm minimize failed for task id=${task.id} pkg=${task.packageName}", err)
         }
     }
-    Log.w("LauncherAppLaunch", "dclwm minimize complete: minimized $minimizedCount tasks of ${tasksToMinimize.size} (source=$source)")
+    Log.w("LauncherAppLaunch", "dclwm minimize complete: minimized $minimizedCount tasks (source=$source)")
     return true
 }
 
@@ -838,15 +824,13 @@ internal fun minimizeForeignFreeformTasks(
                 }
             }
 
-            // Shell stack move-to-back for OEM HU freeform / split / embedded stacks
-            val moved = if (tracked.isNotEmpty()) {
-                LauncherAmStackShell.moveForeignToBack(launcherPackage, tracked)
-            } else 0
+            // Shell stack dismiss for OEM HU freeform / split / embedded stacks
+            val removed = LauncherAmStackShell.dismissForeign(launcherPackage, tracked)
             LauncherNavLogger.logNavAction(
                 action = "MINIMIZE_APPS",
                 source = source,
                 stateBefore = stateBefore,
-                result = "Removed taskIds count=${taskIdsToMinimize.size}, shell moved stacks count=$moved",
+                result = "Removed taskIds count=${taskIdsToMinimize.size}, shell removed stacks count=$removed",
             )
         }.onFailure { err ->
             Log.w("LauncherAppLaunch", "minimizeForeignFreeformTasks failed", err)

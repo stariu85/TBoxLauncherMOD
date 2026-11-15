@@ -77,9 +77,6 @@ fun TeslaLauncherScreen(
     var colorPickerVisible by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
-        LauncherVehicleBodyRepository.ensurePolling()
-        LauncherAdasRepository.ensureActive()
-        LauncherVehicleAlertsRepository.ensureActive()
         onDispose {
             LauncherAppDrawerWindow.hide()
             LauncherAppPickerOverlayWindow.hide()
@@ -91,9 +88,14 @@ fun TeslaLauncherScreen(
     }
 
     LaunchedEffect(Unit) {
+        // Postpone heavy CAN polling and reflection listeners until after initial HOME frame renders
+        delay(1_200L)
+        LauncherVehicleBodyRepository.ensurePolling()
+        LauncherAdasRepository.ensureActive()
+        LauncherVehicleAlertsRepository.ensureActive()
         while (true) {
-            LauncherAdasRepository.ensureActive()
             delay(2_000L)
+            LauncherAdasRepository.ensureActive()
         }
     }
 

@@ -2,17 +2,25 @@ package vad.dashing.tbox.ui.launcher
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Polled mbCAN get for settings that don't yet have dedicated StateFlows. */
 data class LauncherVehicleControlSnapshot(
@@ -60,21 +68,105 @@ data class LauncherVehicleControlSnapshot(
     val driverUnlockMode: Int? = null,
 )
 
+/**
+ * Shared singleton repository for vehicle control properties to prevent thread pool exhaustion.
+ * Polling is completely suspended until the first HOME frame has been drawn.
+ */
+object LauncherVehicleControlRepository {
+    private const val TAG = "VehicleControlRepo"
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _snapshot = MutableStateFlow(LauncherVehicleControlSnapshot())
+    val snapshot: StateFlow<LauncherVehicleControlSnapshot> = _snapshot.asStateFlow()
+
+    private val _experimentalSnapshot = MutableStateFlow(LauncherVehicleControlSnapshot())
+    val experimentalSnapshot: StateFlow<LauncherVehicleControlSnapshot> = _experimentalSnapshot.asStateFlow()
+
+    private val activeCollectors = AtomicInteger(0)
+    private val experimentalCollectors = AtomicInteger(0)
+    private val refreshChannel = Channel<Unit>(Channel.CONFLATED)
+
+    @Volatile
+    private var pollingJob: Job? = null
+
+    fun registerConsumer(includeExperimental: Boolean) {
+        activeCollectors.incrementAndGet()
+        if (includeExperimental) {
+            experimentalCollectors.incrementAndGet()
+        }
+        ensurePollingStarted()
+    }
+
+    fun unregisterConsumer(includeExperimental: Boolean) {
+        activeCollectors.decrementAndGet()
+        if (includeExperimental) {
+            experimentalCollectors.decrementAndGet()
+        }
+    }
+
+    fun refreshNow() {
+        refreshChannel.trySend(Unit)
+    }
+
+    @Synchronized
+    private fun ensurePollingStarted() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = scope.launch {
+            var startupGraceApplied = false
+            while (isActive) {
+                if (!MbCanEngineFacade.isInitialized() ||
+                    !LauncherHomeActivityHolder.isFirstDrawComplete ||
+                    !LauncherHomeActivityHolder.isResumed ||
+                    activeCollectors.get() <= 0
+                ) {
+                    delay(1_000L)
+                    continue
+                }
+
+                if (!startupGraceApplied) {
+                    delay(2_000L)
+                    startupGraceApplied = true
+                    if (!isActive) break
+                }
+
+                val hasExperimental = experimentalCollectors.get() > 0
+                runCatching {
+                    val s = readVehicleControlSnapshot(includeExperimental = hasExperimental)
+                    _snapshot.value = s
+                    if (hasExperimental) {
+                        _experimentalSnapshot.value = s
+                    }
+                }
+
+                val intervalMs = if (hasExperimental) 2_500L else 1_000L
+                withTimeoutOrNull(intervalMs) {
+                    refreshChannel.receive()
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun rememberLauncherVehicleControlSnapshot(
     enabled: Boolean,
     includeExperimental: Boolean = false,
 ): LauncherVehicleControlSnapshot {
-    var snapshot by remember { mutableStateOf(LauncherVehicleControlSnapshot()) }
-    LaunchedEffect(enabled, includeExperimental) {
-        if (!enabled) return@LaunchedEffect
-        while (isActive) {
-            snapshot = withContext(Dispatchers.IO) {
-                readVehicleControlSnapshot(includeExperimental = includeExperimental)
-            }
-            delay(if (includeExperimental) 2_500L else 400L)
+    if (!enabled) return remember { LauncherVehicleControlSnapshot() }
+
+    DisposableEffect(includeExperimental) {
+        LauncherVehicleControlRepository.registerConsumer(includeExperimental)
+        onDispose {
+            LauncherVehicleControlRepository.unregisterConsumer(includeExperimental)
         }
     }
+
+    val stateFlow = if (includeExperimental) {
+        LauncherVehicleControlRepository.experimentalSnapshot
+    } else {
+        LauncherVehicleControlRepository.snapshot
+    }
+
+    val snapshot by stateFlow.collectAsStateWithLifecycle()
     return snapshot
 }
 
