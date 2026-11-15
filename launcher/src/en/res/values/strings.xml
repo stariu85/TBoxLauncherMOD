@@ -229,6 +229,16 @@
     <string name="camd_disable_stock_avm_desc">Force holding com.mengbo.avm disabled via vad.dashing.camd (AVM ON / AVM OFF)</string>
     <string name="camd_turn_signals_title">Enable side cameras on turn signals</string>
     <string name="camd_turn_signals_desc">Show corresponding side camera in ADAS zone when turn signal is on</string>
+    <string name="camd_side_cameras_shape_circle_title">Circular shape for side cameras</string>
+    <string name="camd_side_cameras_shape_circle_desc">Circular window (1/3 desktop height, 30 dp margin) in top-left or top-right corner of desktop</string>
+    <string name="camd_turn_signal_preset_left_title">Left camera preset</string>
+    <string name="camd_turn_signal_preset_right_title">Right camera preset</string>
+    <string name="camd_preset_default">Default (full frame)</string>
+    <string name="camd_presets_count">Available presets: %1$d</string>
+    <string name="camd_test_desktop_cameras_btn">4 cameras (Test)</string>
+    <string name="camd_test_side_left_btn">Left (Test)</string>
+    <string name="camd_test_side_right_btn">Right (Test)</string>
+    <string name="camd_close_all_cameras_btn">Close cameras</string>
     <string name="camd_dock_test_button_title">Camd Cameras (Test)</string>
     <string name="launcher_vs_section_theme">Theme</string>
     <string name="launcher_vs_section_theme_sub">Light and dark theme settings</string>

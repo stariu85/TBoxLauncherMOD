@@ -19,9 +19,52 @@ import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
 import java.util.Locale
 
 /**
+ * Normalized window coordinates (0.0..1.0 fraction of display).
+ * Per spec §3 & §9:
+ * - Minimum side 0.05 (5%)
+ * - x + w <= 1.02
+ * - y + h <= 1.02
+ */
+data class CamdWindowBounds(
+    val x: Float,
+    val y: Float,
+    val w: Float,
+    val h: Float,
+) {
+    fun normalized(): CamdWindowBounds {
+        val clampedW = w.coerceIn(0.05f, 1.0f)
+        val clampedH = h.coerceIn(0.05f, 1.0f)
+        val clampedX = x.coerceIn(0f, (1.02f - clampedW).coerceAtLeast(0f))
+        val clampedY = y.coerceIn(0f, (1.02f - clampedH).coerceAtLeast(0f))
+        return CamdWindowBounds(clampedX, clampedY, clampedW, clampedH)
+    }
+}
+
+/**
+ * Crop rectangle inside sensor frame (0.0..1.0 fraction).
+ * Per spec §3: min side 0.05, cx + cw <= 1.02, cy + ch <= 1.02.
+ * Requires Camd >= 0.4.0.
+ */
+data class CamdCrop(
+    val cx: Float,
+    val cy: Float,
+    val cw: Float,
+    val ch: Float,
+) {
+    fun normalized(): CamdCrop {
+        val clampedW = cw.coerceIn(0.05f, 1.0f)
+        val clampedH = ch.coerceIn(0.05f, 1.0f)
+        val clampedX = cx.coerceIn(0f, (1.02f - clampedW).coerceAtLeast(0f))
+        val clampedY = cy.coerceIn(0f, (1.02f - clampedH).coerceAtLeast(0f))
+        return CamdCrop(clampedX, clampedY, clampedW, clampedH)
+    }
+}
+
+/**
  * Manages high-level camera operations via Camd:
  * - 4-camera desktop view (Left, Right, Front, Rear)
  * - Turn-signal ADAS side camera display (Left #4, Right #5)
+ * - Preset and circular shape support (Camd >= 0.5.0)
  * - Status monitoring and toggles
  */
 object CamdCameraRepository {
@@ -54,7 +97,7 @@ object CamdCameraRepository {
         holdMs = TurnSignalsLatch.HOLD_MS,
         onSideChanged = { side ->
             handleLatchedTurnSignal(side)
-        }
+        },
     )
 
     private var desktopOperationJob: Job? = null
@@ -95,6 +138,17 @@ object CamdCameraRepository {
         }
     }
 
+    /**
+     * Closes desktop cameras if they are currently active.
+     */
+    fun closeDesktopCamerasIfOpen(context: Context) {
+        if (_isDesktopCamerasOpen.value) {
+            scope.launch {
+                closeAll(context)
+            }
+        }
+    }
+
     private suspend fun openDesktopCameras(context: Context) {
         val screen = LauncherEmbeddedBoundsState.screenBounds
         val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
@@ -110,7 +164,7 @@ object CamdCameraRepository {
 
         val appWidth = rightEdge - leftEdge
         val appHeight = bottomEdge - topEdge
-        val midY = topEdge + appHeight / 2f
+        val midY = topEdge + (appHeight / 2f)
 
         // Geometry:
         // Left camera takes left 30% of app area
@@ -164,10 +218,11 @@ object CamdCameraRepository {
             } else {
                 CamdSocketClient.sendCommand(cmd)
             }
-            if (res.isSuccess && !res.getOrNull().orEmpty().startsWith("ERR") && !res.getOrNull().orEmpty().contains("state=error")) {
+            val responseText = res.getOrNull().orEmpty()
+            if (res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)) {
                 successCount++
             } else {
-                Log.w(TAG, "Failed command '$cmd': ${res.getOrNull()} err=${res.exceptionOrNull()?.message}")
+                Log.w(TAG, "Failed command '$cmd': $responseText err=${res.exceptionOrNull()?.message}")
             }
         }
 
@@ -187,7 +242,10 @@ object CamdCameraRepository {
 
     suspend fun closeCamera(context: Context, id: Int?) {
         val cmd = if (id != null) "CLOSE $id" else "CLOSE"
-        CamdSocketClient.sendCommand(cmd)
+        val res = CamdSocketClient.sendCommand(cmd)
+        if (res.isFailure) {
+            CamdSocketClient.sendCommandWithWakeup(context, cmd)
+        }
         if (id == null) {
             _isDesktopCamerasOpen.value = false
             _activeTurnSignalCamera.value = null
@@ -249,7 +307,7 @@ object CamdCameraRepository {
                         if (_activeTurnSignalCamera.value == CAMERA_ID_RIGHT) {
                             closeCamera(context, CAMERA_ID_RIGHT)
                         }
-                        openAdasSideCamera(context, CAMERA_ID_LEFT)
+                        openTurnSignalSideCamera(context, CAMERA_ID_LEFT)
                         _activeTurnSignalCamera.value = CAMERA_ID_LEFT
                     }
                 }
@@ -260,7 +318,7 @@ object CamdCameraRepository {
                         if (_activeTurnSignalCamera.value == CAMERA_ID_LEFT) {
                             closeCamera(context, CAMERA_ID_LEFT)
                         }
-                        openAdasSideCamera(context, CAMERA_ID_RIGHT)
+                        openTurnSignalSideCamera(context, CAMERA_ID_RIGHT)
                         _activeTurnSignalCamera.value = CAMERA_ID_RIGHT
                     }
                 }
@@ -279,30 +337,111 @@ object CamdCameraRepository {
         }
     }
 
-    private suspend fun openAdasSideCamera(context: Context, cameraId: Int) {
+    /**
+     * Toggles a side camera test on/off.
+     */
+    fun testSideCamera(context: Context, cameraId: Int) {
+        scope.launch {
+            if (_activeTurnSignalCamera.value == cameraId) {
+                closeCamera(context, cameraId)
+                _activeTurnSignalCamera.value = null
+            } else {
+                val current = _activeTurnSignalCamera.value
+                if (current != null) {
+                    closeCamera(context, current)
+                }
+                openTurnSignalSideCamera(context, cameraId)
+                _activeTurnSignalCamera.value = cameraId
+            }
+        }
+    }
+
+    private suspend fun openTurnSignalSideCamera(context: Context, cameraId: Int) {
         val screen = LauncherEmbeddedBoundsState.screenBounds
         val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
         val dispH = (screen?.height()?.takeIf { it > 0 } ?: 1080).toFloat()
 
-        val adasRect = LauncherEmbeddedBoundsState.leftPanelBounds
-            ?: Rect(0, 51, 344, 998)
+        val shapeCircle = LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
 
-        val x = adasRect.left.toFloat() / dispW
-        val y = adasRect.top.toFloat() / dispH
-        val w = adasRect.width().toFloat() / dispW
-        val h = adasRect.height().toFloat() / dispH
+        val presetName = when (cameraId) {
+            CAMERA_ID_LEFT -> LauncherAppConfigStore.camdTurnSignalLeftPreset(context).ifBlank { null }
+            CAMERA_ID_RIGHT -> LauncherAppConfigStore.camdTurnSignalRightPreset(context).ifBlank { null }
+            else -> null
+        }
 
-        val cmd = formatCmd(cameraId, x, y, w, h)
-        CamdSocketClient.sendCommandWithWakeup(context, cmd)
+        val x: Float
+        val y: Float
+        val w: Float
+        val h: Float
+
+        if (shapeCircle) {
+            // Per requirement:
+            // "Если выбрана круглая форма боковых камер то изображение с них надо выводить в левый верхний угол рабочего стола
+            // (при левом поворотнике) и в правый верхний угол при правом. При этом диаметр круга должен быть равен 1/3 от высоты
+            // рабочего стола. Отступы круга от верха и краев должны быть 30dp"
+            val desktopRect = LauncherEmbeddedBoundsState.embeddedBounds()
+                ?: LauncherEmbeddedBoundsState.contentRowBounds
+                ?: Rect(344, 51, 1920, 998)
+
+            val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat()
+            val diameter = desktopHeight / 3f
+
+            val density = context.resources.displayMetrics.density
+            val margin = 30f * density
+
+            val yPx = desktopRect.top.toFloat() + margin
+            val xPx = if (cameraId == CAMERA_ID_RIGHT) {
+                // Правый верхний угол рабочего стола с отступом 30dp от правого края и верха
+                desktopRect.right.toFloat() - margin - diameter
+            } else {
+                // Левый верхний угол рабочего стола с отступом 30dp от левого края и верха
+                desktopRect.left.toFloat() + margin
+            }
+
+            x = xPx / dispW
+            y = yPx / dispH
+            w = diameter / dispW
+            h = diameter / dispH
+        } else {
+            // Прямоугольная форма: зона ADAS
+            val adasRect = LauncherEmbeddedBoundsState.leftPanelBounds
+                ?: Rect(0, 51, 344, 998)
+
+            x = adasRect.left.toFloat() / dispW
+            y = adasRect.top.toFloat() / dispH
+            w = adasRect.width().toFloat() / dispW
+            h = adasRect.height().toFloat() / dispH
+        }
+
+        val cmd = if (!presetName.isNullOrBlank()) {
+            formatPresetCmd(presetName, x, y, w, h, shapeCircle = shapeCircle)
+        } else {
+            formatCmd(cameraId, x, y, w, h, shapeCircle = shapeCircle)
+        }
+
+        val res = CamdSocketClient.sendCommandWithWakeup(context, cmd)
+        val responseText = res.getOrNull().orEmpty()
+        if (CamdSocketClient.isErrorResponse(responseText)) {
+            Log.w(TAG, "openTurnSignalSideCamera command failed: $responseText")
+            // Fallback: if preset failed with ERR unknown_preset, retry with raw camera
+            if (!presetName.isNullOrBlank()) {
+                val fallbackCmd = formatCmd(cameraId, x, y, w, h, shapeCircle = shapeCircle)
+                CamdSocketClient.sendCommand(fallbackCmd)
+            }
+        }
     }
 
     /**
      * Formats OPEN command according to DCL_CAMD_CAMERA_API_FOR_VENDOR_RU §3.1:
-     * OPEN <id> <x> <y> <w> <h> [rotation [flipH [flipV]]]
+     * OPEN <id> <x> <y> <w> <h> [rotation [flipH [flipV]]] [crop=cx,cy,cw,ch] [shape=circle]
+     * - id: int (0, 1, 3, 4, 5, 8, 9)
+     * - x, y, w, h: float 0..1, min side 0.05, x+w <= 1.02, y+h <= 1.02
      * - rotation: 0, 90, 180, 270 (clockwise, default 0)
      * - flipH: 0 or 1 (horizontal mirror after rotation, default 0)
      * - flipV: 0 or 1 (vertical mirror, default 0)
-     * Note: Fisheye correction (k1/k2) is handled internally by camd shader.
+     * - crop=cx,cy,cw,ch: optional named token (min side 0.05, cx+cw <= 1.02)
+     * - shape=circle: optional named token for circular window
+     * Note: Per-camera fisheye correction and keystone tilt are handled internally by camd shader.
      */
     fun formatCmd(
         id: Int,
@@ -313,16 +452,54 @@ object CamdCameraRepository {
         rotation: Int = getCameraRotation(id),
         flipH: Int = getCameraFlipH(id),
         flipV: Int = getCameraFlipV(id),
+        crop: CamdCrop? = null,
+        shapeCircle: Boolean = false,
     ): String {
-        return if (flipV != 0) {
-            String.format(Locale.US, "OPEN %d %.4f %.4f %.4f %.4f %d %d %d", id, x, y, w, h, rotation, flipH, flipV)
-        } else if (flipH != 0) {
-            String.format(Locale.US, "OPEN %d %.4f %.4f %.4f %.4f %d %d", id, x, y, w, h, rotation, flipH)
+        val bounds = CamdWindowBounds(x, y, w, h).normalized()
+        val sb = StringBuilder()
+        sb.append(String.format(Locale.US, "OPEN %d %.4f %.4f %.4f %.4f", id, bounds.x, bounds.y, bounds.w, bounds.h))
+
+        val hasFlip = (flipH != 0 || flipV != 0)
+        if (hasFlip) {
+            // Per spec: if flip is used, rotation token is MANDATORY
+            sb.append(String.format(Locale.US, " %d %d %d", rotation, flipH, flipV))
         } else if (rotation != 0) {
-            String.format(Locale.US, "OPEN %d %.4f %.4f %.4f %.4f %d", id, x, y, w, h, rotation)
-        } else {
-            String.format(Locale.US, "OPEN %d %.4f %.4f %.4f %.4f", id, x, y, w, h)
+            sb.append(String.format(Locale.US, " %d", rotation))
         }
+
+        if (crop != null) {
+            val normCrop = crop.normalized()
+            sb.append(String.format(Locale.US, " crop=%.4f,%.4f,%.4f,%.4f", normCrop.cx, normCrop.cy, normCrop.cw, normCrop.ch))
+        }
+
+        if (shapeCircle) {
+            sb.append(" shape=circle")
+        }
+
+        return sb.toString()
+    }
+
+    /**
+     * Formats preset OPEN command according to DCL_CAMD_CAMERA_API_FOR_VENDOR_RU §3.1:
+     * OPEN preset=<name> <x> <y> <w> <h> [shape=circle]
+     * Positional tokens: exactly 4 coordinates (x, y, w, h).
+     * Cannot mix preset= with rotation/flip/crop=.
+     */
+    fun formatPresetCmd(
+        presetName: String,
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        shapeCircle: Boolean = false,
+    ): String {
+        val bounds = CamdWindowBounds(x, y, w, h).normalized()
+        val sb = StringBuilder()
+        sb.append(String.format(Locale.US, "OPEN preset=%s %.4f %.4f %.4f %.4f", presetName.trim(), bounds.x, bounds.y, bounds.w, bounds.h))
+        if (shapeCircle) {
+            sb.append(" shape=circle")
+        }
+        return sb.toString()
     }
 
     fun getCameraRotation(cameraId: Int): Int = 0

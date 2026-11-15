@@ -10,6 +10,19 @@ import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.Socket
 
+/**
+ * Representation of a preset exposed by the Camd service (camd >= 0.5.0).
+ *
+ * @param cameraId camera id associated with this preset (e.g. 0, 1, 3, 4, 5, 8, 9)
+ * @param name preset name (e.g. "full_left", "left_top", "left_bottom", "full_front", etc.)
+ * @param isBuiltin true if builtin preset in Camd, false if created by user in Camd UI
+ */
+data class CamdPreset(
+    val cameraId: Int,
+    val name: String,
+    val isBuiltin: Boolean,
+)
+
 sealed class CamdConnectionStatus {
     data object NotInstalled : CamdConnectionStatus()
     data class Connected(
@@ -17,6 +30,7 @@ sealed class CamdConnectionStatus {
         val avmState: String,
         val keepAvm: Boolean,
         val rawStatus: String,
+        val presets: List<CamdPreset> = emptyList(),
     ) : CamdConnectionStatus()
     data class NoConnection(val errorMessage: String) : CamdConnectionStatus()
 }
@@ -58,6 +72,31 @@ object CamdSocketClient {
     }
 
     /**
+     * Specification §4: Success response starts with OK and does NOT contain state=error.
+     */
+    fun isSuccessResponse(response: String): Boolean =
+        response.startsWith("OK") && !response.contains("state=error")
+
+    /**
+     * Specification §4: Error response starts with ERR or contains state=error.
+     */
+    fun isErrorResponse(response: String): Boolean =
+        response.startsWith("ERR") || response.contains("state=error")
+
+    /**
+     * Extracts human-readable error description from response line.
+     */
+    fun extractErrorDetail(response: String): String {
+        if (response.startsWith("ERR")) return response
+        val errorPrefix = "error="
+        val idx = response.indexOf(errorPrefix)
+        if (idx != -1) {
+            return response.substring(idx + errorPrefix.length).trim()
+        }
+        return response
+    }
+
+    /**
      * Executes a single command session: connect -> send line -> read line -> close.
      */
     suspend fun sendCommand(
@@ -81,18 +120,19 @@ object CamdSocketClient {
     }
 
     /**
-     * Sends a command, waking up the service and retrying with delays if initial connect fails.
-     * Per spec §6.1:
+     * Sends a command, waking up the service and retrying if initial connect fails.
+     * Per spec §2, §5 & §6.1:
      * - connectMs = 1500..2000
      * - readMs = 20_000
-     * - after vad.dashing.camd.START: wait 1..2 s before reconnecting.
+     * - if connection fails: send broadcast vad.dashing.camd.START
+     * - retry loop with ~250..300ms intervals up to maxWaitMs (~4s).
      */
     suspend fun sendCommandWithWakeup(
         context: Context,
         line: String,
         connectTimeoutMs: Int = 1500,
         readTimeoutMs: Int = 20_000,
-        maxWaitMs: Long = 8000L,
+        maxWaitMs: Long = 4000L,
     ): Result<String> = withContext(Dispatchers.IO) {
         val firstAttempt = sendCommand(line, connectTimeoutMs, readTimeoutMs)
         if (firstAttempt.isSuccess) {
@@ -103,22 +143,50 @@ object CamdSocketClient {
             return@withContext Result.failure(IllegalStateException("Package $CAMD_PACKAGE_NAME not installed"))
         }
 
-        // Wake up service and retry per spec §6.1
+        // Wake up service via broadcast per spec §2
         wakeUpService(context)
-        delay(1200L) // pause 1..2 s after broadcast before reconnecting
         val startTime = System.currentTimeMillis()
         var lastError: Throwable? = firstAttempt.exceptionOrNull()
 
         while (System.currentTimeMillis() - startTime < maxWaitMs) {
+            delay(300L)
             val retry = sendCommand(line, connectTimeoutMs = 1500, readTimeoutMs = readTimeoutMs)
             if (retry.isSuccess) {
                 return@withContext retry
             }
             lastError = retry.exceptionOrNull()
-            delay(500L)
         }
 
         Result.failure(lastError ?: RuntimeException("Camd service did not respond on port $PORT"))
+    }
+
+    /**
+     * Requests available presets from Camd service (spec §3.1.1, Camd >= 0.5.0):
+     * Format: PRESETS
+     * Response: OK presets=<camId>:<name>:<builtin|user>,... or OK presets=none
+     */
+    suspend fun getPresets(): Result<List<CamdPreset>> = withContext(Dispatchers.IO) {
+        val res = sendCommand("PRESETS", connectTimeoutMs = 1200, readTimeoutMs = 3000)
+        res.mapCatching { response ->
+            if (response.startsWith("OK presets=")) {
+                val content = response.removePrefix("OK presets=").trim()
+                if (content == "none" || content.isEmpty()) {
+                    emptyList()
+                } else {
+                    content.split(",").mapNotNull { entry ->
+                        val parts = entry.trim().split(":")
+                        if (parts.size >= 2) {
+                            val camId = parts[0].toIntOrNull() ?: return@mapNotNull null
+                            val name = parts[1]
+                            val isBuiltin = parts.getOrNull(2) != "user"
+                            CamdPreset(camId, name, isBuiltin)
+                        } else null
+                    }
+                }
+            } else {
+                emptyList()
+            }
+        }
     }
 
     /**
@@ -139,6 +207,7 @@ object CamdSocketClient {
 
     /**
      * Checks connection status without waking up the service on STATUS (per spec: STATUS doesn't wake).
+     * If connected, also fetches available presets.
      */
     suspend fun checkStatus(context: Context): CamdConnectionStatus = withContext(Dispatchers.IO) {
         if (!isInstalled(context)) {
@@ -149,7 +218,9 @@ object CamdSocketClient {
         result.fold(
             onSuccess = { response ->
                 if (response.startsWith("OK")) {
-                    parseStatusResponse(response)
+                    val status = parseStatusResponse(response)
+                    val presets = getPresets().getOrDefault(emptyList())
+                    status.copy(presets = presets)
                 } else {
                     CamdConnectionStatus.NoConnection("Ответ службы: $response")
                 }
@@ -190,6 +261,7 @@ object CamdSocketClient {
             avmState = avmState,
             keepAvm = keepAvm,
             rawStatus = response,
+            presets = emptyList(),
         )
     }
 }

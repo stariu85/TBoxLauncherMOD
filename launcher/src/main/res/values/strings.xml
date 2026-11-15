@@ -456,6 +456,16 @@
     <string name="camd_disable_stock_avm_desc">Принудительное удержание выключенным com.mengbo.avm в vad.dashing.camd (AVM ON / AVM OFF)</string>
     <string name="camd_turn_signals_title">Включение боковых камер по поворотникам</string>
     <string name="camd_turn_signals_desc">Выводить соответствующую боковую камеру в зону ADAS при включении поворотника</string>
+    <string name="camd_side_cameras_shape_circle_title">Круглая форма для боковых камер</string>
+    <string name="camd_side_cameras_shape_circle_desc">Круглое окно (1/3 высоты стола, отступ 30 dp) в левом или правом верхнем углу рабочего стола</string>
+    <string name="camd_turn_signal_preset_left_title">Пресет левой камеры</string>
+    <string name="camd_turn_signal_preset_right_title">Пресет правой камеры</string>
+    <string name="camd_preset_default">По умолчанию (полный кадр)</string>
+    <string name="camd_presets_count">Доступно пресетов: %1$d</string>
+    <string name="camd_test_desktop_cameras_btn">4 камеры (Тест)</string>
+    <string name="camd_test_side_left_btn">Левая (Тест)</string>
+    <string name="camd_test_side_right_btn">Правая (Тест)</string>
+    <string name="camd_close_all_cameras_btn">Закрыть камеры</string>
     <string name="camd_dock_test_button_title">Камеры Camd (Тест)</string>
     <string name="launcher_vs_section_theme">Тема</string>
     <string name="launcher_vs_section_theme_sub">Настройки светлой и тёмной темы</string>

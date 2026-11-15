@@ -51,6 +51,9 @@ private const val KEY_TRUNK_LONG_PRESS_ENABLED = "trunk_long_press_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_CAMD_USE_STOCK_AVM = "camd_use_stock_avm"
 private const val KEY_CAMD_TURN_SIGNAL_CAMERAS = "camd_turn_signal_cameras"
+private const val KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE = "camd_side_cameras_shape_circle"
+private const val KEY_CAMD_TURN_SIGNAL_LEFT_PRESET = "camd_turn_signal_left_preset"
+private const val KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET = "camd_turn_signal_right_preset"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
 private const val KEY_EDGE_GESTURES_ENABLED = "edge_gestures_enabled"
 private const val KEY_EDGE_GESTURES_WIDTH = "edge_gestures_width_dp"
@@ -1741,6 +1744,30 @@ internal object LauncherAppConfigStore {
 
     fun setCamdTurnSignalCameras(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CAMD_TURN_SIGNAL_CAMERAS, enabled).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdSideCamerasShapeCircle(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE, false)
+
+    fun setCamdSideCamerasShapeCircle(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE, enabled).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdTurnSignalLeftPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_TURN_SIGNAL_LEFT_PRESET, "").orEmpty()
+
+    fun setCamdTurnSignalLeftPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_TURN_SIGNAL_LEFT_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdTurnSignalRightPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, "").orEmpty()
+
+    fun setCamdTurnSignalRightPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, preset).apply()
         camdConfigRevision.value++
     }
 

@@ -50,6 +50,15 @@ fun LauncherCamerasSettingsContent(
     val turnSignalCameras = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdTurnSignalCameras(context)
     }
+    val shapeCircle = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
+    }
+    val leftPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdTurnSignalLeftPreset(context)
+    }
+    val rightPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdTurnSignalRightPreset(context)
+    }
 
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
 
@@ -87,7 +96,8 @@ fun LauncherCamerasSettingsContent(
                     ""
                 }
                 val avmDetail = if (s.keepAvm) " • Штатная AVM выключена" else " • Штатная AVM активна"
-                "${stringResource(R.string.camd_status_connected)}$detail$avmDetail" to Color(0xFF10B981)
+                val presetsDetail = if (s.presets.isNotEmpty()) " • Пресетов: ${s.presets.size}" else ""
+                "${stringResource(R.string.camd_status_connected)}$detail$avmDetail$presetsDetail" to Color(0xFF10B981)
             }
             is CamdConnectionStatus.NoConnection -> {
                 stringResource(R.string.camd_status_no_connection, s.errorMessage) to Color(0xFFEF4444)
@@ -194,5 +204,139 @@ fun LauncherCamerasSettingsContent(
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
+
+        // Sub-options for turn signal side cameras (shape & presets)
+        if (canEnableTurnSignals && turnSignalCameras) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Option 2.1: Circular shape for side cameras (shape=circle)
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.camd_side_cameras_shape_circle_title),
+                active = shapeCircle,
+                enabled = true,
+                onClick = {
+                    val next = !shapeCircle
+                    LauncherAppConfigStore.setCamdSideCamerasShapeCircle(context, next)
+                },
+            )
+
+            Text(
+                text = stringResource(R.string.camd_side_cameras_shape_circle_desc),
+                color = LauncherColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+
+            // Option 2.2: Preset selection for Left Camera (#4)
+            val connectedStatus = status as? CamdConnectionStatus.Connected
+            val defaultPresetLabel = stringResource(R.string.camd_preset_default)
+
+            val leftPresets = listOf("") + (connectedStatus?.presets?.filter { it.cameraId == CamdCameraRepository.CAMERA_ID_LEFT }?.map { it.name } ?: emptyList()).distinct()
+            if (leftPresets.size > 1) {
+                val currentLeftLabel = if (leftPreset.isBlank() || leftPreset !in leftPresets) defaultPresetLabel else leftPreset
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_turn_signal_preset_left_title),
+                    value = currentLeftLabel,
+                    onClick = {
+                        val currentIdx = leftPresets.indexOf(leftPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % leftPresets.size
+                        LauncherAppConfigStore.setCamdTurnSignalLeftPreset(context, leftPresets[nextIdx])
+                    },
+                )
+            }
+
+            // Option 2.3: Preset selection for Right Camera (#5)
+            val rightPresets = listOf("") + (connectedStatus?.presets?.filter { it.cameraId == CamdCameraRepository.CAMERA_ID_RIGHT }?.map { it.name } ?: emptyList()).distinct()
+            if (rightPresets.size > 1) {
+                val currentRightLabel = if (rightPreset.isBlank() || rightPreset !in rightPresets) defaultPresetLabel else rightPreset
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_turn_signal_preset_right_title),
+                    value = currentRightLabel,
+                    onClick = {
+                        val currentIdx = rightPresets.indexOf(rightPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % rightPresets.size
+                        LauncherAppConfigStore.setCamdTurnSignalRightPreset(context, rightPresets[nextIdx])
+                    },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Test action buttons
+        val activeCamera by CamdCameraRepository.activeTurnSignalCamera.collectAsStateWithLifecycle()
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    CamdCameraRepository.toggleDesktopCameras(context)
+                },
+                enabled = isInstalled,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_test_desktop_cameras_btn),
+                    fontSize = 13.sp,
+                    color = if (isInstalled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                )
+            }
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    scope.launch {
+                        CamdCameraRepository.closeAll(context)
+                    }
+                },
+                enabled = isInstalled,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_close_all_cameras_btn),
+                    fontSize = 13.sp,
+                    color = if (isInstalled) LauncherColors.TextPrimary else LauncherColors.TextMuted,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            val isLeftActive = activeCamera == CamdCameraRepository.CAMERA_ID_LEFT
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    CamdCameraRepository.testSideCamera(context, CamdCameraRepository.CAMERA_ID_LEFT)
+                },
+                enabled = isInstalled,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_test_side_left_btn),
+                    fontSize = 13.sp,
+                    color = if (isLeftActive) Color(0xFF10B981) else if (isInstalled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                )
+            }
+
+            val isRightActive = activeCamera == CamdCameraRepository.CAMERA_ID_RIGHT
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    CamdCameraRepository.testSideCamera(context, CamdCameraRepository.CAMERA_ID_RIGHT)
+                },
+                enabled = isInstalled,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_test_side_right_btn),
+                    fontSize = 13.sp,
+                    color = if (isRightActive) Color(0xFF10B981) else if (isInstalled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                )
+            }
+        }
     }
 }
