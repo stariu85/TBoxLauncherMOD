@@ -286,7 +286,6 @@ object CamdCameraRepository {
                 _isDesktopCamerasOpen.value = false
                 _activeTurnSignalCamera.value = null
                 _activeTurnSignalSide.value = null
-                turnSignalsLatch.reset()
             } else {
                 if (_activeTurnSignalCamera.value == id) {
                     _activeTurnSignalCamera.value = null
@@ -363,11 +362,9 @@ object CamdCameraRepository {
                         if (current != null) {
                             closeCamera(context, current)
                             _activeTurnSignalCamera.value = null
-                        } else {
-                            closeCamera(context, null)
                         }
                         val openedCamId = openTurnSignalSideCamera(context, CAMERA_ID_LEFT)
-                        if (!isActive || turnSignalsLatch.currentSide() != TurnSignalSide.Left) {
+                        if (!isActive || turnSignalsLatch.latchedSide.value != TurnSignalSide.Left) {
                             Log.i(TAG, "Turn signal Left cancelled or expired during open, closing immediately")
                             if (openedCamId != null) {
                                 closeCamera(context, openedCamId)
@@ -391,11 +388,9 @@ object CamdCameraRepository {
                         if (current != null) {
                             closeCamera(context, current)
                             _activeTurnSignalCamera.value = null
-                        } else {
-                            closeCamera(context, null)
                         }
                         val openedCamId = openTurnSignalSideCamera(context, CAMERA_ID_RIGHT)
-                        if (!isActive || turnSignalsLatch.currentSide() != TurnSignalSide.Right) {
+                        if (!isActive || turnSignalsLatch.latchedSide.value != TurnSignalSide.Right) {
                             Log.i(TAG, "Turn signal Right cancelled or expired during open, closing immediately")
                             if (openedCamId != null) {
                                 closeCamera(context, openedCamId)
