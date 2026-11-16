@@ -51,6 +51,7 @@ class BackgroundService : Service() {
         MbCanEngineFacade.setTurnLightCallback { left, right ->
             vad.dashing.tbox.camd.CamdCameraRepository.onTurnLightSignal(applicationContext, left, right)
         }
+        vad.dashing.tbox.camd.CamdCameraRepository.startSideCamerasMonitor(applicationContext)
         scope.launch {
             DclLogRecorder.log("BACKGROUND_SERVICE", "Triggering UniversalCanRepository.bind")
             UniversalCanRepository.bind(scope)

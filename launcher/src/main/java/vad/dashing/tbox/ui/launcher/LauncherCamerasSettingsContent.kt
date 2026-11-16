@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.camd.CamdCameraRepository
@@ -63,11 +67,48 @@ fun LauncherCamerasSettingsContent(
     val rightPreset = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdTurnSignalRightPreset(context)
     }
+    val sizeAdjustment = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdSideCamerasSizeAdjustment(context)
+    }
+    val autoDisableStockAvm = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdAutoDisableStockAvm(context)
+    }
+    val autoAvmOnSpeed = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdAutoAvmOnSpeed(context)
+    }
+    val autoAvmOffSpeed = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdAutoAvmOffSpeed(context)
+    }
+    val lowSpeedSideCameras = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedSideCameras(context)
+    }
+    val lowSpeedThreshold = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedThreshold(context)
+    }
+    val lowSpeedTrigger = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
+    }
+    val lowSpeedWidthPercent = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedSideWidthPercent(context)
+    }
+    val lowSpeedLeftPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedLeftPreset(context)
+    }
+    val lowSpeedRightPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedRightPreset(context)
+    }
+    val lowSpeedSteerOffAngle = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedSteerOffAngle(context)
+    }
+    val lowSpeedSteerOnAngle = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdLowSpeedSteerOnAngle(context)
+    }
 
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         CamdCameraRepository.refreshStatus(context)
+        CamdCameraRepository.startSideCamerasMonitor(context)
     }
 
     LaunchedEffect(status) {
@@ -164,11 +205,12 @@ fun LauncherCamerasSettingsContent(
         val isInstalled = status !is CamdConnectionStatus.NotInstalled
 
         // Option 1: "Выключить штатную систему 360"
+        val canToggleManualAvm = isInstalled && !autoDisableStockAvm
         LauncherSettingsToggleRow(
             label = stringResource(R.string.camd_disable_stock_avm_title),
             active = disableStockAvm,
-            enabled = isInstalled,
-            onClick = if (isInstalled) {
+            enabled = canToggleManualAvm,
+            onClick = if (canToggleManualAvm) {
                 {
                     val next = !disableStockAvm
                     LauncherAppConfigStore.setCamdDisableStockAvm(context, next)
@@ -181,10 +223,96 @@ fun LauncherCamerasSettingsContent(
 
         Text(
             text = stringResource(R.string.camd_disable_stock_avm_desc),
-            color = LauncherColors.TextMuted,
+            color = if (canToggleManualAvm) LauncherColors.TextSecondary else LauncherColors.TextMuted,
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Option 1.1: "Автоматическое выключение штатной AVM"
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.camd_auto_disable_stock_avm_title),
+            active = autoDisableStockAvm,
+            enabled = isInstalled,
+            onClick = if (isInstalled) {
+                {
+                    val next = !autoDisableStockAvm
+                    LauncherAppConfigStore.setCamdAutoDisableStockAvm(context, next)
+                }
+            } else null,
+        )
+
+        Text(
+            text = stringResource(R.string.camd_auto_disable_stock_avm_desc),
+            color = if (isInstalled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+
+        // Dual-thumb scale for auto AVM speed thresholds (activation & deactivation)
+        val isAutoAvmActive = isInstalled && autoDisableStockAvm
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_auto_avm_on_speed_label, autoAvmOnSpeed),
+                    color = if (isAutoAvmActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.camd_auto_avm_off_speed_label, autoAvmOffSpeed),
+                    color = if (isAutoAvmActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                text = stringResource(R.string.camd_auto_avm_speeds_desc),
+                color = if (isAutoAvmActive) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+                fontSize = 12.sp,
+            )
+            RangeSlider(
+                value = autoAvmOnSpeed.toFloat()..autoAvmOffSpeed.toFloat(),
+                onValueChange = { range ->
+                    var newOn = range.start.roundToInt().coerceIn(1, 29)
+                    var newOff = range.endInclusive.roundToInt().coerceIn(2, 30)
+                    if (newOff - newOn < 1) {
+                        if (newOn != autoAvmOnSpeed) {
+                            newOn = (newOff - 1).coerceAtLeast(1)
+                        } else {
+                            newOff = (newOn + 1).coerceAtMost(30)
+                        }
+                    }
+                    if (newOff <= newOn) {
+                        if (newOn < 30) newOff = newOn + 1 else newOn = newOff - 1
+                    }
+                    LauncherAppConfigStore.setCamdAutoAvmSpeeds(context, newOn, newOff)
+                },
+                valueRange = 1f..30f,
+                steps = 28,
+                enabled = isAutoAvmActive,
+                colors = SliderDefaults.colors(
+                    thumbColor = LauncherColors.AccentCyan,
+                    activeTrackColor = LauncherColors.AccentCyan,
+                    inactiveTrackColor = LauncherColors.TextMuted,
+                    disabledThumbColor = LauncherColors.TextMuted,
+                    disabledActiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                    disabledInactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.2f),
+                ),
+            )
+        }
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -251,6 +379,54 @@ fun LauncherCamerasSettingsContent(
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
 
+            if (shapeCircle || rectCorners) {
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.camd_side_cameras_size_adjustment_title),
+                            color = LauncherColors.TextPrimary,
+                            fontSize = 15.sp,
+                        )
+                        val formattedPercent = if (sizeAdjustment > 0) "+$sizeAdjustment%" else "$sizeAdjustment%"
+                        Text(
+                            text = formattedPercent,
+                            color = LauncherColors.AccentCyan,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.camd_side_cameras_size_adjustment_desc),
+                        color = LauncherColors.TextMuted,
+                        fontSize = 12.sp,
+                    )
+                    Slider(
+                        value = sizeAdjustment.toFloat(),
+                        onValueChange = { next ->
+                            LauncherAppConfigStore.setCamdSideCamerasSizeAdjustment(context, next.roundToInt())
+                        },
+                        valueRange = -50f..100f,
+                        steps = 29,
+                        colors = SliderDefaults.colors(
+                            thumbColor = LauncherColors.AccentCyan,
+                            activeTrackColor = LauncherColors.AccentCyan,
+                            inactiveTrackColor = LauncherColors.TextMuted,
+                        ),
+                    )
+                }
+            }
+
             // Option 2.3: Preset selection for Left Camera & Right Camera (all broadcast presets)
             val connectedStatus = status as? CamdConnectionStatus.Connected
             val defaultPresetLabel = stringResource(R.string.camd_preset_default)
@@ -287,6 +463,253 @@ fun LauncherCamerasSettingsContent(
                         val currentIdx = allPresets.indexOf(rightPreset).takeIf { it >= 0 } ?: 0
                         val nextIdx = (currentIdx + 1) % allPresets.size
                         LauncherAppConfigStore.setCamdTurnSignalRightPreset(context, allPresets[nextIdx])
+                    },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Option 3: "Боковые камеры на малой скорости при поворотах"
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.camd_low_speed_side_cameras_title),
+            active = lowSpeedSideCameras,
+            enabled = isInstalled,
+            onClick = if (isInstalled) {
+                {
+                    val next = !lowSpeedSideCameras
+                    LauncherAppConfigStore.setCamdLowSpeedSideCameras(context, next)
+                }
+            } else null,
+        )
+
+        Text(
+            text = stringResource(R.string.camd_low_speed_side_cameras_desc),
+            color = if (isInstalled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+
+        if (isInstalled && lowSpeedSideCameras) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Sub-option 3.1: Trigger condition (turn signals, steering 30 deg, both)
+            val triggerOptions = listOf(
+                CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS to stringResource(R.string.camd_low_speed_trigger_turn_signals),
+                CAMD_LOW_SPEED_TRIGGER_STEERING to stringResource(R.string.camd_low_speed_trigger_steering),
+                CAMD_LOW_SPEED_TRIGGER_BOTH to stringResource(R.string.camd_low_speed_trigger_both),
+            )
+            val currentTriggerLabel = triggerOptions.firstOrNull { it.first == lowSpeedTrigger }?.second
+                ?: stringResource(R.string.camd_low_speed_trigger_both)
+
+            LauncherSettingsValueRow(
+                label = stringResource(R.string.camd_low_speed_trigger_title),
+                value = currentTriggerLabel,
+                onClick = {
+                    val currentIdx = triggerOptions.indexOfFirst { it.first == lowSpeedTrigger }.takeIf { it >= 0 } ?: 0
+                    val nextIdx = (currentIdx + 1) % triggerOptions.size
+                    LauncherAppConfigStore.setCamdLowSpeedSideTrigger(context, triggerOptions[nextIdx].first)
+                },
+            )
+
+            // Steering wheel activation/deactivation angle dual-thumb slider
+            val isSteerTriggerActive = isInstalled && lowSpeedSideCameras &&
+                (lowSpeedTrigger == CAMD_LOW_SPEED_TRIGGER_STEERING || lowSpeedTrigger == CAMD_LOW_SPEED_TRIGGER_BOTH)
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.camd_low_speed_steer_off_angle_label, lowSpeedSteerOffAngle),
+                        color = if (isSteerTriggerActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.camd_low_speed_steer_on_angle_label, lowSpeedSteerOnAngle),
+                        color = if (isSteerTriggerActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.camd_low_speed_steer_angles_desc),
+                    color = if (isSteerTriggerActive) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+                RangeSlider(
+                    value = lowSpeedSteerOffAngle.toFloat()..lowSpeedSteerOnAngle.toFloat(),
+                    onValueChange = { range ->
+                        val rawOff = (range.start / 5f).roundToInt() * 5
+                        val rawOn = (range.endInclusive / 5f).roundToInt() * 5
+                        var newOff = rawOff.coerceIn(5, 85)
+                        var newOn = rawOn.coerceIn(10, 90)
+
+                        if (newOn - newOff < 5) {
+                            if (newOff != lowSpeedSteerOffAngle) {
+                                newOff = (newOn - 5).coerceAtLeast(5)
+                            } else {
+                                newOn = (newOff + 5).coerceAtMost(90)
+                            }
+                        }
+                        if (newOn <= newOff) {
+                            if (newOff <= 85) newOn = newOff + 5 else newOff = newOn - 5
+                        }
+                        LauncherAppConfigStore.setCamdLowSpeedSteerAngles(context, newOff, newOn)
+                    },
+                    valueRange = 5f..90f,
+                    steps = 16,
+                    enabled = isSteerTriggerActive,
+                    colors = SliderDefaults.colors(
+                        thumbColor = LauncherColors.AccentCyan,
+                        activeTrackColor = LauncherColors.AccentCyan,
+                        inactiveTrackColor = LauncherColors.TextMuted,
+                        disabledThumbColor = LauncherColors.TextMuted,
+                        disabledActiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.4f),
+                        disabledInactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.2f),
+                    ),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Sub-option 3.2: Speed threshold slider (1..30 km/h)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.camd_low_speed_threshold_title),
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        text = "$lowSpeedThreshold км/ч",
+                        color = LauncherColors.AccentCyan,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.camd_low_speed_threshold_desc),
+                    color = LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+                Slider(
+                    value = lowSpeedThreshold.toFloat(),
+                    onValueChange = { next ->
+                        LauncherAppConfigStore.setCamdLowSpeedThreshold(context, next.roundToInt())
+                    },
+                    valueRange = 1f..30f,
+                    steps = 28,
+                    colors = SliderDefaults.colors(
+                        thumbColor = LauncherColors.AccentCyan,
+                        activeTrackColor = LauncherColors.AccentCyan,
+                        inactiveTrackColor = LauncherColors.TextMuted,
+                    ),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Sub-option 3.3: Width adjustment slider (10%..50%, step 5%)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.camd_low_speed_width_title),
+                        color = LauncherColors.TextPrimary,
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        text = "$lowSpeedWidthPercent%",
+                        color = LauncherColors.AccentCyan,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.camd_low_speed_width_desc),
+                    color = LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+                Slider(
+                    value = lowSpeedWidthPercent.toFloat(),
+                    onValueChange = { next ->
+                        val rounded5 = (next / 5f).roundToInt() * 5
+                        LauncherAppConfigStore.setCamdLowSpeedSideWidthPercent(context, rounded5)
+                    },
+                    valueRange = 10f..50f,
+                    steps = 7,
+                    colors = SliderDefaults.colors(
+                        thumbColor = LauncherColors.AccentCyan,
+                        activeTrackColor = LauncherColors.AccentCyan,
+                        inactiveTrackColor = LauncherColors.TextMuted,
+                    ),
+                )
+            }
+
+            // Sub-option 3.4: Preset selection for Left and Right low-speed cameras
+            val connectedStatus = status as? CamdConnectionStatus.Connected
+            val defaultPresetLabel = stringResource(R.string.camd_preset_default)
+            val allLowSpeedPresets = (listOf("") + (connectedStatus?.presets?.map { it.name } ?: emptyList()) + listOfNotNull(lowSpeedLeftPreset.ifBlank { null }, lowSpeedRightPreset.ifBlank { null })).distinct()
+
+            if (allLowSpeedPresets.size > 1) {
+                val formatLowSpeedPresetLabel: (String) -> String = { presetName ->
+                    if (presetName.isBlank() || presetName !in allLowSpeedPresets) {
+                        defaultPresetLabel
+                    } else {
+                        val p = connectedStatus?.presets?.firstOrNull { it.name == presetName }
+                        if (p != null) {
+                            "${p.name} (#${p.cameraId})"
+                        } else {
+                            presetName
+                        }
+                    }
+                }
+
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_low_speed_preset_left_title),
+                    value = formatLowSpeedPresetLabel(lowSpeedLeftPreset),
+                    onClick = {
+                        val currentIdx = allLowSpeedPresets.indexOf(lowSpeedLeftPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allLowSpeedPresets.size
+                        LauncherAppConfigStore.setCamdLowSpeedLeftPreset(context, allLowSpeedPresets[nextIdx])
+                    },
+                )
+
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_low_speed_preset_right_title),
+                    value = formatLowSpeedPresetLabel(lowSpeedRightPreset),
+                    onClick = {
+                        val currentIdx = allLowSpeedPresets.indexOf(lowSpeedRightPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allLowSpeedPresets.size
+                        LauncherAppConfigStore.setCamdLowSpeedRightPreset(context, allLowSpeedPresets[nextIdx])
                     },
                 )
             }

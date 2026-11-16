@@ -51,11 +51,34 @@ private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
 private const val KEY_TRUNK_LONG_PRESS_ENABLED = "trunk_long_press_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_CAMD_USE_STOCK_AVM = "camd_use_stock_avm"
+private const val KEY_CAMD_AUTO_DISABLE_STOCK_AVM = "camd_auto_disable_stock_avm"
+private const val KEY_CAMD_AUTO_AVM_ON_SPEED = "camd_auto_avm_on_speed"
+private const val KEY_CAMD_AUTO_AVM_OFF_SPEED = "camd_auto_avm_off_speed"
+private const val DEFAULT_CAMD_AUTO_AVM_ON_SPEED = 2
+private const val DEFAULT_CAMD_AUTO_AVM_OFF_SPEED = 20
 private const val KEY_CAMD_TURN_SIGNAL_CAMERAS = "camd_turn_signal_cameras"
 private const val KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE = "camd_side_cameras_shape_circle"
 private const val KEY_CAMD_SIDE_CAMERAS_RECT_CORNERS = "camd_side_cameras_rect_corners"
 private const val KEY_CAMD_TURN_SIGNAL_LEFT_PRESET = "camd_turn_signal_left_preset"
 private const val KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET = "camd_turn_signal_right_preset"
+private const val KEY_CAMD_SIDE_CAMERAS_SIZE_ADJUSTMENT = "camd_side_cameras_size_adjustment"
+private const val KEY_CAMD_LOW_SPEED_SIDE_CAMERAS = "camd_low_speed_side_cameras"
+private const val KEY_CAMD_LOW_SPEED_THRESHOLD = "camd_low_speed_threshold"
+private const val KEY_CAMD_LOW_SPEED_SIDE_TRIGGER = "camd_low_speed_side_trigger"
+private const val KEY_CAMD_LOW_SPEED_SIDE_WIDTH_PERCENT = "camd_low_speed_side_width_percent"
+private const val KEY_CAMD_LOW_SPEED_LEFT_PRESET = "camd_low_speed_left_preset"
+private const val KEY_CAMD_LOW_SPEED_RIGHT_PRESET = "camd_low_speed_right_preset"
+private const val KEY_CAMD_LOW_SPEED_STEER_OFF_ANGLE = "camd_low_speed_steer_off_angle"
+private const val KEY_CAMD_LOW_SPEED_STEER_ON_ANGLE = "camd_low_speed_steer_on_angle"
+
+const val CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS = "turn_signals"
+const val CAMD_LOW_SPEED_TRIGGER_STEERING = "steering_wheel"
+const val CAMD_LOW_SPEED_TRIGGER_BOTH = "both"
+
+private const val DEFAULT_CAMD_LOW_SPEED_THRESHOLD = 20
+private const val DEFAULT_CAMD_LOW_SPEED_SIDE_WIDTH_PERCENT = 30
+private const val DEFAULT_CAMD_LOW_SPEED_STEER_OFF_ANGLE = 20
+private const val DEFAULT_CAMD_LOW_SPEED_STEER_ON_ANGLE = 30
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
 private const val KEY_EDGE_GESTURES_ENABLED = "edge_gestures_enabled"
 private const val KEY_EDGE_GESTURES_WIDTH = "edge_gestures_width_dp"
@@ -1751,6 +1774,37 @@ internal object LauncherAppConfigStore {
         setCamdUseStockAvm(context, !disableStock)
     }
 
+    fun camdAutoDisableStockAvm(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_AUTO_DISABLE_STOCK_AVM, false)
+
+    fun setCamdAutoDisableStockAvm(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_AUTO_DISABLE_STOCK_AVM, enabled).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdAutoAvmOnSpeed(context: Context): Int {
+        val sp = prefs(context)
+        val onSpd = sp.getInt(KEY_CAMD_AUTO_AVM_ON_SPEED, DEFAULT_CAMD_AUTO_AVM_ON_SPEED)
+        return onSpd.coerceIn(1, 29)
+    }
+
+    fun camdAutoAvmOffSpeed(context: Context): Int {
+        val sp = prefs(context)
+        val offSpd = sp.getInt(KEY_CAMD_AUTO_AVM_OFF_SPEED, DEFAULT_CAMD_AUTO_AVM_OFF_SPEED)
+        val onSpd = camdAutoAvmOnSpeed(context)
+        return offSpd.coerceIn(onSpd + 1, 30)
+    }
+
+    fun setCamdAutoAvmSpeeds(context: Context, onSpeed: Int, offSpeed: Int) {
+        val validOn = onSpeed.coerceIn(1, 29)
+        val validOff = offSpeed.coerceIn(validOn + 1, 30)
+        prefs(context).edit()
+            .putInt(KEY_CAMD_AUTO_AVM_ON_SPEED, validOn)
+            .putInt(KEY_CAMD_AUTO_AVM_OFF_SPEED, validOff)
+            .apply()
+        camdConfigRevision.value++
+    }
+
     fun camdTurnSignalCameras(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CAMD_TURN_SIGNAL_CAMERAS, false)
 
@@ -1796,6 +1850,85 @@ internal object LauncherAppConfigStore {
 
     fun setCamdTurnSignalRightPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdSideCamerasSizeAdjustment(context: Context): Int =
+        prefs(context).getInt(KEY_CAMD_SIDE_CAMERAS_SIZE_ADJUSTMENT, 0)
+
+    fun setCamdSideCamerasSizeAdjustment(context: Context, percent: Int) {
+        prefs(context).edit().putInt(KEY_CAMD_SIDE_CAMERAS_SIZE_ADJUSTMENT, percent.coerceIn(-50, 100)).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedSideCameras(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_LOW_SPEED_SIDE_CAMERAS, false)
+
+    fun setCamdLowSpeedSideCameras(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_LOW_SPEED_SIDE_CAMERAS, enabled).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedThreshold(context: Context): Int =
+        prefs(context).getInt(KEY_CAMD_LOW_SPEED_THRESHOLD, DEFAULT_CAMD_LOW_SPEED_THRESHOLD).coerceIn(1, 30)
+
+    fun setCamdLowSpeedThreshold(context: Context, speed: Int) {
+        prefs(context).edit().putInt(KEY_CAMD_LOW_SPEED_THRESHOLD, speed.coerceIn(1, 30)).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedSideTrigger(context: Context): String =
+        prefs(context).getString(KEY_CAMD_LOW_SPEED_SIDE_TRIGGER, CAMD_LOW_SPEED_TRIGGER_BOTH) ?: CAMD_LOW_SPEED_TRIGGER_BOTH
+
+    fun setCamdLowSpeedSideTrigger(context: Context, trigger: String) {
+        prefs(context).edit().putString(KEY_CAMD_LOW_SPEED_SIDE_TRIGGER, trigger).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedSideWidthPercent(context: Context): Int =
+        prefs(context).getInt(KEY_CAMD_LOW_SPEED_SIDE_WIDTH_PERCENT, DEFAULT_CAMD_LOW_SPEED_SIDE_WIDTH_PERCENT).coerceIn(10, 50)
+
+    fun setCamdLowSpeedSideWidthPercent(context: Context, percent: Int) {
+        prefs(context).edit().putInt(KEY_CAMD_LOW_SPEED_SIDE_WIDTH_PERCENT, percent.coerceIn(10, 50)).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedLeftPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_LOW_SPEED_LEFT_PRESET, "").orEmpty()
+
+    fun setCamdLowSpeedLeftPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_LOW_SPEED_LEFT_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedRightPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_LOW_SPEED_RIGHT_PRESET, "").orEmpty()
+
+    fun setCamdLowSpeedRightPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_LOW_SPEED_RIGHT_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdLowSpeedSteerOffAngle(context: Context): Int {
+        val sp = prefs(context)
+        val offAngle = sp.getInt(KEY_CAMD_LOW_SPEED_STEER_OFF_ANGLE, DEFAULT_CAMD_LOW_SPEED_STEER_OFF_ANGLE)
+        return (offAngle / 5 * 5).coerceIn(5, 85)
+    }
+
+    fun camdLowSpeedSteerOnAngle(context: Context): Int {
+        val sp = prefs(context)
+        val onAngle = sp.getInt(KEY_CAMD_LOW_SPEED_STEER_ON_ANGLE, DEFAULT_CAMD_LOW_SPEED_STEER_ON_ANGLE)
+        val offAngle = camdLowSpeedSteerOffAngle(context)
+        return (onAngle / 5 * 5).coerceIn(offAngle + 5, 90)
+    }
+
+    fun setCamdLowSpeedSteerAngles(context: Context, offAngle: Int, onAngle: Int) {
+        val validOff = (offAngle / 5 * 5).coerceIn(5, 85)
+        val validOn = (onAngle / 5 * 5).coerceIn(validOff + 5, 90)
+        prefs(context).edit()
+            .putInt(KEY_CAMD_LOW_SPEED_STEER_OFF_ANGLE, validOff)
+            .putInt(KEY_CAMD_LOW_SPEED_STEER_ON_ANGLE, validOn)
+            .apply()
         camdConfigRevision.value++
     }
 

@@ -341,6 +341,13 @@ fun LauncherLeftPanel(
         HEADLIGHT_BEAMS_NIGHT_ONLY -> isNight
         else -> false
     }
+    val vehicleSnapshot = rememberLauncherVehicleControlSnapshot(enabled = !simulateEnabled)
+    val isHmaOn = adas.hma != LauncherAdasAssistIcon.Hidden || vehicleSnapshot.hmaOn == true
+    val isHighBeamIndicated = isHighBeamIndicatedInAdas(
+        isHmaOn = isHmaOn,
+        isHighBeamBurning = headlightBeams.highBeam,
+        showAll = simulateEnabled && LauncherDevVehicleState.showAllIndicators,
+    )
     val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle()
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdcActive || adas.pdc.hasAny || (simulateEnabled && LauncherDevVehicleState.showAllIndicators)
@@ -747,7 +754,7 @@ fun LauncherLeftPanel(
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
                     projectPdcRings = !racing,
-                    projectHeadlights = !racing && projectHeadlightsEnabled,
+                    projectHeadlights = !racing && (projectHeadlightsEnabled || isHighBeamIndicated),
                     textureSurface = racing,
                     modifier = Modifier
                         .fillMaxSize()
@@ -804,6 +811,7 @@ fun LauncherLeftPanel(
                     LauncherHeadlightOverlay(
                         beams = headlightBeams,
                         hma = adas.hma,
+                        isHighBeam = isHighBeamIndicated,
                         frame = headlightFrame,
                         modifier = Modifier.fillMaxSize(),
                     )

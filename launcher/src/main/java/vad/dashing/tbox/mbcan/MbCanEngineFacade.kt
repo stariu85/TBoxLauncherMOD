@@ -1071,6 +1071,20 @@ object MbCanEngineFacade {
                             turnLightCallback?.invoke(left, right)
                         }
                     }
+                    "onSpeed" -> {
+                        vad.dashing.tbox.DclLogRecorder.recordCanRx()
+                        val spd = (args?.getOrNull(0) as? Number)?.toFloat()
+                        if (spd != null) {
+                            MbCanRepository.scheduleCarSpeedPush(spd)
+                        }
+                    }
+                    "onSteeringWheel" -> {
+                        vad.dashing.tbox.DclLogRecorder.recordCanRx()
+                        val angle = (args?.getOrNull(0) as? Number)?.toFloat()
+                        if (angle != null) {
+                            vad.dashing.tbox.CanDataRepository.updateSteerAngle(angle)
+                        }
+                    }
                 }
             }
             null

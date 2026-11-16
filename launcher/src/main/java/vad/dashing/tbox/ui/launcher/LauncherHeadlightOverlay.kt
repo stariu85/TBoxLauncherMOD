@@ -82,19 +82,44 @@ internal fun resolveHeadlightBeams(
     return LauncherHeadlightBeams(lowBeam = low, highBeam = high)
 }
 
+/**
+ * Resolves whether the high beam indicator is currently active in the ADAS indicator strip.
+ * - In manual mode (!isHmaOn): active when high beam is physically burning (showManualHighBeam).
+ * - In auto mode (isHmaOn): active when HMA is on and high beam is burning (HMA icon turns blue).
+ * - In developer simulation: also active when all indicators are forced on.
+ */
+fun isHighBeamIndicatedInAdas(
+    isHmaOn: Boolean,
+    isHighBeamBurning: Boolean,
+    showAll: Boolean = false,
+): Boolean {
+    val showManualHighBeam = !isHmaOn && isHighBeamBurning
+    val isHmaHighBeamActive = isHmaOn && isHighBeamBurning
+    return showManualHighBeam || isHmaHighBeamActive || showAll
+}
+
 @Composable
 fun LauncherHeadlightOverlay(
     beams: LauncherHeadlightBeams,
     hma: LauncherAdasAssistIcon = LauncherAdasAssistIcon.Hidden,
+    isHighBeam: Boolean = beams.highBeam,
     frame: LauncherHeadlightFrame?,
     modifier: Modifier = Modifier,
 ) {
     if (frame == null) return
 
-    val color = Color(0xFFFFF1C2)
-    val coreAlpha = 0.36f
-    val leftFan = if (frame.leftLowFan.size >= 2) frame.leftLowFan else frame.leftShortFan
-    val rightFan = if (frame.rightLowFan.size >= 2) frame.rightLowFan else frame.rightShortFan
+    val color = if (isHighBeam) Color(0xFFFFFBEA) else Color(0xFFFFF1C2)
+    val coreAlpha = if (isHighBeam) 0.44f else 0.36f
+    val leftFan = if (isHighBeam) {
+        if (frame.leftHighFan.size >= 2) frame.leftHighFan else frame.leftLowFan
+    } else {
+        if (frame.leftLowFan.size >= 2) frame.leftLowFan else frame.leftShortFan
+    }
+    val rightFan = if (isHighBeam) {
+        if (frame.rightHighFan.size >= 2) frame.rightHighFan else frame.rightLowFan
+    } else {
+        if (frame.rightLowFan.size >= 2) frame.rightLowFan else frame.rightShortFan
+    }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         drawHeadlightCone(

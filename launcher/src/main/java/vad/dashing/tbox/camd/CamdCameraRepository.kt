@@ -10,13 +10,22 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import vad.dashing.tbox.CanDataRepository
+import vad.dashing.tbox.mbcan.MbCanSignal
 import vad.dashing.tbox.mbcan.TurnSignalSide
 import vad.dashing.tbox.mbcan.TurnSignalsLatch
+import vad.dashing.tbox.mbcan.UniversalCanRepository
+import vad.dashing.tbox.ui.launcher.CAMD_LOW_SPEED_TRIGGER_BOTH
+import vad.dashing.tbox.ui.launcher.CAMD_LOW_SPEED_TRIGGER_STEERING
+import vad.dashing.tbox.ui.launcher.CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS
+import vad.dashing.tbox.ui.launcher.LauncherActiveAppTracker
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
+import vad.dashing.tbox.ui.launcher.LauncherAppLaunchMode
 import vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger
 import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
 import java.util.Locale
@@ -103,14 +112,130 @@ object CamdCameraRepository {
     private val turnSignalsLatch = TurnSignalsLatch(
         scope = scope,
         holdMs = TurnSignalsLatch.HOLD_MS,
-        onSideChanged = { side ->
-            handleLatchedTurnSignal(side)
+        onSideChanged = {
+            val ctx = appContext
+            if (ctx != null) {
+                evaluateSideCameraState(ctx)
+            }
         },
     )
 
     private var desktopOperationJob: Job? = null
     private var turnSignalJob: Job? = null
+    private var autoAvmJob: Job? = null
+    private var sideCamerasMonitorJob: Job? = null
+    @Volatile
+    private var _activeIsLowSpeed: Boolean = false
+    @Volatile
+    private var currentSteerSide: TurnSignalSide? = null
+    @Volatile
+    private var lastAutoAvmHoldOff: Boolean? = null
     private val cameraOperationMutex = Mutex()
+
+    fun startSideCamerasMonitor(context: Context) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        startAutoAvmMonitor(appCtx)
+        if (sideCamerasMonitorJob?.isActive == true) return
+
+        sideCamerasMonitorJob = scope.launch {
+            combine(
+                LauncherAppConfigStore.camdConfigRevisionFlow,
+                UniversalCanRepository.carSpeedState,
+                CanDataRepository.steerAngle,
+                turnSignalsLatch.latchedSide,
+            ) { _, speed, steerAngle, latchedTurn ->
+                Triple(speed, steerAngle, latchedTurn)
+            }.collect { (_, steerAngle, _) ->
+                updateSteerSideAndEvaluate(appCtx, steerAngle)
+            }
+        }
+    }
+
+    private suspend fun updateSteerSideAndEvaluate(context: Context, steerAngle: Float?) {
+        val angle = steerAngle
+        if (angle != null && angle.isFinite()) {
+            val onAngle = LauncherAppConfigStore.camdLowSpeedSteerOnAngle(context).toFloat()
+            val offAngle = LauncherAppConfigStore.camdLowSpeedSteerOffAngle(context).toFloat()
+            when {
+                angle <= -onAngle -> currentSteerSide = TurnSignalSide.Left
+                angle >= onAngle -> currentSteerSide = TurnSignalSide.Right
+                currentSteerSide == TurnSignalSide.Left && angle > -offAngle -> currentSteerSide = null
+                currentSteerSide == TurnSignalSide.Right && angle < offAngle -> currentSteerSide = null
+            }
+        } else {
+            currentSteerSide = null
+        }
+
+        updateSideCameraCanSignals(context)
+        evaluateSideCameraState(context)
+    }
+
+    private suspend fun updateSideCameraCanSignals(context: Context) {
+        val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
+        val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
+        val trigger = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
+
+        val signals = mutableSetOf<MbCanSignal>()
+        if (lowSpeedEnabled || turnSignalCameras) {
+            signals.add(MbCanSignal.CarSpeed)
+        }
+        if (lowSpeedEnabled && (trigger == CAMD_LOW_SPEED_TRIGGER_STEERING || trigger == CAMD_LOW_SPEED_TRIGGER_BOTH)) {
+            signals.add(MbCanSignal.SteeringAngle)
+        }
+        UniversalCanRepository.setSourceSignals("camd_side_cameras", signals)
+    }
+
+    fun startAutoAvmMonitor(context: Context) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        if (autoAvmJob?.isActive == true) return
+
+        autoAvmJob = scope.launch {
+            combine(
+                LauncherAppConfigStore.camdConfigRevisionFlow,
+                UniversalCanRepository.carSpeedState,
+            ) { _, speed ->
+                speed
+            }.collect { speed ->
+                checkAutoAvmSpeed(appCtx, speed)
+            }
+        }
+    }
+
+    private suspend fun checkAutoAvmSpeed(context: Context, speed: Float?) {
+        val enabled = LauncherAppConfigStore.camdAutoDisableStockAvm(context)
+        if (!enabled) {
+            if (lastAutoAvmHoldOff != null) {
+                lastAutoAvmHoldOff = null
+                UniversalCanRepository.setSourceSignals("camd_auto_avm", emptySet())
+            }
+            return
+        }
+
+        UniversalCanRepository.setSourceSignals("camd_auto_avm", setOf(MbCanSignal.CarSpeed))
+
+        if (speed == null || !speed.isFinite() || speed < 0f) return
+        if (!CamdSocketClient.isInstalled(context)) return
+
+        val onSpeed = LauncherAppConfigStore.camdAutoAvmOnSpeed(context).toFloat()
+        val offSpeed = LauncherAppConfigStore.camdAutoAvmOffSpeed(context).toFloat()
+
+        // > offSpeed: disable OEM AVM (holdOff = true, command "AVM ON")
+        // < onSpeed: enable OEM AVM (holdOff = false, command "AVM OFF")
+        val targetHoldOff = when {
+            speed > offSpeed -> true
+            speed < onSpeed -> false
+            else -> null
+        } ?: return
+
+        if (lastAutoAvmHoldOff != targetHoldOff) {
+            lastAutoAvmHoldOff = targetHoldOff
+            vad.dashing.tbox.DclLogRecorder.log("CAMD_AUTO_AVM", "Speed=$speed km/h (on<$onSpeed, off>$offSpeed) -> targetHoldOff=$targetHoldOff")
+            setHoldStockAvm(context, targetHoldOff)
+            LauncherAppConfigStore.setCamdDisableStockAvm(context, targetHoldOff)
+        }
+    }
 
     fun refreshStatus(context: Context) {
         scope.launch {
@@ -298,13 +423,15 @@ object CamdCameraRepository {
 
     /**
      * Handles turn-light signals from mbCAN (type 2, eMBCAN_VEHICLE_TURNLIGHT):
-     * If turn-signal cameras option is enabled,
-     * opens the corresponding side camera (#4 left, #5 right) in the ADAS zone or corner.
+     * If turn-signal cameras or low-speed side cameras option is enabled,
+     * opens the corresponding side camera (#4 left, #5 right).
      * Uses [TurnSignalsLatch] with 2.5s hold time.
      */
     fun onTurnLightSignal(context: Context, leftLight: Byte, rightLight: Byte) {
         val appCtx = context.applicationContext
         appContext = appCtx
+
+        startSideCamerasMonitor(appCtx)
 
         // Do not process turn signal cameras during cold startup before initial draw is finished
         if (!vad.dashing.tbox.LauncherHomeActivityHolder.isFirstDrawComplete) {
@@ -316,35 +443,33 @@ object CamdCameraRepository {
         }
 
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(appCtx)
+        val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(appCtx)
+        val trigger = LauncherAppConfigStore.camdLowSpeedSideTrigger(appCtx)
 
-        if (!turnSignalCameras) {
+        val turnSignalsUsed = turnSignalCameras || (lowSpeedEnabled && trigger != CAMD_LOW_SPEED_TRIGGER_STEERING)
+
+        if (!turnSignalsUsed) {
             turnSignalsLatch.reset()
-            turnSignalJob?.cancel()
-            if (_activeTurnSignalCamera.value != null || _activeTurnSignalSide.value != null) {
-                val active = _activeTurnSignalCamera.value
-                _activeTurnSignalCamera.value = null
-                _activeTurnSignalSide.value = null
-                turnSignalJob = scope.launch {
-                    if (active != null) closeCamera(appCtx, active) else closeCamera(appCtx, null)
-                }
-            }
+            evaluateSideCameraState(appCtx)
             return
         }
 
         turnSignalsLatch.onRawTurnLights(leftLight.toInt(), rightLight.toInt())
     }
 
-    private fun handleLatchedTurnSignal(side: TurnSignalSide?) {
-        val context = appContext ?: return
-        vad.dashing.tbox.DclLogRecorder.log("CAMD_CAMERA", "handleLatchedTurnSignal side=$side activeCam=${_activeTurnSignalCamera.value} activeSide=${_activeTurnSignalSide.value}")
-        val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
+    fun evaluateSideCameraState(context: Context) {
+        if (!vad.dashing.tbox.LauncherHomeActivityHolder.isFirstDrawComplete) return
 
-        if (!turnSignalCameras) {
+        val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
+        val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
+
+        if (!turnSignalCameras && !lowSpeedEnabled) {
             turnSignalJob?.cancel()
             if (_activeTurnSignalCamera.value != null || _activeTurnSignalSide.value != null) {
                 val active = _activeTurnSignalCamera.value
                 _activeTurnSignalCamera.value = null
                 _activeTurnSignalSide.value = null
+                _activeIsLowSpeed = false
                 turnSignalJob = scope.launch {
                     if (active != null) closeCamera(context, active) else closeCamera(context, null)
                 }
@@ -352,74 +477,72 @@ object CamdCameraRepository {
             return
         }
 
-        when (side) {
-            TurnSignalSide.Left -> {
-                if (_activeTurnSignalSide.value != TurnSignalSide.Left) {
-                    turnSignalJob?.cancel()
-                    _activeTurnSignalSide.value = TurnSignalSide.Left
-                    turnSignalJob = scope.launch {
-                        val current = _activeTurnSignalCamera.value
-                        if (current != null) {
-                            closeCamera(context, current)
-                            _activeTurnSignalCamera.value = null
-                        }
-                        val openedCamId = openTurnSignalSideCamera(context, CAMERA_ID_LEFT)
-                        if (!isActive || turnSignalsLatch.latchedSide.value != TurnSignalSide.Left) {
-                            Log.i(TAG, "Turn signal Left cancelled or expired during open, closing immediately")
-                            if (openedCamId != null) {
-                                closeCamera(context, openedCamId)
-                            } else {
-                                closeCamera(context, null)
-                            }
-                            _activeTurnSignalCamera.value = null
-                            _activeTurnSignalSide.value = null
-                            return@launch
-                        }
-                        _activeTurnSignalCamera.value = openedCamId
-                    }
-                }
+        val speed = UniversalCanRepository.carSpeedState.value ?: 0f
+        val lowSpeedThreshold = LauncherAppConfigStore.camdLowSpeedThreshold(context).toFloat()
+        val isLowSpeed = speed < lowSpeedThreshold
+
+        val turnSignalSide = turnSignalsLatch.latchedSide.value
+        val steerSide = currentSteerSide
+        val triggerMode = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
+
+        val (targetSide, targetIsLowSpeed) = if (lowSpeedEnabled && isLowSpeed) {
+            val side = when (triggerMode) {
+                CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS -> turnSignalSide
+                CAMD_LOW_SPEED_TRIGGER_STEERING -> steerSide
+                CAMD_LOW_SPEED_TRIGGER_BOTH -> turnSignalSide ?: steerSide
+                else -> turnSignalSide ?: steerSide
             }
-            TurnSignalSide.Right -> {
-                if (_activeTurnSignalSide.value != TurnSignalSide.Right) {
-                    turnSignalJob?.cancel()
-                    _activeTurnSignalSide.value = TurnSignalSide.Right
-                    turnSignalJob = scope.launch {
-                        val current = _activeTurnSignalCamera.value
-                        if (current != null) {
-                            closeCamera(context, current)
-                            _activeTurnSignalCamera.value = null
-                        }
-                        val openedCamId = openTurnSignalSideCamera(context, CAMERA_ID_RIGHT)
-                        if (!isActive || turnSignalsLatch.latchedSide.value != TurnSignalSide.Right) {
-                            Log.i(TAG, "Turn signal Right cancelled or expired during open, closing immediately")
-                            if (openedCamId != null) {
-                                closeCamera(context, openedCamId)
-                            } else {
-                                closeCamera(context, null)
-                            }
-                            _activeTurnSignalCamera.value = null
-                            _activeTurnSignalSide.value = null
-                            return@launch
-                        }
-                        _activeTurnSignalCamera.value = openedCamId
-                    }
-                }
+            if (side != null) side to true else null to false
+        } else if (turnSignalCameras) {
+            if (turnSignalSide != null) turnSignalSide to false else null to false
+        } else {
+            null to false
+        }
+
+        applyTargetSideCamera(context, targetSide, targetIsLowSpeed)
+    }
+
+    private fun applyTargetSideCamera(context: Context, targetSide: TurnSignalSide?, isLowSpeed: Boolean) {
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CAMD_CAMERA",
+            "applyTargetSideCamera target=$targetSide isLowSpeed=$isLowSpeed active=${_activeTurnSignalSide.value} activeLow=$_activeIsLowSpeed"
+        )
+        if (_activeTurnSignalSide.value == targetSide && _activeIsLowSpeed == isLowSpeed) {
+            return
+        }
+
+        turnSignalJob?.cancel()
+        if (targetSide == null) {
+            val active = _activeTurnSignalCamera.value
+            _activeTurnSignalSide.value = null
+            _activeTurnSignalCamera.value = null
+            _activeIsLowSpeed = false
+            turnSignalJob = scope.launch {
+                if (active != null) closeCamera(context, active) else closeCamera(context, null)
             }
-            null, TurnSignalSide.Hazard -> {
-                turnSignalJob?.cancel()
-                if (_activeTurnSignalCamera.value != null || _activeTurnSignalSide.value != null) {
-                    val active = _activeTurnSignalCamera.value
-                    _activeTurnSignalCamera.value = null
-                    _activeTurnSignalSide.value = null
-                    turnSignalJob = scope.launch {
-                        if (active != null) {
-                            closeCamera(context, active)
-                        } else {
-                            closeCamera(context, null)
-                        }
-                    }
-                }
+            return
+        }
+
+        _activeTurnSignalSide.value = targetSide
+        _activeIsLowSpeed = isLowSpeed
+        val targetCamId = if (targetSide == TurnSignalSide.Left) CAMERA_ID_LEFT else CAMERA_ID_RIGHT
+
+        turnSignalJob = scope.launch {
+            val current = _activeTurnSignalCamera.value
+            if (current != null) {
+                closeCamera(context, current)
+                _activeTurnSignalCamera.value = null
             }
+            val openedCamId = openTurnSignalSideCamera(context, targetCamId, isLowSpeed = isLowSpeed)
+            if (!isActive || _activeTurnSignalSide.value != targetSide || _activeIsLowSpeed != isLowSpeed) {
+                Log.i(TAG, "Side camera target changed during open, closing immediately")
+                if (openedCamId != null) closeCamera(context, openedCamId) else closeCamera(context, null)
+                _activeTurnSignalCamera.value = null
+                _activeTurnSignalSide.value = null
+                _activeIsLowSpeed = false
+                return@launch
+            }
+            _activeTurnSignalCamera.value = openedCamId
         }
     }
 
@@ -428,12 +551,14 @@ object CamdCameraRepository {
      */
     fun testSideCamera(context: Context, cameraId: Int) {
         val side = if (cameraId == CAMERA_ID_LEFT) TurnSignalSide.Left else TurnSignalSide.Right
+        val lowSpeed = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
         turnSignalJob?.cancel()
         turnSignalJob = scope.launch {
             if (_activeTurnSignalSide.value == side) {
                 val current = _activeTurnSignalCamera.value
                 _activeTurnSignalCamera.value = null
                 _activeTurnSignalSide.value = null
+                _activeIsLowSpeed = false
                 if (current != null) {
                     closeCamera(context, current)
                 } else {
@@ -446,73 +571,113 @@ object CamdCameraRepository {
                     _activeTurnSignalCamera.value = null
                 }
                 _activeTurnSignalSide.value = side
-                val openedCamId = openTurnSignalSideCamera(context, cameraId)
+                _activeIsLowSpeed = lowSpeed
+                val openedCamId = openTurnSignalSideCamera(context, cameraId, isLowSpeed = lowSpeed)
                 _activeTurnSignalCamera.value = openedCamId
                 _activeTurnSignalSide.value = side
             }
         }
     }
 
-    private suspend fun openTurnSignalSideCamera(context: Context, cameraId: Int): Int? = cameraOperationMutex.withLock {
+    private suspend fun openTurnSignalSideCamera(context: Context, cameraId: Int, isLowSpeed: Boolean = false): Int? = cameraOperationMutex.withLock {
         val screen = LauncherEmbeddedBoundsState.screenBounds
         val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
         val dispH = (screen?.height()?.takeIf { it > 0 } ?: 1080).toFloat()
         if (dispW <= 0f || dispH <= 0f) return null
 
-        val shapeCircle = LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
-        val rectCorners = LauncherAppConfigStore.camdSideCamerasRectCorners(context)
-        val effectiveShapeCircle = shapeCircle && !rectCorners
-
-        val presetName = when (cameraId) {
-            CAMERA_ID_LEFT -> LauncherAppConfigStore.camdTurnSignalLeftPreset(context).ifBlank { null }
-            CAMERA_ID_RIGHT -> LauncherAppConfigStore.camdTurnSignalRightPreset(context).ifBlank { null }
-            else -> null
-        }
-
-        val targetCameraId = if (!presetName.isNullOrBlank()) {
-            val connectedPresets = (_status.value as? CamdConnectionStatus.Connected)?.presets
-            connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: cameraId
-        } else {
-            cameraId
-        }
-
+        val shapeCircle: Boolean
+        val effectiveShapeCircle: Boolean
+        val presetName: String?
+        val targetCameraId: Int
         val x: Float
         val y: Float
         val w: Float
         val h: Float
 
-        if (effectiveShapeCircle || rectCorners) {
-            val desktopRect = LauncherEmbeddedBoundsState.embeddedBounds()
-                ?: LauncherEmbeddedBoundsState.contentRowBounds
-                ?: Rect(344, 51, 1920, 998)
-
-            val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat().coerceAtLeast(100f)
-            val baseDiameter = desktopHeight / 3f
-
-            val density = context.resources.displayMetrics.density
-            val margin = 30f * density
-
-            val yPx = desktopRect.top.toFloat() + margin
-            val rectW: Float
-            val rectH: Float
-
-            if (rectCorners) {
-                // Прямоугольный видеопоток 3 на 4 (4 - ширина), увеличен на 40%
-                rectW = baseDiameter * 1.30f * 1.40f
-                rectH = rectW * (3f / 4f)
+        if (isLowSpeed) {
+            shapeCircle = false
+            effectiveShapeCircle = false
+            presetName = when (cameraId) {
+                CAMERA_ID_LEFT -> LauncherAppConfigStore.camdLowSpeedLeftPreset(context).ifBlank { null }
+                CAMERA_ID_RIGHT -> LauncherAppConfigStore.camdLowSpeedRightPreset(context).ifBlank { null }
+                else -> null
+            }
+            targetCameraId = if (!presetName.isNullOrBlank()) {
+                val connectedPresets = (_status.value as? CamdConnectionStatus.Connected)?.presets
+                connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: cameraId
             } else {
-                // Круглое окно: увеличено на 30% (квадрат rectW x rectH с shape=circle)
-                val circleDiameter = baseDiameter * 1.30f * 1.30f
-                rectW = circleDiameter
-                rectH = circleDiameter
+                cameraId
             }
 
-            val xPx = if (cameraId == CAMERA_ID_RIGHT) {
-                // Правый верхний угол рабочего стола с отступом 30dp от правого края и верха
-                desktopRect.right.toFloat() - margin - rectW
+            val widthPercent = LauncherAppConfigStore.camdLowSpeedSideWidthPercent(context).coerceIn(10, 50)
+
+            val hasActiveApp = LauncherActiveAppTracker.hasActiveApp()
+            val activePkg = LauncherActiveAppTracker.activeAppPackage().orEmpty()
+            val trackerMode = LauncherActiveAppTracker.launchMode()
+
+            val isFullscreen = hasActiveApp && (
+                LauncherActiveAppTracker.isFullscreen() ||
+                trackerMode == LauncherAppLaunchMode.FULLSCREEN ||
+                (activePkg.isNotBlank() && LauncherAppConfigStore.appLaunchMode(context, activePkg) == LauncherAppLaunchMode.FULLSCREEN)
+            )
+
+            val isFullWidth = !isFullscreen && (
+                (hasActiveApp && (
+                    LauncherActiveAppTracker.isFullWidth() ||
+                    trackerMode == LauncherAppLaunchMode.FULL_WIDTH ||
+                    (activePkg.isNotBlank() && LauncherAppConfigStore.appLaunchMode(context, activePkg) == LauncherAppLaunchMode.FULL_WIDTH)
+                )) ||
+                LauncherEmbeddedBoundsState.leftPanelBounds == null
+            )
+
+            val rectW: Float
+            val rectH: Float
+            val xPx: Float
+            val yPx: Float
+
+            if (isFullscreen) {
+                // При открытом окне на фоне в режиме фуллскрин - окна камер показывай на всю высоту экрана по краям экрана, ширину окон бери от ширины экрана
+                rectW = dispW * (widthPercent / 100f)
+                rectH = dispH
+                yPx = 0f
+                xPx = if (cameraId == CAMERA_ID_RIGHT) {
+                    dispW - rectW
+                } else {
+                    0f
+                }
+            } else if (isFullWidth) {
+                // Если текущее приложение на экране открыто на всю ширину - то левую камеру запускать в окне прижатым к левому краю экрана (правое запускать как и в обычном режиме). Ширину окон бери от ширины экрана.
+                val desktopRect = LauncherEmbeddedBoundsState.fullWidthBounds()
+                    ?: LauncherEmbeddedBoundsState.embeddedBounds()
+                    ?: LauncherEmbeddedBoundsState.contentRowBounds
+                    ?: Rect(0, 51, 1920, 998)
+                val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat().coerceAtLeast(100f)
+
+                rectW = dispW * (widthPercent / 100f)
+                rectH = desktopHeight
+                yPx = desktopRect.top.toFloat()
+                xPx = if (cameraId == CAMERA_ID_RIGHT) {
+                    dispW - rectW
+                } else {
+                    0f
+                }
             } else {
-                // Левый верхний угол рабочего стола с отступом 30dp от левого края и верха
-                desktopRect.left.toFloat() + margin
+                // Обычный режим (рабочий стол с левой панелью ADAS или приложение в правой зоне)
+                val desktopRect = LauncherEmbeddedBoundsState.embeddedBounds()
+                    ?: LauncherEmbeddedBoundsState.contentRowBounds
+                    ?: Rect(344, 51, 1920, 998)
+
+                val desktopWidth = (desktopRect.right - desktopRect.left).toFloat().coerceAtLeast(100f)
+                val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat().coerceAtLeast(100f)
+
+                rectW = desktopWidth * (widthPercent / 100f)
+                rectH = desktopHeight
+                yPx = desktopRect.top.toFloat()
+                xPx = if (cameraId == CAMERA_ID_RIGHT) {
+                    desktopRect.right.toFloat() - rectW
+                } else {
+                    desktopRect.left.toFloat()
+                }
             }
 
             x = xPx / dispW
@@ -520,14 +685,72 @@ object CamdCameraRepository {
             w = rectW / dispW
             h = rectH / dispH
         } else {
-            // Прямоугольная форма: зона ADAS
-            val adasRect = LauncherEmbeddedBoundsState.leftPanelBounds
-                ?: Rect(0, 51, 344, 998)
+            shapeCircle = LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
+            val rectCorners = LauncherAppConfigStore.camdSideCamerasRectCorners(context)
+            effectiveShapeCircle = shapeCircle && !rectCorners
 
-            x = adasRect.left.toFloat() / dispW
-            y = adasRect.top.toFloat() / dispH
-            w = adasRect.width().toFloat() / dispW
-            h = adasRect.height().toFloat() / dispH
+            presetName = when (cameraId) {
+                CAMERA_ID_LEFT -> LauncherAppConfigStore.camdTurnSignalLeftPreset(context).ifBlank { null }
+                CAMERA_ID_RIGHT -> LauncherAppConfigStore.camdTurnSignalRightPreset(context).ifBlank { null }
+                else -> null
+            }
+
+            targetCameraId = if (!presetName.isNullOrBlank()) {
+                val connectedPresets = (_status.value as? CamdConnectionStatus.Connected)?.presets
+                connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: cameraId
+            } else {
+                cameraId
+            }
+
+            if (effectiveShapeCircle || rectCorners) {
+                val desktopRect = LauncherEmbeddedBoundsState.embeddedBounds()
+                    ?: LauncherEmbeddedBoundsState.contentRowBounds
+                    ?: Rect(344, 51, 1920, 998)
+
+                val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat().coerceAtLeast(100f)
+                val baseDiameter = desktopHeight / 3f
+
+                val density = context.resources.displayMetrics.density
+                val margin = 30f * density
+
+                val yPx = desktopRect.top.toFloat() + margin
+                val rectW: Float
+                val rectH: Float
+
+                if (rectCorners) {
+                    rectW = baseDiameter * 1.30f * 1.40f
+                    rectH = rectW * (3f / 4f)
+                } else {
+                    val circleDiameter = baseDiameter * 1.30f * 1.30f
+                    rectW = circleDiameter
+                    rectH = circleDiameter
+                }
+
+                val sizeAdjustment = LauncherAppConfigStore.camdSideCamerasSizeAdjustment(context)
+                val scaleMultiplier = (1f + sizeAdjustment / 100f).coerceIn(0.5f, 2.0f)
+
+                val adjustedW = rectW * scaleMultiplier
+                val adjustedH = rectH * scaleMultiplier
+
+                val xPx = if (cameraId == CAMERA_ID_RIGHT) {
+                    desktopRect.right.toFloat() - margin - adjustedW
+                } else {
+                    desktopRect.left.toFloat() + margin
+                }
+
+                x = xPx / dispW
+                y = yPx / dispH
+                w = adjustedW / dispW
+                h = adjustedH / dispH
+            } else {
+                val adasRect = LauncherEmbeddedBoundsState.leftPanelBounds
+                    ?: Rect(0, 51, 344, 998)
+
+                x = adasRect.left.toFloat() / dispW
+                y = adasRect.top.toFloat() / dispH
+                w = adasRect.width().toFloat() / dispW
+                h = adasRect.height().toFloat() / dispH
+            }
         }
 
         if (!x.isFinite() || !y.isFinite() || !w.isFinite() || !h.isFinite()) return null

@@ -87,4 +87,23 @@ class LauncherHeadlightBeamsTest {
         assertTrue(beams.lowBeam)
         assertTrue(beams.highBeam)
     }
+
+    @Test
+    fun isHighBeamIndicatedInAdasManualMode() {
+        assertFalse(isHighBeamIndicatedInAdas(isHmaOn = false, isHighBeamBurning = false))
+        assertTrue(isHighBeamIndicatedInAdas(isHmaOn = false, isHighBeamBurning = true))
+    }
+
+    @Test
+    fun isHighBeamIndicatedInAdasAutoHmaMode() {
+        // In Auto mode, HMA on standby (green icon, low beam) does NOT indicate high beam
+        assertFalse(isHighBeamIndicatedInAdas(isHmaOn = true, isHighBeamBurning = false))
+        // When Auto HMA physically triggers high beam (icon turns blue), high beam is indicated
+        assertTrue(isHighBeamIndicatedInAdas(isHmaOn = true, isHighBeamBurning = true))
+    }
+
+    @Test
+    fun isHighBeamIndicatedInAdasSimulationShowAll() {
+        assertTrue(isHighBeamIndicatedInAdas(isHmaOn = false, isHighBeamBurning = false, showAll = true))
+    }
 }
