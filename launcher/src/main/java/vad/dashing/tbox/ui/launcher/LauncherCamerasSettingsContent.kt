@@ -34,6 +34,7 @@ import vad.dashing.tbox.R
 import vad.dashing.tbox.camd.CamdCameraRepository
 import vad.dashing.tbox.camd.CamdConnectionStatus
 import vad.dashing.tbox.camd.CamdSocketClient
+import vad.dashing.tbox.mbcan.TurnSignalSide
 
 @Composable
 fun LauncherCamerasSettingsContent(
@@ -52,6 +53,9 @@ fun LauncherCamerasSettingsContent(
     }
     val shapeCircle = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
+    }
+    val rectCorners = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdSideCamerasRectCorners(context)
     }
     val leftPreset = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdTurnSignalLeftPreset(context)
@@ -227,35 +231,62 @@ fun LauncherCamerasSettingsContent(
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
 
-            // Option 2.2: Preset selection for Left Camera (#4)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Option 2.2: Rectangular video in corners (3x4, 4 - width)
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.camd_side_cameras_rect_corners_title),
+                active = rectCorners,
+                enabled = true,
+                onClick = {
+                    val next = !rectCorners
+                    LauncherAppConfigStore.setCamdSideCamerasRectCorners(context, next)
+                },
+            )
+
+            Text(
+                text = stringResource(R.string.camd_side_cameras_rect_corners_desc),
+                color = LauncherColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+
+            // Option 2.3: Preset selection for Left Camera & Right Camera (all broadcast presets)
             val connectedStatus = status as? CamdConnectionStatus.Connected
             val defaultPresetLabel = stringResource(R.string.camd_preset_default)
 
-            val leftPresets = listOf("") + (connectedStatus?.presets?.filter { it.cameraId == CamdCameraRepository.CAMERA_ID_LEFT }?.map { it.name } ?: emptyList()).distinct()
-            if (leftPresets.size > 1) {
-                val currentLeftLabel = if (leftPreset.isBlank() || leftPreset !in leftPresets) defaultPresetLabel else leftPreset
+            val allPresets = (listOf("") + (connectedStatus?.presets?.map { it.name } ?: emptyList()) + listOfNotNull(leftPreset.ifBlank { null }, rightPreset.ifBlank { null })).distinct()
+            if (allPresets.size > 1) {
+                val formatPresetLabel: (String) -> String = { presetName ->
+                    if (presetName.isBlank() || presetName !in allPresets) {
+                        defaultPresetLabel
+                    } else {
+                        val p = connectedStatus?.presets?.firstOrNull { it.name == presetName }
+                        if (p != null) {
+                            "${p.name} (#${p.cameraId})"
+                        } else {
+                            presetName
+                        }
+                    }
+                }
+
                 LauncherSettingsValueRow(
                     label = stringResource(R.string.camd_turn_signal_preset_left_title),
-                    value = currentLeftLabel,
+                    value = formatPresetLabel(leftPreset),
                     onClick = {
-                        val currentIdx = leftPresets.indexOf(leftPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % leftPresets.size
-                        LauncherAppConfigStore.setCamdTurnSignalLeftPreset(context, leftPresets[nextIdx])
+                        val currentIdx = allPresets.indexOf(leftPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allPresets.size
+                        LauncherAppConfigStore.setCamdTurnSignalLeftPreset(context, allPresets[nextIdx])
                     },
                 )
-            }
 
-            // Option 2.3: Preset selection for Right Camera (#5)
-            val rightPresets = listOf("") + (connectedStatus?.presets?.filter { it.cameraId == CamdCameraRepository.CAMERA_ID_RIGHT }?.map { it.name } ?: emptyList()).distinct()
-            if (rightPresets.size > 1) {
-                val currentRightLabel = if (rightPreset.isBlank() || rightPreset !in rightPresets) defaultPresetLabel else rightPreset
                 LauncherSettingsValueRow(
                     label = stringResource(R.string.camd_turn_signal_preset_right_title),
-                    value = currentRightLabel,
+                    value = formatPresetLabel(rightPreset),
                     onClick = {
-                        val currentIdx = rightPresets.indexOf(rightPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % rightPresets.size
-                        LauncherAppConfigStore.setCamdTurnSignalRightPreset(context, rightPresets[nextIdx])
+                        val currentIdx = allPresets.indexOf(rightPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allPresets.size
+                        LauncherAppConfigStore.setCamdTurnSignalRightPreset(context, allPresets[nextIdx])
                     },
                 )
             }
@@ -265,6 +296,7 @@ fun LauncherCamerasSettingsContent(
 
         // Test action buttons
         val activeCamera by CamdCameraRepository.activeTurnSignalCamera.collectAsStateWithLifecycle()
+        val activeSide by CamdCameraRepository.activeTurnSignalSideFlow.collectAsStateWithLifecycle()
 
         Row(
             modifier = Modifier
@@ -308,7 +340,7 @@ fun LauncherCamerasSettingsContent(
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            val isLeftActive = activeCamera == CamdCameraRepository.CAMERA_ID_LEFT
+            val isLeftActive = activeSide == TurnSignalSide.Left || activeCamera == CamdCameraRepository.CAMERA_ID_LEFT
             OutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = {
@@ -323,7 +355,7 @@ fun LauncherCamerasSettingsContent(
                 )
             }
 
-            val isRightActive = activeCamera == CamdCameraRepository.CAMERA_ID_RIGHT
+            val isRightActive = activeSide == TurnSignalSide.Right || activeCamera == CamdCameraRepository.CAMERA_ID_RIGHT
             OutlinedButton(
                 modifier = Modifier.weight(1f),
                 onClick = {

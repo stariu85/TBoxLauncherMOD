@@ -185,9 +185,9 @@ internal fun LauncherHomeSettingsContent() {
             val next = !isExpHideAppsOnHome
             LauncherAppConfigStore.setExperimentalHideAppsOnHome(context, next)
             if (next) {
-                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching { vad.dashing.dclwm.Starter.ensure(context.applicationContext) }
-                }
+                startDclwmStorageWatcher(context.applicationContext)
+            } else {
+                stopDclwmStorageWatcher()
             }
         },
     )

@@ -230,7 +230,9 @@
     <string name="camd_turn_signals_title">Enable side cameras on turn signals</string>
     <string name="camd_turn_signals_desc">Show corresponding side camera in ADAS zone when turn signal is on</string>
     <string name="camd_side_cameras_shape_circle_title">Circular shape for side cameras</string>
-    <string name="camd_side_cameras_shape_circle_desc">Circular window (1/3 desktop height, 30 dp margin) in top-left or top-right corner of desktop</string>
+    <string name="camd_side_cameras_shape_circle_desc">Circular window (30 dp margin) in top-left or top-right corner of desktop</string>
+    <string name="camd_side_cameras_rect_corners_title">Rectangular video in corners</string>
+    <string name="camd_side_cameras_rect_corners_desc">4:3 rectangular window (30 dp margin) in top-left or top-right corner of desktop</string>
     <string name="camd_turn_signal_preset_left_title">Left camera preset</string>
     <string name="camd_turn_signal_preset_right_title">Right camera preset</string>
     <string name="camd_preset_default">Default (full frame)</string>
@@ -824,6 +826,8 @@
     <string name="settings_backup_desc">Export and import app settings in the Downloads/DCLbackups folder.</string>
     <string name="settings_backup_auto_title">Automatic backup</string>
     <string name="settings_backup_auto_desc">Automatically save backup when app loads (keeps up to 5 AUTO_... files)</string>
+    <string name="settings_boot_log_title">Application boot log</string>
+    <string name="settings_boot_log_desc">Record detailed boot log (CAN, daemons, UI, API) for 3 minutes to Downloads/DCLlogs with boot prefix. Enables for one next boot only.</string>
     <string name="settings_backup_create_button">Save backup</string>
     <string name="settings_backup_restore_button">Restore settings from file</string>
     <string name="settings_backup_created_success">Backup saved: DCLbackups/%1$s</string>

@@ -1,6 +1,8 @@
 package vad.dashing.tbox
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -37,7 +39,6 @@ import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherVehicleStatusOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
-import android.os.Looper
 import android.view.ViewTreeObserver
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
@@ -46,6 +47,7 @@ import vad.dashing.tbox.ui.launcher.findForeignAppTask
 import vad.dashing.tbox.ui.launcher.goLauncherHome
 import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
 import vad.dashing.tbox.ui.launcher.minimizeForeignFreeformTasks
+import vad.dashing.tbox.ui.launcher.startDclwmStorageWatcher
 
 /**
  * Android HOME handler — Tesla-style launcher surface for the head unit.
@@ -66,6 +68,7 @@ class LauncherHomeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         LauncherHomeActivityHolder.instance = this
         Log.w("LauncherAppLaunch", "LauncherHomeActivity onCreate")
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onCreate intent=$intent savedInstanceState=${savedInstanceState != null}")
 
         applyLauncherWindowFlags()
         settingsManager = SettingsManager(this)
@@ -116,14 +119,12 @@ class LauncherHomeActivity : ComponentActivity() {
         if (firstDrawComplete || isFinishing || isDestroyed) return
         firstDrawComplete = true
         LauncherHomeActivityHolder.isFirstDrawComplete = true
-        Log.i(TAG, "First HOME frame drawn -> calling reportFullyDrawn and scheduling warmup on idle")
+        Log.i(TAG, "First HOME frame drawn -> calling reportFullyDrawn and scheduling staged warmup")
+        vad.dashing.tbox.DclLogRecorder.log("UI_FRAME", "First HOME frame drawn -> reportFullyDrawn called")
         runCatching { reportFullyDrawn() }
 
-        Looper.myQueue().addIdleHandler {
-            if (!isFinishing && !isDestroyed && !stagedWarmupStarted) {
-                scheduleStagedWarmup()
-            }
-            false
+        if (!stagedWarmupStarted) {
+            scheduleStagedWarmup()
         }
     }
 
@@ -133,6 +134,7 @@ class LauncherHomeActivity : ComponentActivity() {
             val appCtx = applicationContext
 
             // --- Stage 1: Freeform policy, a11y nav back, background service, overlays ---
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 1 start: overlays, a11y, bg service")
             ensureFreeformImmersivePolicy(this@LauncherHomeActivity)
             val a11y = LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this@LauncherHomeActivity)
             Log.w(TAG, "nav-back a11y enabled=$a11y connected=${vad.dashing.tbox.ui.launcher.LauncherNavAccessibilityService.isConnected()}")
@@ -153,6 +155,7 @@ class LauncherHomeActivity : ComponentActivity() {
 
             // --- Stage 2: Heavy subsystems, mbCAN & caches (+500ms after Stage 1) ---
             delay(500L)
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 2 start: caches, UniversalCanRepository auto-bind")
             LauncherThemeState.init(appCtx)
             LauncherCarModelCache.preload(appCtx)
             LauncherWifiApRepository.init(appCtx)
@@ -161,23 +164,31 @@ class LauncherHomeActivity : ComponentActivity() {
             // Start CAN auto-bind now that desktop and UI thread are completely unblocked
             UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
 
+            // Optional dclwm root helper: start cyclic storage check once desktop is ready
             // --- Stage 3: Auto backup (+1000ms after Stage 2) ---
             delay(1000L)
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: Auto backup")
             vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
 
             // --- Stage 4: Autostart shortcut (+1500ms after everything is settled and desktop is ready) ---
             delay(1500L)
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 4 start: autostart shortcut, dclwm storage watcher")
             if (!autostartFired && LauncherHomeActivityHolder.isResumed && !isFinishing && !isDestroyed) {
                 autostartFired = true
                 Log.i(TAG, "Triggering autostart shortcut with Activity context after desktop is fully ready")
                 launchAutostartShortcut(this@LauncherHomeActivity)
             }
+
+            // Launcher fully loaded -> Start cyclic storage check for dclwm (every 10s until ready)
+            startDclwmStorageWatcher(appCtx)
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "scheduleStagedWarmup completed")
         }
     }
 
     override fun onRestart() {
         super.onRestart()
         LauncherHomeActivityHolder.instance = this
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onRestart")
         if (firstDrawComplete) {
             LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
             startBackgroundService()
@@ -188,10 +199,16 @@ class LauncherHomeActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStart topTasks=${getTopTasksInfo(this)}")
+    }
+
     override fun onResume() {
         super.onResume()
         LauncherHomeActivityHolder.isResumed = true
         DclLogRecorder.attachWindow(window)
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onResume")
         if (firstDrawComplete) {
             LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
             val foreign = findForeignAppTask(this)
@@ -215,7 +232,37 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onPause() {
         LauncherHomeActivityHolder.isResumed = false
         DclLogRecorder.detachWindow(window)
+        val topTasks = getTopTasksInfo(this)
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onPause isFinishing=$isFinishing topTasks=$topTasks")
         super.onPause()
+    }
+
+    override fun onStop() {
+        val topTasks = getTopTasksInfo(this)
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStop isFinishing=$isFinishing topTasks=$topTasks")
+        super.onStop()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onAttachedToWindow")
+    }
+
+    override fun onDetachedFromWindow() {
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onDetachedFromWindow")
+        super.onDetachedFromWindow()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        val tasks = getTopTasksInfo(this)
+        vad.dashing.tbox.DclLogRecorder.logUiFocus(hasFocus, "topTasks=$tasks")
+        Log.i(TAG, "onWindowFocusChanged hasFocus=$hasFocus topTasks=$tasks")
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        vad.dashing.tbox.DclLogRecorder.log("SYS_MEMORY", "LauncherHomeActivity onTrimMemory level=$level")
     }
 
     @SuppressLint("BackPressed", "GestureBackNavigation")
@@ -233,6 +280,10 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        vad.dashing.tbox.DclLogRecorder.log(
+            "UI_LIFECYCLE",
+            "LauncherHomeActivity onNewIntent action=${intent.action} categories=${intent.categories} flags=0x${Integer.toHexString(intent.flags)}",
+        )
         if (intent.action == Intent.ACTION_MAIN &&
             intent.hasCategory(Intent.CATEGORY_HOME)
         ) {
@@ -244,6 +295,7 @@ class LauncherHomeActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onDestroy isFinishing=$isFinishing topTasks=${getTopTasksInfo(this)}")
         LauncherHomeActivityHolder.isFirstDrawComplete = false
         LauncherRightPanelOverlayWindow.destroy()
         LauncherAppDrawerWindow.hide()
@@ -259,6 +311,17 @@ class LauncherHomeActivity : ComponentActivity() {
             LauncherHomeActivityHolder.instance = null
         }
         super.onDestroy()
+    }
+
+    private fun getTopTasksInfo(context: Context): String {
+        return runCatching {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return "am_null"
+            @Suppress("DEPRECATION")
+            val tasks = am.getRunningTasks(5) ?: return "tasks_null"
+            tasks.joinToString("; ") { task ->
+                "task[id=${task.id}, top=${task.topActivity?.packageName}/${task.topActivity?.shortClassName}, base=${task.baseActivity?.packageName}]"
+            }
+        }.getOrDefault("getRunningTasks_err")
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

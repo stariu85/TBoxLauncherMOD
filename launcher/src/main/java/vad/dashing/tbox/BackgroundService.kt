@@ -45,26 +45,24 @@ class BackgroundService : Service() {
         vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(applicationContext)
         vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper.ensureNavBackServiceEnabled(applicationContext)
         startAsForeground()
+        DclLogRecorder.log("BACKGROUND_SERVICE", "BackgroundService onCreate: startAsForeground done")
         YandexNavRepository.start(applicationContext)
         MbCanEngineFacade.ensureInitialized()
         MbCanEngineFacade.setTurnLightCallback { left, right ->
             vad.dashing.tbox.camd.CamdCameraRepository.onTurnLightSignal(applicationContext, left, right)
         }
         scope.launch {
+            DclLogRecorder.log("BACKGROUND_SERVICE", "Triggering UniversalCanRepository.bind")
             UniversalCanRepository.bind(scope)
         }
         scope.launch {
             val tbmRepo = TbmRepositoryProvider.get(applicationContext)
             tbmRepo.startHealthMonitoring()
             tbmRepo.checkHealth()
+            DclLogRecorder.log("BACKGROUND_SERVICE", "TbmRepository health monitoring started")
         }
         tboxLink = TboxLinkManager(applicationContext).also { it.start() }
-        if (vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.experimentalHideAppsOnHome(applicationContext)) {
-            scope.launch(Dispatchers.IO) {
-                runCatching { vad.dashing.dclwm.Starter.ensure(applicationContext) }
-                    .onFailure { Log.w("BackgroundService", "dclwm Starter.ensure failed: ${it.message}") }
-            }
-        }
+        DclLogRecorder.log("BACKGROUND_SERVICE", "TboxLinkManager started")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

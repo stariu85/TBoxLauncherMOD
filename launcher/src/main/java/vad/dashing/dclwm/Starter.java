@@ -17,7 +17,38 @@ public final class Starter {
     private Starter() {
     }
 
+    public static boolean isRunning() {
+        try {
+            new Client().ping();
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    public static boolean isStorageMounted() {
+        return android.os.Environment.MEDIA_MOUNTED.equals(
+                android.os.Environment.getExternalStorageState());
+    }
+
     public static void ensure(Context context) throws Exception {
+        vad.dashing.tbox.DclLogRecorder.tryFlushMemoryBuffer(context);
+
+        if (isRunning()) {
+            android.util.Log.i("dclwm", "dclwm is already running, skipping Starter.ensure");
+            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm is already running, skipping Starter.ensure");
+            return;
+        }
+
+        // Guard: Wait for external storage (sdcard) to be mounted before attempting autorun
+        String storageState = android.os.Environment.getExternalStorageState();
+        if (!android.os.Environment.MEDIA_MOUNTED.equals(storageState)) {
+            android.util.Log.w("dclwm", "Storage not mounted yet (state=" + storageState + "), skipping Starter.ensure");
+            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Storage not mounted yet (state=" + storageState + "), skipping Starter.ensure");
+            return;
+        }
+
+        vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Starting dclwm: copying dex and writing autorun.sh");
         File dex = new File(context.getFilesDir(), Protocol.DEX_ASSET);
         copyAsset(context, dex);
         String script = ArmScript.text(dex.getAbsolutePath());
@@ -34,13 +65,16 @@ public final class Starter {
         while (System.currentTimeMillis() < deadline) {
             String text = readIfAny(marker);
             if (text.contains("started") || text.contains("already")) {
+                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm started successfully: marker=" + text);
                 return;
             }
             if (text.contains("missing") || text.contains("failed")) {
+                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm failed to stay up: marker=" + text);
                 throw new IllegalStateException("dclwm did not stay up, see " + Protocol.LOG_FILE);
             }
             Thread.sleep(200);
         }
+        vad.dashing.tbox.DclLogRecorder.log("DCLWM", "mb_daemon did not start dclwm within deadline");
         throw new IllegalStateException("mb_daemon did not start dclwm");
     }
 

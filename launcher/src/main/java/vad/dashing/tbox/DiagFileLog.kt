@@ -56,6 +56,8 @@ object DiagFileLog {
                     throwable,
                 )
                 flushSync()
+                DclLogRecorder.log("FATAL_CRASH", "Uncaught in ${thread.name} pid=${Process.myPid()}: ${Log.getStackTraceString(throwable)}")
+                DclLogRecorder.stopLogging("Fatal crash")
             } catch (_: Throwable) {
             }
             previous?.uncaughtException(thread, throwable)

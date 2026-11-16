@@ -457,7 +457,9 @@
     <string name="camd_turn_signals_title">Включение боковых камер по поворотникам</string>
     <string name="camd_turn_signals_desc">Выводить соответствующую боковую камеру в зону ADAS при включении поворотника</string>
     <string name="camd_side_cameras_shape_circle_title">Круглая форма для боковых камер</string>
-    <string name="camd_side_cameras_shape_circle_desc">Круглое окно (1/3 высоты стола, отступ 30 dp) в левом или правом верхнем углу рабочего стола</string>
+    <string name="camd_side_cameras_shape_circle_desc">Круглое окно (отступ 30 dp) в левом или правом верхнем углу рабочего стола</string>
+    <string name="camd_side_cameras_rect_corners_title">Прямоугольное видео по углам</string>
+    <string name="camd_side_cameras_rect_corners_desc">Прямоугольное окно 4:3 (отступ 30 dp) в левом или правом верхнем углу рабочего стола</string>
     <string name="camd_turn_signal_preset_left_title">Пресет левой камеры</string>
     <string name="camd_turn_signal_preset_right_title">Пресет правой камеры</string>
     <string name="camd_preset_default">По умолчанию (полный кадр)</string>
@@ -1151,6 +1153,8 @@
     <string name="settings_backup_desc">Экспорт и импорт настроек приложения в папку Downloads/DCLbackups.</string>
     <string name="settings_backup_auto_title">Автоматический бэкап</string>
     <string name="settings_backup_auto_desc">Создавать бэкап при каждом запуске программы (хранится до 5 файлов AUTO_...)</string>
+    <string name="settings_boot_log_title">Лог старта приложения</string>
+    <string name="settings_boot_log_desc">Запись подробного лога старта (CAN, демоны, UI, API) в течение 3 минут в Downloads/DCLlogs с префиксом boot. Включается на одну следующую загрузку.</string>
     <string name="settings_backup_create_button">Сохранить бэкап</string>
     <string name="settings_backup_restore_button">Восстановить настройки из файла</string>
     <string name="settings_backup_created_success">Бэкап сохранён: DCLbackups/%1$s</string>

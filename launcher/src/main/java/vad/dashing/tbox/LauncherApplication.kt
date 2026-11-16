@@ -22,9 +22,16 @@ class LauncherApplication : Application() {
         super.onCreate()
         AppContextHolder.init(this)
         vad.dashing.tbox.ui.launcher.LauncherFirstInstallDefaults.applyIfNeeded(this)
-        DclLogRecorder.stopLogging("Launcher restarted")
+
+        if (vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.bootLogEnabled(this)) {
+            DclLogRecorder.startBootSession(this)
+        } else {
+            DclLogRecorder.stopLogging("Launcher restarted")
+        }
+
         DiagFileLog.install(this)
         val settings = SettingsManager(this)
+        BootSessionTracker.onAppStart(this, appScope)
         YandexNavRepository.start(this)
         appScope.launch {
             runCatching { clearCacheOnAppUpdate(settings) }

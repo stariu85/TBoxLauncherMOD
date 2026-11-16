@@ -40,9 +40,11 @@ import java.util.concurrent.atomic.AtomicLong
 object DclLogRecorder {
     private const val TAG = "DclLogRecorder"
     private const val DIR_NAME = "DCLlogs"
-    private const val MAX_LOG_FILES = 5
+    private const val MAX_LOG_FILES = 10
     private const val SESSION_DURATION_MS = 300_000L // 5 minutes
+    private const val BOOT_SESSION_DURATION_MS = 180_000L // 3 minutes
     private const val SAMPLE_INTERVAL_MS = 2000L // 2 seconds
+    private const val MAX_RAM_BUFFER_LINES = 10_000
 
     private val lock = Any()
     private val executor = Executors.newSingleThreadExecutor { r ->
@@ -65,6 +67,14 @@ object DclLogRecorder {
 
     @Volatile
     private var isSessionActive: Boolean = false
+
+    @Volatile
+    private var isBootSession: Boolean = false
+
+    @Volatile
+    private var appContextRef: WeakReference<Context>? = null
+
+    private val memoryBuffer = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
     private val canRxCounter = AtomicInteger(0)
     private val canTxCounter = AtomicInteger(0)
@@ -91,6 +101,7 @@ object DclLogRecorder {
     /**
      * Record CAN Bus receive event.
      */
+    @JvmStatic
     fun recordCanRx(count: Int = 1) {
         if (isSessionActive) canRxCounter.addAndGet(count)
     }
@@ -98,6 +109,7 @@ object DclLogRecorder {
     /**
      * Record CAN Bus transmit / command event.
      */
+    @JvmStatic
     fun recordCanTx(count: Int = 1) {
         if (isSessionActive) canTxCounter.addAndGet(count)
     }
@@ -174,11 +186,16 @@ object DclLogRecorder {
     /**
      * Checks if logging session is currently active.
      */
+    @JvmStatic
     fun isLoggingActive(): Boolean = isSessionActive
+
+    @JvmStatic
+    fun isBootLoggingActive(): Boolean = isSessionActive && isBootSession
 
     /**
      * Manually stops the active logging session and saves the current log file.
      */
+    @JvmStatic
     fun stopLogging(reason: String = "Stopped by user") {
         synchronized(lock) {
             if (!isSessionActive) return
@@ -298,8 +315,111 @@ object DclLogRecorder {
     }
 
     /**
+     * Starts a 3-minute boot logging session with prefix "boot_".
+     * If external storage is not yet mounted, logs are buffered in memory and flushed once storage is ready.
+     */
+    @JvmStatic
+    fun startBootSession(context: Context) {
+        val appCtx = context.applicationContext
+        synchronized(lock) {
+            val nowMs = SystemClock.elapsedRealtime()
+            val deadlineMs = nowMs + BOOT_SESSION_DURATION_MS
+            sessionDeadlineMs = deadlineMs
+            isBootSession = true
+            isSessionActive = true
+            appContextRef = WeakReference(appCtx)
+
+            mainHandler.removeCallbacks(stopRunnable)
+            mainHandler.postDelayed(stopRunnable, BOOT_SESSION_DURATION_MS)
+
+            // Reset counters & metrics
+            canRxCounter.set(0)
+            canTxCounter.set(0)
+            frameCounter.set(0)
+            jankCounter.set(0)
+            maxFrameNs.set(0L)
+            lastSampleRealtimeMs = SystemClock.elapsedRealtime()
+            lastCpuTimeMs = Process.getElapsedCpuTime()
+            lastBinderRx = Debug.getBinderReceivedTransactions().toLong()
+            lastBinderTx = Debug.getBinderSentTransactions().toLong()
+
+            val logsDir = resolveLogsDir(appCtx)
+            val isStorageReady = Environment.MEDIA_MOUNTED == Environment.getExternalStorageState() &&
+                    logsDir.exists() && logsDir.canWrite()
+
+            if (isStorageReady) {
+                rotateLogFiles(logsDir)
+                val timeStamp = fileDateFormat.get()?.format(Date()) ?: System.currentTimeMillis().toString()
+                val newFile = File(logsDir, "boot_$timeStamp.log")
+                activeFile = newFile
+                val header = buildBootHeader(appCtx, newFile.absolutePath, isBuffered = false)
+                writeRaw(newFile, header)
+                Log.i(TAG, "DCL boot logging started directly to file: ${newFile.absolutePath}")
+            } else {
+                activeFile = null
+                val header = buildBootHeader(appCtx, "(RAM BUFFER - waiting for storage mount)", isBuffered = true)
+                memoryBuffer.add(header)
+                Log.i(TAG, "DCL boot logging started in RAM buffer (waiting for storage)")
+            }
+
+            scheduleMetricsSampling(appCtx)
+        }
+    }
+
+    @JvmStatic
+    fun tryFlushMemoryBuffer(context: Context) {
+        if (activeFile != null || !isBootSession) return
+        val appCtx = context.applicationContext
+        if (Environment.MEDIA_MOUNTED != Environment.getExternalStorageState()) return
+        val logsDir = resolveLogsDir(appCtx)
+        if (!logsDir.exists() || !logsDir.canWrite()) return
+
+        synchronized(lock) {
+            if (activeFile != null || !isBootSession) return
+            rotateLogFiles(logsDir)
+            val timeStamp = fileDateFormat.get()?.format(Date()) ?: System.currentTimeMillis().toString()
+            val newFile = File(logsDir, "boot_$timeStamp.log")
+            activeFile = newFile
+
+            executor.execute {
+                synchronized(lock) {
+                    runCatching {
+                        newFile.appendText("========================================\n")
+                        newFile.appendText("DCL BOOT LOG (FLUSHED FROM RAM BUFFER)\n")
+                        newFile.appendText("File: ${newFile.absolutePath}\n")
+                        newFile.appendText("Flush Time: ${logDateFormat.get()?.format(Date())}\n")
+                        newFile.appendText("========================================\n")
+                        while (true) {
+                            val line = memoryBuffer.poll() ?: break
+                            newFile.appendText(line + "\n")
+                        }
+                    }
+                }
+            }
+            Log.i(TAG, "DCL boot log RAM buffer successfully flushed to ${newFile.absolutePath}")
+        }
+    }
+
+    private fun buildBootHeader(context: Context, pathOrStatus: String, isBuffered: Boolean): String = buildString {
+        append("========================================\n")
+        append("DCL BOOT LOG SESSION STARTED\n")
+        append("Reason: BOOT_STARTUP\n")
+        append("Duration: 180 sec (3 min)\n")
+        append("Time: ").append(logDateFormat.get()?.format(Date())).append("\n")
+        append("Target: ").append(pathOrStatus).append("\n")
+        append("Model: ").append(Build.MODEL).append(" (").append(Build.BRAND).append(")\n")
+        append("Android: ").append(Build.VERSION.RELEASE).append(" (SDK ").append(Build.VERSION.SDK_INT).append(")\n")
+        append("App Version: ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE).append(")\n")
+        append("PID: ").append(Process.myPid()).append("\n")
+        append("StorageState: ").append(Environment.getExternalStorageState()).append("\n")
+        append("BufferedInRAM: ").append(isBuffered).append("\n")
+        append("========================================\n")
+    }
+
+    /**
      * General log method.
      */
+    @JvmStatic
     fun log(tag: String, message: String) {
         if (!isSessionActive) return
         val nowMs = SystemClock.elapsedRealtime()
@@ -309,6 +429,12 @@ object DclLogRecorder {
         }
         val timestamp = logDateFormat.get()?.format(Date()) ?: System.currentTimeMillis().toString()
         writeLine("$timestamp [$tag] $message")
+    }
+
+    @JvmStatic
+    fun logUiFocus(hasFocus: Boolean, details: String? = null) {
+        if (!isSessionActive) return
+        log("UiFocus", "WINDOW_FOCUS hasFocus=$hasFocus ${details.orEmpty()}")
     }
 
     /**
@@ -503,6 +629,20 @@ object DclLogRecorder {
             mainHandler.removeCallbacks(stopRunnable)
             metricsRunnable?.let { mainHandler.removeCallbacks(it) }
             metricsRunnable = null
+
+            val wasBootSession = isBootSession
+            val appCtx = appContextRef?.get()
+
+            if (wasBootSession && appCtx != null) {
+                tryFlushMemoryBuffer(appCtx)
+                if (activeFile == null && memoryBuffer.isNotEmpty()) {
+                    flushEmergencyFallback(appCtx)
+                }
+                vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.setBootLogEnabled(appCtx, false)
+                Log.i(TAG, "Boot log session ended after 3 minutes, bootLogEnabled toggle reset to false.")
+            }
+            isBootSession = false
+
             val file = activeFile
             if (file != null) {
                 val footer = buildString {
@@ -515,6 +655,23 @@ object DclLogRecorder {
             }
             activeFile = null
             Log.i(TAG, "DCL logging session stopped ($reason)")
+        }
+    }
+
+    private fun flushEmergencyFallback(context: Context) {
+        runCatching {
+            val fallbackDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+            fallbackDir.mkdirs()
+            val timeStamp = fileDateFormat.get()?.format(Date()) ?: System.currentTimeMillis().toString()
+            val file = File(fallbackDir, "boot_${timeStamp}_emergency.log")
+            file.appendText("========================================\n")
+            file.appendText("DCL BOOT LOG EMERGENCY FALLBACK (Storage never mounted)\n")
+            file.appendText("========================================\n")
+            while (true) {
+                val line = memoryBuffer.poll() ?: break
+                file.appendText(line + "\n")
+            }
+            Log.w(TAG, "Boot log was flushed to emergency fallback file: ${file.absolutePath}")
         }
     }
 
@@ -534,6 +691,9 @@ object DclLogRecorder {
     }
 
     private fun sampleAndLogMetrics(context: Context) {
+        if (activeFile == null && isBootSession) {
+            tryFlushMemoryBuffer(context)
+        }
         val nowRealtime = SystemClock.elapsedRealtime()
         val intervalMs = (nowRealtime - lastSampleRealtimeMs).coerceAtLeast(1L)
         val intervalSec = intervalMs / 1000f
@@ -628,7 +788,7 @@ object DclLogRecorder {
 
     private fun rotateLogFiles(dir: File) {
         if (!dir.exists()) return
-        val files = dir.listFiles { f -> f.isFile && f.name.startsWith("dcl_log_") } ?: return
+        val files = dir.listFiles { f -> f.isFile && (f.name.startsWith("dcl_log_") || f.name.startsWith("boot_")) } ?: return
         if (files.size >= MAX_LOG_FILES) {
             val sorted = files.sortedBy { it.lastModified() }
             val deleteCount = files.size - (MAX_LOG_FILES - 1)
@@ -643,13 +803,20 @@ object DclLogRecorder {
     }
 
     private fun writeLine(line: String) {
-        val file = activeFile ?: return
-        executor.execute {
-            synchronized(lock) {
-                runCatching {
-                    file.appendText(line + "\n")
+        val file = activeFile
+        if (file != null) {
+            executor.execute {
+                synchronized(lock) {
+                    runCatching {
+                        file.appendText(line + "\n")
+                    }
                 }
             }
+        } else if (isBootSession) {
+            if (memoryBuffer.size < MAX_RAM_BUFFER_LINES) {
+                memoryBuffer.add(line)
+            }
+            appContextRef?.get()?.let { tryFlushMemoryBuffer(it) }
         }
     }
 

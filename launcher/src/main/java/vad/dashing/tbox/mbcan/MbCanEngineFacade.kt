@@ -193,7 +193,7 @@ object MbCanEngineFacade {
             runCatching { syncGaspedStatusListener(true) }
             runCatching { ensureHardKeyListener() }
             runCatching { ensureVehicleListener() }
-            CcsRememberedSetpoint.ensureStarted()
+            runCatching { CcsRememberedSetpoint.ensureStarted() }
         } catch (t: Throwable) {
             initialized = false
             availabilityRef.set(MbCanAvailability.Unavailable("${t.javaClass.simpleName}: ${t.message ?: "unknown"}"))
@@ -932,14 +932,23 @@ object MbCanEngineFacade {
             return
         }
         val loader = iface.classLoader ?: return
-        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
-            vad.dashing.tbox.DclLogRecorder.recordCanRx()
-            if (method.name == "onHardKey" && args != null && args.size >= 3) {
-                val keyCode = (args[0] as Number).toInt()
-                val keyAction = (args[1] as Number).toInt()
-                val extra = (args[2] as Number).toByte()
-                CcsRememberedSetpoint.onHardKey(keyCode, keyAction, extra.toInt())
-                hardKeyCallback?.invoke(keyCode, keyAction, extra)
+        val handler = InvocationHandler { proxy: Any?, method: Method, args: Array<out Any?>? ->
+            runCatching {
+                when (method.name) {
+                    "equals" -> return@InvocationHandler (args?.getOrNull(0) === proxy)
+                    "hashCode" -> return@InvocationHandler System.identityHashCode(proxy)
+                    "toString" -> return@InvocationHandler "MbCanHardKeyListenerProxy"
+                    "onHardKey" -> {
+                        vad.dashing.tbox.DclLogRecorder.recordCanRx()
+                        if (args != null && args.size >= 3) {
+                            val keyCode = (args[0] as? Number)?.toInt() ?: 0
+                            val keyAction = (args[1] as? Number)?.toInt() ?: 0
+                            val extra = (args[2] as? Number)?.toByte() ?: 0
+                            CcsRememberedSetpoint.onHardKey(keyCode, keyAction, extra.toInt())
+                            hardKeyCallback?.invoke(keyCode, keyAction, extra)
+                        }
+                    }
+                }
             }
             null
         }
@@ -987,16 +996,25 @@ object MbCanEngineFacade {
         }
         val loader = iface.classLoader ?: return
         val register = registGaspedStatusListenerMethod ?: return
-        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
-            vad.dashing.tbox.DclLogRecorder.recordCanRx()
-            if (method.name == "onVehicleGaspedStatus" && args != null && args.isNotEmpty()) {
-                val info = args[0]
-                if (info != null) {
-                    val cruiseStatus = runCatching {
-                        (info.javaClass.getMethod("getnCruiseControlStatus").invoke(info) as? Number)?.toInt()?.and(0xFF)
-                    }.getOrNull()
-                    if (cruiseStatus != null) {
-                        CanDataRepository.updateCcsCruiseStatus(cruiseStatus)
+        val handler = InvocationHandler { proxy: Any?, method: Method, args: Array<out Any?>? ->
+            runCatching {
+                when (method.name) {
+                    "equals" -> return@InvocationHandler (args?.getOrNull(0) === proxy)
+                    "hashCode" -> return@InvocationHandler System.identityHashCode(proxy)
+                    "toString" -> return@InvocationHandler "MbCanGaspedStatusListenerProxy"
+                    "onVehicleGaspedStatus" -> {
+                        vad.dashing.tbox.DclLogRecorder.recordCanRx()
+                        if (args != null && args.isNotEmpty()) {
+                            val info = args[0]
+                            if (info != null) {
+                                val cruiseStatus = runCatching {
+                                    (info.javaClass.getMethod("getnCruiseControlStatus").invoke(info) as? Number)?.toInt()?.and(0xFF)
+                                }.getOrNull()
+                                if (cruiseStatus != null) {
+                                    CanDataRepository.updateCcsCruiseStatus(cruiseStatus)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1037,13 +1055,22 @@ object MbCanEngineFacade {
             return
         }
         val loader = iface.classLoader ?: return
-        val handler = InvocationHandler { _: Any?, method: Method, args: Array<out Any?>? ->
-            vad.dashing.tbox.DclLogRecorder.recordCanRx()
-            if (method.name == "onVehicleTurnLightChange" && args != null && args.size >= 2) {
-                val left = (args[0] as? Number)?.toByte() ?: 0
-                val right = (args[1] as? Number)?.toByte() ?: 0
-                Log.d(LOG_TAG, "onVehicleTurnLightChange: left=$left right=$right")
-                turnLightCallback?.invoke(left, right)
+        val handler = InvocationHandler { proxy: Any?, method: Method, args: Array<out Any?>? ->
+            runCatching {
+                when (method.name) {
+                    "equals" -> return@InvocationHandler (args?.getOrNull(0) === proxy)
+                    "hashCode" -> return@InvocationHandler System.identityHashCode(proxy)
+                    "toString" -> return@InvocationHandler "MbCanVehicleListenerProxy"
+                    "onVehicleTurnLightChange" -> {
+                        vad.dashing.tbox.DclLogRecorder.recordCanRx()
+                        if (args != null && args.size >= 2) {
+                            val left = (args[0] as? Number)?.toByte() ?: 0
+                            val right = (args[1] as? Number)?.toByte() ?: 0
+                            Log.d(LOG_TAG, "onVehicleTurnLightChange: left=$left right=$right")
+                            turnLightCallback?.invoke(left, right)
+                        }
+                    }
+                }
             }
             null
         }

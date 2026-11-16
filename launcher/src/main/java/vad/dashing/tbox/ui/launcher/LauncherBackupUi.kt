@@ -122,6 +122,45 @@ fun LauncherBackupSection(
             )
         }
 
+        // Boot log toggle switch
+        val bootLogRev by LauncherAppConfigStore.bootLogRevisionFlow.collectAsStateWithLifecycle()
+        val bootLogEnabled = remember(context, bootLogRev) {
+            LauncherAppConfigStore.bootLogEnabled(context)
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(LauncherColors.CardDark)
+                .clickable {
+                    LauncherAppConfigStore.setBootLogEnabled(context, !bootLogEnabled)
+                }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.settings_boot_log_title),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextPrimary,
+                )
+                Text(
+                    text = stringResource(R.string.settings_boot_log_desc),
+                    style = MaterialTheme.typography.tboxBody,
+                    color = LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+            }
+            Switch(
+                checked = bootLogEnabled,
+                onCheckedChange = { checked ->
+                    LauncherAppConfigStore.setBootLogEnabled(context, checked)
+                },
+            )
+        }
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth(),

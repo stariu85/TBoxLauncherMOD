@@ -5,12 +5,17 @@ import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.view.WindowManager
@@ -578,19 +583,10 @@ internal fun resizeRunningTaskToBounds(
 
 @Suppress("DEPRECATION")
 internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int? {
-    runCatching {
-        val client = DclwmClient()
-        val tasks = client.list()
-        for (task in tasks) {
-            if (task.packageName == packageName) {
-                return task.id
-            }
-        }
-    }
-
-    // Prefer visible freeform stack via hidden getAllStackInfos (works for HOME on this HU).
+    // 1. Prefer visible freeform stack via hidden getAllStackInfos (fast, in-memory, works for HOME).
     findTaskIdFromStackInfos(packageName)?.let { return it }
 
+    // 2. Standard Android ActivityManager running tasks (fast IPC, no socket blocks).
     runCatching {
         am.getRunningTasks(32)?.firstOrNull { info ->
             info.topActivity?.packageName == packageName ||
@@ -598,6 +594,7 @@ internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int
         }?.id
     }.getOrNull()?.let { return it }
 
+    // 3. Fallback to recent tasks
     runCatching {
         am.getRecentTasks(64, ActivityManager.RECENT_WITH_EXCLUDED)
             ?.firstOrNull { info ->
@@ -609,6 +606,19 @@ internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int
                 info.persistentId.takeIf { it > 0 } ?: info.id
             }
     }.getOrNull()?.let { return it }
+
+    // 4. dclwm client fallback: ONLY on background threads to avoid blocking UI thread / ANR.
+    if (Looper.myLooper() != Looper.getMainLooper()) {
+        runCatching {
+            val client = DclwmClient()
+            val tasks = client.list()
+            for (task in tasks) {
+                if (task.packageName == packageName) {
+                    return task.id
+                }
+            }
+        }
+    }
 
     return null
 }
@@ -690,6 +700,64 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
     if (pkg in SYSTEM_PROTECTED_PACKAGES) return false
     if (pkg.startsWith("com.android.system")) return false
     return true
+}
+
+private var dclwmWatcherJob: Job? = null
+private val dclwmWatcherScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+/**
+ * Periodically checks if external storage is mounted (every 10s) and starts the dclwm daemon
+ * as soon as storage is ready. Terminates once dclwm is up and running.
+ */
+internal fun startDclwmStorageWatcher(context: Context) {
+    val appCtx = context.applicationContext
+    if (!LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) return
+    if (dclwmWatcherJob?.isActive == true) return
+
+    dclwmWatcherJob = dclwmWatcherScope.launch {
+        Log.i("LauncherAppLaunch", "Starting dclwm storage watcher (check every 10s)")
+        var attempt = 0
+        while (isActive) {
+            attempt++
+            if (!LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
+                Log.i("LauncherAppLaunch", "dclwm watcher stopped: experimentalHideAppsOnHome is disabled")
+                break
+            }
+
+            if (DclwmStarter.isRunning()) {
+                Log.i("LauncherAppLaunch", "dclwm daemon is already running, storage watcher finished")
+                break
+            }
+
+            if (DclwmStarter.isStorageMounted()) {
+                vad.dashing.tbox.DclLogRecorder.tryFlushMemoryBuffer(appCtx)
+                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: storage mounted (attempt $attempt), starting dclwm...")
+                Log.i("LauncherAppLaunch", "dclwm watcher: external storage is ready (attempt $attempt), starting dclwm...")
+                val started = runCatching {
+                    DclwmStarter.ensure(appCtx)
+                    DclwmStarter.isRunning()
+                }.onFailure { err ->
+                    Log.w("LauncherAppLaunch", "dclwm watcher Starter.ensure failed (attempt $attempt): ${err.message}")
+                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: Starter.ensure failed: ${err.message}")
+                }.getOrDefault(false)
+
+                if (started) {
+                    Log.i("LauncherAppLaunch", "dclwm daemon successfully started by storage watcher (attempt $attempt)")
+                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: dclwm daemon successfully started (attempt $attempt)")
+                    break
+                }
+            } else {
+                Log.d("LauncherAppLaunch", "dclwm watcher: storage not mounted yet (state=${Environment.getExternalStorageState()}), attempt $attempt. Next check in 10s")
+            }
+
+            delay(10_000L)
+        }
+    }
+}
+
+internal fun stopDclwmStorageWatcher() {
+    dclwmWatcherJob?.cancel()
+    dclwmWatcherJob = null
 }
 
 /**

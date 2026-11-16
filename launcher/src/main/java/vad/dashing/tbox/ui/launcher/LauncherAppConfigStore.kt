@@ -25,6 +25,7 @@ private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME = "exp_hide_apps_on_home"
+private const val KEY_BOOT_LOG_ENABLED = "boot_log_enabled"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
@@ -52,6 +53,7 @@ private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_CAMD_USE_STOCK_AVM = "camd_use_stock_avm"
 private const val KEY_CAMD_TURN_SIGNAL_CAMERAS = "camd_turn_signal_cameras"
 private const val KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE = "camd_side_cameras_shape_circle"
+private const val KEY_CAMD_SIDE_CAMERAS_RECT_CORNERS = "camd_side_cameras_rect_corners"
 private const val KEY_CAMD_TURN_SIGNAL_LEFT_PRESET = "camd_turn_signal_left_preset"
 private const val KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET = "camd_turn_signal_right_preset"
 private const val KEY_PDC_VISUAL_MODE = "pdc_visual_mode"
@@ -425,6 +427,8 @@ internal object LauncherAppConfigStore {
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
     private val experimentalHideAppsOnHomeRevision = MutableStateFlow(0)
     internal val experimentalHideAppsOnHomeRevisionFlow: StateFlow<Int> = experimentalHideAppsOnHomeRevision
+    private val bootLogRevision = MutableStateFlow(0)
+    internal val bootLogRevisionFlow: StateFlow<Int> = bootLogRevision
     private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
     internal val seatMirrorLaunchModeRevisionFlow: StateFlow<Int> = seatMirrorLaunchModeRevision
     private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
@@ -787,6 +791,14 @@ internal object LauncherAppConfigStore {
     fun setExperimentalHideAppsOnHome(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, enabled).apply()
         experimentalHideAppsOnHomeRevision.value++
+    }
+
+    fun bootLogEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_BOOT_LOG_ENABLED, false)
+
+    fun setBootLogEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_BOOT_LOG_ENABLED, enabled).apply()
+        bootLogRevision.value++
     }
 
     fun disableMediaCardCoverColor(context: Context): Boolean =
@@ -1751,7 +1763,23 @@ internal object LauncherAppConfigStore {
         prefs(context).getBoolean(KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE, false)
 
     fun setCamdSideCamerasShapeCircle(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE, enabled).apply()
+        val editor = prefs(context).edit().putBoolean(KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE, enabled)
+        if (enabled) {
+            editor.putBoolean(KEY_CAMD_SIDE_CAMERAS_RECT_CORNERS, false)
+        }
+        editor.apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdSideCamerasRectCorners(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_SIDE_CAMERAS_RECT_CORNERS, false)
+
+    fun setCamdSideCamerasRectCorners(context: Context, enabled: Boolean) {
+        val editor = prefs(context).edit().putBoolean(KEY_CAMD_SIDE_CAMERAS_RECT_CORNERS, enabled)
+        if (enabled) {
+            editor.putBoolean(KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE, false)
+        }
+        editor.apply()
         camdConfigRevision.value++
     }
 

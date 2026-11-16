@@ -166,6 +166,7 @@ object LauncherFirstInstallDefaults {
         putIfMissing("camd_use_stock_avm", true)
         putIfMissing("camd_turn_signal_cameras", false)
         putIfMissing("camd_side_cameras_shape_circle", false)
+        putIfMissing("camd_side_cameras_rect_corners", false)
         putIfMissing("camd_turn_signal_left_preset", "")
         putIfMissing("camd_turn_signal_right_preset", "")
         putIfMissing("adas_icon_scale", 100)
