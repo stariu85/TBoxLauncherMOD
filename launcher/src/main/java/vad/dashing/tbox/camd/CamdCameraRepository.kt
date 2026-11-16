@@ -10,7 +10,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import vad.dashing.tbox.mbcan.TurnSignalSide
 import vad.dashing.tbox.mbcan.TurnSignalsLatch
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
@@ -106,6 +109,8 @@ object CamdCameraRepository {
     )
 
     private var desktopOperationJob: Job? = null
+    private var turnSignalJob: Job? = null
+    private val cameraOperationMutex = Mutex()
 
     fun refreshStatus(context: Context) {
         scope.launch {
@@ -143,18 +148,34 @@ object CamdCameraRepository {
         }
     }
 
+    fun hasActiveCameras(): Boolean =
+        _isDesktopCamerasOpen.value ||
+            _activeTurnSignalCamera.value != null ||
+            _activeTurnSignalSide.value != null ||
+            ((_status.value as? CamdConnectionStatus.Connected)?.openWindows?.isNotEmpty() == true)
+
     /**
-     * Closes desktop cameras if they are currently active.
+     * Closes any active Camd cameras (desktop 4-camera grid, side cameras, or test cameras).
      */
-    fun closeDesktopCamerasIfOpen(context: Context) {
-        if (_isDesktopCamerasOpen.value) {
-            scope.launch {
+    fun closeAllIfOpen(context: Context) {
+        if (!CamdSocketClient.isInstalled(context)) return
+        if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true) {
+            desktopOperationJob?.cancel()
+            turnSignalJob?.cancel()
+            desktopOperationJob = scope.launch {
                 closeAll(context)
             }
         }
     }
 
-    private suspend fun openDesktopCameras(context: Context) {
+    /**
+     * Closes desktop cameras if they are currently active.
+     */
+    fun closeDesktopCamerasIfOpen(context: Context) {
+        closeAllIfOpen(context)
+    }
+
+    private suspend fun openDesktopCameras(context: Context) = cameraOperationMutex.withLock {
         val screen = LauncherEmbeddedBoundsState.screenBounds
         val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
         val dispH = (screen?.height()?.takeIf { it > 0 } ?: 1080).toFloat()
@@ -235,35 +256,45 @@ object CamdCameraRepository {
     }
 
     suspend fun closeAll(context: Context) {
-        val res = CamdSocketClient.sendCommand("CLOSE")
-        if (res.isFailure) {
-            CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
-        }
-        _isDesktopCamerasOpen.value = false
-        _activeTurnSignalCamera.value = null
-        _activeTurnSignalSide.value = null
-        turnSignalsLatch.reset()
-        LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
-    }
-
-    suspend fun closeCamera(context: Context, id: Int?) {
-        val cmd = if (id != null) "CLOSE $id" else "CLOSE"
-        val res = CamdSocketClient.sendCommand(cmd)
-        if (res.isFailure) {
-            CamdSocketClient.sendCommandWithWakeup(context, cmd)
-        }
-        if (id == null) {
+        turnSignalJob?.cancel()
+        cameraOperationMutex.withLock {
+            val res = CamdSocketClient.sendCommand("CLOSE")
+            if (res.isFailure) {
+                CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
+            }
             _isDesktopCamerasOpen.value = false
             _activeTurnSignalCamera.value = null
             _activeTurnSignalSide.value = null
             turnSignalsLatch.reset()
-        } else {
-            if (_activeTurnSignalCamera.value == id) {
+            LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
+        }
+    }
+
+    suspend fun closeCamera(context: Context, id: Int?) {
+        cameraOperationMutex.withLock {
+            val cmd = if (id != null) "CLOSE $id" else "CLOSE"
+            vad.dashing.tbox.DclLogRecorder.log("CAMD_CAMERA", "closeCamera cmd='$cmd' id=$id")
+            val res = CamdSocketClient.sendCommand(cmd)
+            if (res.isFailure) {
+                CamdSocketClient.sendCommandWithWakeup(context, cmd)
+            }
+            if (id != null && (res.isFailure || CamdSocketClient.isErrorResponse(res.getOrNull().orEmpty()))) {
+                vad.dashing.tbox.DclLogRecorder.log("CAMD_CAMERA", "closeCamera id=$id failed (${res.getOrNull()}), fallback to CLOSE")
+                CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
+            }
+            if (id == null) {
+                _isDesktopCamerasOpen.value = false
                 _activeTurnSignalCamera.value = null
                 _activeTurnSignalSide.value = null
+                turnSignalsLatch.reset()
+            } else {
+                if (_activeTurnSignalCamera.value == id) {
+                    _activeTurnSignalCamera.value = null
+                    _activeTurnSignalSide.value = null
+                }
             }
+            LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
         }
-        LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
     }
 
     /**
@@ -281,16 +312,21 @@ object CamdCameraRepository {
             return
         }
 
+        if (_status.value !is CamdConnectionStatus.Connected) {
+            refreshStatus(appCtx)
+        }
+
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(appCtx)
 
         if (!turnSignalCameras) {
             turnSignalsLatch.reset()
+            turnSignalJob?.cancel()
             if (_activeTurnSignalCamera.value != null || _activeTurnSignalSide.value != null) {
-                scope.launch {
-                    val active = _activeTurnSignalCamera.value
-                    if (active != null) closeCamera(appCtx, active)
-                    _activeTurnSignalCamera.value = null
-                    _activeTurnSignalSide.value = null
+                val active = _activeTurnSignalCamera.value
+                _activeTurnSignalCamera.value = null
+                _activeTurnSignalSide.value = null
+                turnSignalJob = scope.launch {
+                    if (active != null) closeCamera(appCtx, active) else closeCamera(appCtx, null)
                 }
             }
             return
@@ -301,15 +337,17 @@ object CamdCameraRepository {
 
     private fun handleLatchedTurnSignal(side: TurnSignalSide?) {
         val context = appContext ?: return
+        vad.dashing.tbox.DclLogRecorder.log("CAMD_CAMERA", "handleLatchedTurnSignal side=$side activeCam=${_activeTurnSignalCamera.value} activeSide=${_activeTurnSignalSide.value}")
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
 
         if (!turnSignalCameras) {
+            turnSignalJob?.cancel()
             if (_activeTurnSignalCamera.value != null || _activeTurnSignalSide.value != null) {
-                scope.launch {
-                    val active = _activeTurnSignalCamera.value
-                    if (active != null) closeCamera(context, active)
-                    _activeTurnSignalCamera.value = null
-                    _activeTurnSignalSide.value = null
+                val active = _activeTurnSignalCamera.value
+                _activeTurnSignalCamera.value = null
+                _activeTurnSignalSide.value = null
+                turnSignalJob = scope.launch {
+                    if (active != null) closeCamera(context, active) else closeCamera(context, null)
                 }
             }
             return
@@ -318,39 +356,72 @@ object CamdCameraRepository {
         when (side) {
             TurnSignalSide.Left -> {
                 if (_activeTurnSignalSide.value != TurnSignalSide.Left) {
-                    scope.launch {
+                    turnSignalJob?.cancel()
+                    _activeTurnSignalSide.value = TurnSignalSide.Left
+                    turnSignalJob = scope.launch {
                         val current = _activeTurnSignalCamera.value
                         if (current != null) {
                             closeCamera(context, current)
+                            _activeTurnSignalCamera.value = null
+                        } else {
+                            closeCamera(context, null)
                         }
                         val openedCamId = openTurnSignalSideCamera(context, CAMERA_ID_LEFT)
+                        if (!isActive || turnSignalsLatch.currentSide() != TurnSignalSide.Left) {
+                            Log.i(TAG, "Turn signal Left cancelled or expired during open, closing immediately")
+                            if (openedCamId != null) {
+                                closeCamera(context, openedCamId)
+                            } else {
+                                closeCamera(context, null)
+                            }
+                            _activeTurnSignalCamera.value = null
+                            _activeTurnSignalSide.value = null
+                            return@launch
+                        }
                         _activeTurnSignalCamera.value = openedCamId
-                        _activeTurnSignalSide.value = TurnSignalSide.Left
                     }
                 }
             }
             TurnSignalSide.Right -> {
                 if (_activeTurnSignalSide.value != TurnSignalSide.Right) {
-                    scope.launch {
+                    turnSignalJob?.cancel()
+                    _activeTurnSignalSide.value = TurnSignalSide.Right
+                    turnSignalJob = scope.launch {
                         val current = _activeTurnSignalCamera.value
                         if (current != null) {
                             closeCamera(context, current)
+                            _activeTurnSignalCamera.value = null
+                        } else {
+                            closeCamera(context, null)
                         }
                         val openedCamId = openTurnSignalSideCamera(context, CAMERA_ID_RIGHT)
+                        if (!isActive || turnSignalsLatch.currentSide() != TurnSignalSide.Right) {
+                            Log.i(TAG, "Turn signal Right cancelled or expired during open, closing immediately")
+                            if (openedCamId != null) {
+                                closeCamera(context, openedCamId)
+                            } else {
+                                closeCamera(context, null)
+                            }
+                            _activeTurnSignalCamera.value = null
+                            _activeTurnSignalSide.value = null
+                            return@launch
+                        }
                         _activeTurnSignalCamera.value = openedCamId
-                        _activeTurnSignalSide.value = TurnSignalSide.Right
                     }
                 }
             }
             null, TurnSignalSide.Hazard -> {
+                turnSignalJob?.cancel()
                 if (_activeTurnSignalCamera.value != null || _activeTurnSignalSide.value != null) {
-                    scope.launch {
-                        val active = _activeTurnSignalCamera.value
+                    val active = _activeTurnSignalCamera.value
+                    _activeTurnSignalCamera.value = null
+                    _activeTurnSignalSide.value = null
+                    turnSignalJob = scope.launch {
                         if (active != null) {
                             closeCamera(context, active)
+                        } else {
+                            closeCamera(context, null)
                         }
-                        _activeTurnSignalCamera.value = null
-                        _activeTurnSignalSide.value = null
                     }
                 }
             }
@@ -362,19 +433,24 @@ object CamdCameraRepository {
      */
     fun testSideCamera(context: Context, cameraId: Int) {
         val side = if (cameraId == CAMERA_ID_LEFT) TurnSignalSide.Left else TurnSignalSide.Right
-        scope.launch {
+        turnSignalJob?.cancel()
+        turnSignalJob = scope.launch {
             if (_activeTurnSignalSide.value == side) {
                 val current = _activeTurnSignalCamera.value
-                if (current != null) {
-                    closeCamera(context, current)
-                }
                 _activeTurnSignalCamera.value = null
                 _activeTurnSignalSide.value = null
+                if (current != null) {
+                    closeCamera(context, current)
+                } else {
+                    closeCamera(context, null)
+                }
             } else {
                 val current = _activeTurnSignalCamera.value
                 if (current != null) {
                     closeCamera(context, current)
+                    _activeTurnSignalCamera.value = null
                 }
+                _activeTurnSignalSide.value = side
                 val openedCamId = openTurnSignalSideCamera(context, cameraId)
                 _activeTurnSignalCamera.value = openedCamId
                 _activeTurnSignalSide.value = side
@@ -382,7 +458,7 @@ object CamdCameraRepository {
         }
     }
 
-    private suspend fun openTurnSignalSideCamera(context: Context, cameraId: Int): Int? {
+    private suspend fun openTurnSignalSideCamera(context: Context, cameraId: Int): Int? = cameraOperationMutex.withLock {
         val screen = LauncherEmbeddedBoundsState.screenBounds
         val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
         val dispH = (screen?.height()?.takeIf { it > 0 } ?: 1080).toFloat()
@@ -416,8 +492,7 @@ object CamdCameraRepository {
                 ?: Rect(344, 51, 1920, 998)
 
             val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat().coerceAtLeast(100f)
-            // Окошки круглых камер на 30% больше
-            val diameter = (desktopHeight / 3f) * 1.30f
+            val baseDiameter = desktopHeight / 3f
 
             val density = context.resources.displayMetrics.density
             val margin = 30f * density
@@ -427,14 +502,14 @@ object CamdCameraRepository {
             val rectH: Float
 
             if (rectCorners) {
-                // Прямоугольный видеопоток 3 на 4 (4 - ширина)
-                // В тех же координатах и в тех же размерах: ширина diameter, высота 3/4 от ширины
-                rectW = diameter
-                rectH = diameter * (3f / 4f)
+                // Прямоугольный видеопоток 3 на 4 (4 - ширина), увеличен на 40%
+                rectW = baseDiameter * 1.30f * 1.40f
+                rectH = rectW * (3f / 4f)
             } else {
-                // Круглое окно: квадрат diameter x diameter с shape=circle
-                rectW = diameter
-                rectH = diameter
+                // Круглое окно: увеличено на 30% (квадрат rectW x rectH с shape=circle)
+                val circleDiameter = baseDiameter * 1.30f * 1.30f
+                rectW = circleDiameter
+                rectH = circleDiameter
             }
 
             val xPx = if (cameraId == CAMERA_ID_RIGHT) {

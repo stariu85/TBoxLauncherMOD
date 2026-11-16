@@ -476,6 +476,17 @@ object UniversalCanRepository {
             val primaryMode = settingsManager.headUnitCanModeFlow.first()
             val alternativeMode = primaryMode.otherMode()
             settingsManager.saveCanAutoBindLastPrimaryMode(primaryMode)
+
+            // If CAN is already bound and Available on primaryMode, avoid disruptive unbind/rebind
+            if (_mode.value == primaryMode && boundScope != null && availability.value is MbCanAvailability.Available) {
+                MbCanDiagnostics.log(
+                    "INFO",
+                    "AUTO_CAN startup skipped: already bound and available on ${primaryMode.storageValue}"
+                )
+                settingsManager.saveCanAutoBindLastResult("already_available:${primaryMode.storageValue}")
+                return
+            }
+
             MbCanDiagnostics.log(
                 "INFO",
                 "AUTO_CAN startup begin primary=${primaryMode.storageValue} alternative=${alternativeMode.storageValue}"

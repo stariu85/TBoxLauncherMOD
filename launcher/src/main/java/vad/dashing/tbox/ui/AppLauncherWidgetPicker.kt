@@ -16,6 +16,9 @@ import vad.dashing.tbox.MainActivity
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsViewModel
 import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 internal data class LaunchableAppEntry(
     val packageName: String,
@@ -24,12 +27,23 @@ internal data class LaunchableAppEntry(
     val activityName: String? = null,
 )
 
-private object LaunchableAppsWithIconsCache {
+internal object LaunchableAppsWithIconsCache {
     private var cachedIconSizePx: Int? = null
     private var cachedIconRevision: Int? = null
     private var cachedAppListRevision: Int? = null
     private var cachedLookup: LauncherAppIconPaths.Lookup? = null
     private var entries: List<LaunchableAppEntry>? = null
+
+    fun preload(appContext: Context) {
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                val iconSizePx = (64f * appContext.resources.displayMetrics.density).toInt().coerceIn(96, 256)
+                getOrLoad(iconSizePx, 0, 0, LauncherAppIconPaths.Lookup.None) {
+                    loadLaunchableAppEntries(appContext, iconSizePx, LauncherAppIconPaths.Lookup.None, 0)
+                }
+            }
+        }
+    }
 
     fun getOrLoad(
         iconSizePx: Int,

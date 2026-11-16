@@ -42,8 +42,10 @@ enum class AccCruiseState {
 internal object LauncherCruisePresetController {
     private const val TAG = "CruisePreset"
     private const val PULSE_HOLD_MS = 80L
+    private const val CONVENTIONAL_PULSE_HOLD_MS = 150L
     private const val POST_CONVERGE_VERIFY_MS = 1000L
     private const val MAX_PULSES = 50
+    private const val MAX_CONVENTIONAL_PULSES = 10
     private const val SMART_ACC_DEACTIVATE_DELAY_MS = 3000L
     private const val CCS_ENGAGE_TIMEOUT_MS = 4000L
     private const val CCS_STATE_POLL_MS = 50L
@@ -388,7 +390,14 @@ internal object LauncherCruisePresetController {
                         CcsRememberedSetpoint.markOurPulse()
                     }
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                    delay(if (isConventionalCruise()) 100L else 250L)
+                    if (isConventionalCruise()) {
+                        waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                            val s = currentAccCruiseState()
+                            s == AccCruiseState.Active || s == AccCruiseState.Override
+                        }
+                    } else {
+                        delay(250L)
+                    }
                     state = currentAccCruiseState()
                 }
 
@@ -402,8 +411,9 @@ internal object LauncherCruisePresetController {
                 // Stepping loop
                 var current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
                 var pulses = 0
+                val effectiveMaxPulses = if (isConventionalCruise()) MAX_CONVENTIONAL_PULSES else MAX_PULSES
 
-                while (abs(current - target) > 0 && pulses < MAX_PULSES) {
+                while (abs(current - target) > 0 && pulses < effectiveMaxPulses) {
                     val currentState = currentAccCruiseState()
                     if (currentState != AccCruiseState.Active && currentState != AccCruiseState.Override) {
                         DiagFileLog.i(TAG, "Cruise no longer active ($currentState), stopping loop")
@@ -783,13 +793,14 @@ internal object LauncherCruisePresetController {
     }
 
     private suspend fun pulse(propertyId: Int) = withContext(Dispatchers.IO) {
+        val holdMs = if (isConventionalCruise()) CONVENTIONAL_PULSE_HOLD_MS else PULSE_HOLD_MS
         if (UniversalCanRepository.mode.value == HeadUnitCanMode.Android10Vhal) {
             Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 1))
-            delay(PULSE_HOLD_MS)
+            delay(holdMs)
             Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 0))
         } else {
             MbCanEngineFacade.canSetVehicleParam(propertyId, 1)
-            delay(PULSE_HOLD_MS)
+            delay(holdMs)
             MbCanEngineFacade.canSetVehicleParam(propertyId, 0)
         }
     }

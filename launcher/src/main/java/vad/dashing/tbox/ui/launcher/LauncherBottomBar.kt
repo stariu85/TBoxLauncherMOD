@@ -123,6 +123,7 @@ import vad.dashing.tbox.R
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.MbCanSeatModeState
+import vad.dashing.tbox.mbcan.MbCanSignal
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.tbm.TbmAutomationItem
 import vad.dashing.tbox.tbm.TbmConnectionState
@@ -163,6 +164,21 @@ internal val HvacOnColor = Color(0xFF4FC3F7)
 internal val SeatHeatOnColor = Color(0xFFF97316)
 internal val HvacOffColor: Color get() = LauncherColors.TextSecondary
 private const val LAUNCHER_BOTTOM_BAR_CAN_SOURCE = "launcher-bottom-bar"
+private val DOCK_CLIMATE_SIGNALS = setOf(
+    MbCanSignal.HvacAutoState,
+    MbCanSignal.HvacAcPower,
+    MbCanSignal.HvacAirRecirculation,
+    MbCanSignal.HvacDefrosterFront,
+    MbCanSignal.HvacDefroster,
+    MbCanSignal.HvacSync,
+    MbCanSignal.HvacPm25,
+    MbCanSignal.SteeringWheelHeat,
+    MbCanSignal.FrontWindscreenHeat,
+    MbCanSignal.FrontLeftSeatMode,
+    MbCanSignal.FrontRightSeatMode,
+    MbCanSignal.RearLeftSeatMode,
+    MbCanSignal.RearRightSeatMode,
+)
 private const val SEAT_COMMAND_CONFIRM_TIMEOUT_MS = 2_500L
 private const val LIGHT_COMMAND_CONFIRM_TIMEOUT_MS = 1_200L
 
@@ -798,6 +814,10 @@ fun LauncherBottomBar(
     }
 
     LaunchedEffect(Unit) {
+        UniversalCanRepository.setSourceSignals(
+            LAUNCHER_BOTTOM_BAR_CAN_SOURCE,
+            DOCK_CLIMATE_SIGNALS,
+        )
         while (isActive) {
             refreshHvacTemperaturesFromMbCan()
             delay(30_000L)

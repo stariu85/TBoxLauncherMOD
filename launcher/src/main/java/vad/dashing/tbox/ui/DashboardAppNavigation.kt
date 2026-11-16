@@ -566,6 +566,16 @@ internal suspend fun refreshHvacTemperaturesFromMbCan() = withContext(Dispatcher
                 MbCanRepository.updateHvacPm25StateFromCan(state)
                 Android10VhalRepository.updateHvacPm25StateFromCan(state)
             }
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.HvacAutoState)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.HvacAcPower)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.HvacAirRecirculation)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.HvacDefrosterFront)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.HvacDefroster)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.HvacSync)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.FrontLeftSeatMode)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.FrontRightSeatMode)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.SteeringWheelHeat)
+        MbCanRepository.refreshSignal(vad.dashing.tbox.mbcan.MbCanSignal.FrontWindscreenHeat)
     }
 }
 

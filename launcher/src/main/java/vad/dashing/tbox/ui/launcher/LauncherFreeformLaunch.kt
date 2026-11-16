@@ -782,6 +782,7 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
     for (task in tasks) {
         if (task.packageName == launcherPackage) continue
         if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
+        if (task.left >= DclwmProtocol.OFF_LEFT || task.top >= DclwmProtocol.OFF_TOP) continue
         runCatching {
             client.minimize(task.id)
             minimizedCount++
@@ -834,12 +835,23 @@ internal fun minimizeForeignFreeformTasks(
                 Log.w("LauncherAppLaunch", "dclwm minimize failed or returned false, falling back to legacy cleanup")
             }
 
+            val foreignTaskIds = listForeignFreeformTaskIds(launcherPackage, visibleOnly = false)
+            if (foreignTaskIds.isEmpty() && tracked.isEmpty()) {
+                LauncherNavLogger.logNavAction(
+                    action = "MINIMIZE_APPS",
+                    source = source,
+                    stateBefore = stateBefore,
+                    result = "Skipped minimize: no foreign tasks or tracked packages",
+                )
+                withContext(Dispatchers.Main) {
+                    onComplete()
+                }
+                return@launch
+            }
+
             val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val taskIdsToMinimize = mutableSetOf<Int>()
-
-            for (taskId in listForeignFreeformTaskIds(launcherPackage, visibleOnly = false)) {
-                taskIdsToMinimize += taskId
-            }
+            taskIdsToMinimize += foreignTaskIds
 
             for (pkg in tracked) {
                 findTaskIdForPackage(am, pkg)?.let { taskId ->

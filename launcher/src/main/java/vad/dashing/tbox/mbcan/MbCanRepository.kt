@@ -331,6 +331,9 @@ object MbCanRepository {
             android.util.Log.i("TBoxCan", "bind() availability=${_availability.value}")
             MbCanJobManager.attach(scope)
             scheduleReapplyAllInterests()
+            flushPendingCfgPushes()
+            flushPendingAudioPushes()
+            flushPendingTelemetryPushes()
         } catch (e: Exception) {
             MbCanDiagnostics.log("ERROR", "bind() failed: ${e.message}")
             android.util.Log.w("TBoxCan", "bind() failed", e)
@@ -366,12 +369,9 @@ object MbCanRepository {
             cfgPushHandler.removeCallbacks(flushAudioCfgPushesRunnable)
             cfgPushHandler.removeCallbacks(flushTelemetryPushesRunnable)
             cfgPushHandler.removeCallbacks(flushPushDebugRunnable)
-            synchronized(pendingCfgPushes) { pendingCfgPushes.clear() }
-            synchronized(pendingAudioPushes) { pendingAudioPushes.clear() }
             synchronized(cfgPushScheduleLock) { cfgPushFlushScheduled = false }
             synchronized(audioPushScheduleLock) { audioPushFlushScheduled = false }
             synchronized(telemetryPushLock) {
-                pendingTelemetryPushes.clear()
                 telemetryPushFlushScheduled = false
             }
             synchronized(pendingPushDebugByKey) {
@@ -433,6 +433,7 @@ object MbCanRepository {
     }
 
     private fun flushPendingCfgPushes() {
+        val scope = boundScope ?: return
         synchronized(cfgPushScheduleLock) {
             cfgPushFlushScheduled = false
         }
@@ -440,7 +441,6 @@ object MbCanRepository {
             if (pendingCfgPushes.isEmpty()) return
             pendingCfgPushes.toMap().also { pendingCfgPushes.clear() }
         }
-        val scope = boundScope ?: return
         scope.launch(stateApplyDispatcher) {
             for ((item, raw) in snapshot) {
                 when (item) {
@@ -605,6 +605,7 @@ object MbCanRepository {
     }
 
     private fun flushPendingAudioPushes() {
+        val scope = boundScope ?: return
         synchronized(audioPushScheduleLock) {
             audioPushFlushScheduled = false
         }
@@ -612,7 +613,6 @@ object MbCanRepository {
             if (pendingAudioPushes.isEmpty()) return
             pendingAudioPushes.toMap().also { pendingAudioPushes.clear() }
         }
-        val scope = boundScope ?: return
         scope.launch(stateApplyDispatcher) {
             for ((item, raw) in snapshot) {
                 when (item) {
@@ -629,12 +629,12 @@ object MbCanRepository {
     }
 
     private fun flushPendingTelemetryPushes() {
+        val scope = boundScope ?: return
         val snapshot = synchronized(telemetryPushLock) {
             telemetryPushFlushScheduled = false
             if (pendingTelemetryPushes.isEmpty()) return
             pendingTelemetryPushes.toMap().also { pendingTelemetryPushes.clear() }
         }
-        val scope = boundScope ?: return
         scope.launch(stateApplyDispatcher) {
             snapshot.forEach { (signal, value) ->
                 when (signal) {

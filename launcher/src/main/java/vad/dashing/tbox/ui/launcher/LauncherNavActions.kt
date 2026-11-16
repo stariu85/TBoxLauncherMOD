@@ -17,6 +17,7 @@ import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
 import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.MainActivity
+import vad.dashing.tbox.camd.CamdCameraRepository
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LauncherNav"
@@ -63,7 +64,8 @@ internal fun goLauncherHome(
         MainActivity.isOpen() ||
         LauncherAboutOverlayWindow.isShowing() ||
         LauncherAppDrawerWindow.isShowing() ||
-        LauncherAppPickerOverlayWindow.isShowing()
+        LauncherAppPickerOverlayWindow.isShowing() ||
+        CamdCameraRepository.hasActiveCameras()
 
     val closedList = mutableListOf<String>()
     runCatching {
@@ -114,6 +116,12 @@ internal fun goLauncherHome(
         if (MainActivity.isOpen()) {
             MainActivity.finishIfOpen()
             closedList += "MainActivity"
+        }
+    }
+    runCatching {
+        if (CamdCameraRepository.hasActiveCameras()) {
+            CamdCameraRepository.closeAllIfOpen(context)
+            closedList += "CamdCameras"
         }
     }
 

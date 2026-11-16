@@ -1066,6 +1066,7 @@ object MbCanEngineFacade {
                         if (args != null && args.size >= 2) {
                             val left = (args[0] as? Number)?.toByte() ?: 0
                             val right = (args[1] as? Number)?.toByte() ?: 0
+                            vad.dashing.tbox.DclLogRecorder.log("TURN_SIGNAL", "left=$left right=$right")
                             Log.d(LOG_TAG, "onVehicleTurnLightChange: left=$left right=$right")
                             turnLightCallback?.invoke(left, right)
                         }

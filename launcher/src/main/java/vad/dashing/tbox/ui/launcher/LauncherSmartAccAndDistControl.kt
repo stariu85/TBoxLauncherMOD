@@ -194,11 +194,18 @@ internal fun SmartAccSpeedLimitButton(
     // Auto-adapt ACC speed on speed limit change when Smart ACC is active
     var lastAppliedLimit by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(effectiveSpeedLimit, offset, isSmartActive, cruiseState) {
+        val isConventional = LauncherAppConfigStore.isConventionalCruise(context)
         if (adasAccBySpeedLimitEnabled && cruiseState == AccCruiseState.Active && isSmartActive) {
             if (effectiveSpeedLimit != null && effectiveSpeedLimit != lastAppliedLimit) {
-                lastAppliedLimit = effectiveSpeedLimit
-                val targetSpeed = effectiveSpeedLimit + offset
-                LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
+                if (isConventional && lastAppliedLimit == null) {
+                    // When entering Active in Conventional Cruise, do not automatically force speed stepping
+                    // from uninitialized state to prevent spamming pulses on stalk engage.
+                    lastAppliedLimit = effectiveSpeedLimit
+                } else {
+                    lastAppliedLimit = effectiveSpeedLimit
+                    val targetSpeed = effectiveSpeedLimit + offset
+                    LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
+                }
             }
         } else if (!isSmartActive || (cruiseState != AccCruiseState.Active && cruiseState != AccCruiseState.Override)) {
             lastAppliedLimit = null

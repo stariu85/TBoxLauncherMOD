@@ -29,7 +29,6 @@ import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
 import vad.dashing.tbox.ui.launcher.LauncherAppDrawerWindow
 import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
 import vad.dashing.tbox.ui.launcher.LauncherAppPickerOverlayWindow
-import vad.dashing.tbox.ui.launcher.LauncherCarModelCache
 import vad.dashing.tbox.ui.launcher.LauncherEdgeGestureOverlay
 import vad.dashing.tbox.ui.launcher.LauncherOverlayBar
 import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
@@ -144,35 +143,30 @@ class LauncherHomeActivity : ComponentActivity() {
             if (findForeignAppTask(this@LauncherHomeActivity) == null) {
                 LauncherRightPanelOverlayWindow.ensureShowing(this@LauncherHomeActivity)
             }
+            delay(80L)
             LauncherOverlayBar.ensureShowing(this@LauncherHomeActivity)
+            delay(80L)
             LauncherEdgeGestureOverlay.ensureShowing(this@LauncherHomeActivity)
             DclUiStateNotifier.notifyUiStateChanged(this@LauncherHomeActivity)
 
             // Foreign stack cleanup slightly after overlays mount
-            delay(300L)
+            delay(200L)
             vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
             minimizeForeignFreeformTasks(appCtx)
 
-            // --- Stage 2: Heavy subsystems, mbCAN & caches (+500ms after Stage 1) ---
-            delay(500L)
+            // --- Stage 2: Heavy subsystems, mbCAN & caches (+400ms after Stage 1) ---
+            delay(400L)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 2 start: caches, UniversalCanRepository auto-bind")
             LauncherThemeState.init(appCtx)
-            LauncherCarModelCache.preload(appCtx)
             LauncherWifiApRepository.init(appCtx)
             vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
 
             // Start CAN auto-bind now that desktop and UI thread are completely unblocked
             UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
 
-            // Optional dclwm root helper: start cyclic storage check once desktop is ready
-            // --- Stage 3: Auto backup (+1000ms after Stage 2) ---
+            // --- Stage 3: Autostart shortcut & dclwm storage watcher ---
             delay(1000L)
-            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: Auto backup")
-            vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
-
-            // --- Stage 4: Autostart shortcut (+1500ms after everything is settled and desktop is ready) ---
-            delay(1500L)
-            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 4 start: autostart shortcut, dclwm storage watcher")
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: autostart shortcut, dclwm storage watcher")
             if (!autostartFired && LauncherHomeActivityHolder.isResumed && !isFinishing && !isDestroyed) {
                 autostartFired = true
                 Log.i(TAG, "Triggering autostart shortcut with Activity context after desktop is fully ready")
@@ -182,6 +176,13 @@ class LauncherHomeActivity : ComponentActivity() {
             // Launcher fully loaded -> Start cyclic storage check for dclwm (every 10s until ready)
             startDclwmStorageWatcher(appCtx)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "scheduleStagedWarmup completed")
+
+            // Defer auto-backup until 15s after startup so startup I/O remains unburdened
+            lifecycleScope.launch(Dispatchers.IO) {
+                delay(15_000L)
+                vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Deferred auto backup start")
+                vad.dashing.tbox.backup.LauncherBackupManager.performAutoBackupIfEnabled(appCtx)
+            }
         }
     }
 
@@ -305,6 +306,7 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherAboutOverlayWindow.hide()
         PassengerSeatOverlayWindow.hide()
         LauncherOverlayBar.hide()
+        runCatching { vad.dashing.tbox.camd.CamdCameraRepository.closeAllIfOpen(this) }
         runCatching { minimizeForeignFreeformTasks(this) }
         LauncherOverlayElevator.reset()
         if (LauncherHomeActivityHolder.instance === this) {

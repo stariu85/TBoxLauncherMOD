@@ -33,6 +33,10 @@ class LauncherApplication : Application() {
         val settings = SettingsManager(this)
         BootSessionTracker.onAppStart(this, appScope)
         YandexNavRepository.start(this)
+
+        // Asynchronously preload heavy assets on IO so they are ready before the first Compose frame
+        vad.dashing.tbox.ui.launcher.LauncherCarModelCache.preload(this)
+        vad.dashing.tbox.ui.LaunchableAppsWithIconsCache.preload(this)
         appScope.launch {
             runCatching { clearCacheOnAppUpdate(settings) }
                 .onFailure { Log.w(TAG, "App cache clear on update failed", it) }
