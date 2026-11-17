@@ -260,6 +260,7 @@ internal fun LauncherHomeSettingsContent() {
     PdcVisualModeSelector()
     SidebarWidthSlider()
     AdasPanelToggle()
+    AdasCompassWidgetToggle()
     NavSpeedWidgetToggle()
     ClassicSpeedLimitWidgetToggle()
     TsrSystemToggle()
@@ -1669,6 +1670,30 @@ private fun AdasPanelToggle() {
     }
 }
 
+@Composable
+private fun AdasCompassWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.adasCompassWidgetRevisionFlow
+        .collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.adasCompassWidgetEnabled(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_vs_compass_widget),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setAdasCompassWidgetEnabled(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_adas_compass_widget_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
 
 
 @Composable
@@ -2022,6 +2047,7 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        AdasCompassWidgetToggle()
         NavSpeedWidgetToggle()
         NavTrafficLightWidgetToggle()
         NavTrafficLightScaleSlider()

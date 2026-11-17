@@ -7,13 +7,18 @@ import kotlin.math.roundToInt
 
 class CamdAutoAvmSpeedHysteresisTest {
 
-    private fun resolveTargetHoldOff(speed: Float?, onSpeed: Float = 2f, offSpeed: Float = 20f): Boolean? {
-        if (speed == null || !speed.isFinite() || speed < 0f) return null
-        return when {
-            speed > offSpeed -> true   // Disable OEM AVM
-            speed < onSpeed -> false   // Enable OEM AVM
-            else -> null               // In between (onSpeed..offSpeed km/h) -> keep current state
-        }
+    private fun resolveTargetHoldOff(
+        speed: Float?,
+        activeGear: Char? = null,
+        onSpeed: Int = 2,
+        offSpeed: Int = 20,
+    ): Boolean? {
+        return CamdCameraRepository.resolveAutoAvmHoldOff(
+            speed = speed,
+            activeGear = activeGear,
+            onSpeed = onSpeed,
+            offSpeed = offSpeed,
+        )
     }
 
     private fun clampAndAdjustSliderRange(
@@ -22,11 +27,11 @@ class CamdAutoAvmSpeedHysteresisTest {
         currentOn: Int,
         currentOff: Int,
     ): Pair<Int, Int> {
-        var newOn = rawStart.roundToInt().coerceIn(1, 29)
-        var newOff = rawEnd.roundToInt().coerceIn(2, 30)
+        var newOn = rawStart.roundToInt().coerceIn(0, 29)
+        var newOff = rawEnd.roundToInt().coerceIn(1, 30)
         if (newOff - newOn < 1) {
             if (newOn != currentOn) {
-                newOn = (newOff - 1).coerceAtLeast(1)
+                newOn = (newOff - 1).coerceAtLeast(0)
             } else {
                 newOff = (newOn + 1).coerceAtMost(30)
             }
@@ -47,11 +52,26 @@ class CamdAutoAvmSpeedHysteresisTest {
     @Test
     fun targetHoldOff_customThresholds() {
         // Custom: activate below 5 km/h, deactivate above 15 km/h
-        assertEquals(true, resolveTargetHoldOff(15.1f, onSpeed = 5f, offSpeed = 15f))
-        assertEquals(false, resolveTargetHoldOff(4.9f, onSpeed = 5f, offSpeed = 15f))
-        assertNull(resolveTargetHoldOff(10f, onSpeed = 5f, offSpeed = 15f))
-        assertNull(resolveTargetHoldOff(5.0f, onSpeed = 5f, offSpeed = 15f))
-        assertNull(resolveTargetHoldOff(15.0f, onSpeed = 5f, offSpeed = 15f))
+        assertEquals(true, resolveTargetHoldOff(15.1f, onSpeed = 5, offSpeed = 15))
+        assertEquals(false, resolveTargetHoldOff(4.9f, onSpeed = 5, offSpeed = 15))
+        assertNull(resolveTargetHoldOff(10f, onSpeed = 5, offSpeed = 15))
+        assertNull(resolveTargetHoldOff(5.0f, onSpeed = 5, offSpeed = 15))
+        assertNull(resolveTargetHoldOff(15.0f, onSpeed = 5, offSpeed = 15))
+    }
+
+    @Test
+    fun targetHoldOff_reverseOnlyMode() {
+        // onSpeed = 0 means "R" mode: AVM is enabled only in R, otherwise disabled
+        // In R gear: holdOff = false (enable OEM AVM)
+        assertEquals(false, resolveTargetHoldOff(speed = 0f, activeGear = 'R', onSpeed = 0, offSpeed = 20))
+        assertEquals(false, resolveTargetHoldOff(speed = 15f, activeGear = 'R', onSpeed = 0, offSpeed = 20))
+
+        // In other gears (P, D, N, etc.): holdOff = true (disable OEM AVM)
+        assertEquals(true, resolveTargetHoldOff(speed = 0f, activeGear = 'P', onSpeed = 0, offSpeed = 20))
+        assertEquals(true, resolveTargetHoldOff(speed = 0f, activeGear = 'D', onSpeed = 0, offSpeed = 20))
+        assertEquals(true, resolveTargetHoldOff(speed = 5f, activeGear = 'D', onSpeed = 0, offSpeed = 20))
+        assertEquals(true, resolveTargetHoldOff(speed = 0f, activeGear = 'N', onSpeed = 0, offSpeed = 20))
+        assertEquals(true, resolveTargetHoldOff(speed = 0f, activeGear = null, onSpeed = 0, offSpeed = 20))
     }
 
     @Test
@@ -70,15 +90,22 @@ class CamdAutoAvmSpeedHysteresisTest {
     }
 
     @Test
-    fun sliderRange_boundsClampedWithin1And30() {
+    fun sliderRange_boundsClampedWithin0And30() {
         // Extreme left / right
         val (onLow, offLow) = clampAndAdjustSliderRange(-5f, 0f, currentOn = 2, currentOff = 20)
-        assertEquals(1, onLow)
-        assertEquals(2, offLow)
+        assertEquals(0, onLow)
+        assertEquals(1, offLow)
 
         val (onHigh, offHigh) = clampAndAdjustSliderRange(35f, 40f, currentOn = 2, currentOff = 20)
         assertEquals(29, onHigh)
         assertEquals(30, offHigh)
+    }
+
+    @Test
+    fun sliderRange_leftCanBeZeroForReverse() {
+        val (onR, off) = clampAndAdjustSliderRange(0f, 15f, currentOn = 2, currentOff = 15)
+        assertEquals(0, onR)
+        assertEquals(15, off)
     }
 
     @Test
@@ -105,8 +132,8 @@ class CamdAutoAvmSpeedHysteresisTest {
     @Test
     fun hysteresisSimulation_withCustomThresholds() {
         var currentHoldOff: Boolean? = false // Initially at rest: AVM is active
-        val onSpeed = 10f
-        val offSpeed = 25f
+        val onSpeed = 10
+        val offSpeed = 25
 
         val speedSequence = listOf(
             0f to false,     // stationary -> holdOff false

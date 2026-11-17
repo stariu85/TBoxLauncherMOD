@@ -924,14 +924,10 @@ object MbCanRepository {
         }
     }
 
-    private suspend fun refreshSteeringAngle() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) return@withContext
-            val angle = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_STEERING_MODE)?.toFloat()
-            if (angle != null) {
-                CanDataRepository.updateSteerAngle(angle)
-            }
-        }
+    private fun refreshSteeringAngle() {
+        // MbCanSignal.SteeringAngle is pushed dynamically via IMBVehicleListener.onSteeringWheel.
+        // VEHICLE_PROPERTY_STEERING_MODE (24) is power steering mode (0-6), not steering angle in degrees.
+        // Do not overwrite CanDataRepository.steerAngle with property 24.
     }
 
     private suspend fun refreshSteeringWheelHeat() {

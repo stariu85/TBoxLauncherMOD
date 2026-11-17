@@ -149,6 +149,32 @@ fun LauncherLeftPanel(
         speedLimitXRatio = LauncherAppConfigStore.speedLimitXRatio(context)
         speedLimitYRatio = LauncherAppConfigStore.speedLimitYRatio(context)
     }
+    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
+    val compassWidgetRevision by LauncherAppConfigStore.adasCompassWidgetRevisionFlow.collectAsStateWithLifecycle()
+    val compassWidgetEnabled = remember(context, compassWidgetRevision) {
+        LauncherAppConfigStore.adasCompassWidgetEnabled(context)
+    }
+    val compassYRatioRevision by LauncherAppConfigStore.adasCompassYRatioRevisionFlow.collectAsStateWithLifecycle()
+    var compassYRatio by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.adasCompassYRatio(context))
+    }
+    LaunchedEffect(compassYRatioRevision) {
+        compassYRatio = LauncherAppConfigStore.adasCompassYRatio(context)
+    }
+    val camdConfigRevision by LauncherAppConfigStore.camdConfigRevisionFlow.collectAsStateWithLifecycle()
+    val camdWidgetEnabled = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdWidgetEnabled(context)
+    }
+    var camdWidgetXRatio by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.camdWidgetXRatio(context))
+    }
+    var camdWidgetYRatio by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.camdWidgetYRatio(context))
+    }
+    LaunchedEffect(camdConfigRevision) {
+        camdWidgetXRatio = LauncherAppConfigStore.camdWidgetXRatio(context)
+        camdWidgetYRatio = LauncherAppConfigStore.camdWidgetYRatio(context)
+    }
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
     val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle()
@@ -934,9 +960,63 @@ fun LauncherLeftPanel(
                                     .zIndex(168f),
                             )
                         }
+
+                        // Freely Movable Compass Overlay
+                        if (compassWidgetEnabled) {
+                            val compassHeightDp = 115.dp
+                            val compassHeightPx = with(density) { compassHeightDp.toPx() }
+                            val topPx = (containerHeightPx * compassYRatio - compassHeightPx / 2f)
+                                .coerceIn(0f, (containerHeightPx - compassHeightPx).coerceAtLeast(0f))
+                            val topDp = with(density) { topPx.toDp() }
+
+                            LauncherCompassOverlay(
+                                locValues = locValues,
+                                onDragY = { deltaY ->
+                                    if (containerHeightPx > 0f) {
+                                        val currentCenterY = containerHeightPx * compassYRatio
+                                        val newCenterY = (currentCenterY + deltaY).coerceIn(
+                                            compassHeightPx / 2f,
+                                            containerHeightPx - compassHeightPx / 2f,
+                                        )
+                                        compassYRatio = newCenterY / containerHeightPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setAdasCompassYRatio(context, compassYRatio)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset(y = topDp)
+                                    .zIndex(158f),
+                            )
+                        }
                     }
 
+                    // Freely Movable Floating Camera Widget
+                    if (camdWidgetEnabled) {
+                        val mainSizeDp = 50.dp
+                        val mainSizePx = with(density) { mainSizeDp.toPx() }
 
+                        LauncherCamdFloatingWidget(
+                            xRatio = camdWidgetXRatio,
+                            yRatio = camdWidgetYRatio,
+                            containerWidthPx = containerWidthPx,
+                            containerHeightPx = containerHeightPx,
+                            onDrag = { delta ->
+                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                    val currentX = containerWidthPx * camdWidgetXRatio
+                                    val currentY = containerHeightPx * camdWidgetYRatio
+                                    val newX = (currentX + delta.x).coerceIn(mainSizePx / 2f, containerWidthPx - mainSizePx / 2f)
+                                    val newY = (currentY + delta.y).coerceIn(mainSizePx / 2f, containerHeightPx - mainSizePx / 2f)
+                                    camdWidgetXRatio = newX / containerWidthPx
+                                    camdWidgetYRatio = newY / containerHeightPx
+                                }
+                            },
+                            onDragEnd = {
+                                LauncherAppConfigStore.setCamdWidgetPosition(context, camdWidgetXRatio, camdWidgetYRatio)
+                            },
+                        )
+                    }
 
                     val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY
 

@@ -114,6 +114,13 @@ object LauncherCar3DModelTrigger {
         _paintChangedEvent.value = SystemClock.uptimeMillis()
     }
 
+    private val _settingsOrbitEvent = MutableStateFlow(0L)
+    val settingsOrbitEvent: StateFlow<Long> = _settingsOrbitEvent.asStateFlow()
+
+    fun notifySettingsOrbit() {
+        _settingsOrbitEvent.value = SystemClock.uptimeMillis()
+    }
+
     fun setTopShadeOpen(open: Boolean) {
         if (_topShadeOpen.value && !open) {
             _topShadeClosedEvent.value = SystemClock.uptimeMillis()
@@ -428,6 +435,7 @@ private fun LauncherCarFilamentContent(
     val quickSettingsClosedEvent by LauncherCar3DModelTrigger.quickSettingsClosedEvent.collectAsStateWithLifecycle()
     val camdCamerasClosedEvent by LauncherCar3DModelTrigger.camdCamerasClosedEvent.collectAsStateWithLifecycle()
     val paintChangedEvent by LauncherCar3DModelTrigger.paintChangedEvent.collectAsStateWithLifecycle()
+    val settingsOrbitEvent by LauncherCar3DModelTrigger.settingsOrbitEvent.collectAsStateWithLifecycle()
     val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
         LauncherAppConfigStore.cameraAnimationEnabled(context)
@@ -438,6 +446,9 @@ private fun LauncherCarFilamentContent(
     }
     var lastTargetDriveBlend by remember(modelInstance) {
         mutableFloatStateOf(0f)
+    }
+    var lastFrameTransition by remember(modelInstance) {
+        mutableFloatStateOf(settingsProgress.coerceIn(0f, 1f))
     }
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -492,13 +503,19 @@ private fun LauncherCarFilamentContent(
     } else {
         0f
     }
-    val cameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f || transition > 0.001f
+    var lastComposeTransition by remember(modelInstance) { mutableFloatStateOf(transition) }
+    val isTransitionChanging = abs(transition - lastComposeTransition) > 0.001f
+    LaunchedEffect(transition) {
+        lastComposeTransition = transition
+    }
+    val cameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f || isTransitionChanging
 
     val startupUptimeMs = remember { SystemClock.uptimeMillis() }
     var initialStartupDone by remember { mutableStateOf(false) }
 
     // Trigger 3: User orbit interaction
-    val orbitInteracting = settingsOrbit?.interacting == true
+    val isOrbitRecent = (SystemClock.uptimeMillis() - settingsOrbitEvent) < 2000L
+    val orbitInteracting = (settingsOrbit?.interacting == true) || isOrbitRecent
 
     // Trigger 4: Initializing / loading
     val isInitializing = !modelReady
@@ -517,17 +534,19 @@ private fun LauncherCarFilamentContent(
         camdCamerasClosedEvent,
         topShadeClosedEvent,
         paintChangedEvent,
+        settingsOrbitEvent,
     ) {
         val nowMs = SystemClock.uptimeMillis()
         val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
+        val isOrbitRecentNow = (nowMs - settingsOrbitEvent) < 2000L
 
         if (topShadeOpen || isAvmActive || (carHidden && !isPaintChangeRecent)) {
             customSceneLifecycleOwner.pauseScene()
         } else {
             // Resume scene immediately when exiting camera/settings, when triggers fire,
-            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged is pressed/triggered
+            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged/Orbit is pressed/triggered
             customSceneLifecycleOwner.resumeScene()
-            if (!isTriggerActive && !isPaintChangeRecent) {
+            if (!isTriggerActive && !isPaintChangeRecent && !isOrbitRecentNow) {
                 // At system startup, keep rendering active for 5 seconds before freezing.
                 // For subsequent events (e.g. camera/settings exit, action completion, Home/Back press), keep active for 2 seconds.
                 val waitMs = if (!initialStartupDone) {
@@ -660,9 +679,12 @@ private fun LauncherCarFilamentContent(
                             (currentRigState.sunroofOpen != lastRigState.sunroofOpen)
 
                         // Trigger 2: Camera view switching or settings transition/orbiting
+                        val isOrbitActive = (orbit?.interacting == true) ||
+                            (orbit != null && abs(orbit.yawVelocityDegPerSec) > 0.1f)
                         val isCameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
-                            transition > 0.001f ||
-                            (orbit?.interacting == true)
+                            abs(transition - lastFrameTransition) > 0.001f ||
+                            isOrbitActive
+                        lastFrameTransition = transition
 
                         // Trigger 3: Initial frames before model is ready
                         val isInitializing = !modelReady
@@ -672,13 +694,16 @@ private fun LauncherCarFilamentContent(
                         val prevAppEventMs = LauncherCar3DModelTrigger.previousAppPressedEvent.value
                         val quickSettingsClosedEventMs = LauncherCar3DModelTrigger.quickSettingsClosedEvent.value
                         val camdCamerasClosedEventMs = LauncherCar3DModelTrigger.camdCamerasClosedEvent.value
+                        val settingsOrbitEventMs = LauncherCar3DModelTrigger.settingsOrbitEvent.value
+                        val isOrbitRecentFrame = (nowMs - settingsOrbitEventMs) < 2000L
                         val isActionRecent = (nowMs - homeEventMs) < 2000L ||
                             (nowMs - backEventMs) < 2000L ||
                             (nowMs - prevAppEventMs) < 2000L ||
                             (nowMs - quickSettingsClosedEventMs) < 2000L ||
                             (nowMs - camdCamerasClosedEventMs) < 2000L ||
                             isTopShadeClosedRecent ||
-                            isPaintChangeRecent
+                            isPaintChangeRecent ||
+                            isOrbitRecentFrame
 
                         val isStartupRecent = (nowMs - startupUptimeMs) < 5000L
 

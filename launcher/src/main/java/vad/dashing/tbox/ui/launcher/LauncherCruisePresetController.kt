@@ -45,7 +45,10 @@ internal object LauncherCruisePresetController {
     private const val CONVENTIONAL_PULSE_HOLD_MS = 150L
     private const val POST_CONVERGE_VERIFY_MS = 1000L
     private const val MAX_PULSES = 50
-    private const val MAX_CONVENTIONAL_PULSES = 10
+    private const val CONVENTIONAL_BATCH_SIZE = 10
+    private const val MAX_CONVENTIONAL_TOTAL_PULSES = 60
+    private const val TARGET_TOLERANCE_CONVENTIONAL_KMH = 2
+    private const val TARGET_FINE_STEP_BAND_KMH = 5
     private const val SMART_ACC_DEACTIVATE_DELAY_MS = 3000L
     private const val CCS_ENGAGE_TIMEOUT_MS = 4000L
     private const val CCS_STATE_POLL_MS = 50L
@@ -410,59 +413,87 @@ internal object LauncherCruisePresetController {
 
                 // Stepping loop
                 var current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
-                var pulses = 0
-                val effectiveMaxPulses = if (isConventionalCruise()) MAX_CONVENTIONAL_PULSES else MAX_PULSES
+                var totalPulses = 0
+                val maxAllowedPulses = if (isConventionalCruise()) MAX_CONVENTIONAL_TOTAL_PULSES else MAX_PULSES
+                val targetToleranceKmh = if (isConventionalCruise()) TARGET_TOLERANCE_CONVENTIONAL_KMH else 0
 
-                while (abs(current - target) > 0 && pulses < effectiveMaxPulses) {
+                steppingLoop@ while (abs(current - target) > targetToleranceKmh && totalPulses < maxAllowedPulses) {
                     val currentState = currentAccCruiseState()
                     if (currentState != AccCruiseState.Active && currentState != AccCruiseState.Override) {
                         DiagFileLog.i(TAG, "Cruise no longer active ($currentState), stopping loop")
-                        break
+                        break@steppingLoop
                     }
 
-                    if (current < target) {
-                        pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
-                        if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(1, "preset_stepping")
-                        delay(increaseIntervalMs)
+                    val distance = abs(current - target)
+                    val batchSize = if (isConventionalCruise() && distance > TARGET_FINE_STEP_BAND_KMH) {
+                        minOf(CONVENTIONAL_BATCH_SIZE, distance - TARGET_FINE_STEP_BAND_KMH)
                     } else {
-                        pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                        if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(-1, "preset_stepping")
-                        delay(decreaseIntervalMs)
+                        1
                     }
 
-                    val fresh = currentSetSpeedKmh()
-                    if (fresh != null) {
-                        current = fresh
-                    } else {
-                        current += if (current < target) 1 else -1
-                    }
-                    pulses++
-                }
-
-                DiagFileLog.i(TAG, "Stepping loop finished. Target=$target, pulses=$pulses, now=${currentSetSpeedKmh()}")
-
-                // Post-converge verify & catch-up
-                delay(POST_CONVERGE_VERIFY_MS)
-                val postCheck = currentSetSpeedKmh()
-                if (postCheck != null && postCheck != target && abs(postCheck - target) <= 5) {
-                    DiagFileLog.i(TAG, "Post-converge catch-up: current=$postCheck, target=$target")
-                    var catchUpPulses = 0
-                    var catchCurrent: Int = postCheck
-                    while (catchCurrent != target && catchUpPulses < 5) {
+                    var step = 0
+                    batchLoop@ while (step < batchSize) {
+                        step++
                         val cs = currentAccCruiseState()
-                        if (cs != AccCruiseState.Active && cs != AccCruiseState.Override) break
-                        if (catchCurrent < target) {
+                        if (cs != AccCruiseState.Active && cs != AccCruiseState.Override) {
+                            DiagFileLog.i(TAG, "Cruise no longer active ($cs), stopping loop")
+                            break@steppingLoop
+                        }
+
+                        if (current < target) {
                             pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
-                            if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(1, "catchup_stepping")
+                            if (isConventionalCruise()) {
+                                CcsRememberedSetpoint.markOurPulse()
+                                CcsRememberedSetpoint.nudgeBy(1, "preset_stepping")
+                            }
                             delay(increaseIntervalMs)
                         } else {
                             pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                            if (isConventionalCruise()) CcsRememberedSetpoint.nudgeBy(-1, "catchup_stepping")
+                            if (isConventionalCruise()) {
+                                CcsRememberedSetpoint.markOurPulse()
+                                CcsRememberedSetpoint.nudgeBy(-1, "preset_stepping")
+                            }
                             delay(decreaseIntervalMs)
                         }
+
                         val fresh = currentSetSpeedKmh()
-                        catchCurrent = fresh ?: (catchCurrent + if (catchCurrent < target) 1 else -1)
-                        catchUpPulses++
+                        current = fresh ?: (current + if (current < target) 1 else -1)
+                        totalPulses++
+
+                        if (abs(current - target) <= targetToleranceKmh) {
+                            break@steppingLoop
+                        }
+                    }
+
+                    if (batchSize > 1) {
+                        delay(100L)
+                    }
+                }
+
+                DiagFileLog.i(TAG, "Stepping loop finished. Target=$target, pulses=$totalPulses, now=${currentSetSpeedKmh()}")
+
+                // Post-converge verify & catch-up (ACC only, since conventional handles fine steps in main loop)
+                if (!isConventionalCruise()) {
+                    delay(POST_CONVERGE_VERIFY_MS)
+                    val postCheck = currentSetSpeedKmh()
+                    if (postCheck != null && postCheck != target && abs(postCheck - target) <= 5) {
+                        DiagFileLog.i(TAG, "Post-converge catch-up: current=$postCheck, target=$target")
+                        var catchUpPulses = 0
+                        var catchCurrent: Int = postCheck
+                        while (catchCurrent != target && catchUpPulses < 5) {
+                            val cs = currentAccCruiseState()
+                            if (cs != AccCruiseState.Active && cs != AccCruiseState.Override) break
+                            if (catchCurrent < target) {
+                                pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
+                                delay(increaseIntervalMs)
+                            } else {
+                                pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                                delay(decreaseIntervalMs)
+                            }
+                            val fresh = currentSetSpeedKmh()
+                            catchCurrent = fresh ?: (catchCurrent + if (catchCurrent < target) 1 else -1)
+                            catchUpPulses++
+                        }
                     }
                 }
             } finally {

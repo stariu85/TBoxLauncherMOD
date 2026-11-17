@@ -103,6 +103,21 @@ fun LauncherCamerasSettingsContent(
     val lowSpeedSteerOnAngle = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdLowSpeedSteerOnAngle(context)
     }
+    val widgetEnabled = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdWidgetEnabled(context)
+    }
+    val widgetLrLeftPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdWidgetLrLeftPreset(context)
+    }
+    val widgetLrRightPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdWidgetLrRightPreset(context)
+    }
+    val widgetUdTopPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdWidgetUdTopPreset(context)
+    }
+    val widgetUdBottomPreset = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdWidgetUdBottomPreset(context)
+    }
 
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
 
@@ -265,8 +280,13 @@ fun LauncherCamerasSettingsContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                val onSpeedLabel = if (autoAvmOnSpeed == 0) {
+                    stringResource(R.string.camd_auto_avm_on_speed_reverse_label)
+                } else {
+                    stringResource(R.string.camd_auto_avm_on_speed_label, autoAvmOnSpeed)
+                }
                 Text(
-                    text = stringResource(R.string.camd_auto_avm_on_speed_label, autoAvmOnSpeed),
+                    text = onSpeedLabel,
                     color = if (isAutoAvmActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -286,11 +306,11 @@ fun LauncherCamerasSettingsContent(
             RangeSlider(
                 value = autoAvmOnSpeed.toFloat()..autoAvmOffSpeed.toFloat(),
                 onValueChange = { range ->
-                    var newOn = range.start.roundToInt().coerceIn(1, 29)
-                    var newOff = range.endInclusive.roundToInt().coerceIn(2, 30)
+                    var newOn = range.start.roundToInt().coerceIn(0, 29)
+                    var newOff = range.endInclusive.roundToInt().coerceIn(1, 30)
                     if (newOff - newOn < 1) {
                         if (newOn != autoAvmOnSpeed) {
-                            newOn = (newOff - 1).coerceAtLeast(1)
+                            newOn = (newOff - 1).coerceAtLeast(0)
                         } else {
                             newOff = (newOn + 1).coerceAtMost(30)
                         }
@@ -300,8 +320,8 @@ fun LauncherCamerasSettingsContent(
                     }
                     LauncherAppConfigStore.setCamdAutoAvmSpeeds(context, newOn, newOff)
                 },
-                valueRange = 1f..30f,
-                steps = 28,
+                valueRange = 0f..30f,
+                steps = 29,
                 enabled = isAutoAvmActive,
                 colors = SliderDefaults.colors(
                     thumbColor = LauncherColors.AccentCyan,
@@ -711,6 +731,129 @@ fun LauncherCamerasSettingsContent(
                         val nextIdx = (currentIdx + 1) % allLowSpeedPresets.size
                         LauncherAppConfigStore.setCamdLowSpeedRightPreset(context, allLowSpeedPresets[nextIdx])
                     },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Option 4: "Виджет камер"
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.camd_widget_title),
+            active = widgetEnabled,
+            enabled = isInstalled,
+            onClick = if (isInstalled) {
+                {
+                    val next = !widgetEnabled
+                    LauncherAppConfigStore.setCamdWidgetEnabled(context, next)
+                }
+            } else null,
+        )
+
+        Text(
+            text = stringResource(R.string.camd_widget_desc),
+            color = if (isInstalled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+
+        if (isInstalled && widgetEnabled) {
+            val connectedStatus = status as? CamdConnectionStatus.Connected
+            val defaultPresetLabel = stringResource(R.string.camd_preset_default)
+
+            val allWidgetPresets = (listOf("") + (connectedStatus?.presets?.map { it.name } ?: emptyList()) +
+                listOfNotNull(
+                    widgetLrLeftPreset.ifBlank { null },
+                    widgetLrRightPreset.ifBlank { null },
+                    widgetUdTopPreset.ifBlank { null },
+                    widgetUdBottomPreset.ifBlank { null }
+                )).distinct()
+
+            val formatWidgetPresetLabel: (String) -> String = { presetName ->
+                if (presetName.isBlank() || presetName !in allWidgetPresets) {
+                    defaultPresetLabel
+                } else {
+                    val p = connectedStatus?.presets?.firstOrNull { it.name == presetName }
+                    if (p != null) {
+                        "${p.name} (#${p.cameraId})"
+                    } else {
+                        presetName
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(LauncherColors.CardDarkElevated)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Section: Кнопка «Право / Лево»
+                Text(
+                    text = stringResource(R.string.camd_widget_lr_section_title),
+                    color = LauncherColors.AccentCyan,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_widget_lr_left_preset_title),
+                    value = formatWidgetPresetLabel(widgetLrLeftPreset),
+                    onClick = {
+                        val currentIdx = allWidgetPresets.indexOf(widgetLrLeftPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
+                        LauncherAppConfigStore.setCamdWidgetLrLeftPreset(context, allWidgetPresets[nextIdx])
+                    },
+                )
+
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_widget_lr_right_preset_title),
+                    value = formatWidgetPresetLabel(widgetLrRightPreset),
+                    onClick = {
+                        val currentIdx = allWidgetPresets.indexOf(widgetLrRightPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
+                        LauncherAppConfigStore.setCamdWidgetLrRightPreset(context, allWidgetPresets[nextIdx])
+                    },
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Section: Кнопка «Верх / Низ»
+                Text(
+                    text = stringResource(R.string.camd_widget_ud_section_title),
+                    color = LauncherColors.AccentCyan,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_widget_ud_top_preset_title),
+                    value = formatWidgetPresetLabel(widgetUdTopPreset),
+                    onClick = {
+                        val currentIdx = allWidgetPresets.indexOf(widgetUdTopPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
+                        LauncherAppConfigStore.setCamdWidgetUdTopPreset(context, allWidgetPresets[nextIdx])
+                    },
+                )
+
+                LauncherSettingsValueRow(
+                    label = stringResource(R.string.camd_widget_ud_bottom_preset_title),
+                    value = formatWidgetPresetLabel(widgetUdBottomPreset),
+                    onClick = {
+                        val currentIdx = allWidgetPresets.indexOf(widgetUdBottomPreset).takeIf { it >= 0 } ?: 0
+                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
+                        LauncherAppConfigStore.setCamdWidgetUdBottomPreset(context, allWidgetPresets[nextIdx])
+                    },
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = stringResource(R.string.camd_widget_360_info),
+                    color = LauncherColors.TextSecondary,
+                    fontSize = 12.sp,
                 )
             }
         }

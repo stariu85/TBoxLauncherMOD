@@ -230,8 +230,9 @@
     <string name="camd_auto_disable_stock_avm_title">Auto disable OEM AVM</string>
     <string name="camd_auto_disable_stock_avm_desc">Disable OEM AVM via Camd above deactivation speed, enable below activation speed</string>
     <string name="camd_auto_avm_on_speed_label">Activation: &lt; %1$d km/h</string>
+    <string name="camd_auto_avm_on_speed_reverse_label">Activation: R only (reverse gear)</string>
     <string name="camd_auto_avm_off_speed_label">Deactivation: &gt; %1$d km/h</string>
-    <string name="camd_auto_avm_speeds_desc">Scale from 1 to 30 km/h (step 1 km/h). Deactivation speed is always higher than activation speed</string>
+    <string name="camd_auto_avm_speeds_desc">Scale from R (reverse gear only) or 1 to 30 km/h (step 1 km/h). Deactivation speed is always higher than activation speed</string>
     <string name="camd_turn_signals_title">Enable side cameras on turn signals</string>
     <string name="camd_turn_signals_desc">Show corresponding side camera in ADAS zone when turn signal is on</string>
     <string name="camd_side_cameras_shape_circle_title">Circular shape for side cameras</string>
@@ -265,6 +266,15 @@
     <string name="camd_low_speed_width_desc">Width of rectangular window towards desktop center (10–50%)</string>
     <string name="camd_low_speed_preset_left_title">Left camera preset (low speed)</string>
     <string name="camd_low_speed_preset_right_title">Right camera preset (low speed)</string>
+    <string name="camd_widget_title">Camera widget</string>
+    <string name="camd_widget_desc">Displays a floating camera widget in the ADAS zone, freely movable by long tap with fly-out action buttons</string>
+    <string name="camd_widget_lr_section_title">\"Left / Right\" button</string>
+    <string name="camd_widget_lr_left_preset_title">Left camera preset</string>
+    <string name="camd_widget_lr_right_preset_title">Right camera preset</string>
+    <string name="camd_widget_ud_section_title">\"Up / Down\" button</string>
+    <string name="camd_widget_ud_top_preset_title">Front camera preset</string>
+    <string name="camd_widget_ud_bottom_preset_title">Rear camera preset</string>
+    <string name="camd_widget_360_info">The \"360\" button uses the selected presets for left, right, front, and rear cameras.</string>
     <string name="launcher_vs_section_theme">Theme</string>
     <string name="launcher_vs_section_theme_sub">Light and dark theme settings</string>
     <string name="launcher_vs_auto_theme_system">Auto theme by system</string>
@@ -1231,6 +1241,8 @@
     <string name="launcher_adas_time_gap">Gap %1$d</string>
     <string name="launcher_adas_title">Driver Assists</string>
     <string name="launcher_vs_bsd_alert_overlay">BSD Alert screen overlay</string>
+    <string name="launcher_vs_compass_widget">Compass widget</string>
+    <string name="launcher_adas_compass_widget_desc">Display arc compass on the road in rear view mode</string>
     <string name="launcher_vs_seat_memory_adas_panel">Desktop seat memory button</string>
     <string name="launcher_seat_memory_panel_visible_desc">Show panel with 3 seat &amp; mirror memory presets in the ADAS zone</string>
     <string name="launcher_vs_seat_memory_preset_name">Preset %1$d name</string>

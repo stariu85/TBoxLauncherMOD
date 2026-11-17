@@ -18,6 +18,7 @@ object LauncherTireRepository {
     fun init(context: Context) {
         val appCtx = context.applicationContext
         applicationContext = appCtx
+        LauncherVehicleAlertsRepository.init(appCtx)
         val saved = LauncherAppConfigStore.loadSavedTirePressures(appCtx)
         if (saved != null && !_state.value.hasAvailableData) {
             _state.value = saved

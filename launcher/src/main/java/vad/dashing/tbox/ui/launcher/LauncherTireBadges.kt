@@ -177,7 +177,7 @@ fun LauncherTireBadges(
                 val endX = if (shiftedLeft < anchor.x) shiftedLeft + rect.width else shiftedLeft
                 val wheel = state.wheel(corner)
                 drawLine(
-                    color = if (wheel.warningSts != 0) {
+                    color = if (wheel.needsAttention(lowPressureThreshold)) {
                         LauncherColors.WarningRed.copy(alpha = 0.85f)
                     } else {
                         LauncherColors.AccentCyan.copy(alpha = 0.55f)
@@ -238,11 +238,10 @@ private fun LauncherTireBadge(
         },
     )
     val tint = when {
-        wheel.warningSts != 0 ||
-            (wheel.pressureBar != null && wheel.pressureBar < lowPressureThreshold) ->
+        wheel.needsAttention(lowPressureThreshold) ->
             LauncherColors.WarningRed
         wheel.calibrating || (wheel.available && wheel.pressureBar == null) ->
-            LauncherColors.WarningAmber
+            LauncherColors.LeftTextSecondary
         wheel.available -> LauncherColors.LeftTextPrimary
         else -> LauncherColors.LeftTextSecondary
     }

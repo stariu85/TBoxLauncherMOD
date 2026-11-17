@@ -30,8 +30,7 @@ data class LauncherTireWheelState(
 ) {
     /** Show callout next to the 3D car — OEM abnormal or clearly low pressure (< [lowPressureThreshold]). */
     fun needsAttention(lowPressureThreshold: Float = LOW_PRESSURE_BAR): Boolean =
-        warningSts != 0 || calibrating || (available && pressureBar == null) ||
-            (pressureBar != null && pressureBar < lowPressureThreshold)
+        pressureBar != null && (pressureBar < lowPressureThreshold || warningSts != 0)
 
     val needsAttention: Boolean
         get() = needsAttention(LOW_PRESSURE_BAR)

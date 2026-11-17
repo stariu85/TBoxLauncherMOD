@@ -149,11 +149,6 @@ class LauncherHomeActivity : ComponentActivity() {
             LauncherEdgeGestureOverlay.ensureShowing(this@LauncherHomeActivity)
             DclUiStateNotifier.notifyUiStateChanged(this@LauncherHomeActivity)
 
-            // Foreign stack cleanup slightly after overlays mount
-            delay(200L)
-            vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
-            minimizeForeignFreeformTasks(appCtx)
-
             // --- Stage 2: Heavy subsystems, mbCAN & caches (+400ms after Stage 1) ---
             delay(400L)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 2 start: caches, UniversalCanRepository auto-bind")
@@ -164,7 +159,7 @@ class LauncherHomeActivity : ComponentActivity() {
             // Start CAN auto-bind now that desktop and UI thread are completely unblocked
             UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
 
-            // --- Stage 3: Autostart shortcut & dclwm storage watcher ---
+            // --- Stage 3: Autostart shortcut, dclwm storage watcher & foreign stack cleanup ---
             delay(1000L)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: autostart shortcut, dclwm storage watcher")
             if (!autostartFired && LauncherHomeActivityHolder.isResumed && !isFinishing && !isDestroyed) {
@@ -175,6 +170,8 @@ class LauncherHomeActivity : ComponentActivity() {
 
             // Launcher fully loaded -> Start cyclic storage check for dclwm (every 10s until ready)
             startDclwmStorageWatcher(appCtx)
+            vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
+            minimizeForeignFreeformTasks(appCtx)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "scheduleStagedWarmup completed")
 
             // Defer auto-backup until 15s after startup so startup I/O remains unburdened

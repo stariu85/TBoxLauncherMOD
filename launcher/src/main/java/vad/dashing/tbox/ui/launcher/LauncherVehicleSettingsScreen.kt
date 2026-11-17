@@ -182,6 +182,7 @@ fun LauncherVehicleSettingsScreen(
             awaitEachGesture {
                 val firstDown = awaitFirstDown(requireUnconsumed = false)
                 settingsOrbit.beginInteraction()
+                LauncherCar3DModelTrigger.notifySettingsOrbit()
                 val velocityTracker = VelocityTracker()
                 velocityTracker.addPosition(firstDown.uptimeMillis, firstDown.position)
                 val selectedWindow = doorAnchors.minByOrNull { (_, anchor) ->
@@ -212,6 +213,7 @@ fun LauncherVehicleSettingsScreen(
                                 windowFeedback = null
                                 val zoom = event.calculateZoom()
                                 settingsOrbit.multiplyScale(zoom)
+                                LauncherCar3DModelTrigger.notifySettingsOrbit()
                             }
 
                             pressedPointers == 1 && !multiTouchSeen -> {
@@ -247,6 +249,7 @@ fun LauncherVehicleSettingsScreen(
                                 }
                                 if (rotationSwipe) {
                                     settingsOrbit.addYaw(pan.x / SETTINGS_YAW_PX_PER_DEG)
+                                    LauncherCar3DModelTrigger.notifySettingsOrbit()
                                 }
                             }
                         }
@@ -259,6 +262,7 @@ fun LauncherVehicleSettingsScreen(
                     settingsOrbit.endInteraction()
                     if (rotationSwipe && !multiTouchSeen && !windowSwipe) {
                         settingsOrbit.applyFlingFromPxVelocity(velocityTracker.calculateVelocity().x)
+                        LauncherCar3DModelTrigger.notifySettingsOrbit()
                     }
                 }
                 if (

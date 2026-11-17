@@ -71,6 +71,17 @@ private const val KEY_CAMD_LOW_SPEED_RIGHT_PRESET = "camd_low_speed_right_preset
 private const val KEY_CAMD_LOW_SPEED_STEER_OFF_ANGLE = "camd_low_speed_steer_off_angle"
 private const val KEY_CAMD_LOW_SPEED_STEER_ON_ANGLE = "camd_low_speed_steer_on_angle"
 
+private const val KEY_CAMD_WIDGET_ENABLED = "camd_widget_enabled"
+private const val KEY_CAMD_WIDGET_X_RATIO = "camd_widget_x_ratio"
+private const val KEY_CAMD_WIDGET_Y_RATIO = "camd_widget_y_ratio"
+private const val KEY_CAMD_WIDGET_LR_LEFT_PRESET = "camd_widget_lr_left_preset"
+private const val KEY_CAMD_WIDGET_LR_RIGHT_PRESET = "camd_widget_lr_right_preset"
+private const val KEY_CAMD_WIDGET_UD_TOP_PRESET = "camd_widget_ud_top_preset"
+private const val KEY_CAMD_WIDGET_UD_BOTTOM_PRESET = "camd_widget_ud_bottom_preset"
+
+private const val DEFAULT_CAMD_WIDGET_X_RATIO = 0.82f
+private const val DEFAULT_CAMD_WIDGET_Y_RATIO = 0.50f
+
 const val CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS = "turn_signals"
 const val CAMD_LOW_SPEED_TRIGGER_STEERING = "steering_wheel"
 const val CAMD_LOW_SPEED_TRIGGER_BOTH = "both"
@@ -116,6 +127,9 @@ const val DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP = 20f
 private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
 private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
+private const val KEY_ADAS_COMPASS_WIDGET_ENABLED = "adas_compass_widget_enabled"
+private const val KEY_ADAS_COMPASS_Y_RATIO = "adas_compass_y_ratio"
+const val DEFAULT_ADAS_COMPASS_Y_RATIO = 0.38f
 private const val KEY_SEAT_MEMORY_ADAS_PANEL_ENABLED = "seat_memory_adas_panel_enabled"
 private const val KEY_SEAT_MEMORY_PRESET_1_NAME = "seat_memory_preset_1_name"
 private const val KEY_SEAT_MEMORY_PRESET_2_NAME = "seat_memory_preset_2_name"
@@ -522,6 +536,10 @@ internal object LauncherAppConfigStore {
     internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
     private val adasBsdAlertOverlayRevision = MutableStateFlow(0)
     internal val adasBsdAlertOverlayRevisionFlow: StateFlow<Int> = adasBsdAlertOverlayRevision
+    private val adasCompassWidgetRevision = MutableStateFlow(0)
+    internal val adasCompassWidgetRevisionFlow: StateFlow<Int> = adasCompassWidgetRevision
+    private val adasCompassYRatioRevision = MutableStateFlow(0)
+    internal val adasCompassYRatioRevisionFlow: StateFlow<Int> = adasCompassYRatioRevision
     private val seatMemoryAdasPanelRevision = MutableStateFlow(0)
     internal val seatMemoryAdasPanelRevisionFlow: StateFlow<Int> = seatMemoryAdasPanelRevision
     private val themeButtonOffsetRevision = MutableStateFlow(0)
@@ -1229,6 +1247,22 @@ internal object LauncherAppConfigStore {
         adasBsdAlertOverlayRevision.value++
     }
 
+    fun adasCompassWidgetEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ADAS_COMPASS_WIDGET_ENABLED, false)
+
+    fun setAdasCompassWidgetEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ADAS_COMPASS_WIDGET_ENABLED, enabled).apply()
+        adasCompassWidgetRevision.value++
+    }
+
+    fun adasCompassYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_ADAS_COMPASS_Y_RATIO, DEFAULT_ADAS_COMPASS_Y_RATIO).coerceIn(0.05f, 0.95f)
+
+    fun setAdasCompassYRatio(context: Context, yRatio: Float) {
+        prefs(context).edit().putFloat(KEY_ADAS_COMPASS_Y_RATIO, yRatio.coerceIn(0.05f, 0.95f)).apply()
+        adasCompassYRatioRevision.value++
+    }
+
     fun seatMemoryAdasPanelEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_SEAT_MEMORY_ADAS_PANEL_ENABLED, true)
 
@@ -1342,6 +1376,7 @@ internal object LauncherAppConfigStore {
         val next = threshold.coerceIn(TIRE_PRESSURE_LOW_THRESHOLD_MIN, TIRE_PRESSURE_LOW_THRESHOLD_MAX)
         prefs(context).edit().putFloat(KEY_TIRE_PRESSURE_LOW_THRESHOLD, next).apply()
         tirePressureConfigRevision.value++
+        LauncherVehicleAlertsRepository.refresh()
     }
 
     fun tirePressureAlwaysInSettings(context: Context): Boolean =
@@ -1785,19 +1820,19 @@ internal object LauncherAppConfigStore {
     fun camdAutoAvmOnSpeed(context: Context): Int {
         val sp = prefs(context)
         val onSpd = sp.getInt(KEY_CAMD_AUTO_AVM_ON_SPEED, DEFAULT_CAMD_AUTO_AVM_ON_SPEED)
-        return onSpd.coerceIn(1, 29)
+        return onSpd.coerceIn(0, 29)
     }
 
     fun camdAutoAvmOffSpeed(context: Context): Int {
         val sp = prefs(context)
         val offSpd = sp.getInt(KEY_CAMD_AUTO_AVM_OFF_SPEED, DEFAULT_CAMD_AUTO_AVM_OFF_SPEED)
         val onSpd = camdAutoAvmOnSpeed(context)
-        return offSpd.coerceIn(onSpd + 1, 30)
+        return offSpd.coerceIn((onSpd + 1).coerceAtLeast(1), 30)
     }
 
     fun setCamdAutoAvmSpeeds(context: Context, onSpeed: Int, offSpeed: Int) {
-        val validOn = onSpeed.coerceIn(1, 29)
-        val validOff = offSpeed.coerceIn(validOn + 1, 30)
+        val validOn = onSpeed.coerceIn(0, 29)
+        val validOff = offSpeed.coerceIn((validOn + 1).coerceAtLeast(1), 30)
         prefs(context).edit()
             .putInt(KEY_CAMD_AUTO_AVM_ON_SPEED, validOn)
             .putInt(KEY_CAMD_AUTO_AVM_OFF_SPEED, validOff)
@@ -1929,6 +1964,60 @@ internal object LauncherAppConfigStore {
             .putInt(KEY_CAMD_LOW_SPEED_STEER_OFF_ANGLE, validOff)
             .putInt(KEY_CAMD_LOW_SPEED_STEER_ON_ANGLE, validOn)
             .apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdWidgetEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_WIDGET_ENABLED, false)
+
+    fun setCamdWidgetEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_WIDGET_ENABLED, enabled).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdWidgetXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_CAMD_WIDGET_X_RATIO, DEFAULT_CAMD_WIDGET_X_RATIO).coerceIn(0.05f, 0.95f)
+
+    fun camdWidgetYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_CAMD_WIDGET_Y_RATIO, DEFAULT_CAMD_WIDGET_Y_RATIO).coerceIn(0.05f, 0.95f)
+
+    fun setCamdWidgetPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_CAMD_WIDGET_X_RATIO, xRatio.coerceIn(0.05f, 0.95f))
+            .putFloat(KEY_CAMD_WIDGET_Y_RATIO, yRatio.coerceIn(0.05f, 0.95f))
+            .apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdWidgetLrLeftPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_WIDGET_LR_LEFT_PRESET, "").orEmpty()
+
+    fun setCamdWidgetLrLeftPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_WIDGET_LR_LEFT_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdWidgetLrRightPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_WIDGET_LR_RIGHT_PRESET, "").orEmpty()
+
+    fun setCamdWidgetLrRightPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_WIDGET_LR_RIGHT_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdWidgetUdTopPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_WIDGET_UD_TOP_PRESET, "").orEmpty()
+
+    fun setCamdWidgetUdTopPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_WIDGET_UD_TOP_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdWidgetUdBottomPreset(context: Context): String =
+        prefs(context).getString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, "").orEmpty()
+
+    fun setCamdWidgetUdBottomPreset(context: Context, preset: String) {
+        prefs(context).edit().putString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, preset).apply()
         camdConfigRevision.value++
     }
 

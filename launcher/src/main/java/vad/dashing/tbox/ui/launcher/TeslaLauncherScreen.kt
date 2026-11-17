@@ -92,7 +92,7 @@ fun TeslaLauncherScreen(
         delay(1_200L)
         LauncherVehicleBodyRepository.ensurePolling()
         LauncherAdasRepository.ensureActive()
-        LauncherVehicleAlertsRepository.ensureActive()
+        LauncherVehicleAlertsRepository.ensureActive(context)
         while (true) {
             delay(2_000L)
             LauncherAdasRepository.ensureActive()

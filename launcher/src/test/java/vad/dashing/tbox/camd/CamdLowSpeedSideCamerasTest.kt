@@ -23,22 +23,20 @@ class CamdLowSpeedSideCamerasTest {
         triggerMode: String,
         turnSignalSide: TurnSignalSide?,
         steerSide: TurnSignalSide?,
+        activeSide: TurnSignalSide? = null,
+        activeIsLowSpeed: Boolean = false,
     ): Pair<TurnSignalSide?, Boolean> {
-        val isLowSpeed = speed < lowSpeedThreshold
-
-        return if (lowSpeedEnabled && isLowSpeed) {
-            val side = when (triggerMode) {
-                "turn_signals" -> turnSignalSide
-                "steering_wheel" -> steerSide
-                "both" -> turnSignalSide ?: steerSide
-                else -> turnSignalSide ?: steerSide
-            }
-            if (side != null) side to true else null to false
-        } else if (turnSignalCamerasEnabled) {
-            if (turnSignalSide != null) turnSignalSide to false else null to false
-        } else {
-            null to false
-        }
+        return CamdCameraRepository.resolveTargetSideCamera(
+            speed = speed,
+            lowSpeedThreshold = lowSpeedThreshold,
+            lowSpeedEnabled = lowSpeedEnabled,
+            turnSignalCamerasEnabled = turnSignalCamerasEnabled,
+            triggerMode = triggerMode,
+            turnSignalSide = turnSignalSide,
+            steerSide = steerSide,
+            activeSide = activeSide,
+            activeIsLowSpeed = activeIsLowSpeed,
+        )
     }
 
     private fun updateSteerSide(
@@ -47,13 +45,34 @@ class CamdLowSpeedSideCamerasTest {
         onAngle: Float = 30f,
         offAngle: Float = 20f,
     ): TurnSignalSide? {
-        if (steerAngle == null || !steerAngle.isFinite()) return null
+        return updateSteerSideWithHold(currentSteerSide, steerAngle, onAngle, offAngle).first
+    }
+
+    private fun updateSteerSideWithHold(
+        currentSteerSide: TurnSignalSide?,
+        steerAngle: Float?,
+        onAngle: Float = 30f,
+        offAngle: Float = 20f,
+    ): Pair<TurnSignalSide?, Boolean> {
+        if (steerAngle == null || !steerAngle.isFinite()) return null to false
         return when {
-            steerAngle <= -onAngle -> TurnSignalSide.Left
-            steerAngle >= onAngle -> TurnSignalSide.Right
-            currentSteerSide == TurnSignalSide.Left && steerAngle > -offAngle -> null
-            currentSteerSide == TurnSignalSide.Right && steerAngle < offAngle -> null
-            else -> currentSteerSide
+            steerAngle <= -onAngle -> TurnSignalSide.Left to false
+            steerAngle >= onAngle -> TurnSignalSide.Right to false
+            currentSteerSide == TurnSignalSide.Left -> {
+                if (steerAngle > -offAngle) {
+                    TurnSignalSide.Left to true
+                } else {
+                    TurnSignalSide.Left to false
+                }
+            }
+            currentSteerSide == TurnSignalSide.Right -> {
+                if (steerAngle < offAngle) {
+                    TurnSignalSide.Right to true
+                } else {
+                    TurnSignalSide.Right to false
+                }
+            }
+            else -> null to false
         }
     }
 
@@ -194,6 +213,64 @@ class CamdLowSpeedSideCamerasTest {
     }
 
     @Test
+    fun speedDropsToLow_whileBlindSpotCameraActive_preservesBlindSpotCamera() {
+        // Blind spot camera is currently active on the left (!activeIsLowSpeed)
+        // Speed drops from high to low (10 km/h < 20 km/h) while turn signal is still active
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 10f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            activeSide = TurnSignalSide.Left,
+            activeIsLowSpeed = false,
+        )
+        assertEquals(TurnSignalSide.Left, side)
+        // Must stay in blind-spot mode (false) and NOT switch to low-speed mode (true)
+        assertFalse(isLow)
+    }
+
+    @Test
+    fun turnSignalEndsAtLowSpeed_withSteeringWheelTurned_switchesToLowSpeedCamera() {
+        // Previously blind spot was active, but now turn signal has turned off (null)
+        // Driver is still steering at low speed (10 km/h)
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 10f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = null,
+            steerSide = TurnSignalSide.Left,
+            activeSide = TurnSignalSide.Left,
+            activeIsLowSpeed = false,
+        )
+        assertEquals(TurnSignalSide.Left, side)
+        // Now it properly triggers low-speed camera by steering wheel
+        assertTrue(isLow)
+    }
+
+    @Test
+    fun turnSignalEndsAtLowSpeed_withoutSteering_closesCamera() {
+        // Turn signal turned off and steering wheel is neutral
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 10f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = null,
+            steerSide = null,
+            activeSide = TurnSignalSide.Left,
+            activeIsLowSpeed = false,
+        )
+        assertNull(side)
+        assertFalse(isLow)
+    }
+
+    @Test
     fun steeringAngle_defaultHysteresis() {
         var current: TurnSignalSide? = null
 
@@ -209,10 +286,6 @@ class CamdLowSpeedSideCamerasTest {
         current = updateSteerSide(current, 21f)
         assertEquals(TurnSignalSide.Right, current)
 
-        // Drops back to neutral when returning below 20 deg
-        current = updateSteerSide(current, 19f)
-        assertNull(current)
-
         // Turn left <= -30 deg
         current = updateSteerSide(current, -30f)
         assertEquals(TurnSignalSide.Left, current)
@@ -220,10 +293,27 @@ class CamdLowSpeedSideCamerasTest {
         // Stays left while <= -20 deg
         current = updateSteerSide(current, -21f)
         assertEquals(TurnSignalSide.Left, current)
+    }
 
-        // Drops back to neutral when returning above -20 deg
-        current = updateSteerSide(current, -18f)
-        assertNull(current)
+    @Test
+    fun steeringAngle_holdDelayTriggersOnExitAngle() {
+        var current: TurnSignalSide? = null
+
+        // Turn right >= 30 deg
+        val (side1, hold1) = updateSteerSideWithHold(current, 35f)
+        assertEquals(TurnSignalSide.Right, side1)
+        assertFalse(hold1)
+        current = side1
+
+        // Cross exit angle (< 20 deg) towards neutral: camera stays active with hold=true
+        val (side2, hold2) = updateSteerSideWithHold(current, 15f)
+        assertEquals(TurnSignalSide.Right, side2)
+        assertTrue(hold2)
+
+        // Return back beyond exit angle (>= 20 deg): hold becomes false, camera stays active
+        val (side3, hold3) = updateSteerSideWithHold(current, 25f)
+        assertEquals(TurnSignalSide.Right, side3)
+        assertFalse(hold3)
     }
 
     @Test
@@ -233,20 +323,24 @@ class CamdLowSpeedSideCamerasTest {
         val offAngle = 25f
 
         // At 30 deg: does not activate yet because onAngle is 45 deg
-        current = updateSteerSide(current, 30f, onAngle = onAngle, offAngle = offAngle)
-        assertNull(current)
+        val (side, _) = updateSteerSideWithHold(current, 30f, onAngle = onAngle, offAngle = offAngle)
+        assertNull(side)
 
         // At 45 deg: activates Right
-        current = updateSteerSide(current, 45f, onAngle = onAngle, offAngle = offAngle)
-        assertEquals(TurnSignalSide.Right, current)
+        val res1 = updateSteerSideWithHold(current, 45f, onAngle = onAngle, offAngle = offAngle)
+        assertEquals(TurnSignalSide.Right, res1.first)
+        assertFalse(res1.second)
+        current = res1.first
 
         // In between 25 and 45 deg: stays active
-        current = updateSteerSide(current, 30f, onAngle = onAngle, offAngle = offAngle)
-        assertEquals(TurnSignalSide.Right, current)
+        val res2 = updateSteerSideWithHold(current, 30f, onAngle = onAngle, offAngle = offAngle)
+        assertEquals(TurnSignalSide.Right, res2.first)
+        assertFalse(res2.second)
 
-        // Below 25 deg: deactivates
-        current = updateSteerSide(current, 24f, onAngle = onAngle, offAngle = offAngle)
-        assertNull(current)
+        // Below 25 deg: enters 3s hold delay before deactivating
+        val res3 = updateSteerSideWithHold(current, 24f, onAngle = onAngle, offAngle = offAngle)
+        assertEquals(TurnSignalSide.Right, res3.first)
+        assertTrue(res3.second)
     }
 
     @Test

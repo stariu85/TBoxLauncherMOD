@@ -73,6 +73,16 @@ data class CamdCrop(
 }
 
 /**
+ * Operating mode for the floating camera widget.
+ */
+enum class CamdWidgetCameraMode {
+    NONE,
+    LEFT_RIGHT,
+    UP_DOWN,
+    ALL_360,
+}
+
+/**
  * Manages high-level camera operations via Camd:
  * - 4-camera desktop view (Left, Right, Front, Rear)
  * - Turn-signal ADAS side camera display (Left #4, Right #5)
@@ -98,6 +108,9 @@ object CamdCameraRepository {
     private val _isDesktopCamerasOpen = MutableStateFlow(false)
     val isDesktopCamerasOpen: StateFlow<Boolean> = _isDesktopCamerasOpen.asStateFlow()
 
+    private val _activeWidgetCameraMode = MutableStateFlow(CamdWidgetCameraMode.NONE)
+    val activeWidgetCameraMode: StateFlow<CamdWidgetCameraMode> = _activeWidgetCameraMode.asStateFlow()
+
     private val _activeTurnSignalCamera = MutableStateFlow<Int?>(null)
     val activeTurnSignalCamera: StateFlow<Int?> = _activeTurnSignalCamera.asStateFlow()
 
@@ -122,8 +135,11 @@ object CamdCameraRepository {
 
     private var desktopOperationJob: Job? = null
     private var turnSignalJob: Job? = null
+    const val STEER_OFF_HOLD_MS = 3000L
+
     private var autoAvmJob: Job? = null
     private var sideCamerasMonitorJob: Job? = null
+    private var steerOffJob: Job? = null
     @Volatile
     private var _activeIsLowSpeed: Boolean = false
     @Volatile
@@ -158,12 +174,50 @@ object CamdCameraRepository {
             val onAngle = LauncherAppConfigStore.camdLowSpeedSteerOnAngle(context).toFloat()
             val offAngle = LauncherAppConfigStore.camdLowSpeedSteerOffAngle(context).toFloat()
             when {
-                angle <= -onAngle -> currentSteerSide = TurnSignalSide.Left
-                angle >= onAngle -> currentSteerSide = TurnSignalSide.Right
-                currentSteerSide == TurnSignalSide.Left && angle > -offAngle -> currentSteerSide = null
-                currentSteerSide == TurnSignalSide.Right && angle < offAngle -> currentSteerSide = null
+                angle <= -onAngle -> {
+                    steerOffJob?.cancel()
+                    steerOffJob = null
+                    currentSteerSide = TurnSignalSide.Left
+                }
+                angle >= onAngle -> {
+                    steerOffJob?.cancel()
+                    steerOffJob = null
+                    currentSteerSide = TurnSignalSide.Right
+                }
+                currentSteerSide == TurnSignalSide.Left -> {
+                    if (angle > -offAngle) {
+                        if (steerOffJob == null) {
+                            steerOffJob = scope.launch {
+                                kotlinx.coroutines.delay(STEER_OFF_HOLD_MS)
+                                currentSteerSide = null
+                                steerOffJob = null
+                                evaluateSideCameraState(context)
+                            }
+                        }
+                    } else {
+                        steerOffJob?.cancel()
+                        steerOffJob = null
+                    }
+                }
+                currentSteerSide == TurnSignalSide.Right -> {
+                    if (angle < offAngle) {
+                        if (steerOffJob == null) {
+                            steerOffJob = scope.launch {
+                                kotlinx.coroutines.delay(STEER_OFF_HOLD_MS)
+                                currentSteerSide = null
+                                steerOffJob = null
+                                evaluateSideCameraState(context)
+                            }
+                        }
+                    } else {
+                        steerOffJob?.cancel()
+                        steerOffJob = null
+                    }
+                }
             }
         } else {
+            steerOffJob?.cancel()
+            steerOffJob = null
             currentSteerSide = null
         }
 
@@ -195,15 +249,46 @@ object CamdCameraRepository {
             combine(
                 LauncherAppConfigStore.camdConfigRevisionFlow,
                 UniversalCanRepository.carSpeedState,
-            ) { _, speed ->
-                speed
-            }.collect { speed ->
-                checkAutoAvmSpeed(appCtx, speed)
+                CanDataRepository.gearBoxMode,
+                CanDataRepository.gearBoxCurrentGear,
+            ) { _, speed, gearMode, currentGear ->
+                val activeGear = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverride
+                    ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(gearMode, currentGear)
+                speed to activeGear
+            }.collect { (speed, activeGear) ->
+                checkAutoAvmSpeed(appCtx, speed, activeGear)
             }
         }
     }
 
-    private suspend fun checkAutoAvmSpeed(context: Context, speed: Float?) {
+    internal fun resolveAutoAvmHoldOff(
+        speed: Float?,
+        activeGear: Char?,
+        onSpeed: Int,
+        offSpeed: Int,
+    ): Boolean? {
+        if (onSpeed == 0) {
+            // Mode "R": AVM is enabled only in reverse gear
+            return if (activeGear == 'R') {
+                false // Enable OEM AVM (AVM OFF)
+            } else {
+                true  // Disable OEM AVM (AVM ON)
+            }
+        }
+
+        if (speed == null || !speed.isFinite() || speed < 0f) return null
+
+        val onSpeedF = onSpeed.toFloat()
+        val offSpeedF = offSpeed.toFloat()
+
+        return when {
+            speed > offSpeedF -> true
+            speed < onSpeedF -> false
+            else -> null
+        }
+    }
+
+    private suspend fun checkAutoAvmSpeed(context: Context, speed: Float?, activeGear: Char?) {
         val enabled = LauncherAppConfigStore.camdAutoDisableStockAvm(context)
         if (!enabled) {
             if (lastAutoAvmHoldOff != null) {
@@ -213,25 +298,28 @@ object CamdCameraRepository {
             return
         }
 
-        UniversalCanRepository.setSourceSignals("camd_auto_avm", setOf(MbCanSignal.CarSpeed))
+        val onSpeed = LauncherAppConfigStore.camdAutoAvmOnSpeed(context)
+        val offSpeed = LauncherAppConfigStore.camdAutoAvmOffSpeed(context)
 
-        if (speed == null || !speed.isFinite() || speed < 0f) return
+        val signals = if (onSpeed == 0) {
+            emptySet()
+        } else {
+            setOf(MbCanSignal.CarSpeed)
+        }
+        UniversalCanRepository.setSourceSignals("camd_auto_avm", signals)
+
         if (!CamdSocketClient.isInstalled(context)) return
 
-        val onSpeed = LauncherAppConfigStore.camdAutoAvmOnSpeed(context).toFloat()
-        val offSpeed = LauncherAppConfigStore.camdAutoAvmOffSpeed(context).toFloat()
-
         // > offSpeed: disable OEM AVM (holdOff = true, command "AVM ON")
-        // < onSpeed: enable OEM AVM (holdOff = false, command "AVM OFF")
-        val targetHoldOff = when {
-            speed > offSpeed -> true
-            speed < onSpeed -> false
-            else -> null
-        } ?: return
+        // < onSpeed (or gear == 'R' if onSpeed == 0): enable OEM AVM (holdOff = false, command "AVM OFF")
+        val targetHoldOff = resolveAutoAvmHoldOff(speed, activeGear, onSpeed, offSpeed) ?: return
 
         if (lastAutoAvmHoldOff != targetHoldOff) {
             lastAutoAvmHoldOff = targetHoldOff
-            vad.dashing.tbox.DclLogRecorder.log("CAMD_AUTO_AVM", "Speed=$speed km/h (on<$onSpeed, off>$offSpeed) -> targetHoldOff=$targetHoldOff")
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CAMD_AUTO_AVM",
+                "Speed=$speed km/h gear=$activeGear (on<$onSpeed, off>$offSpeed) -> targetHoldOff=$targetHoldOff"
+            )
             setHoldStockAvm(context, targetHoldOff)
             LauncherAppConfigStore.setCamdDisableStockAvm(context, targetHoldOff)
         }
@@ -275,6 +363,7 @@ object CamdCameraRepository {
 
     fun hasActiveCameras(): Boolean =
         _isDesktopCamerasOpen.value ||
+            _activeWidgetCameraMode.value != CamdWidgetCameraMode.NONE ||
             _activeTurnSignalCamera.value != null ||
             _activeTurnSignalSide.value != null ||
             ((_status.value as? CamdConnectionStatus.Connected)?.openWindows?.isNotEmpty() == true)
@@ -298,6 +387,167 @@ object CamdCameraRepository {
      */
     fun closeDesktopCamerasIfOpen(context: Context) {
         closeAllIfOpen(context)
+    }
+
+    /**
+     * Toggles cameras requested by the floating camera widget (Left/Right, Up/Down, 360).
+     */
+    fun toggleWidgetCameras(context: Context, mode: CamdWidgetCameraMode) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        if (!CamdSocketClient.isInstalled(appCtx)) return
+
+        if (_activeWidgetCameraMode.value == mode) {
+            closeAllIfOpen(appCtx)
+            return
+        }
+
+        desktopOperationJob?.cancel()
+        turnSignalJob?.cancel()
+        desktopOperationJob = scope.launch {
+            closeAll(appCtx)
+            openWidgetCameras(appCtx, mode)
+        }
+    }
+
+    private suspend fun openWidgetCameras(context: Context, mode: CamdWidgetCameraMode) = cameraOperationMutex.withLock {
+        val screen = LauncherEmbeddedBoundsState.screenBounds
+        val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
+        val dispH = (screen?.height()?.takeIf { it > 0 } ?: 1080).toFloat()
+
+        val appRect = LauncherEmbeddedBoundsState.embeddedBounds()
+            ?: Rect(344, 51, 1920, 998)
+
+        val leftEdge = appRect.left.toFloat()
+        val rightEdge = appRect.right.toFloat()
+        val topEdge = appRect.top.toFloat()
+        val bottomEdge = appRect.bottom.toFloat()
+
+        val appWidth = rightEdge - leftEdge
+        val appHeight = bottomEdge - topEdge
+
+        val connectedPresets = (_status.value as? CamdConnectionStatus.Connected)?.presets
+
+        val lrLeftPreset = LauncherAppConfigStore.camdWidgetLrLeftPreset(context).trim()
+        val lrRightPreset = LauncherAppConfigStore.camdWidgetLrRightPreset(context).trim()
+        val udTopPreset = LauncherAppConfigStore.camdWidgetUdTopPreset(context).trim()
+        val udBottomPreset = LauncherAppConfigStore.camdWidgetUdBottomPreset(context).trim()
+
+        fun buildCameraCommand(presetName: String, fallbackCamId: Int, x: Float, y: Float, w: Float, h: Float): String {
+            return if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
+                formatPresetCmd(presetName, x, y, w, h)
+            } else if (presetName.isNotEmpty()) {
+                val targetId = connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: fallbackCamId
+                formatCmd(targetId, x, y, w, h)
+            } else {
+                formatCmd(fallbackCamId, x, y, w, h)
+            }
+        }
+
+        val commands = when (mode) {
+            CamdWidgetCameraMode.LEFT_RIGHT -> {
+                // Splits width exactly in half: left 50%, right 50%, full height
+                val halfW = appWidth / 2f
+                val leftX = leftEdge / dispW
+                val leftY = topEdge / dispH
+                val leftW = halfW / dispW
+                val leftH = appHeight / dispH
+
+                val rightX = (leftEdge + halfW) / dispW
+                val rightY = topEdge / dispH
+                val rightW = halfW / dispW
+                val rightH = appHeight / dispH
+
+                val leftCmd = buildCameraCommand(lrLeftPreset, CAMERA_ID_LEFT, leftX, leftY, leftW, leftH)
+                val rightCmd = buildCameraCommand(lrRightPreset, CAMERA_ID_RIGHT, rightX, rightY, rightW, rightH)
+                listOf(leftCmd, rightCmd)
+            }
+            CamdWidgetCameraMode.UP_DOWN -> {
+                // Splits height exactly in half: front (top) 50%, rear (bottom) 50%, full width
+                val halfH = appHeight / 2f
+                val frontX = leftEdge / dispW
+                val frontY = topEdge / dispH
+                val frontW = appWidth / dispW
+                val frontH = halfH / dispH
+
+                val rearX = leftEdge / dispW
+                val rearY = (topEdge + halfH) / dispH
+                val rearW = appWidth / dispW
+                val rearH = halfH / dispH
+
+                val frontCmd = buildCameraCommand(udTopPreset, CAMERA_ID_FRONT, frontX, frontY, frontW, frontH)
+                val rearCmd = buildCameraCommand(udBottomPreset, CAMERA_ID_REAR, rearX, rearY, rearW, rearH)
+                listOf(frontCmd, rearCmd)
+            }
+            CamdWidgetCameraMode.ALL_360 -> {
+                // 4 cameras layout: Left 30%, Right 30%, Middle column 40% (Top front 50%, Bottom rear 50%)
+                // Presets are taken from the LR and UD button settings
+                val colLeftX1 = leftEdge
+                val colLeftX2 = leftEdge + appWidth * 0.30f
+
+                val colRightX1 = rightEdge - appWidth * 0.30f
+                val colRightX2 = rightEdge
+
+                val colMidX1 = colLeftX2
+                val colMidX2 = colRightX1
+                val midY = topEdge + (appHeight / 2f)
+
+                val leftX = colLeftX1 / dispW
+                val leftY = topEdge / dispH
+                val leftW = (colLeftX2 - colLeftX1) / dispW
+                val leftH = appHeight / dispH
+
+                val rightX = colRightX1 / dispW
+                val rightY = topEdge / dispH
+                val rightW = (colRightX2 - colRightX1) / dispW
+                val rightH = appHeight / dispH
+
+                val frontX = colMidX1 / dispW
+                val frontY = topEdge / dispH
+                val frontW = (colMidX2 - colMidX1) / dispW
+                val frontH = (midY - topEdge) / dispH
+
+                val rearX = colMidX1 / dispW
+                val rearY = midY / dispH
+                val rearW = (colMidX2 - colMidX1) / dispW
+                val rearH = (bottomEdge - midY) / dispH
+
+                val leftCmd = buildCameraCommand(lrLeftPreset, CAMERA_ID_LEFT, leftX, leftY, leftW, leftH)
+                val rightCmd = buildCameraCommand(lrRightPreset, CAMERA_ID_RIGHT, rightX, rightY, rightW, rightH)
+                val frontCmd = buildCameraCommand(udTopPreset, CAMERA_ID_FRONT, frontX, frontY, frontW, frontH)
+                val rearCmd = buildCameraCommand(udBottomPreset, CAMERA_ID_REAR, rearX, rearY, rearW, rearH)
+
+                listOf(leftCmd, rightCmd, frontCmd, rearCmd)
+            }
+            CamdWidgetCameraMode.NONE -> emptyList()
+        }
+
+        if (commands.isEmpty()) {
+            _activeWidgetCameraMode.value = CamdWidgetCameraMode.NONE
+            return@withLock
+        }
+
+        var successCount = 0
+        for ((idx, cmd) in commands.withIndex()) {
+            val res = if (idx == 0) {
+                CamdSocketClient.sendCommandWithWakeup(context, cmd)
+            } else {
+                CamdSocketClient.sendCommand(cmd)
+            }
+            val responseText = res.getOrNull().orEmpty()
+            if (res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)) {
+                successCount++
+            } else {
+                Log.w(TAG, "Failed widget command '$cmd': $responseText err=${res.exceptionOrNull()?.message}")
+            }
+        }
+
+        if (successCount > 0) {
+            _activeWidgetCameraMode.value = mode
+            _isDesktopCamerasOpen.value = (mode == CamdWidgetCameraMode.ALL_360)
+        } else {
+            _activeWidgetCameraMode.value = CamdWidgetCameraMode.NONE
+        }
     }
 
     private suspend fun openDesktopCameras(context: Context) = cameraOperationMutex.withLock {
@@ -381,6 +631,8 @@ object CamdCameraRepository {
     }
 
     suspend fun closeAll(context: Context) {
+        steerOffJob?.cancel()
+        steerOffJob = null
         turnSignalJob?.cancel()
         cameraOperationMutex.withLock {
             val res = CamdSocketClient.sendCommand("CLOSE")
@@ -388,6 +640,7 @@ object CamdCameraRepository {
                 CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
             }
             _isDesktopCamerasOpen.value = false
+            _activeWidgetCameraMode.value = CamdWidgetCameraMode.NONE
             _activeTurnSignalCamera.value = null
             _activeTurnSignalSide.value = null
             turnSignalsLatch.reset()
@@ -479,13 +732,46 @@ object CamdCameraRepository {
 
         val speed = UniversalCanRepository.carSpeedState.value ?: 0f
         val lowSpeedThreshold = LauncherAppConfigStore.camdLowSpeedThreshold(context).toFloat()
-        val isLowSpeed = speed < lowSpeedThreshold
 
         val turnSignalSide = turnSignalsLatch.latchedSide.value
         val steerSide = currentSteerSide
         val triggerMode = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
 
-        val (targetSide, targetIsLowSpeed) = if (lowSpeedEnabled && isLowSpeed) {
+        val (targetSide, targetIsLowSpeed) = resolveTargetSideCamera(
+            speed = speed,
+            lowSpeedThreshold = lowSpeedThreshold,
+            lowSpeedEnabled = lowSpeedEnabled,
+            turnSignalCamerasEnabled = turnSignalCameras,
+            triggerMode = triggerMode,
+            turnSignalSide = turnSignalSide,
+            steerSide = steerSide,
+            activeSide = _activeTurnSignalSide.value,
+            activeIsLowSpeed = _activeIsLowSpeed,
+        )
+
+        applyTargetSideCamera(context, targetSide, targetIsLowSpeed)
+    }
+
+    internal fun resolveTargetSideCamera(
+        speed: Float,
+        lowSpeedThreshold: Float,
+        lowSpeedEnabled: Boolean,
+        turnSignalCamerasEnabled: Boolean,
+        triggerMode: String,
+        turnSignalSide: TurnSignalSide?,
+        steerSide: TurnSignalSide?,
+        activeSide: TurnSignalSide?,
+        activeIsLowSpeed: Boolean,
+    ): Pair<TurnSignalSide?, Boolean> {
+        // If blind-spot camera is currently active and turn signal is still active on the same side,
+        // do not interrupt/switch it to low-speed camera when speed drops.
+        if (turnSignalCamerasEnabled && activeSide != null && !activeIsLowSpeed && turnSignalSide == activeSide) {
+            return activeSide to false
+        }
+
+        val isLowSpeed = speed < lowSpeedThreshold
+
+        return if (lowSpeedEnabled && isLowSpeed) {
             val side = when (triggerMode) {
                 CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS -> turnSignalSide
                 CAMD_LOW_SPEED_TRIGGER_STEERING -> steerSide
@@ -493,13 +779,11 @@ object CamdCameraRepository {
                 else -> turnSignalSide ?: steerSide
             }
             if (side != null) side to true else null to false
-        } else if (turnSignalCameras) {
+        } else if (turnSignalCamerasEnabled) {
             if (turnSignalSide != null) turnSignalSide to false else null to false
         } else {
             null to false
         }
-
-        applyTargetSideCamera(context, targetSide, targetIsLowSpeed)
     }
 
     private fun applyTargetSideCamera(context: Context, targetSide: TurnSignalSide?, isLowSpeed: Boolean) {
@@ -512,13 +796,16 @@ object CamdCameraRepository {
         }
 
         turnSignalJob?.cancel()
+        val previousIsLowSpeed = _activeIsLowSpeed
+        val activeCamera = _activeTurnSignalCamera.value
+
         if (targetSide == null) {
-            val active = _activeTurnSignalCamera.value
             _activeTurnSignalSide.value = null
             _activeTurnSignalCamera.value = null
             _activeIsLowSpeed = false
             turnSignalJob = scope.launch {
-                if (active != null) closeCamera(context, active) else closeCamera(context, null)
+                kotlinx.coroutines.delay(50L)
+                if (activeCamera != null) closeCamera(context, activeCamera) else closeCamera(context, null)
             }
             return
         }
@@ -528,8 +815,9 @@ object CamdCameraRepository {
         val targetCamId = if (targetSide == TurnSignalSide.Left) CAMERA_ID_LEFT else CAMERA_ID_RIGHT
 
         turnSignalJob = scope.launch {
-            val current = _activeTurnSignalCamera.value
-            if (current != null) {
+            kotlinx.coroutines.delay(50L)
+            val current = _activeTurnSignalCamera.value ?: activeCamera
+            if (current != null && (current != targetCamId || previousIsLowSpeed != isLowSpeed)) {
                 closeCamera(context, current)
                 _activeTurnSignalCamera.value = null
             }

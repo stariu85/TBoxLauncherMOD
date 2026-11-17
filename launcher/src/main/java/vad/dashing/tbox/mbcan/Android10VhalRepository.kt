@@ -797,7 +797,7 @@ object Android10VhalRepository {
             MbCanSignal.EngineRpm -> setOf(VHAL_ENGINE_RPM_PROPERTY_ID)
             MbCanSignal.EngineTemperature -> setOf(VHAL_ENGINE_TEMPERATURE_PROPERTY_ID)
             MbCanSignal.CarSpeed -> setOf(VHAL_CAR_SPEED_PROPERTY_ID)
-            MbCanSignal.SteeringAngle -> setOf(resolved(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_STEERING_MODE))
+            MbCanSignal.SteeringAngle -> emptySet()
         }
     }
 

@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,10 +51,19 @@ object LauncherVehicleAlertsRepository {
     private var powerModeFail = false
     private var keyBatteryLow = false
 
+    private var applicationContext: Context? = null
+
     private val _state = MutableStateFlow(LauncherVehicleAlertsState())
     val state: StateFlow<LauncherVehicleAlertsState> = _state.asStateFlow()
 
-    fun ensureActive() {
+    fun init(context: Context) {
+        applicationContext = context.applicationContext
+    }
+
+    fun ensureActive(context: Context? = null) {
+        if (context != null) {
+            applicationContext = context.applicationContext
+        }
         if (active) return
         active = true
         registerChimeListener()
@@ -292,7 +302,14 @@ object LauncherVehicleAlertsRepository {
 
     private fun publish() {
         val body = effectiveBody()
-        val tires = LauncherTireRepository.state.value
+        val tires = LauncherDevVehicleState.tireStateOrNull()
+            ?: mergeTireStateWithCanData(
+                LauncherTireRepository.state.value,
+                vad.dashing.tbox.CanDataRepository.wheelsPressure.value,
+                vad.dashing.tbox.CanDataRepository.wheelsTemperature.value,
+            )
+        val threshold = applicationContext?.let { LauncherAppConfigStore.tirePressureLowThreshold(it) }
+            ?: LauncherTireWheelState.LOW_PRESSURE_BAR
         val fuelPct = vad.dashing.tbox.CanDataRepository.fuelLevelPercentageFiltered.value
             ?: vad.dashing.tbox.CanDataRepository.fuelLevelPercentage.value
         val range = vad.dashing.tbox.CanDataRepository.distanceToFuelEmpty.value
@@ -329,7 +346,7 @@ object LauncherVehicleAlertsRepository {
                 add(LauncherAlertId.DoorRearRight, body.doorRrOpen, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.TirePressure, tires.hasAttention, LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.TirePressure, tires.hasAttention(threshold), LauncherAlertSeverity.Critical)
                 add(LauncherAlertId.LowFuel, isLowFuel, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)

@@ -63,6 +63,11 @@ internal enum class LauncherVehicleHealthStatus {
 
 @Composable
 internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
+    val context = LocalContext.current
+    val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
+    val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureLowThreshold(context)
+    }
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
@@ -78,7 +83,7 @@ internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
 
     val hasCritical = simShowAll ||
             alerts.any { it.severity == LauncherAlertSeverity.Critical } ||
-            effectiveTires.hasAttention ||
+            effectiveTires.hasAttention(tirePressureLowThreshold) ||
             adas.srrSystem == LauncherSrrSystemState.Fault
 
     if (hasCritical) return LauncherVehicleHealthStatus.Error
@@ -109,7 +114,7 @@ private val LauncherAlertId.detailDescription: String
         LauncherAlertId.DoorRearRight -> "Задняя правая дверь не закрыта полностью."
         LauncherAlertId.HoodOpen -> "Крышка капота неплотно закрыта. Проверьте фиксацию защёлки."
         LauncherAlertId.TrunkOpen -> "Дверь багажного отделения открыта."
-        LauncherAlertId.TirePressure -> "Давление в колёсах ниже рекомендуемого порога (2.0 bar)."
+        LauncherAlertId.TirePressure -> "Давление в колёсах ниже установленного порога."
         LauncherAlertId.LowFuel -> "Минимальный остаток топлива в баке. Пополните запас топлива."
         LauncherAlertId.Speeding -> "Текущая скорость превышает установленное ограничение."
         LauncherAlertId.HighTemperature -> "Высокая температура охлаждающей жидкости. Остановите движение и дайте двигателю остыть."
@@ -129,6 +134,9 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
     val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
     val tirePressureShowHundredths = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureShowHundredths(context)
+    }
+    val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tirePressureLowThreshold(context)
     }
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
@@ -154,13 +162,13 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
             )
         }
 
-        if (effectiveTires.hasAttention) {
+        if (effectiveTires.hasAttention(tirePressureLowThreshold)) {
             val lowCorners = listOf(
                 "Переднее левое" to effectiveTires.fl,
                 "Переднее правое" to effectiveTires.fr,
                 "Заднее левое" to effectiveTires.rl,
                 "Заднее правое" to effectiveTires.rr,
-            ).filter { it.second.needsAttention }
+            ).filter { it.second.needsAttention(tirePressureLowThreshold) }
 
             lowCorners.forEach { (cornerName, wheel) ->
                 val accuracy = if (tirePressureShowHundredths) 2 else 1
@@ -168,7 +176,7 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
                 add(
                     LauncherVehicleStatusDetailItem(
                         title = "Низкое давление: $cornerName",
-                        description = "Текущее давление $press ниже норматива (2.0 bar). Проверьте колесо.",
+                        description = "Текущее давление $press ниже установленного порога (${valueToString(tirePressureLowThreshold, 1)} bar). Проверьте колесо.",
                         severity = LauncherAlertSeverity.Critical,
                     )
                 )

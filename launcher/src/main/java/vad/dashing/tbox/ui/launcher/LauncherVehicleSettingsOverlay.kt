@@ -738,6 +738,17 @@ internal fun LauncherVehicleSettingsContent(
                     LauncherAppConfigStore.setAdasBsdAlertOverlayEnabled(context, !bsdAlertOverlayEnabled)
                 },
             )
+            val compassWidgetRevision by LauncherAppConfigStore.adasCompassWidgetRevisionFlow.collectAsStateWithLifecycle()
+            val compassWidgetEnabled = remember(context, compassWidgetRevision) {
+                LauncherAppConfigStore.adasCompassWidgetEnabled(context)
+            }
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_compass_widget),
+                active = compassWidgetEnabled,
+                onClick = {
+                    LauncherAppConfigStore.setAdasCompassWidgetEnabled(context, !compassWidgetEnabled)
+                },
+            )
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_fcw),
                 active = vehicleControls.fcw == true,
