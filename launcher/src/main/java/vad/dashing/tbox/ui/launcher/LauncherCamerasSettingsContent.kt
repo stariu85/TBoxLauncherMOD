@@ -52,6 +52,12 @@ fun LauncherCamerasSettingsContent(
     val disableStockAvm = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdDisableStockAvm(context)
     }
+    val reverseCameras = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdReverseCameras(context)
+    }
+    val pdcCameras = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdPdcCameras(context)
+    }
     val turnSignalCameras = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdTurnSignalCameras(context)
     }
@@ -102,9 +108,6 @@ fun LauncherCamerasSettingsContent(
     }
     val lowSpeedSteerOnAngle = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdLowSpeedSteerOnAngle(context)
-    }
-    val widgetEnabled = remember(context, camdConfigRevision) {
-        LauncherAppConfigStore.camdWidgetEnabled(context)
     }
     val widgetLrLeftPreset = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdWidgetLrLeftPreset(context)
@@ -242,6 +245,46 @@ fun LauncherCamerasSettingsContent(
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
+
+        if (isInstalled && disableStockAvm) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.camd_reverse_cameras_title),
+                active = reverseCameras,
+                enabled = true,
+                onClick = {
+                    val next = !reverseCameras
+                    LauncherAppConfigStore.setCamdReverseCameras(context, next)
+                },
+            )
+
+            Text(
+                text = stringResource(R.string.camd_reverse_cameras_desc),
+                color = LauncherColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.camd_pdc_cameras_title),
+                active = pdcCameras,
+                enabled = true,
+                onClick = {
+                    val next = !pdcCameras
+                    LauncherAppConfigStore.setCamdPdcCameras(context, next)
+                },
+            )
+
+            Text(
+                text = stringResource(R.string.camd_pdc_cameras_desc),
+                color = LauncherColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -735,29 +778,16 @@ fun LauncherCamerasSettingsContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        if (isInstalled) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.camd_widget_title),
+                color = LauncherColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
 
-        // Option 4: "Виджет камер"
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.camd_widget_title),
-            active = widgetEnabled,
-            enabled = isInstalled,
-            onClick = if (isInstalled) {
-                {
-                    val next = !widgetEnabled
-                    LauncherAppConfigStore.setCamdWidgetEnabled(context, next)
-                }
-            } else null,
-        )
-
-        Text(
-            text = stringResource(R.string.camd_widget_desc),
-            color = if (isInstalled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
-
-        if (isInstalled && widgetEnabled) {
             val connectedStatus = status as? CamdConnectionStatus.Connected
             val defaultPresetLabel = stringResource(R.string.camd_preset_default)
 

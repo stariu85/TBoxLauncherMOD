@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,10 +25,14 @@ import vad.dashing.tbox.ui.launcher.CAMD_LOW_SPEED_TRIGGER_BOTH
 import vad.dashing.tbox.ui.launcher.CAMD_LOW_SPEED_TRIGGER_STEERING
 import vad.dashing.tbox.ui.launcher.CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS
 import vad.dashing.tbox.ui.launcher.LauncherActiveAppTracker
+import vad.dashing.tbox.ui.launcher.LauncherAdasRepository
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import vad.dashing.tbox.ui.launcher.LauncherAppLaunchMode
+import vad.dashing.tbox.ui.launcher.LauncherAvmRepository
 import vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger
 import vad.dashing.tbox.ui.launcher.LauncherEmbeddedBoundsState
+import vad.dashing.tbox.ui.launcher.LauncherPdcZones
+import vad.dashing.tbox.ui.launcher.hasPhysicalPdcObstacle
 import java.util.Locale
 
 /**
@@ -73,6 +78,17 @@ data class CamdCrop(
 }
 
 /**
+ * Bounds of circular or rectangular side camera windows in corner desktop coordinates.
+ */
+data class SideCameraWindowBounds(
+    val xPx: Float,
+    val yPx: Float,
+    val widthPx: Float,
+    val heightPx: Float,
+    val isCircle: Boolean,
+)
+
+/**
  * Operating mode for the floating camera widget.
  */
 enum class CamdWidgetCameraMode {
@@ -108,6 +124,9 @@ object CamdCameraRepository {
     private val _isDesktopCamerasOpen = MutableStateFlow(false)
     val isDesktopCamerasOpen: StateFlow<Boolean> = _isDesktopCamerasOpen.asStateFlow()
 
+    private val _isReverseCamerasOpen = MutableStateFlow(false)
+    val isReverseCamerasOpen: StateFlow<Boolean> = _isReverseCamerasOpen.asStateFlow()
+
     private val _activeWidgetCameraMode = MutableStateFlow(CamdWidgetCameraMode.NONE)
     val activeWidgetCameraMode: StateFlow<CamdWidgetCameraMode> = _activeWidgetCameraMode.asStateFlow()
 
@@ -135,13 +154,20 @@ object CamdCameraRepository {
 
     private var desktopOperationJob: Job? = null
     private var turnSignalJob: Job? = null
+    private var reverseCamerasJob: Job? = null
     const val STEER_OFF_HOLD_MS = 3000L
+    const val PDC_OFF_DELAY_MS = 3000L
 
     private var autoAvmJob: Job? = null
     private var sideCamerasMonitorJob: Job? = null
     private var steerOffJob: Job? = null
+    private var pdcOffJob: Job? = null
     @Volatile
     private var _activeIsLowSpeed: Boolean = false
+    @Volatile
+    private var reverseCamerasTriggered: Boolean = false
+    @Volatile
+    private var pdcCamerasTriggered: Boolean = false
     @Volatile
     private var currentSteerSide: TurnSignalSide? = null
     @Volatile
@@ -151,16 +177,24 @@ object CamdCameraRepository {
     fun startSideCamerasMonitor(context: Context) {
         val appCtx = context.applicationContext
         appContext = appCtx
+        LauncherAvmRepository.startObserving(appCtx)
         startAutoAvmMonitor(appCtx)
         if (sideCamerasMonitorJob?.isActive == true) return
 
         sideCamerasMonitorJob = scope.launch {
-            combine(
-                LauncherAppConfigStore.camdConfigRevisionFlow,
+            val combinedSignals = combine(
                 UniversalCanRepository.carSpeedState,
                 CanDataRepository.steerAngle,
                 turnSignalsLatch.latchedSide,
-            ) { _, speed, steerAngle, latchedTurn ->
+            ) { speed, steerAngle, latchedTurn -> Triple(speed, steerAngle, latchedTurn) }
+
+            combine(
+                LauncherAppConfigStore.camdConfigRevisionFlow,
+                combinedSignals,
+                LauncherAvmRepository.isAvmActive,
+                _activeWidgetCameraMode,
+                _isDesktopCamerasOpen,
+            ) { _, (speed, steerAngle, latchedTurn), _, _, _ ->
                 Triple(speed, steerAngle, latchedTurn)
             }.collect { (_, steerAngle, _) ->
                 updateSteerSideAndEvaluate(appCtx, steerAngle)
@@ -174,18 +208,18 @@ object CamdCameraRepository {
             val onAngle = LauncherAppConfigStore.camdLowSpeedSteerOnAngle(context).toFloat()
             val offAngle = LauncherAppConfigStore.camdLowSpeedSteerOffAngle(context).toFloat()
             when {
-                angle <= -onAngle -> {
+                angle >= onAngle -> {
                     steerOffJob?.cancel()
                     steerOffJob = null
                     currentSteerSide = TurnSignalSide.Left
                 }
-                angle >= onAngle -> {
+                angle <= -onAngle -> {
                     steerOffJob?.cancel()
                     steerOffJob = null
                     currentSteerSide = TurnSignalSide.Right
                 }
                 currentSteerSide == TurnSignalSide.Left -> {
-                    if (angle > -offAngle) {
+                    if (angle < offAngle) {
                         if (steerOffJob == null) {
                             steerOffJob = scope.launch {
                                 kotlinx.coroutines.delay(STEER_OFF_HOLD_MS)
@@ -200,7 +234,7 @@ object CamdCameraRepository {
                     }
                 }
                 currentSteerSide == TurnSignalSide.Right -> {
-                    if (angle < offAngle) {
+                    if (angle > -offAngle) {
                         if (steerOffJob == null) {
                             steerOffJob = scope.launch {
                                 kotlinx.coroutines.delay(STEER_OFF_HOLD_MS)
@@ -228,10 +262,14 @@ object CamdCameraRepository {
     private suspend fun updateSideCameraCanSignals(context: Context) {
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
         val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
+        val reverseCameras = LauncherAppConfigStore.camdDisableStockAvm(context) &&
+            LauncherAppConfigStore.camdReverseCameras(context)
+        val pdcCameras = LauncherAppConfigStore.camdDisableStockAvm(context) &&
+            LauncherAppConfigStore.camdPdcCameras(context)
         val trigger = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
 
         val signals = mutableSetOf<MbCanSignal>()
-        if (lowSpeedEnabled || turnSignalCameras) {
+        if (lowSpeedEnabled || turnSignalCameras || reverseCameras || pdcCameras) {
             signals.add(MbCanSignal.CarSpeed)
         }
         if (lowSpeedEnabled && (trigger == CAMD_LOW_SPEED_TRIGGER_STEERING || trigger == CAMD_LOW_SPEED_TRIGGER_BOTH)) {
@@ -240,25 +278,51 @@ object CamdCameraRepository {
         UniversalCanRepository.setSourceSignals("camd_side_cameras", signals)
     }
 
+    private data class AutoAvmInputs(
+        val speed: Float?,
+        val activeGear: Char?,
+        val pdc: LauncherPdcZones,
+        val isAvmActive: Boolean,
+    )
+
     fun startAutoAvmMonitor(context: Context) {
         val appCtx = context.applicationContext
         appContext = appCtx
+        LauncherAvmRepository.startObserving(appCtx)
         if (autoAvmJob?.isActive == true) return
+
+        val activeGearFlow = combine(
+            CanDataRepository.gearBoxMode,
+            CanDataRepository.gearBoxCurrentGear,
+        ) { gearMode, currentGear ->
+            vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverride
+                ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(gearMode, currentGear)
+        }
 
         autoAvmJob = scope.launch {
             combine(
                 LauncherAppConfigStore.camdConfigRevisionFlow,
                 UniversalCanRepository.carSpeedState,
-                CanDataRepository.gearBoxMode,
-                CanDataRepository.gearBoxCurrentGear,
-            ) { _, speed, gearMode, currentGear ->
-                val activeGear = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverride
-                    ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(gearMode, currentGear)
-                speed to activeGear
-            }.collect { (speed, activeGear) ->
-                checkAutoAvmSpeed(appCtx, speed, activeGear)
+                activeGearFlow,
+                LauncherAdasRepository.state,
+                LauncherAvmRepository.isAvmActive,
+            ) { _, speed, activeGear, adasLive, isAvmActive ->
+                val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc ?: adasLive.pdc
+                AutoAvmInputs(speed, activeGear, pdc, isAvmActive)
+            }.collect { inputs ->
+                checkAutoAvmSpeed(appCtx, inputs.speed, inputs.activeGear)
+                check360Cameras(appCtx, inputs.speed, inputs.activeGear, inputs.pdc, inputs.isAvmActive)
+                evaluateSideCameraState(appCtx)
             }
         }
+    }
+
+    internal fun getCurrentActiveGear(): Char? {
+        return vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverride
+            ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(
+                CanDataRepository.gearBoxMode.value,
+                CanDataRepository.gearBoxCurrentGear.value,
+            )
     }
 
     internal fun resolveAutoAvmHoldOff(
@@ -343,6 +407,291 @@ object CamdCameraRepository {
         return res
     }
 
+    fun check360Cameras(
+        context: Context,
+        speed: Float?,
+        activeGear: Char?,
+        pdc: LauncherPdcZones,
+        isAvmActive: Boolean,
+    ) {
+        val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
+        val reverseCamerasEnabled = LauncherAppConfigStore.camdReverseCameras(context)
+        val pdcCamerasEnabled = LauncherAppConfigStore.camdPdcCameras(context)
+        val isInstalled = CamdSocketClient.isInstalled(context)
+
+        if (!isInstalled || !disableStockAvm || isAvmActive) {
+            pdcOffJob?.cancel()
+            pdcOffJob = null
+            reverseCamerasTriggered = false
+            pdcCamerasTriggered = false
+            apply360CamerasState(context, false)
+            return
+        }
+
+        if (pdcCamerasEnabled) {
+            LauncherAdasRepository.ensureActive()
+        }
+
+        reverseCamerasTriggered = resolveReverseCamerasTarget(
+            currentTriggered = reverseCamerasTriggered,
+            activeGear = activeGear,
+            speed = speed,
+            enabled = reverseCamerasEnabled,
+        )
+
+        val hasObstacle = hasPhysicalPdcObstacle(pdc)
+        val pdcState = resolvePdcCamerasState(
+            currentPdcTriggered = pdcCamerasTriggered,
+            hasObstacle = hasObstacle,
+            activeGear = activeGear,
+            enabled = pdcCamerasEnabled,
+        )
+
+        if (pdcState.cancelTurnOff) {
+            pdcOffJob?.cancel()
+            pdcOffJob = null
+        }
+
+        pdcCamerasTriggered = pdcState.pdcTriggered
+
+        if (pdcState.shouldScheduleTurnOff) {
+            if (pdcOffJob == null) {
+                pdcOffJob = scope.launch {
+                    delay(PDC_OFF_DELAY_MS)
+                    pdcOffJob = null
+                    pdcCamerasTriggered = false
+                    val target = reverseCamerasTriggered
+                    apply360CamerasState(context, target)
+                    evaluateSideCameraState(context)
+                }
+            }
+        }
+
+        val target360 = reverseCamerasTriggered || pdcCamerasTriggered
+        apply360CamerasState(context, target360)
+    }
+
+    data class PdcCameraTransition(
+        val pdcTriggered: Boolean,
+        val shouldScheduleTurnOff: Boolean,
+        val cancelTurnOff: Boolean,
+    )
+
+    internal fun resolvePdcCamerasState(
+        currentPdcTriggered: Boolean,
+        hasObstacle: Boolean,
+        activeGear: Char?,
+        enabled: Boolean,
+    ): PdcCameraTransition {
+        if (!enabled) {
+            return PdcCameraTransition(
+                pdcTriggered = false,
+                shouldScheduleTurnOff = false,
+                cancelTurnOff = true,
+            )
+        }
+
+        if (hasObstacle) {
+            return PdcCameraTransition(
+                pdcTriggered = true,
+                shouldScheduleTurnOff = false,
+                cancelTurnOff = true,
+            )
+        }
+
+        if (currentPdcTriggered) {
+            if (activeGear == 'R') {
+                return PdcCameraTransition(
+                    pdcTriggered = true,
+                    shouldScheduleTurnOff = false,
+                    cancelTurnOff = true,
+                )
+            }
+            return PdcCameraTransition(
+                pdcTriggered = true,
+                shouldScheduleTurnOff = true,
+                cancelTurnOff = false,
+            )
+        }
+
+        return PdcCameraTransition(
+            pdcTriggered = false,
+            shouldScheduleTurnOff = false,
+            cancelTurnOff = false,
+        )
+    }
+
+    internal fun checkReverseGearCameras(context: Context, speed: Float?, activeGear: Char?) {
+        val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc
+            ?: LauncherAdasRepository.state.value.pdc
+        val isAvmActive = LauncherAvmRepository.isAvmActive.value
+        check360Cameras(context, speed, activeGear, pdc, isAvmActive)
+    }
+
+    internal fun resolveReverseCamerasTarget(
+        currentTriggered: Boolean,
+        activeGear: Char?,
+        speed: Float?,
+        enabled: Boolean,
+    ): Boolean {
+        if (!enabled) return false
+
+        if (activeGear == 'R') {
+            return true
+        }
+
+        if (currentTriggered) {
+            if (activeGear == 'P') {
+                return false
+            }
+            val s = speed ?: 0f
+            return s < 15f
+        }
+
+        return false
+    }
+
+    private fun apply360CamerasState(context: Context, targetActive: Boolean) {
+        if (targetActive == _isReverseCamerasOpen.value && reverseCamerasJob?.isActive != true) {
+            return
+        }
+
+        if (targetActive) {
+            if (!_isReverseCamerasOpen.value && reverseCamerasJob?.isActive != true) {
+                turnSignalJob?.cancel()
+                val active = _activeTurnSignalCamera.value
+                _activeTurnSignalCamera.value = null
+                _activeTurnSignalSide.value = null
+                _activeIsLowSpeed = false
+
+                reverseCamerasJob = scope.launch {
+                    if (active != null) closeCamera(context, active)
+                    openReverseCameras(context)
+                }
+            }
+        } else {
+            if (_isReverseCamerasOpen.value || reverseCamerasJob?.isActive == true) {
+                reverseCamerasJob?.cancel()
+                reverseCamerasJob = scope.launch {
+                    closeReverseCameras(context)
+                }
+            }
+        }
+    }
+
+    private suspend fun openReverseCameras(context: Context) = cameraOperationMutex.withLock {
+        val screen = LauncherEmbeddedBoundsState.screenBounds
+        val dispW = (screen?.width()?.takeIf { it > 0 } ?: 1920).toFloat()
+        val dispH = (screen?.height()?.takeIf { it > 0 } ?: 1080).toFloat()
+
+        val appRect = LauncherEmbeddedBoundsState.fullWidthBounds()
+            ?: LauncherEmbeddedBoundsState.embeddedBounds()
+            ?: Rect(0, 51, 1920, 998)
+
+        val commands = build360CameraCommands(context, appRect, dispW, dispH)
+        if (commands.isEmpty()) {
+            _isReverseCamerasOpen.value = false
+            return@withLock
+        }
+
+        var successCount = 0
+        for ((idx, cmd) in commands.withIndex()) {
+            val res = if (idx == 0) {
+                CamdSocketClient.sendCommandWithWakeup(context, cmd)
+            } else {
+                CamdSocketClient.sendCommand(cmd)
+            }
+            val responseText = res.getOrNull().orEmpty()
+            if (res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)) {
+                successCount++
+            } else {
+                Log.w(TAG, "Failed reverse camera command '$cmd': $responseText err=${res.exceptionOrNull()?.message}")
+            }
+        }
+
+        _isReverseCamerasOpen.value = (successCount > 0)
+    }
+
+    private suspend fun closeReverseCameras(context: Context) = cameraOperationMutex.withLock {
+        val res = CamdSocketClient.sendCommand("CLOSE")
+        if (res.isFailure) {
+            CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
+        }
+        _isReverseCamerasOpen.value = false
+        LauncherCar3DModelTrigger.notifyReverseCamerasClosed()
+        LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
+    }
+
+    internal fun build360CameraCommands(
+        context: Context,
+        appRect: Rect,
+        dispW: Float,
+        dispH: Float,
+    ): List<String> {
+        val leftEdge = appRect.left.toFloat()
+        val rightEdge = appRect.right.toFloat()
+        val topEdge = appRect.top.toFloat()
+        val bottomEdge = appRect.bottom.toFloat()
+
+        val appWidth = rightEdge - leftEdge
+        val appHeight = bottomEdge - topEdge
+
+        val connectedPresets = (_status.value as? CamdConnectionStatus.Connected)?.presets
+
+        val lrLeftPreset = LauncherAppConfigStore.camdWidgetLrLeftPreset(context).trim()
+        val lrRightPreset = LauncherAppConfigStore.camdWidgetLrRightPreset(context).trim()
+        val udTopPreset = LauncherAppConfigStore.camdWidgetUdTopPreset(context).trim()
+        val udBottomPreset = LauncherAppConfigStore.camdWidgetUdBottomPreset(context).trim()
+
+        fun buildCameraCommand(presetName: String, fallbackCamId: Int, x: Float, y: Float, w: Float, h: Float): String {
+            return if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
+                formatPresetCmd(presetName, x, y, w, h)
+            } else if (presetName.isNotEmpty()) {
+                val targetId = connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: fallbackCamId
+                formatCmd(targetId, x, y, w, h)
+            } else {
+                formatCmd(fallbackCamId, x, y, w, h)
+            }
+        }
+
+        val colLeftX1 = leftEdge
+        val colLeftX2 = leftEdge + appWidth * 0.30f
+
+        val colRightX1 = rightEdge - appWidth * 0.30f
+        val colRightX2 = rightEdge
+
+        val colMidX1 = colLeftX2
+        val colMidX2 = colRightX1
+        val midY = topEdge + (appHeight / 2f)
+
+        val leftX = colLeftX1 / dispW
+        val leftY = topEdge / dispH
+        val leftW = (colLeftX2 - colLeftX1) / dispW
+        val leftH = appHeight / dispH
+
+        val rightX = colRightX1 / dispW
+        val rightY = topEdge / dispH
+        val rightW = (colRightX2 - colRightX1) / dispW
+        val rightH = appHeight / dispH
+
+        val frontX = colMidX1 / dispW
+        val frontY = topEdge / dispH
+        val frontW = (colMidX2 - colMidX1) / dispW
+        val frontH = (midY - topEdge) / dispH
+
+        val rearX = colMidX1 / dispW
+        val rearY = midY / dispH
+        val rearW = (colMidX2 - colMidX1) / dispW
+        val rearH = (bottomEdge - midY) / dispH
+
+        val leftCmd = buildCameraCommand(lrLeftPreset, CAMERA_ID_LEFT, leftX, leftY, leftW, leftH)
+        val rightCmd = buildCameraCommand(lrRightPreset, CAMERA_ID_RIGHT, rightX, rightY, rightW, rightH)
+        val frontCmd = buildCameraCommand(udTopPreset, CAMERA_ID_FRONT, frontX, frontY, frontW, frontH)
+        val rearCmd = buildCameraCommand(udBottomPreset, CAMERA_ID_REAR, rearX, rearY, rearW, rearH)
+
+        return listOf(leftCmd, rightCmd, frontCmd, rearCmd)
+    }
+
     /**
      * Toggles 4 desktop cameras in the desktop / app window area:
      * - Left camera (#4) on the left
@@ -364,6 +713,7 @@ object CamdCameraRepository {
     fun hasActiveCameras(): Boolean =
         _isDesktopCamerasOpen.value ||
             _activeWidgetCameraMode.value != CamdWidgetCameraMode.NONE ||
+            _isReverseCamerasOpen.value ||
             _activeTurnSignalCamera.value != null ||
             _activeTurnSignalSide.value != null ||
             ((_status.value as? CamdConnectionStatus.Connected)?.openWindows?.isNotEmpty() == true)
@@ -373,9 +723,10 @@ object CamdCameraRepository {
      */
     fun closeAllIfOpen(context: Context) {
         if (!CamdSocketClient.isInstalled(context)) return
-        if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true) {
+        if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true || reverseCamerasJob?.isActive == true) {
             desktopOperationJob?.cancel()
             turnSignalJob?.cancel()
+            reverseCamerasJob?.cancel()
             desktopOperationJob = scope.launch {
                 closeAll(context)
             }
@@ -407,6 +758,7 @@ object CamdCameraRepository {
         desktopOperationJob = scope.launch {
             closeAll(appCtx)
             openWidgetCameras(appCtx, mode)
+            evaluateSideCameraState(appCtx)
         }
     }
 
@@ -480,44 +832,7 @@ object CamdCameraRepository {
                 listOf(frontCmd, rearCmd)
             }
             CamdWidgetCameraMode.ALL_360 -> {
-                // 4 cameras layout: Left 30%, Right 30%, Middle column 40% (Top front 50%, Bottom rear 50%)
-                // Presets are taken from the LR and UD button settings
-                val colLeftX1 = leftEdge
-                val colLeftX2 = leftEdge + appWidth * 0.30f
-
-                val colRightX1 = rightEdge - appWidth * 0.30f
-                val colRightX2 = rightEdge
-
-                val colMidX1 = colLeftX2
-                val colMidX2 = colRightX1
-                val midY = topEdge + (appHeight / 2f)
-
-                val leftX = colLeftX1 / dispW
-                val leftY = topEdge / dispH
-                val leftW = (colLeftX2 - colLeftX1) / dispW
-                val leftH = appHeight / dispH
-
-                val rightX = colRightX1 / dispW
-                val rightY = topEdge / dispH
-                val rightW = (colRightX2 - colRightX1) / dispW
-                val rightH = appHeight / dispH
-
-                val frontX = colMidX1 / dispW
-                val frontY = topEdge / dispH
-                val frontW = (colMidX2 - colMidX1) / dispW
-                val frontH = (midY - topEdge) / dispH
-
-                val rearX = colMidX1 / dispW
-                val rearY = midY / dispH
-                val rearW = (colMidX2 - colMidX1) / dispW
-                val rearH = (bottomEdge - midY) / dispH
-
-                val leftCmd = buildCameraCommand(lrLeftPreset, CAMERA_ID_LEFT, leftX, leftY, leftW, leftH)
-                val rightCmd = buildCameraCommand(lrRightPreset, CAMERA_ID_RIGHT, rightX, rightY, rightW, rightH)
-                val frontCmd = buildCameraCommand(udTopPreset, CAMERA_ID_FRONT, frontX, frontY, frontW, frontH)
-                val rearCmd = buildCameraCommand(udBottomPreset, CAMERA_ID_REAR, rearX, rearY, rearW, rearH)
-
-                listOf(leftCmd, rightCmd, frontCmd, rearCmd)
+                build360CameraCommands(context, appRect, dispW, dispH)
             }
             CamdWidgetCameraMode.NONE -> emptyList()
         }
@@ -634,6 +949,7 @@ object CamdCameraRepository {
         steerOffJob?.cancel()
         steerOffJob = null
         turnSignalJob?.cancel()
+        reverseCamerasJob?.cancel()
         cameraOperationMutex.withLock {
             val res = CamdSocketClient.sendCommand("CLOSE")
             if (res.isFailure) {
@@ -641,9 +957,12 @@ object CamdCameraRepository {
             }
             _isDesktopCamerasOpen.value = false
             _activeWidgetCameraMode.value = CamdWidgetCameraMode.NONE
+            _isReverseCamerasOpen.value = false
+            reverseCamerasTriggered = false
             _activeTurnSignalCamera.value = null
             _activeTurnSignalSide.value = null
             turnSignalsLatch.reset()
+            LauncherCar3DModelTrigger.notifyReverseCamerasClosed()
             LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
         }
     }
@@ -736,6 +1055,14 @@ object CamdCameraRepository {
         val turnSignalSide = turnSignalsLatch.latchedSide.value
         val steerSide = currentSteerSide
         val triggerMode = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
+        val isAvmActive = LauncherAvmRepository.isAvmActive.value
+        val isReverseActive = _isReverseCamerasOpen.value || reverseCamerasTriggered || pdcCamerasTriggered
+        val isWidgetActive = _activeWidgetCameraMode.value != CamdWidgetCameraMode.NONE || _isDesktopCamerasOpen.value
+        val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
+        val reverseCamerasEnabled = LauncherAppConfigStore.camdReverseCameras(context)
+        val activeGear = getCurrentActiveGear()
+        val isReverseGear = activeGear == 'R'
+        val invertSteerOnReverse = disableStockAvm && !reverseCamerasEnabled
 
         val (targetSide, targetIsLowSpeed) = resolveTargetSideCamera(
             speed = speed,
@@ -747,6 +1074,11 @@ object CamdCameraRepository {
             steerSide = steerSide,
             activeSide = _activeTurnSignalSide.value,
             activeIsLowSpeed = _activeIsLowSpeed,
+            isAvmActive = isAvmActive,
+            isReverseActive = isReverseActive,
+            isReverseGear = isReverseGear,
+            invertSteerOnReverse = invertSteerOnReverse,
+            isWidgetActive = isWidgetActive,
         )
 
         applyTargetSideCamera(context, targetSide, targetIsLowSpeed)
@@ -762,7 +1094,16 @@ object CamdCameraRepository {
         steerSide: TurnSignalSide?,
         activeSide: TurnSignalSide?,
         activeIsLowSpeed: Boolean,
+        isAvmActive: Boolean = false,
+        isReverseActive: Boolean = false,
+        isReverseGear: Boolean = false,
+        invertSteerOnReverse: Boolean = false,
+        isWidgetActive: Boolean = false,
     ): Pair<TurnSignalSide?, Boolean> {
+        if (isAvmActive || isReverseActive || isWidgetActive) {
+            return null to false
+        }
+
         // If blind-spot camera is currently active and turn signal is still active on the same side,
         // do not interrupt/switch it to low-speed camera when speed drops.
         if (turnSignalCamerasEnabled && activeSide != null && !activeIsLowSpeed && turnSignalSide == activeSide) {
@@ -771,12 +1112,34 @@ object CamdCameraRepository {
 
         val isLowSpeed = speed < lowSpeedThreshold
 
+        val effectiveSteerSide = if (isReverseGear && invertSteerOnReverse) {
+            when (steerSide) {
+                TurnSignalSide.Left -> TurnSignalSide.Right
+                TurnSignalSide.Right -> TurnSignalSide.Left
+                else -> null
+            }
+        } else {
+            steerSide
+        }
+
         return if (lowSpeedEnabled && isLowSpeed) {
             val side = when (triggerMode) {
                 CAMD_LOW_SPEED_TRIGGER_TURN_SIGNALS -> turnSignalSide
-                CAMD_LOW_SPEED_TRIGGER_STEERING -> steerSide
-                CAMD_LOW_SPEED_TRIGGER_BOTH -> turnSignalSide ?: steerSide
-                else -> turnSignalSide ?: steerSide
+                CAMD_LOW_SPEED_TRIGGER_STEERING -> effectiveSteerSide
+                CAMD_LOW_SPEED_TRIGGER_BOTH -> {
+                    if (isReverseGear && effectiveSteerSide != null) {
+                        effectiveSteerSide
+                    } else {
+                        turnSignalSide ?: effectiveSteerSide
+                    }
+                }
+                else -> {
+                    if (isReverseGear && effectiveSteerSide != null) {
+                        effectiveSteerSide
+                    } else {
+                        turnSignalSide ?: effectiveSteerSide
+                    }
+                }
             }
             if (side != null) side to true else null to false
         } else if (turnSignalCamerasEnabled) {
@@ -991,45 +1354,27 @@ object CamdCameraRepository {
             }
 
             if (effectiveShapeCircle || rectCorners) {
-                val desktopRect = LauncherEmbeddedBoundsState.embeddedBounds()
-                    ?: LauncherEmbeddedBoundsState.contentRowBounds
-                    ?: Rect(344, 51, 1920, 998)
+                val windowBounds = calculateSideCameraWindowBounds(
+                    context = context,
+                    isRightSide = (cameraId == CAMERA_ID_RIGHT),
+                    shapeCircleOverride = shapeCircle,
+                    rectCornersOverride = rectCorners,
+                )
 
-                val desktopHeight = (desktopRect.bottom - desktopRect.top).toFloat().coerceAtLeast(100f)
-                val baseDiameter = desktopHeight / 3f
-
-                val density = context.resources.displayMetrics.density
-                val margin = 30f * density
-
-                val yPx = desktopRect.top.toFloat() + margin
-                val rectW: Float
-                val rectH: Float
-
-                if (rectCorners) {
-                    rectW = baseDiameter * 1.30f * 1.40f
-                    rectH = rectW * (3f / 4f)
+                if (windowBounds != null) {
+                    x = windowBounds.xPx / dispW
+                    y = windowBounds.yPx / dispH
+                    w = windowBounds.widthPx / dispW
+                    h = windowBounds.heightPx / dispH
                 } else {
-                    val circleDiameter = baseDiameter * 1.30f * 1.30f
-                    rectW = circleDiameter
-                    rectH = circleDiameter
+                    val adasRect = LauncherEmbeddedBoundsState.leftPanelBounds
+                        ?: Rect(0, 51, 344, 998)
+
+                    x = adasRect.left.toFloat() / dispW
+                    y = adasRect.top.toFloat() / dispH
+                    w = adasRect.width().toFloat() / dispW
+                    h = adasRect.height().toFloat() / dispH
                 }
-
-                val sizeAdjustment = LauncherAppConfigStore.camdSideCamerasSizeAdjustment(context)
-                val scaleMultiplier = (1f + sizeAdjustment / 100f).coerceIn(0.5f, 2.0f)
-
-                val adjustedW = rectW * scaleMultiplier
-                val adjustedH = rectH * scaleMultiplier
-
-                val xPx = if (cameraId == CAMERA_ID_RIGHT) {
-                    desktopRect.right.toFloat() - margin - adjustedW
-                } else {
-                    desktopRect.left.toFloat() + margin
-                }
-
-                x = xPx / dispW
-                y = yPx / dispH
-                w = adjustedW / dispW
-                h = adjustedH / dispH
             } else {
                 val adasRect = LauncherEmbeddedBoundsState.leftPanelBounds
                     ?: Rect(0, 51, 344, 998)
@@ -1061,6 +1406,108 @@ object CamdCameraRepository {
             }
         }
         return targetCameraId
+    }
+
+    /**
+     * Pure math function to calculate pixel bounds for circular or rectangular side camera windows.
+     */
+    fun computeSideCameraWindowBounds(
+        desktopLeft: Float,
+        desktopTop: Float,
+        desktopRight: Float,
+        desktopBottom: Float,
+        density: Float,
+        isRightSide: Boolean,
+        shapeCircle: Boolean,
+        rectCorners: Boolean,
+        sizeAdjustment: Int = 0,
+    ): SideCameraWindowBounds? {
+        if (!shapeCircle && !rectCorners) return null
+        val isCircle = shapeCircle && !rectCorners
+
+        val desktopHeight = (desktopBottom - desktopTop).coerceAtLeast(100f)
+        val baseDiameter = desktopHeight / 3f
+        val margin = 30f * density
+
+        val yPx = desktopTop + margin
+        val rectW: Float
+        val rectH: Float
+
+        if (rectCorners) {
+            rectW = baseDiameter * 1.30f * 1.40f
+            rectH = rectW * (3f / 4f)
+        } else {
+            val circleDiameter = baseDiameter * 1.30f * 1.30f
+            rectW = circleDiameter
+            rectH = circleDiameter
+        }
+
+        val scaleMultiplier = (1f + sizeAdjustment / 100f).coerceIn(0.5f, 2.0f)
+        val adjustedW = rectW * scaleMultiplier
+        val adjustedH = rectH * scaleMultiplier
+
+        val xPx = if (isRightSide) {
+            desktopRight - margin - adjustedW
+        } else {
+            desktopLeft + margin
+        }
+
+        return SideCameraWindowBounds(
+            xPx = xPx,
+            yPx = yPx,
+            widthPx = adjustedW,
+            heightPx = adjustedH,
+            isCircle = isCircle,
+        )
+    }
+
+    /**
+     * Calculates pixel bounds of the side camera window using current display metrics and config.
+     */
+    fun calculateSideCameraWindowBounds(
+        context: Context,
+        isRightSide: Boolean,
+        customDesktopRect: Rect? = null,
+        shapeCircleOverride: Boolean? = null,
+        rectCornersOverride: Boolean? = null,
+        sizeAdjustmentOverride: Int? = null,
+    ): SideCameraWindowBounds? {
+        val shapeCircle = shapeCircleOverride ?: LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
+        val rectCorners = rectCornersOverride ?: LauncherAppConfigStore.camdSideCamerasRectCorners(context)
+        if (!shapeCircle && !rectCorners) return null
+
+        val desktopRect = customDesktopRect
+            ?: LauncherEmbeddedBoundsState.embeddedBounds()
+            ?: LauncherEmbeddedBoundsState.contentRowBounds
+            ?: Rect(344, 51, 1920, 998)
+
+        val density = context.resources.displayMetrics.density
+        val sizeAdjustment = sizeAdjustmentOverride ?: LauncherAppConfigStore.camdSideCamerasSizeAdjustment(context)
+
+        return computeSideCameraWindowBounds(
+            desktopLeft = desktopRect.left.toFloat(),
+            desktopTop = desktopRect.top.toFloat(),
+            desktopRight = desktopRect.right.toFloat(),
+            desktopBottom = desktopRect.bottom.toFloat(),
+            density = density,
+            isRightSide = isRightSide,
+            shapeCircle = shapeCircle,
+            rectCorners = rectCorners,
+            sizeAdjustment = sizeAdjustment,
+        )
+    }
+
+    /**
+     * Whether BSD ALERT warnings should blink the camera window outline instead of screen edge stripes.
+     * True if Camd is installed, turn signal cameras are enabled, and cameras are in circles or rectangles.
+     */
+    fun shouldBlinkCameraWindowBorder(
+        isCamdInstalled: Boolean,
+        turnSignalCameras: Boolean,
+        shapeCircle: Boolean,
+        rectCorners: Boolean,
+    ): Boolean {
+        return isCamdInstalled && turnSignalCameras && (shapeCircle || rectCorners)
     }
 
     /**

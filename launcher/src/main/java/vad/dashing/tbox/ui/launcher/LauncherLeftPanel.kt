@@ -1,6 +1,12 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.SystemClock
+import vad.dashing.tbox.TboxRepository
+import vad.dashing.tbox.camd.CamdCameraRepository
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -154,26 +160,52 @@ fun LauncherLeftPanel(
     val compassWidgetEnabled = remember(context, compassWidgetRevision) {
         LauncherAppConfigStore.adasCompassWidgetEnabled(context)
     }
+
+    // Keep GPS compass updated at panel level (retains heading across traffic lights / stops)
+    LaunchedEffect(compassWidgetEnabled, locValues.latitude, locValues.longitude, locValues.hasGpsFix) {
+        if (compassWidgetEnabled) {
+            LauncherGpsCompassTracker.onLocationUpdate(locValues)
+        }
+    }
+
+    // Fallback: listen to Android LocationManager when T-Box has no GPS fix
+    @Suppress("MissingPermission")
+    DisposableEffect(context, compassWidgetEnabled) {
+        if (!compassWidgetEnabled || !hasLocationPermission(context)) {
+            return@DisposableEffect onDispose {}
+        }
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val listener = LocationListener { location ->
+            val tboxLoc = TboxRepository.locValues.value
+            if (!tboxLoc.hasGpsFix || (abs(tboxLoc.latitude) < 0.001 && abs(tboxLoc.longitude) < 0.001)) {
+                LauncherGpsCompassTracker.onCoordinatesUpdate(location.latitude, location.longitude)
+            }
+        }
+        runCatching {
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER,
+            ).filter { lm?.isProviderEnabled(it) == true }
+
+            providers.forEach { provider ->
+                lm?.requestLocationUpdates(provider, 1000L, 1f, listener)
+            }
+            val lastKnown = providers.firstNotNullOfOrNull { lm?.getLastKnownLocation(it) }
+            if (lastKnown != null) {
+                listener.onLocationChanged(lastKnown)
+            }
+        }
+        onDispose {
+            runCatching { lm?.removeUpdates(listener) }
+        }
+    }
     val compassYRatioRevision by LauncherAppConfigStore.adasCompassYRatioRevisionFlow.collectAsStateWithLifecycle()
     var compassYRatio by remember {
         mutableFloatStateOf(LauncherAppConfigStore.adasCompassYRatio(context))
     }
     LaunchedEffect(compassYRatioRevision) {
         compassYRatio = LauncherAppConfigStore.adasCompassYRatio(context)
-    }
-    val camdConfigRevision by LauncherAppConfigStore.camdConfigRevisionFlow.collectAsStateWithLifecycle()
-    val camdWidgetEnabled = remember(context, camdConfigRevision) {
-        LauncherAppConfigStore.camdWidgetEnabled(context)
-    }
-    var camdWidgetXRatio by remember {
-        mutableFloatStateOf(LauncherAppConfigStore.camdWidgetXRatio(context))
-    }
-    var camdWidgetYRatio by remember {
-        mutableFloatStateOf(LauncherAppConfigStore.camdWidgetYRatio(context))
-    }
-    LaunchedEffect(camdConfigRevision) {
-        camdWidgetXRatio = LauncherAppConfigStore.camdWidgetXRatio(context)
-        camdWidgetYRatio = LauncherAppConfigStore.camdWidgetYRatio(context)
     }
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
@@ -726,10 +758,11 @@ fun LauncherLeftPanel(
             contentAlignment = Alignment.Center,
         ) {
             val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow.collectAsStateWithLifecycle()
+            val isReverseCamerasOpen by CamdCameraRepository.isReverseCamerasOpen.collectAsStateWithLifecycle()
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
             val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
-            val carHidden = isAvmActive || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
+            val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
             val showCarInComposition = carModelVisible && (cameraAnimEnabled || !carHidden)
             if (showCarInComposition) {
                 LauncherCar3DModel(
@@ -990,32 +1023,6 @@ fun LauncherLeftPanel(
                                     .zIndex(158f),
                             )
                         }
-                    }
-
-                    // Freely Movable Floating Camera Widget
-                    if (camdWidgetEnabled) {
-                        val mainSizeDp = 50.dp
-                        val mainSizePx = with(density) { mainSizeDp.toPx() }
-
-                        LauncherCamdFloatingWidget(
-                            xRatio = camdWidgetXRatio,
-                            yRatio = camdWidgetYRatio,
-                            containerWidthPx = containerWidthPx,
-                            containerHeightPx = containerHeightPx,
-                            onDrag = { delta ->
-                                if (containerWidthPx > 0f && containerHeightPx > 0f) {
-                                    val currentX = containerWidthPx * camdWidgetXRatio
-                                    val currentY = containerHeightPx * camdWidgetYRatio
-                                    val newX = (currentX + delta.x).coerceIn(mainSizePx / 2f, containerWidthPx - mainSizePx / 2f)
-                                    val newY = (currentY + delta.y).coerceIn(mainSizePx / 2f, containerHeightPx - mainSizePx / 2f)
-                                    camdWidgetXRatio = newX / containerWidthPx
-                                    camdWidgetYRatio = newY / containerHeightPx
-                                }
-                            },
-                            onDragEnd = {
-                                LauncherAppConfigStore.setCamdWidgetPosition(context, camdWidgetXRatio, camdWidgetYRatio)
-                            },
-                        )
                     }
 
                     val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY

@@ -201,10 +201,10 @@ internal fun parseTbmAutoButtonId(buttonId: String): ParsedTbmAutoButton {
 }
 
 @Composable
-private fun dockDp(base: Float) = (base * LocalDockIconScale.current).dp
+internal fun dockDp(base: Float) = (base * LocalDockIconScale.current).dp
 
 @Composable
-private fun dockSp(base: Float) = (base * LocalDockIconScale.current).sp
+internal fun dockSp(base: Float) = (base * LocalDockIconScale.current).sp
 
 internal data class LauncherPendingSeatCommand(
     val raw: Int,
@@ -279,7 +279,7 @@ internal val ALL_CLIMATE_DOCK_BUTTONS = listOf(
     LauncherDockButtonDescriptor("car_dialer", "Телефон", R.drawable.ic_widget_phone),
     LauncherDockButtonDescriptor("radio_app", "Радио", R.drawable.radio_vtkb246z55e9),
     LauncherDockButtonDescriptor("avm_camera", "Камеры 360", R.drawable.ic_launcher_avm),
-    LauncherDockButtonDescriptor("camd_test_cameras", "Камеры Camd (Тест)", R.drawable.ic_launcher_avm),
+    LauncherDockButtonDescriptor("camd_widget", "Виджет камер", R.drawable.ic_camd_widget_eye),
 )
 
 @Composable
@@ -1604,29 +1604,8 @@ private fun LauncherBottomDockButtonContent(
                 modifier = Modifier.size(dockDp(26f)),
             )
         }
-        "camd_test_cameras", "camd_test", "camd_cameras" -> LauncherDockIcon(
-            onClick = {
-                vad.dashing.tbox.camd.CamdCameraRepository.toggleDesktopCameras(context)
-            },
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_launcher_avm),
-                    contentDescription = "Камеры Camd (Тест)",
-                    colorFilter = ColorFilter.tint(if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151)),
-                    modifier = Modifier.size(dockDp(20f)),
-                )
-                Text(
-                    text = "test",
-                    fontSize = dockSp(9.5f),
-                    color = if (LauncherThemeState.darkTheme) Color(0xFF9CA3AF) else Color(0xFF374151),
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = dockSp(10.5f),
-                )
-            }
+        "camd_widget", "camd_cameras", "camd_test_cameras", "camd_test" -> {
+            CamdDockWidgetButton(context = context)
         }
         "temp_driver" -> LauncherTempStepper(
             tempText = formatHvacSetTempAnnotated(driverTemp),
@@ -2504,7 +2483,7 @@ internal fun seatVentDrawable(raw: Int): Int = when (ventLevel(raw)) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LauncherDockIcon(
+internal fun LauncherDockIcon(
     onClick: () -> Unit,
     onDoubleClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,

@@ -56,6 +56,8 @@ private const val KEY_CAMD_AUTO_AVM_ON_SPEED = "camd_auto_avm_on_speed"
 private const val KEY_CAMD_AUTO_AVM_OFF_SPEED = "camd_auto_avm_off_speed"
 private const val DEFAULT_CAMD_AUTO_AVM_ON_SPEED = 2
 private const val DEFAULT_CAMD_AUTO_AVM_OFF_SPEED = 20
+private const val KEY_CAMD_REVERSE_CAMERAS = "camd_reverse_cameras"
+private const val KEY_CAMD_PDC_CAMERAS = "camd_pdc_cameras"
 private const val KEY_CAMD_TURN_SIGNAL_CAMERAS = "camd_turn_signal_cameras"
 private const val KEY_CAMD_SIDE_CAMERAS_SHAPE_CIRCLE = "camd_side_cameras_shape_circle"
 private const val KEY_CAMD_SIDE_CAMERAS_RECT_CORNERS = "camd_side_cameras_rect_corners"
@@ -1837,6 +1839,22 @@ internal object LauncherAppConfigStore {
             .putInt(KEY_CAMD_AUTO_AVM_ON_SPEED, validOn)
             .putInt(KEY_CAMD_AUTO_AVM_OFF_SPEED, validOff)
             .apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdReverseCameras(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_REVERSE_CAMERAS, false)
+
+    fun setCamdReverseCameras(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_REVERSE_CAMERAS, enabled).apply()
+        camdConfigRevision.value++
+    }
+
+    fun camdPdcCameras(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_PDC_CAMERAS, false)
+
+    fun setCamdPdcCameras(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_PDC_CAMERAS, enabled).apply()
         camdConfigRevision.value++
     }
 

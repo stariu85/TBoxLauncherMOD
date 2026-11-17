@@ -50,17 +50,20 @@ data class LauncherPdcRingFrame(
 /**
  * Physical parking sensor channels present on the vehicle (2 front main + 4 rear).
  */
-private val FRONT_CHANNELS = listOf(
+val FRONT_CHANNELS = listOf(
     LauncherPdcChannel.FrontLeft,
     LauncherPdcChannel.FrontRight,
 )
-private val REAR_CHANNELS = listOf(
+val REAR_CHANNELS = listOf(
     LauncherPdcChannel.RearLeft,
     LauncherPdcChannel.RearMidLeft,
     LauncherPdcChannel.RearMidRight,
     LauncherPdcChannel.RearRight,
 )
-private val PHYSICAL_PDC_CHANNELS = FRONT_CHANNELS + REAR_CHANNELS
+val PHYSICAL_PDC_CHANNELS = FRONT_CHANNELS + REAR_CHANNELS
+
+fun hasPhysicalPdcObstacle(pdc: LauncherPdcZones): Boolean =
+    PHYSICAL_PDC_CHANNELS.any { (pdc.distanceCm(it)) in (LauncherPdcZones.PDC_MIN_CM)..(LauncherPdcZones.PDC_MAX_CM) }
 
 /**
  * Ultrasonic parking sensors (PDC) rendered as 2 thin, trembling arc lines in front
@@ -86,7 +89,7 @@ fun LauncherPdcOverlay(
 
     if (visualMode == PDC_VISUAL_OFF) return
 
-    val hasPhysicalObstacle = PHYSICAL_PDC_CHANNELS.any { (pdc.distanceCm(it)) in (LauncherPdcZones.PDC_MIN_CM)..(LauncherPdcZones.PDC_MAX_CM) }
+    val hasPhysicalObstacle = hasPhysicalPdcObstacle(pdc)
     val showOverlay = pasOn || hasPhysicalObstacle
 
     val overlayAlpha by animateFloatAsState(

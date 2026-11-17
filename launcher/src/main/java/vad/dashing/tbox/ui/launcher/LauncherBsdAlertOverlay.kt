@@ -26,6 +26,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,9 @@ import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
+import vad.dashing.tbox.camd.CamdCameraRepository
+import vad.dashing.tbox.camd.CamdSocketClient
+import vad.dashing.tbox.camd.SideCameraWindowBounds
 import vad.dashing.tbox.ui.MyLifecycleOwner
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 
@@ -43,6 +48,8 @@ import vad.dashing.tbox.ui.ProvideUiClickSounds
  * Full-screen overlay component for BSD Alert (high-priority blind spot warning).
  * Draws 100.dp vertical gradient bars on the left/right screen edges:
  * solid bright red at the outer edge, fading smoothly towards the center.
+ * If turn signal cameras in circles or rectangles are enabled, blinks the camera window
+ * outline instead of screen edge stripes.
  * Blinks with the exact same frequency as the road lane beam (tween 650ms).
  */
 @Composable
@@ -72,6 +79,25 @@ fun LauncherBsdAlertOverlay(
 
     if (!bsdLeftAlert && !bsdRightAlert) return
 
+    val camdConfigRev by LauncherAppConfigStore.camdConfigRevisionFlow.collectAsStateWithLifecycle()
+    val isCamdInstalled = remember(context) { CamdSocketClient.isInstalled(context) }
+    val turnSignalCameras = remember(context, camdConfigRev) {
+        LauncherAppConfigStore.camdTurnSignalCameras(context)
+    }
+    val shapeCircle = remember(context, camdConfigRev) {
+        LauncherAppConfigStore.camdSideCamerasShapeCircle(context)
+    }
+    val rectCorners = remember(context, camdConfigRev) {
+        LauncherAppConfigStore.camdSideCamerasRectCorners(context)
+    }
+
+    val useCameraWindowBorder = CamdCameraRepository.shouldBlinkCameraWindowBorder(
+        isCamdInstalled = isCamdInstalled,
+        turnSignalCameras = turnSignalCameras,
+        shapeCircle = shapeCircle,
+        rectCorners = rectCorners,
+    )
+
     val pulse by rememberInfiniteTransition(label = "bsdOverlayPulse").animateFloat(
         initialValue = 0.35f,
         targetValue = 0.95f,
@@ -84,52 +110,127 @@ fun LauncherBsdAlertOverlay(
 
     val alertRed = Color(0xFFFF1744)
 
-    Box(modifier = modifier.fillMaxSize()) {
-        // Left 150.dp bar (solid red at x=0 -> transparent at x=150dp)
-        if (bsdLeftAlert) {
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .width(150.dp)
-                    .fillMaxHeight(),
-            ) {
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        0.00f to alertRed.copy(alpha = 0.85f * pulse),
-                        0.30f to alertRed.copy(alpha = 0.55f * pulse),
-                        0.70f to alertRed.copy(alpha = 0.20f * pulse),
-                        1.00f to alertRed.copy(alpha = 0f),
-                        startX = 0f,
-                        endX = size.width,
-                    ),
-                    topLeft = Offset.Zero,
-                    size = Size(size.width, size.height),
-                )
-            }
-        }
+    if (useCameraWindowBorder) {
+        val leftBounds = CamdCameraRepository.calculateSideCameraWindowBounds(
+            context = context,
+            isRightSide = false,
+            shapeCircleOverride = shapeCircle,
+            rectCornersOverride = rectCorners,
+        )
+        val rightBounds = CamdCameraRepository.calculateSideCameraWindowBounds(
+            context = context,
+            isRightSide = true,
+            shapeCircleOverride = shapeCircle,
+            rectCornersOverride = rectCorners,
+        )
 
-        // Right 150.dp bar (transparent at x=0 -> solid red at x=150dp)
-        if (bsdRightAlert) {
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(150.dp)
-                    .fillMaxHeight(),
-            ) {
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        0.00f to alertRed.copy(alpha = 0f),
-                        0.30f to alertRed.copy(alpha = 0.20f * pulse),
-                        0.70f to alertRed.copy(alpha = 0.55f * pulse),
-                        1.00f to alertRed.copy(alpha = 0.85f * pulse),
-                        startX = 0f,
-                        endX = size.width,
-                    ),
-                    topLeft = Offset.Zero,
-                    size = Size(size.width, size.height),
-                )
+        Box(modifier = modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                if (bsdLeftAlert && (leftBounds != null)) {
+                    drawCameraWindowAlert(leftBounds, alertRed, pulse)
+                }
+                if (bsdRightAlert && (rightBounds != null)) {
+                    drawCameraWindowAlert(rightBounds, alertRed, pulse)
+                }
             }
         }
+    } else {
+        Box(modifier = modifier.fillMaxSize()) {
+            // Left 150.dp bar (solid red at x=0 -> transparent at x=150dp)
+            if (bsdLeftAlert) {
+                Canvas(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .width(150.dp)
+                        .fillMaxHeight(),
+                ) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0.00f to alertRed.copy(alpha = 0.85f * pulse),
+                            0.30f to alertRed.copy(alpha = 0.55f * pulse),
+                            0.70f to alertRed.copy(alpha = 0.20f * pulse),
+                            1.00f to alertRed.copy(alpha = 0f),
+                            startX = 0f,
+                            endX = size.width,
+                        ),
+                        topLeft = Offset.Zero,
+                        size = Size(size.width, size.height),
+                    )
+                }
+            }
+
+            // Right 150.dp bar (transparent at x=0 -> solid red at x=150dp)
+            if (bsdRightAlert) {
+                Canvas(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .width(150.dp)
+                        .fillMaxHeight(),
+                ) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0.00f to alertRed.copy(alpha = 0f),
+                            0.30f to alertRed.copy(alpha = 0.20f * pulse),
+                            0.70f to alertRed.copy(alpha = 0.55f * pulse),
+                            1.00f to alertRed.copy(alpha = 0.85f * pulse),
+                            startX = 0f,
+                            endX = size.width,
+                        ),
+                        topLeft = Offset.Zero,
+                        size = Size(size.width, size.height),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun DrawScope.drawCameraWindowAlert(
+    bounds: SideCameraWindowBounds,
+    color: Color,
+    pulse: Float,
+) {
+    val mainStrokeWidth = 5.dp.toPx()
+    val glowStrokeWidth = 11.dp.toPx()
+    val glowAlpha = 0.35f * pulse
+    val mainAlpha = 0.95f * pulse
+
+    if (bounds.isCircle) {
+        val center = Offset(bounds.xPx + (bounds.widthPx / 2f), bounds.yPx + (bounds.heightPx / 2f))
+        val radius = bounds.widthPx / 2f
+
+        // Outer glow
+        drawCircle(
+            color = color.copy(alpha = glowAlpha),
+            radius = radius,
+            center = center,
+            style = Stroke(width = glowStrokeWidth),
+        )
+        // Sharp inner border
+        drawCircle(
+            color = color.copy(alpha = mainAlpha),
+            radius = radius,
+            center = center,
+            style = Stroke(width = mainStrokeWidth),
+        )
+    } else {
+        val topLeft = Offset(bounds.xPx, bounds.yPx)
+        val rectSize = Size(bounds.widthPx, bounds.heightPx)
+
+        // Outer glow
+        drawRect(
+            color = color.copy(alpha = glowAlpha),
+            topLeft = topLeft,
+            size = rectSize,
+            style = Stroke(width = glowStrokeWidth),
+        )
+        // Sharp inner border
+        drawRect(
+            color = color.copy(alpha = mainAlpha),
+            topLeft = topLeft,
+            size = rectSize,
+            style = Stroke(width = mainStrokeWidth),
+        )
     }
 }
 

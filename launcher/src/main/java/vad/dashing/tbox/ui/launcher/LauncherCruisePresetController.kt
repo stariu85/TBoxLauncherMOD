@@ -525,10 +525,20 @@ internal object LauncherCruisePresetController {
                     DiagFileLog.w(TAG, "Single tap in Fault state, ignored")
                 }
                 AccCruiseState.Active, AccCruiseState.Override -> {
-                    DiagFileLog.i(TAG, "Single tap in Active/Override -> pulse MFS_CANCEL (212)")
-                    pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
+                    DiagFileLog.i(TAG, "Single tap in Active/Override -> turn off cruise via pulse MFS_CRUISE_CONTROL (210)")
+                    currentSetSpeedKmh()?.let { LauncherAppConfigStore.setLastCruiseSpeedKmh(context, it) }
+                    adjustJob?.cancel()
+                    _adjustingTargetSpeed.value = null
+                    LauncherAdasRepository.clearTimeGapFlash()
                     if (isConventionalCruise()) {
-                        conventionalCruiseStandby = true
+                        conventionalCruiseStandby = false
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
+                    pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
+                    if (isConventionalCruise()) {
+                        waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                            currentAccCruiseState() == AccCruiseState.Off
+                        }
                     }
                 }
                 AccCruiseState.Off -> {

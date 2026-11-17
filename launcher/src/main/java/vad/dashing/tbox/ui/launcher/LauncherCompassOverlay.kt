@@ -27,12 +27,17 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.LocValues
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Computes forward azimuth (bearing) in degrees [0, 360) from (lat1, lon1) to (lat2, lon2).
@@ -54,13 +59,37 @@ internal fun computeGpsBearing(lat1: Double, lon1: Double, lat2: Double, lon2: D
 private const val MIN_GPS_DISPLACEMENT_METERS = 2.5f
 
 /**
- * State holder tracking vehicle heading strictly from GPS coordinate changes.
+ * Computes approximate distance in meters between two GPS coordinates.
  */
-internal class LauncherGpsCompassTracker {
+internal fun computeDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
+    return runCatching {
+        val distanceArr = FloatArray(1)
+        Location.distanceBetween(lat1, lon1, lat2, lon2, distanceArr)
+        distanceArr[0]
+    }.getOrElse {
+        val r = 6371000.0 // Earth radius in meters
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2) * sin(dLon / 2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        (r * c).toFloat()
+    }
+}
+
+/**
+ * Global state holder tracking vehicle heading strictly from GPS coordinate changes.
+ * Preserves last known heading across drive view transitions (e.g. traffic lights/stops).
+ */
+internal object LauncherGpsCompassTracker {
     private var lastLat: Double = 0.0
     private var lastLon: Double = 0.0
     var currentHeading: Float = 0f
         private set
+
+    private val _headingFlow = MutableStateFlow(0f)
+    val headingFlow: StateFlow<Float> = _headingFlow.asStateFlow()
 
     fun onLocationUpdate(loc: LocValues): Float {
         val lat = loc.latitude
@@ -71,23 +100,37 @@ internal class LauncherGpsCompassTracker {
             return currentHeading
         }
 
+        return onCoordinatesUpdate(lat, lon)
+    }
+
+    fun onCoordinatesUpdate(lat: Double, lon: Double): Float {
+        if (abs(lat) < 0.001 || abs(lon) < 0.001) {
+            return currentHeading
+        }
+
         if (abs(lastLat) < 0.001 || abs(lastLon) < 0.001) {
             lastLat = lat
             lastLon = lon
             return currentHeading
         }
 
-        val distanceArr = FloatArray(1)
-        Location.distanceBetween(lastLat, lastLon, lat, lon, distanceArr)
-        val distance = distanceArr[0]
+        val distance = computeDistanceMeters(lastLat, lastLon, lat, lon)
 
         if (distance >= MIN_GPS_DISPLACEMENT_METERS) {
             currentHeading = computeGpsBearing(lastLat, lastLon, lat, lon)
             lastLat = lat
             lastLon = lon
+            _headingFlow.value = currentHeading
         }
 
         return currentHeading
+    }
+
+    fun reset() {
+        lastLat = 0.0
+        lastLon = 0.0
+        currentHeading = 0f
+        _headingFlow.value = 0f
     }
 }
 
@@ -117,19 +160,23 @@ fun LauncherCompassOverlay(
     onDragEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tracker = remember { LauncherGpsCompassTracker() }
+    val currentTrackerHeading by LauncherGpsCompassTracker.headingFlow.collectAsStateWithLifecycle()
 
-    var targetHeading by remember { mutableFloatStateOf(0f) }
+    var targetHeading by remember { mutableFloatStateOf(LauncherGpsCompassTracker.currentHeading) }
+
+    LaunchedEffect(currentTrackerHeading) {
+        targetHeading = currentTrackerHeading
+    }
 
     LaunchedEffect(locValues.latitude, locValues.longitude, locValues.hasGpsFix) {
-        val newHeading = tracker.onLocationUpdate(locValues)
+        val newHeading = LauncherGpsCompassTracker.onLocationUpdate(locValues)
         targetHeading = newHeading
     }
 
     // Continuous heading accumulator to avoid 360° wraps during animation
     var continuousHeading by remember { mutableFloatStateOf(targetHeading) }
     LaunchedEffect(targetHeading) {
-        val diff = ((targetHeading - continuousHeading + 540f) % 360f) - 180f
+        val diff = ((targetHeading - continuousHeading) % 360f + 540f) % 360f - 180f
         continuousHeading += diff
     }
 

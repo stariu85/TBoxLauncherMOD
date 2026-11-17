@@ -456,6 +456,10 @@
     <string name="camd_use_stock_avm_desc">При выключении используется система Camd</string>
     <string name="camd_disable_stock_avm_title">Выключить штатную систему 360</string>
     <string name="camd_disable_stock_avm_desc">Принудительное удержание выключенным com.mengbo.avm в vad.dashing.camd (AVM ON / AVM OFF)</string>
+    <string name="camd_reverse_cameras_title">Включать камеры при R</string>
+    <string name="camd_reverse_cameras_desc">Вывод 4 камер 360 между панелями при включении задней передачи (R). Закрываются при P или в D при скорости выше 15 км/ч</string>
+    <string name="camd_pdc_cameras_title">Включать камеры при парктрониках</string>
+    <string name="camd_pdc_cameras_desc">Вывод 4 камер 360 при обнаружении препятствия передними или задними датчиками парковки. Выключаются через 3 секунды после прекращения обнаружения (если не включена передача R)</string>
     <string name="camd_auto_disable_stock_avm_title">Автоматическое выключение штатной AVM</string>
     <string name="camd_auto_disable_stock_avm_desc">Выключение AVM через Camd при превышении скорости деактивации, включение ниже скорости активации</string>
     <string name="camd_auto_avm_on_speed_label">Активация: &lt; %1$d км/ч</string>
