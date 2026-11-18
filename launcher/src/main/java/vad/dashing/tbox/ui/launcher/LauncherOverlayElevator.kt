@@ -67,6 +67,9 @@ internal object LauncherOverlayElevator {
             params.alpha = 1f
             home.window.attributes = params
             home.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            home.window.decorView.isFocusable = true
+            home.window.decorView.isFocusableInTouchMode = true
+            home.window.decorView.requestFocus()
             val am = home.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             am.moveTaskToFront(home.taskId, ActivityManager.MOVE_TASK_WITH_HOME)
             Log.d(TAG, "moveTaskToFront task=${home.taskId}")

@@ -1,6 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.app.ActivityManager
+import android.app.UiModeManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -60,6 +61,8 @@ object LauncherThemeState {
     private const val KEY_THEME_BUTTON_VISIBLE = "theme_button_visible"
     private const val KEY_WINTER_THEME = "winter_theme_enabled"
     private const val KEY_WINTER_TEMP_ZERO = "winter_theme_temp_zero_enabled"
+    private const val KEY_RAIN_THEME = "rain_theme_enabled"
+    private const val KEY_AUTO_WEATHER = "auto_weather_rain_snow_enabled"
 
     var darkTheme by mutableStateOf(false)
         private set
@@ -79,6 +82,12 @@ object LauncherThemeState {
     var winterThemeTempBelowZeroEnabled by mutableStateOf(true)
         private set
 
+    var rainThemeEnabled by mutableStateOf(false)
+        private set
+
+    var autoWeatherEnabled by mutableStateOf(false)
+        private set
+
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         darkTheme = prefs.getBoolean(KEY_DARK, false)
@@ -87,6 +96,10 @@ object LauncherThemeState {
         themeButtonVisible = prefs.getBoolean(KEY_THEME_BUTTON_VISIBLE, false)
         winterThemeEnabled = prefs.getBoolean(KEY_WINTER_THEME, false)
         winterThemeTempBelowZeroEnabled = prefs.getBoolean(KEY_WINTER_TEMP_ZERO, true)
+        rainThemeEnabled = prefs.getBoolean(KEY_RAIN_THEME, false)
+        autoWeatherEnabled = prefs.getBoolean(KEY_AUTO_WEATHER, false)
+
+        LauncherAutoWeatherManager.start()
 
         if (autoThemeSystemEnabled && autoThemeSolarEnabled) {
             autoThemeSolarEnabled = false
@@ -98,6 +111,10 @@ object LauncherThemeState {
             val systemDark = HeadUnitDayNightRepository.isSystemDark(context)
             if (systemDark != null) {
                 darkTheme = systemDark
+                HeadUnitDayNightRepository.setAndroidNightMode(
+                    context,
+                    if (systemDark) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO,
+                )
             }
         } else if (autoThemeSolarEnabled) {
             val coords = resolveBestGpsCoordinates(context)
@@ -135,6 +152,10 @@ object LauncherThemeState {
         darkTheme = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, enabled).apply()
+        HeadUnitDayNightRepository.setAndroidNightMode(
+            context,
+            if (enabled) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO,
+        )
         refocusYandexAppIfActive(context)
     }
 
@@ -195,5 +216,19 @@ object LauncherThemeState {
         winterThemeTempBelowZeroEnabled = enabled
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_WINTER_TEMP_ZERO, enabled).apply()
+    }
+
+    fun setRainThemeEnabled(context: Context, enabled: Boolean) {
+        if (rainThemeEnabled == enabled) return
+        rainThemeEnabled = enabled
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_RAIN_THEME, enabled).apply()
+    }
+
+    fun setAutoWeatherEnabled(context: Context, enabled: Boolean) {
+        if (autoWeatherEnabled == enabled) return
+        autoWeatherEnabled = enabled
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_AUTO_WEATHER, enabled).apply()
     }
 }

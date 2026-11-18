@@ -34,6 +34,7 @@ object LauncherDevVehicleState {
 
     // --- ADAS simulation (cruise / lanes / BSD / front object / parking sensors) ---
     var adasCruiseActive by mutableStateOf(false)
+    var adasAccFault by mutableStateOf(false)
     var adasLanesActive by mutableStateOf(false)
     var adasLkaActive by mutableStateOf(false)
     var adasLdwWarning by mutableStateOf(false)
@@ -52,6 +53,8 @@ object LauncherDevVehicleState {
     var turnRight by mutableStateOf(false)
     /** Wiper status simulation: null/0 = Off, 1 = Auto, 2 = Low speed, 3 = High speed. */
     var wiperStatus by mutableStateOf<Int?>(null)
+    /** Rain sensor simulation: true = Rain detected, false = Dry. */
+    var rainDetected by mutableStateOf(false)
 
     fun cycleWiperStatus() {
         simulateEnabled = true
@@ -80,6 +83,18 @@ object LauncherDevVehicleState {
         simulateEnabled = true
         motionPreviewEnabled = false
         adasCruiseActive = !adasCruiseActive
+        if (adasCruiseActive) {
+            adasAccFault = false
+        }
+    }
+
+    fun toggleAdasAccFault() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasAccFault = !adasAccFault
+        if (adasAccFault) {
+            adasCruiseActive = false
+        }
     }
 
     fun triggerTimeGapFlash(ms: Long = 3000L) {
@@ -320,7 +335,7 @@ object LauncherDevVehicleState {
             )
         }
         val frontM = adasFrontObjectM.roundToInt()
-        val anySet = adasCruiseActive || adasLanesActive || adasLdwWarning ||
+        val anySet = adasCruiseActive || adasAccFault || adasLanesActive || adasLdwWarning ||
             adasBsdLeft != LauncherRearThreatLevel.Off ||
             adasBsdRight != LauncherRearThreatLevel.Off ||
             frontM > 0 || pdcChannels.isNotEmpty()
@@ -351,13 +366,18 @@ object LauncherDevVehicleState {
             adasLanesActive -> LauncherAdasLaneVisualization.Tracking
             else -> LauncherAdasLaneVisualization.Hidden
         }
-        val setSpeed = if (adasCruiseActive) {
+        val accMode = when {
+            adasAccFault -> LauncherAdasAccMode.Fault
+            adasCruiseActive -> LauncherAdasAccMode.ActiveBlue
+            else -> LauncherAdasAccMode.Off
+        }
+        val setSpeed = if (accMode == LauncherAdasAccMode.ActiveBlue) {
             speedKmh.roundToInt().takeIf { it > 0 } ?: 90
         } else {
             null
         }
         return LauncherAdasState(
-            accMode = if (adasCruiseActive) LauncherAdasAccMode.ActiveBlue else LauncherAdasAccMode.Off,
+            accMode = accMode,
             accSetSpeedKmh = setSpeed,
             accActive = adasCruiseActive,
             timeGapLevel = adasTimeGapLevel,
@@ -535,6 +555,7 @@ object LauncherDevVehicleState {
         batteryVoltageOverride = null
         gearSlotOverride = null
         adasCruiseActive = false
+        adasAccFault = false
         adasLanesActive = false
         adasLkaActive = false
         adasLdwWarning = false

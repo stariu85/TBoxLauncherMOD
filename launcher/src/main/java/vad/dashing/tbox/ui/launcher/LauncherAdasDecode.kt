@@ -360,7 +360,8 @@ internal fun buildLauncherAdasState(
         rearThreats.hasAny ||
         hma == LauncherAdasAssistIcon.Warning ||
         tja == LauncherAdasAssistIcon.Warning ||
-        srrSystem == LauncherSrrSystemState.Fault
+        srrSystem == LauncherSrrSystemState.Fault ||
+        accMode == LauncherAdasAccMode.Fault
     val hasAssist = accActive || accStandby || override || frontObject.valid || effectiveLkaStatusCode != 0 ||
         leftLane != LauncherAdasLaneVisualization.Hidden ||
         rightLane != LauncherAdasLaneVisualization.Hidden ||

@@ -861,6 +861,16 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
+            title = stringResource(R.string.launcher_vs_section_yandex_nav),
+            subtitle = stringResource(R.string.launcher_vs_section_yandex_nav_sub),
+            iconPainter = painterResource(R.drawable.player_yandex_navigator),
+            expanded = expandedSection == VehicleSettingsSection.YandexNav,
+            onToggle = { onSectionToggle(VehicleSettingsSection.YandexNav) },
+        ) {
+            YandexNavSettingsContent()
+        }
+
+        LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_launcher),
             subtitle = stringResource(R.string.launcher_vs_section_launcher_sub),
             icon = VehicleSettingsSectionIcons.Launcher,

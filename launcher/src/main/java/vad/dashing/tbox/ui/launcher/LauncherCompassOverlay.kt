@@ -20,9 +20,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -145,6 +148,14 @@ private val CARDINAL_POINTS = listOf(
     315f to "СЗ",
 )
 
+const val COMPASS_OVERLAY_HEIGHT_DP = 120
+
+/**
+ * Deadband threshold in degrees to suppress tiny micro-jitter and GPS noise.
+ * Only angular deviations >= 1.5° trigger an update, preventing erratic needle vibration.
+ */
+private const val HEADING_JITTER_THRESHOLD_DEG = 1.5f
+
 /**
  * Arc compass overlaid onto the road in ADAS rear-view mode.
  * Styled similarly to PDC front parking arcs: curved upwards towards the road horizon,
@@ -173,16 +184,26 @@ fun LauncherCompassOverlay(
         targetHeading = newHeading
     }
 
-    // Continuous heading accumulator to avoid 360° wraps during animation
+    // Continuous heading accumulator to avoid 360° wraps during animation and eliminate jitter
     var continuousHeading by remember { mutableFloatStateOf(targetHeading) }
+    var isInitialized by remember { mutableStateOf(false) }
+
     LaunchedEffect(targetHeading) {
+        if (!isInitialized) {
+            isInitialized = true
+            continuousHeading = targetHeading
+            return@LaunchedEffect
+        }
         val diff = ((targetHeading - continuousHeading) % 360f + 540f) % 360f - 180f
-        continuousHeading += diff
+        if (abs(diff) >= HEADING_JITTER_THRESHOLD_DEG) {
+            continuousHeading += diff
+        }
     }
 
+    // 1-second smoothing animation to prevent erratic heading jumping
     val animatedHeading by animateFloatAsState(
         targetValue = continuousHeading,
-        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
         label = "compassHeading",
     )
 
@@ -191,25 +212,42 @@ fun LauncherCompassOverlay(
     var isDragging by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
-    val paintText = remember(density) {
+    val paintTextFill = remember(density) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
-            textSize = with(density) { 11.dp.toPx() }
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            style = Paint.Style.FILL
         }
     }
-    val paintDegree = remember(density) {
+    val paintDegreeFill = remember(density) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
-            textSize = with(density) { 9.dp.toPx() }
-            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            textSize = with(density) { 11.5.dp.toPx() }
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            style = Paint.Style.FILL
         }
     }
+    val paintDegreeStroke = remember(density) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = with(density) { 11.5.dp.toPx() }
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            style = Paint.Style.STROKE
+            strokeWidth = with(density) { 3.2.dp.toPx() }
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+        }
+    }
+
+    val isDark = LauncherThemeState.darkTheme
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(115.dp)
+            .height(COMPASS_OVERLAY_HEIGHT_DP.dp)
+            .graphicsLayer {
+                alpha = if (isDragging) 0.85f else 0.70f
+            }
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = { isDragging = true },
@@ -230,53 +268,55 @@ fun LauncherCompassOverlay(
             val cx = w / 2f
 
             // Top apex of the arc
-            val arcTopY = 38.dp.toPx()
+            val arcTopY = 42.dp.toPx()
 
-            // Semi-axes for the perspective arc
-            val rx = (w * 0.44f).coerceIn(120.dp.toPx(), 220.dp.toPx())
-            val ry = 28.dp.toPx()
-            val phiMaxRad = Math.toRadians(42.0).toFloat()
+            // Semi-axes for the perspective arc - scaled proportionally to reach the lateral edges of ADAS zone
+            val edgeMargin = 8.dp.toPx()
+            val targetHalfWidth = (cx - edgeMargin).coerceAtLeast(80.dp.toPx())
+            val phiMaxRad = Math.toRadians(45.0).toFloat()
+            val rx = targetHalfWidth / sin(phiMaxRad)
+            val ry = rx * 0.22f
 
-            // 1. Draw glowing fading arc in segments
-            val steps = 44
-            val glowColor = if (isDragging) Color(0xFF67E8F9) else Color(0xFF38BDF8)
-            val coreColor = if (isDragging) Color(0xFFFFFFFF) else Color(0xFFE0F2FE)
-
-            for (i in 0 until steps) {
-                val t0 = i.toFloat() / steps
-                val t1 = (i + 1).toFloat() / steps
-                val alpha0 = -phiMaxRad + t0 * 2f * phiMaxRad
-                val alpha1 = -phiMaxRad + t1 * 2f * phiMaxRad
-
-                val midAlpha = (alpha0 + alpha1) / 2f
-                val u = midAlpha / phiMaxRad // -1 .. 1
-                val fade = cos(u * (Math.PI.toFloat() / 2f)).coerceIn(0f, 1f)
-
-                val x0 = cx + sin(alpha0) * rx
-                val y0 = arcTopY + (1f - cos(alpha0)) * ry
-                val x1 = cx + sin(alpha1) * rx
-                val y1 = arcTopY + (1f - cos(alpha1)) * ry
-
-                val outerAlpha = (fade * (if (isDragging) 0.85f else 0.60f)).coerceIn(0f, 1f)
-                val innerAlpha = (fade * (if (isDragging) 1.0f else 0.85f)).coerceIn(0f, 1f)
-
-                // Outer neon glow stroke
-                drawLine(
-                    color = glowColor.copy(alpha = outerAlpha),
-                    start = Offset(x0, y0),
-                    end = Offset(x1, y1),
-                    strokeWidth = 3.5.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-                // Inner bright stroke
-                drawLine(
-                    color = coreColor.copy(alpha = innerAlpha),
-                    start = Offset(x0, y0),
-                    end = Offset(x1, y1),
-                    strokeWidth = 1.6.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
+            // 1. Draw smooth uniform blue/cyan arc as a single continuous Path without segment cells
+            val arcSteps = 96
+            val arcPath = Path().apply {
+                for (i in 0..arcSteps) {
+                    val t = i.toFloat() / arcSteps
+                    val alpha = -phiMaxRad + t * 2f * phiMaxRad
+                    val x = cx + sin(alpha) * rx
+                    val y = arcTopY + (1f - cos(alpha)) * ry
+                    if (i == 0) {
+                        moveTo(x, y)
+                    } else {
+                        lineTo(x, y)
+                    }
+                }
             }
+
+            val arcColor = if (isDark) {
+                if (isDragging) Color(0xFF7DD3FC) else Color(0xFF38BDF8)
+            } else {
+                if (isDragging) Color(0xFF0284C7) else Color(0xFF0EA5E9)
+            }
+
+            val arcBrush = Brush.horizontalGradient(
+                0.00f to arcColor.copy(alpha = 0f),
+                0.06f to arcColor,
+                0.94f to arcColor,
+                1.00f to arcColor.copy(alpha = 0f),
+                startX = cx - targetHalfWidth,
+                endX = cx + targetHalfWidth,
+            )
+
+            // Draw single continuous smooth arc stroke
+            drawPath(
+                path = arcPath,
+                brush = arcBrush,
+                style = Stroke(
+                    width = 3.dp.toPx(),
+                    cap = StrokeCap.Round,
+                ),
+            )
 
             // 2. Draw Ticks & Cardinal Labels
             val fovDeg = 120f // Total angular span visible on the arc
@@ -301,19 +341,50 @@ fun LauncherCompassOverlay(
                     val isIntermediate = deg % 45 == 0 && !isMainCardinal
 
                     val tickLen = when {
-                        isMainCardinal -> 9.dp.toPx()
-                        isIntermediate -> 6.5.dp.toPx()
-                        else -> 3.5.dp.toPx()
+                        isMainCardinal -> 13.dp.toPx()
+                        isIntermediate -> 9.dp.toPx()
+                        else -> 5.dp.toPx()
                     }
 
-                    val tickAlpha = (fade * 0.80f).coerceIn(0f, 1f)
-                    val tickColor = if (deg == 0) Color(0xFFFF4444) else Color(0xFFBAE6FD)
+                    val tickStroke = when {
+                        isMainCardinal -> 2.4.dp.toPx()
+                        isIntermediate -> 1.8.dp.toPx()
+                        else -> 1.2.dp.toPx()
+                    }
+
+                    val tickAlpha = (fade * 0.90f).coerceIn(0f, 1f)
+                    val tickColor = if (isDark) {
+                        when {
+                            deg == 0 -> Color(0xFFFF4444)
+                            isMainCardinal -> Color(0xFFE2E8F0)
+                            isIntermediate -> Color(0xFF9CA3AF)
+                            else -> Color(0xFF64748B)
+                        }
+                    } else {
+                        when {
+                            deg == 0 -> Color(0xFFDC2626)
+                            isMainCardinal -> Color(0xFF2D3748)
+                            isIntermediate -> Color(0xFF4B5563)
+                            else -> Color(0xFF94A3B8)
+                        }
+                    }
+
+                    // Contrast dark backing behind ticks in dark mode so they pop on dark road
+                    if (isDark && (isMainCardinal || isIntermediate)) {
+                        drawLine(
+                            color = Color(0x99000000).copy(alpha = tickAlpha),
+                            start = Offset(px, py),
+                            end = Offset(px + nx * tickLen, py + ny * tickLen),
+                            strokeWidth = tickStroke + 1.6.dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                    }
 
                     drawLine(
                         color = tickColor.copy(alpha = tickAlpha),
                         start = Offset(px, py),
                         end = Offset(px + nx * tickLen, py + ny * tickLen),
-                        strokeWidth = if (isMainCardinal) 1.8.dp.toPx() else 1.2.dp.toPx(),
+                        strokeWidth = tickStroke,
                         cap = StrokeCap.Round,
                     )
 
@@ -321,27 +392,41 @@ fun LauncherCompassOverlay(
                     if (deg % 45 == 0) {
                         val label = CARDINAL_POINTS.firstOrNull { it.first == degF }?.second
                         if (label != null) {
-                            val textDist = tickLen + 11.dp.toPx()
-                            val tx = px + nx * textDist
-                            val ty = py + ny * textDist + 3.5.dp.toPx() // baseline adjust
+                            val isMain = deg % 90 == 0
+                            val fontSize = if (isMain) 14.dp.toPx() else 11.5.dp.toPx()
+                            paintTextFill.textSize = fontSize
 
-                            val textAlpha = (fade * 255f).roundToInt().coerceIn(0, 255)
-                            if (deg == 0) {
-                                // North in vivid red
-                                paintText.setARGB(textAlpha, 255, 68, 68)
+                            val textDist = tickLen + (if (isMain) 13.dp.toPx() else 11.dp.toPx())
+                            val tx = px + nx * textDist
+                            val ty = py + ny * textDist + 4.dp.toPx() // baseline adjust
+
+                            // Boost visibility towards edges so letters don't wash out
+                            val textAlpha = (sqrt(fade) * 255f).roundToInt().coerceIn(70, 255)
+
+                            // Letters: graphite in light theme, light grey in dark theme
+                            val letterColor = if (isDark) {
+                                if (isMain) Color(0xFFE2E8F0) else Color(0xFF9CA3AF)
                             } else {
-                                paintText.setARGB(textAlpha, 240, 246, 252)
+                                if (isMain) Color(0xFF2D3748) else Color(0xFF4B5563)
                             }
-                            drawContext.canvas.nativeCanvas.drawText(label, tx, ty, paintText)
+
+                            paintTextFill.setARGB(
+                                textAlpha,
+                                (letterColor.red * 255f).roundToInt(),
+                                (letterColor.green * 255f).roundToInt(),
+                                (letterColor.blue * 255f).roundToInt(),
+                            )
+                            drawContext.canvas.nativeCanvas.drawText(label, tx, ty, paintTextFill)
                         }
                     }
                 }
             }
 
-            // 3. Small Red Heading Triangle (indicates car forward course)
-            val arrowApexY = arcTopY - 2.dp.toPx()
-            val arrowBaseY = arcTopY - 10.dp.toPx()
-            val arrowHalfW = 5.5.dp.toPx()
+            // 3. Red Heading Triangle placed BELOW the arc, pointing UPWARDS at current course
+            val arrowApexY = arcTopY + 4.dp.toPx()
+            val arrowHeight = 9.dp.toPx()
+            val arrowBaseY = arrowApexY + arrowHeight
+            val arrowHalfW = 6.5.dp.toPx()
 
             val trianglePath = Path().apply {
                 moveTo(cx, arrowApexY)
@@ -350,25 +435,52 @@ fun LauncherCompassOverlay(
                 close()
             }
 
-            // Glow around triangle
-            drawPath(
-                path = trianglePath,
-                color = Color(0x66FF2222),
-            )
-            // Solid red arrow
-            drawPath(
-                path = trianglePath,
-                color = Color(0xFFFF2222),
-            )
+            if (isDark) {
+                // Subtle dark outline behind triangle for contrast against dark road
+                drawPath(
+                    path = trianglePath,
+                    color = Color(0xCC000000),
+                    style = Stroke(
+                        width = 2.dp.toPx(),
+                    ),
+                )
+                // Glow around triangle
+                drawPath(
+                    path = trianglePath,
+                    color = Color(0x44FF2222),
+                )
+                // Solid red arrow
+                drawPath(
+                    path = trianglePath,
+                    color = Color(0xFFFF3B30),
+                )
+            } else {
+                drawPath(
+                    path = trianglePath,
+                    color = Color(0xFFDC2626),
+                )
+            }
 
-            // Current heading in degrees above the arrow
+            // Current heading in degrees placed DOWN, UNDER the triangle
             val degreeText = "${displayHeading.roundToInt()}°"
-            paintDegree.setARGB(220, 255, 80, 80)
+            val degreeY = arrowBaseY + 13.dp.toPx()
+            if (isDark) {
+                paintDegreeStroke.setARGB(220, 0, 0, 0)
+                drawContext.canvas.nativeCanvas.drawText(
+                    degreeText,
+                    cx,
+                    degreeY,
+                    paintDegreeStroke,
+                )
+                paintDegreeFill.setARGB(255, 255, 90, 90)
+            } else {
+                paintDegreeFill.setARGB(255, 220, 38, 38)
+            }
             drawContext.canvas.nativeCanvas.drawText(
                 degreeText,
                 cx,
-                arrowBaseY - 3.dp.toPx(),
-                paintDegree,
+                degreeY,
+                paintDegreeFill,
             )
         }
     }

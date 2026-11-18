@@ -107,6 +107,9 @@ object CanDataRepository {
     private val _localTripDistanceKm = MutableStateFlow<Float?>(null)
     val localTripDistanceKm: StateFlow<Float?> = _localTripDistanceKm.asStateFlow()
 
+    private val _manualTripDistanceKm = MutableStateFlow<Float?>(null)
+    val manualTripDistanceKm: StateFlow<Float?> = _manualTripDistanceKm.asStateFlow()
+
     private val _localTripDurationSeconds = MutableStateFlow<Long?>(null)
     val localTripDurationSeconds: StateFlow<Long?> = _localTripDurationSeconds.asStateFlow()
 
@@ -114,6 +117,8 @@ object CanDataRepository {
     private var lastOdometer: UInt? = null
     @Volatile
     private var accumulatedTripDistanceKm: Float = 0f
+    @Volatile
+    private var accumulatedManualTripDistanceKm: Float = 0f
     @Volatile
     private var initialFuelLiters: Float? = null
     @Volatile
@@ -133,6 +138,7 @@ object CanDataRepository {
     private const val PREFS_PERSISTENCE = "tbox_can_data_persistence"
     private const val KEY_AVG_FUEL = "saved_avg_fuel_consumption"
     private const val KEY_TRIP_DIST = "saved_local_trip_distance"
+    private const val KEY_MANUAL_TRIP_DIST = "saved_manual_trip_distance"
     private const val KEY_INIT_FUEL = "saved_initial_fuel_liters"
     private const val KEY_LAST_ODO = "saved_last_odometer"
     private const val KEY_TRIP_START_TIME = "saved_trip_start_time"
@@ -168,6 +174,15 @@ object CanDataRepository {
                         accumulatedTripDistanceKm = savedDist
                         _localTripDistanceKm.value = savedDist
                     }
+                }
+                if (prefs.contains(KEY_MANUAL_TRIP_DIST)) {
+                    val savedManualDist = prefs.getFloat(KEY_MANUAL_TRIP_DIST, -1f)
+                    if (savedManualDist >= 0f) {
+                        accumulatedManualTripDistanceKm = savedManualDist
+                        _manualTripDistanceKm.value = savedManualDist
+                    }
+                } else {
+                    _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
                 }
                 if (prefs.contains(KEY_INIT_FUEL)) {
                     val savedFuel = prefs.getFloat(KEY_INIT_FUEL, -1f)
@@ -231,6 +246,7 @@ object CanDataRepository {
             val editor = prefs.edit()
             previousAvgConsumption?.let { editor.putFloat(KEY_AVG_FUEL, it) } ?: editor.remove(KEY_AVG_FUEL)
             editor.putFloat(KEY_TRIP_DIST, accumulatedTripDistanceKm)
+            editor.putFloat(KEY_MANUAL_TRIP_DIST, accumulatedManualTripDistanceKm)
             initialFuelLiters?.let { editor.putFloat(KEY_INIT_FUEL, it) } ?: editor.remove(KEY_INIT_FUEL)
             lastOdometer?.let { editor.putLong(KEY_LAST_ODO, it.toLong()) } ?: editor.remove(KEY_LAST_ODO)
             editor.putLong(KEY_TRIP_START_TIME, tripStartTimeMs)
@@ -339,6 +355,9 @@ object CanDataRepository {
     private val _isWindowsBlocked = MutableStateFlow<Boolean?>(null)
     val isWindowsBlocked: StateFlow<Boolean?> = _isWindowsBlocked.asStateFlow()
 
+    private val _rainSensorDetected = MutableStateFlow(false)
+    val rainSensorDetected: StateFlow<Boolean> = _rainSensorDetected.asStateFlow()
+
     private val _canFramesStructured = MutableStateFlow<Map<String, List<CanFrame>>>(emptyMap())
     val canFramesStructured: StateFlow<Map<String, List<CanFrame>>> = _canFramesStructured.asStateFlow()
 
@@ -394,14 +413,17 @@ object CanDataRepository {
                 val deltaKm = (newValue - prevOdo).toFloat()
                 if (deltaKm > 0f && deltaKm < 1000f) {
                     accumulatedTripDistanceKm += deltaKm
+                    accumulatedManualTripDistanceKm += deltaKm
                     currentSegmentDistKm += deltaKm
                     _localTripDistanceKm.value = accumulatedTripDistanceKm
+                    _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
                 }
             } else {
                 lastOdometer = newValue
             }
         } else {
             _localTripDistanceKm.value = accumulatedTripDistanceKm
+            _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
         }
         lastOdometer = newValue
 
@@ -443,6 +465,13 @@ object CanDataRepository {
         lastKnownFuelLiters = initialFuelLiters
         previousAvgConsumption = null
         _averageFuelConsumption.value = null
+        savePersistedState(immediate = true)
+    }
+
+    fun resetManualTripDistance() {
+        loadPersistedStateIfNeeded()
+        accumulatedManualTripDistanceKm = 0f
+        _manualTripDistanceKm.value = 0f
         savePersistedState(immediate = true)
     }
 
@@ -716,6 +745,10 @@ object CanDataRepository {
 
     fun updateInsideTemperature(newValue: Float?) {
         _insideTemperature.setIfChanged(newValue)
+    }
+
+    fun updateRainSensorDetected(detected: Boolean) {
+        _rainSensorDetected.setIfChanged(detected)
     }
 
     fun applyInsideTemperatureFromCan(

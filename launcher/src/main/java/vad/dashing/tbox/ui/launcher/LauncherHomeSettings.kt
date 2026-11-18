@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -117,32 +119,69 @@ fun ThemeSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_vs_winter_theme),
-            active = LauncherThemeState.winterThemeEnabled,
-            onClick = {
-                LauncherThemeState.setWinterThemeEnabled(context, !LauncherThemeState.winterThemeEnabled)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_vs_winter_theme_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_vs_winter_theme_temp),
-            active = LauncherThemeState.winterThemeTempBelowZeroEnabled,
-            onClick = {
-                LauncherThemeState.setWinterThemeTempBelowZeroEnabled(context, !LauncherThemeState.winterThemeTempBelowZeroEnabled)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_vs_winter_theme_temp_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
+        AdasWeatherSettings()
         UiClickSoundsSettingToggle()
     }
+}
+
+@Composable
+fun AdasWeatherSettings() {
+    val context = LocalContext.current
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_winter_theme),
+        active = LauncherThemeState.winterThemeEnabled,
+        onClick = {
+            LauncherThemeState.setWinterThemeEnabled(context, !LauncherThemeState.winterThemeEnabled)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_winter_theme_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_winter_theme_temp),
+        active = LauncherThemeState.winterThemeTempBelowZeroEnabled,
+        onClick = {
+            LauncherThemeState.setWinterThemeTempBelowZeroEnabled(context, !LauncherThemeState.winterThemeTempBelowZeroEnabled)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_winter_theme_temp_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_rain_theme),
+        active = LauncherThemeState.rainThemeEnabled,
+        onClick = {
+            LauncherThemeState.setRainThemeEnabled(context, !LauncherThemeState.rainThemeEnabled)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_rain_theme_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    val isManualWeatherActive = LauncherThemeState.winterThemeEnabled ||
+        LauncherThemeState.rainThemeEnabled ||
+        LauncherThemeState.winterThemeTempBelowZeroEnabled
+    val autoWeatherAvailable = !isManualWeatherActive
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_auto_weather),
+        active = LauncherThemeState.autoWeatherEnabled,
+        enabled = autoWeatherAvailable,
+        onClick = {
+            LauncherThemeState.setAutoWeatherEnabled(context, !LauncherThemeState.autoWeatherEnabled)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_auto_weather_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
 }
 
 @Composable
@@ -2048,9 +2087,6 @@ fun CruiseControlSettingsContent() {
         )
 
         AdasCompassWidgetToggle()
-        NavSpeedWidgetToggle()
-        NavTrafficLightWidgetToggle()
-        NavTrafficLightScaleSlider()
 
         val accPresetsInQuickSettingsRevision by LauncherAppConfigStore.accPresetsInQuickSettingsRevisionFlow
             .collectAsStateWithLifecycle()
@@ -2154,10 +2190,117 @@ fun CruiseControlSettingsContent() {
             fontSize = 12.sp,
         )
 
+        AdasWeatherSettings()
+
         AdasAccBySpeedLimitToggle()
         AdasAccSpeedOffsetSlider()
 
         CruisePresetsSettings()
+    }
+}
+
+@Composable
+fun YandexNavSettingsContent() {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        NavSpeedWidgetToggle()
+        NavTrafficLightWidgetToggle()
+        NavTrafficLightScaleSlider()
+
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.launcher_yandex_nav_bg_section_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+        )
+        Text(
+            text = stringResource(R.string.launcher_yandex_nav_bg_section_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+
+        NavBgManeuverWidgetToggle()
+        NavBgEtaWidgetToggle()
+        NavBgLanesWidgetToggle()
+        NavBgTrafficLightWidgetToggle()
+    }
+}
+
+@Composable
+private fun NavBgManeuverWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgManeuverRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgManeuverVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_maneuver_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavBgManeuverVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_maneuver_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgEtaWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgEtaRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgEtaVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_eta_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavBgEtaVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_eta_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgLanesWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgLanesRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgLanesVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_lanes_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavBgLanesVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_lanes_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgTrafficLightWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgTrafficLightRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgTrafficLightVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_traffic_light_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavBgTrafficLightVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_traffic_light_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
     }
 }
 

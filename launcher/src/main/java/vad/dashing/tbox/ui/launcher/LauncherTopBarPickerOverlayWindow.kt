@@ -87,6 +87,7 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("avg_fuel", "Средний расход", isButton = false, iconRes = R.drawable.ic_launcher_fuel_drop),
         LauncherTopBarItemDescriptor("trip_cost", "Стоимость поездки", isButton = false, iconRes = R.drawable.ic_launcher_trip_cost),
         LauncherTopBarItemDescriptor("trip_duration", "Время поездки", isButton = false, iconRes = R.drawable.ic_launcher_trip_duration),
+        LauncherTopBarItemDescriptor("trip_distance", "Пробег", isButton = false, iconRes = R.drawable.ic_launcher_trip_distance),
         LauncherTopBarItemDescriptor("air_quality", "Качество воздуха (PM 2.5)", isButton = false, iconRes = R.drawable.ic_launcher_leaf),
         LauncherTopBarItemDescriptor("voltage", "Вольтаж АКБ", isButton = false, iconRes = R.drawable.ic_launcher_battery),
         LauncherTopBarItemDescriptor("cpu", "Нагрузка на ЦП", isButton = false, iconRes = R.drawable.ic_launcher_cpu),

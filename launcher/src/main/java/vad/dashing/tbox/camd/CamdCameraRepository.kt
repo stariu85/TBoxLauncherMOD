@@ -313,6 +313,7 @@ object CamdCameraRepository {
                 checkAutoAvmSpeed(appCtx, inputs.speed, inputs.activeGear)
                 check360Cameras(appCtx, inputs.speed, inputs.activeGear, inputs.pdc, inputs.isAvmActive)
                 evaluateSideCameraState(appCtx)
+                checkReverseAvmRetry(appCtx, inputs.activeGear, inputs.isAvmActive)
             }
         }
     }
@@ -521,11 +522,107 @@ object CamdCameraRepository {
         )
     }
 
+    private var reverseAvmRetryJob: Job? = null
+    internal var stockAvmLauncher: ((Context) -> Unit)? = null
+
+    internal fun launchStockAvm(context: Context) {
+        val custom = stockAvmLauncher
+        if (custom != null) {
+            custom.invoke(context)
+            return
+        }
+        val targetCtx = vad.dashing.tbox.LauncherHomeActivityHolder.instance ?: context.applicationContext
+        scope.launch(Dispatchers.Main.immediate) {
+            try {
+                vad.dashing.tbox.ui.launcher.launchLauncherApp(targetCtx, "com.mengbo.avm")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to launch stock AVM com.mengbo.avm", t)
+            }
+        }
+    }
+
+    internal fun shouldCloseCamerasForStockAvm(
+        disableStockAvm: Boolean,
+        activeGear: Char?,
+        speed: Float?,
+    ): Boolean {
+        if (disableStockAvm) return false
+        val isReverseGear = activeGear == 'R'
+        val isSpeedZero = speed != null && speed <= 0f
+        return isReverseGear || isSpeedZero
+    }
+
+    internal fun shouldTriggerReverseAvmRetry(
+        disableStockAvm: Boolean,
+        activeGear: Char?,
+        isAvmActive: Boolean,
+    ): Boolean {
+        return activeGear == 'R' && !disableStockAvm && !isAvmActive
+    }
+
+    internal fun checkReverseAvmRetry(context: Context, activeGear: Char?, isAvmActive: Boolean) {
+        val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
+        if (!shouldTriggerReverseAvmRetry(disableStockAvm, activeGear, isAvmActive)) {
+            reverseAvmRetryJob?.cancel()
+            reverseAvmRetryJob = null
+            return
+        }
+
+        if (reverseAvmRetryJob?.isActive == true) return
+
+        reverseAvmRetryJob = scope.launch {
+            val hadActiveCameras = hasActiveCameras() ||
+                turnSignalJob?.isActive == true ||
+                desktopOperationJob?.isActive == true ||
+                reverseCamerasJob?.isActive == true
+
+            if (hadActiveCameras) {
+                closeAll(context)
+                if (shouldTriggerReverseAvmRetry(
+                        disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context),
+                        activeGear = getCurrentActiveGear(),
+                        isAvmActive = LauncherAvmRepository.isAvmActive.value,
+                    )
+                ) {
+                    vad.dashing.tbox.DclLogRecorder.log(
+                        "CAMD_CAMERA",
+                        "Cameras closed in R gear, invoking stock AVM immediately"
+                    )
+                    launchStockAvm(context)
+                }
+            }
+
+            while (isActive &&
+                shouldTriggerReverseAvmRetry(
+                    disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context),
+                    activeGear = getCurrentActiveGear(),
+                    isAvmActive = LauncherAvmRepository.isAvmActive.value,
+                )
+            ) {
+                delay(1000L)
+                if (!shouldTriggerReverseAvmRetry(
+                        disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context),
+                        activeGear = getCurrentActiveGear(),
+                        isAvmActive = LauncherAvmRepository.isAvmActive.value,
+                    )
+                ) {
+                    break
+                }
+                vad.dashing.tbox.DclLogRecorder.log(
+                    "CAMD_CAMERA",
+                    "R gear active but stock AVM not active -> retrying stock AVM call (1s interval)"
+                )
+                launchStockAvm(context)
+            }
+        }
+    }
+
     internal fun checkReverseGearCameras(context: Context, speed: Float?, activeGear: Char?) {
         val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc
             ?: LauncherAdasRepository.state.value.pdc
         val isAvmActive = LauncherAvmRepository.isAvmActive.value
         check360Cameras(context, speed, activeGear, pdc, isAvmActive)
+        checkReverseAvmRetry(context, activeGear, isAvmActive)
     }
 
     internal fun resolveReverseCamerasTarget(
@@ -1032,6 +1129,26 @@ object CamdCameraRepository {
     fun evaluateSideCameraState(context: Context) {
         if (!vad.dashing.tbox.LauncherHomeActivityHolder.isFirstDrawComplete) return
 
+        val speed = UniversalCanRepository.carSpeedState.value ?: 0f
+        val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
+        val activeGear = getCurrentActiveGear()
+        val isReverseGear = activeGear == 'R'
+        val isAvmActive = LauncherAvmRepository.isAvmActive.value
+
+        checkReverseAvmRetry(context, activeGear, isAvmActive)
+
+        if (shouldCloseCamerasForStockAvm(disableStockAvm, activeGear, speed)) {
+            if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true || reverseCamerasJob?.isActive == true) {
+                closeAllIfOpen(context)
+            }
+            if (_activeTurnSignalSide.value != null || _activeTurnSignalCamera.value != null || _activeIsLowSpeed) {
+                _activeTurnSignalSide.value = null
+                _activeTurnSignalCamera.value = null
+                _activeIsLowSpeed = false
+            }
+            return
+        }
+
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
         val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
 
@@ -1049,19 +1166,14 @@ object CamdCameraRepository {
             return
         }
 
-        val speed = UniversalCanRepository.carSpeedState.value ?: 0f
         val lowSpeedThreshold = LauncherAppConfigStore.camdLowSpeedThreshold(context).toFloat()
 
         val turnSignalSide = turnSignalsLatch.latchedSide.value
         val steerSide = currentSteerSide
         val triggerMode = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
-        val isAvmActive = LauncherAvmRepository.isAvmActive.value
         val isReverseActive = _isReverseCamerasOpen.value || reverseCamerasTriggered || pdcCamerasTriggered
         val isWidgetActive = _activeWidgetCameraMode.value != CamdWidgetCameraMode.NONE || _isDesktopCamerasOpen.value
-        val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
         val reverseCamerasEnabled = LauncherAppConfigStore.camdReverseCameras(context)
-        val activeGear = getCurrentActiveGear()
-        val isReverseGear = activeGear == 'R'
         val invertSteerOnReverse = disableStockAvm && !reverseCamerasEnabled
 
         val (targetSide, targetIsLowSpeed) = resolveTargetSideCamera(
@@ -1079,6 +1191,7 @@ object CamdCameraRepository {
             isReverseGear = isReverseGear,
             invertSteerOnReverse = invertSteerOnReverse,
             isWidgetActive = isWidgetActive,
+            disableStockAvm = disableStockAvm,
         )
 
         applyTargetSideCamera(context, targetSide, targetIsLowSpeed)
@@ -1099,8 +1212,16 @@ object CamdCameraRepository {
         isReverseGear: Boolean = false,
         invertSteerOnReverse: Boolean = false,
         isWidgetActive: Boolean = false,
+        disableStockAvm: Boolean = invertSteerOnReverse,
     ): Pair<TurnSignalSide?, Boolean> {
         if (isAvmActive || isReverseActive || isWidgetActive) {
+            return null to false
+        }
+
+        // When stock OEM AVM is enabled (!disableStockAvm):
+        // 1. At complete stop (speed <= 0f), side cameras must close / not activate
+        // 2. In reverse gear (R), side cameras must close / not activate so they do not block OEM AVM
+        if (shouldCloseCamerasForStockAvm(disableStockAvm, if (isReverseGear) 'R' else null, speed)) {
             return null to false
         }
 

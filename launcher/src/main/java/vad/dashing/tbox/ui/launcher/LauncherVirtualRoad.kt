@@ -97,6 +97,15 @@ private data class Snowflake(
     val phase: Float,
 )
 
+private data class Raindrop(
+    var x: Float,
+    var y: Float,
+    val speed: Float,
+    val length: Float,
+    val strokeWidth: Float,
+    val alpha: Float,
+)
+
 private const val DASH_SPACING = 72f
 
 internal class VirtualRoadDrawCache {
@@ -144,7 +153,13 @@ fun LauncherVirtualRoad(
     val winterTempEnabled = LauncherThemeState.winterThemeTempBelowZeroEnabled
     val tempBelowZero = outsideTemp != null && outsideTemp!! < 0f
 
-    val effectiveIsSnow = winterEnabled || (winterTempEnabled && tempBelowZero)
+    val autoWeatherType by LauncherAutoWeatherManager.autoWeatherType.collectAsStateWithLifecycle()
+
+    val manualSnow = isSnow || winterEnabled || (winterTempEnabled && tempBelowZero)
+    val manualRain = LauncherThemeState.rainThemeEnabled
+
+    val effectiveIsSnow = manualSnow || (!manualRain && autoWeatherType == AutoWeatherType.Snow)
+    val effectiveIsRain = (!effectiveIsSnow) && (manualRain || autoWeatherType == AutoWeatherType.Rain)
 
     val context = LocalContext.current
 
@@ -163,11 +178,26 @@ fun LauncherVirtualRoad(
         }
     }
 
+    val raindrops = remember {
+        val rng = kotlin.random.Random(4242)
+        List(60) {
+            Raindrop(
+                x = rng.nextFloat(),
+                y = rng.nextFloat() * 0.55f,
+                speed = 0.85f + rng.nextFloat() * 0.90f,
+                length = 14f + rng.nextFloat() * 16f,
+                strokeWidth = 1.2f + rng.nextFloat() * 1.0f,
+                alpha = 0.45f + rng.nextFloat() * 0.45f,
+            )
+        }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
-    val snowPhaseState = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(effectiveIsSnow) {
-        if (!effectiveIsSnow) return@LaunchedEffect
-        var lastRoadFrameNs = 0L
+    val weatherActive = effectiveIsSnow || effectiveIsRain
+    val weatherPhaseState = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(weatherActive) {
+        if (!weatherActive) return@LaunchedEffect
+        var lastWeatherFrameNs = 0L
         while (isActive) {
             withFrameNanos { frameNs ->
                 val started = lifecycleOwner.lifecycle.currentState
@@ -175,17 +205,18 @@ fun LauncherVirtualRoad(
                 val hidden = LauncherWindowState.hiddenForExternalApp
                 if (!started || hidden) return@withFrameNanos
 
-                if (lastRoadFrameNs == 0L) {
-                    lastRoadFrameNs = frameNs
+                if (lastWeatherFrameNs == 0L) {
+                    lastWeatherFrameNs = frameNs
                     return@withFrameNanos
                 }
-                val deltaNs = frameNs - lastRoadFrameNs
+                val deltaNs = frameNs - lastWeatherFrameNs
                 val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.05f)
-                lastRoadFrameNs = frameNs
+                lastWeatherFrameNs = frameNs
 
-                snowflakes.forEach { flake ->
-                    val spd = currentSpeedKmh
-                    val steer = currentSteerDeg
+                val spd = currentSpeedKmh
+                val steer = currentSteerDeg
+
+                if (effectiveIsSnow) {
                     val speedMultiplier = when {
                         spd <= 0f -> 0.15f
                         spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
@@ -195,16 +226,39 @@ fun LauncherVirtualRoad(
                     // Turning left (steer < 0) -> drift right (steerDrift > 0)
                     val steerDrift = (-steer * 0.0006f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
 
-                    flake.y += flake.speed * speedMultiplier * dtSec
-                    flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
-                    if (flake.y > 0.5f) {
-                        flake.y = 0f
-                        flake.x = kotlin.random.Random.nextFloat()
+                    snowflakes.forEach { flake ->
+                        flake.y += flake.speed * speedMultiplier * dtSec
+                        flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
+                        if (flake.y > 0.5f) {
+                            flake.y = 0f
+                            flake.x = kotlin.random.Random.nextFloat()
+                        }
+                        if (flake.x < 0f) flake.x += 1f
+                        if (flake.x > 1f) flake.x -= 1f
                     }
-                    if (flake.x < 0f) flake.x += 1f
-                    if (flake.x > 1f) flake.x -= 1f
                 }
-                snowPhaseState.floatValue += dtSec
+
+                if (effectiveIsRain) {
+                    val speedMultiplier = when {
+                        spd <= 0f -> 0.45f
+                        spd <= 100f -> 0.45f + (spd / 100f) * 0.95f
+                        else -> 1.4f + ((spd - 100f) / 100f) * 0.6f
+                    }
+                    val steerDrift = (-steer * 0.0010f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
+
+                    raindrops.forEach { drop ->
+                        drop.y += drop.speed * speedMultiplier * dtSec
+                        drop.x += steerDrift * dtSec
+                        if (drop.y > 0.55f) {
+                            drop.y = 0f
+                            drop.x = kotlin.random.Random.nextFloat()
+                        }
+                        if (drop.x < 0f) drop.x += 1f
+                        if (drop.x > 1f) drop.x -= 1f
+                    }
+                }
+
+                weatherPhaseState.floatValue += dtSec
             }
         }
     }
@@ -304,8 +358,8 @@ fun LauncherVirtualRoad(
             .fillMaxSize()
             .graphicsLayer { alpha = driveBlend },
     ) {
-        val currentSnowPhase = snowPhaseState.floatValue
-        currentSnowPhase.let {}
+        val currentWeatherPhase = weatherPhaseState.floatValue
+        currentWeatherPhase.let {}
         drawVirtualRoad(
             roadPhase = roadPhaseState.floatValue,
             speedKmh = speedKmh,
@@ -323,6 +377,9 @@ fun LauncherVirtualRoad(
             bsdRightProgress = bsdRightProgress,
             isSnow = effectiveIsSnow,
             snowflakes = snowflakes,
+            isRain = effectiveIsRain,
+            raindrops = raindrops,
+            steerAngleDeg = currentSteerDeg,
             drawCache = drawCache,
         )
     }
@@ -564,6 +621,9 @@ private fun DrawScope.drawVirtualRoad(
     bsdRightProgress: Float = 0f,
     isSnow: Boolean = false,
     snowflakes: List<Snowflake> = emptyList(),
+    isRain: Boolean = false,
+    raindrops: List<Raindrop> = emptyList(),
+    steerAngleDeg: Float = 0f,
     drawCache: VirtualRoadDrawCache? = null,
 ) {
     val w = size.width
@@ -765,6 +825,51 @@ private fun DrawScope.drawVirtualRoad(
 
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
     drawSnowflakes(isSnow = isSnow, snowflakes = snowflakes)
+    drawRaindrops(
+        isRain = isRain,
+        raindrops = raindrops,
+        steerAngleDeg = steerAngleDeg,
+        speedKmh = speedKmh,
+    )
+}
+
+private fun DrawScope.drawRaindrops(
+    isRain: Boolean,
+    raindrops: List<Raindrop>,
+    steerAngleDeg: Float,
+    speedKmh: Float,
+) {
+    if (!isRain || raindrops.isEmpty()) return
+    val w = size.width
+    val h = size.height
+    val dark = LauncherThemeState.darkTheme
+    val rainColor = if (dark) Color(0xFFC0E0FF) else Color(0xFF38BDF8)
+
+    val speedMult = when {
+        speedKmh <= 0f -> 1.0f
+        speedKmh <= 100f -> 1.0f + (speedKmh / 100f) * 0.6f
+        else -> 1.6f
+    }
+    val slantX = (-steerAngleDeg * 0.035f).coerceIn(-12f, 12f)
+
+    raindrops.forEach { drop ->
+        val startX = drop.x * w
+        val startY = drop.y * h
+        val relY = drop.y / 0.55f
+        val alpha = (1f - relY).coerceIn(0f, 1f) * drop.alpha
+        if (alpha > 0.02f) {
+            val length = drop.length * speedMult
+            val endX = startX + slantX
+            val endY = startY + length
+            drawLine(
+                color = rainColor.copy(alpha = alpha * (if (dark) 0.85f else 0.75f)),
+                start = Offset(startX, startY),
+                end = Offset(endX, endY),
+                strokeWidth = drop.strokeWidth,
+                cap = StrokeCap.Round,
+            )
+        }
+    }
 }
 
 private fun DrawScope.drawSnowflakes(

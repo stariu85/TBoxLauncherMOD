@@ -202,6 +202,11 @@ fun SimulationSectionCard(
                     onClick = { LauncherDevVehicleState.toggleAdasCruise() },
                 )
                 SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_acc_fault),
+                    active = LauncherDevVehicleState.adasAccFault,
+                    onClick = { LauncherDevVehicleState.toggleAdasAccFault() },
+                )
+                SimulationToggleRow(
                     label = stringResource(R.string.launcher_vs_sim_ldw_tracking),
                     active = LauncherDevVehicleState.adasLanesActive,
                     onClick = { LauncherDevVehicleState.toggleAdasLanes() },
@@ -288,6 +293,14 @@ fun SimulationSectionCard(
                     label = wiperLabel,
                     active = LauncherDevVehicleState.wiperStatus != null && LauncherDevVehicleState.wiperStatus != 0,
                     onClick = { LauncherDevVehicleState.cycleWiperStatus() },
+                )
+                SimulationToggleRow(
+                    label = "Датчик дождя: " + if (LauncherDevVehicleState.rainDetected) "Дождь" else "Сухо",
+                    active = LauncherDevVehicleState.rainDetected,
+                    onClick = {
+                        LauncherDevVehicleState.simulateEnabled = true
+                        LauncherDevVehicleState.rainDetected = !LauncherDevVehicleState.rainDetected
+                    },
                 )
 
                 Spacer(Modifier.height(4.dp))

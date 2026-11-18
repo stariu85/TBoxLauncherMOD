@@ -353,6 +353,54 @@ fun LauncherLeftPanel(
         navTrafficLightXRatio = LauncherAppConfigStore.navTrafficLightXRatio(context)
         navTrafficLightYRatio = LauncherAppConfigStore.navTrafficLightYRatio(context)
     }
+
+    val navBgManeuverRevision by LauncherAppConfigStore.navBgManeuverRevisionFlow.collectAsStateWithLifecycle()
+    val navBgManeuverVisible = remember(context, navBgManeuverRevision) {
+        LauncherAppConfigStore.navBgManeuverVisible(context)
+    }
+    val navBgManeuverPositionRevision by LauncherAppConfigStore.navBgManeuverPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navBgManeuverXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgManeuverXRatio(context)) }
+    var navBgManeuverYRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgManeuverYRatio(context)) }
+    LaunchedEffect(navBgManeuverPositionRevision) {
+        navBgManeuverXRatio = LauncherAppConfigStore.navBgManeuverXRatio(context)
+        navBgManeuverYRatio = LauncherAppConfigStore.navBgManeuverYRatio(context)
+    }
+
+    val navBgEtaRevision by LauncherAppConfigStore.navBgEtaRevisionFlow.collectAsStateWithLifecycle()
+    val navBgEtaVisible = remember(context, navBgEtaRevision) {
+        LauncherAppConfigStore.navBgEtaVisible(context)
+    }
+    val navBgEtaPositionRevision by LauncherAppConfigStore.navBgEtaPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navBgEtaXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgEtaXRatio(context)) }
+    var navBgEtaYRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgEtaYRatio(context)) }
+    LaunchedEffect(navBgEtaPositionRevision) {
+        navBgEtaXRatio = LauncherAppConfigStore.navBgEtaXRatio(context)
+        navBgEtaYRatio = LauncherAppConfigStore.navBgEtaYRatio(context)
+    }
+
+    val navBgLanesRevision by LauncherAppConfigStore.navBgLanesRevisionFlow.collectAsStateWithLifecycle()
+    val navBgLanesVisible = remember(context, navBgLanesRevision) {
+        LauncherAppConfigStore.navBgLanesVisible(context)
+    }
+    val navBgLanesPositionRevision by LauncherAppConfigStore.navBgLanesPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navBgLanesXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgLanesXRatio(context)) }
+    var navBgLanesYRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgLanesYRatio(context)) }
+    LaunchedEffect(navBgLanesPositionRevision) {
+        navBgLanesXRatio = LauncherAppConfigStore.navBgLanesXRatio(context)
+        navBgLanesYRatio = LauncherAppConfigStore.navBgLanesYRatio(context)
+    }
+
+    val navBgTrafficLightRevision by LauncherAppConfigStore.navBgTrafficLightRevisionFlow.collectAsStateWithLifecycle()
+    val navBgTrafficLightVisible = remember(context, navBgTrafficLightRevision) {
+        LauncherAppConfigStore.navBgTrafficLightVisible(context)
+    }
+    val navBgTrafficLightPositionRevision by LauncherAppConfigStore.navBgTrafficLightPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navBgTrafficLightXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgTrafficLightXRatio(context)) }
+    var navBgTrafficLightYRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgTrafficLightYRatio(context)) }
+    LaunchedEffect(navBgTrafficLightPositionRevision) {
+        navBgTrafficLightXRatio = LauncherAppConfigStore.navBgTrafficLightXRatio(context)
+        navBgTrafficLightYRatio = LauncherAppConfigStore.navBgTrafficLightYRatio(context)
+    }
     val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
         .collectAsStateWithLifecycle()
     val smartPanelEnabled = remember(context, smartPanelRevision) {
@@ -892,7 +940,7 @@ fun LauncherLeftPanel(
                     val containerWidthPx = with(density) { maxWidth.toPx() }
                     val containerHeightPx = with(density) { maxHeight.toPx() }
 
-                    if (showDriveView) {
+                    if (showDriveView || navState.isNavigating || LauncherDevVehicleState.simulateEnabled) {
                         if (classicSpeedLimitVisible && tsrSystemEnabled) {
                             val centerX = containerWidthPx * speedLimitXRatio
                             val centerY = containerHeightPx * speedLimitYRatio
@@ -996,7 +1044,7 @@ fun LauncherLeftPanel(
 
                         // Freely Movable Compass Overlay
                         if (compassWidgetEnabled) {
-                            val compassHeightDp = 115.dp
+                            val compassHeightDp = COMPASS_OVERLAY_HEIGHT_DP.dp
                             val compassHeightPx = with(density) { compassHeightDp.toPx() }
                             val topPx = (containerHeightPx * compassYRatio - compassHeightPx / 2f)
                                 .coerceIn(0f, (containerHeightPx - compassHeightPx).coerceAtLeast(0f))
@@ -1021,6 +1069,122 @@ fun LauncherLeftPanel(
                                     .fillMaxWidth()
                                     .offset(y = topDp)
                                     .zIndex(158f),
+                            )
+                        }
+
+                        // Freely Movable Background Navigation Overlay 5: Maneuver Block
+                        if (navBgManeuverVisible) {
+                            val mWidthPx = with(density) { 150.dp.toPx() }
+                            val mHeightPx = with(density) { 54.dp.toPx() }
+                            val mCenterX = containerWidthPx * navBgManeuverXRatio
+                            val mCenterY = containerHeightPx * navBgManeuverYRatio
+                            val mLeftPx = (mCenterX - mWidthPx / 2f).coerceIn(0f, (containerWidthPx - mWidthPx).coerceAtLeast(0f))
+                            val mTopPx = (mCenterY - mHeightPx / 2f).coerceIn(0f, (containerHeightPx - mHeightPx).coerceAtLeast(0f))
+
+                            LauncherNavBgManeuverOverlay(
+                                onDrag = { delta ->
+                                    if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                        val currentX = containerWidthPx * navBgManeuverXRatio
+                                        val currentY = containerHeightPx * navBgManeuverYRatio
+                                        val newX = (currentX + delta.x).coerceIn(mWidthPx / 2f, containerWidthPx - mWidthPx / 2f)
+                                        val newY = (currentY + delta.y).coerceIn(mHeightPx / 2f, containerHeightPx - mHeightPx / 2f)
+                                        navBgManeuverXRatio = newX / containerWidthPx
+                                        navBgManeuverYRatio = newY / containerHeightPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setNavBgManeuverPosition(context, navBgManeuverXRatio, navBgManeuverYRatio)
+                                },
+                                modifier = Modifier
+                                    .offset(x = with(density) { mLeftPx.toDp() }, y = with(density) { mTopPx.toDp() })
+                                    .zIndex(169f),
+                            )
+                        }
+
+                        // Freely Movable Background Navigation Overlay 6: ETA Block
+                        if (navBgEtaVisible) {
+                            val etaWidthPx = with(density) { 140.dp.toPx() }
+                            val etaHeightPx = with(density) { 40.dp.toPx() }
+                            val etaCenterX = containerWidthPx * navBgEtaXRatio
+                            val etaCenterY = containerHeightPx * navBgEtaYRatio
+                            val etaLeftPx = (etaCenterX - etaWidthPx / 2f).coerceIn(0f, (containerWidthPx - etaWidthPx).coerceAtLeast(0f))
+                            val etaTopPx = (etaCenterY - etaHeightPx / 2f).coerceIn(0f, (containerHeightPx - etaHeightPx).coerceAtLeast(0f))
+
+                            LauncherNavBgEtaOverlay(
+                                onDrag = { delta ->
+                                    if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                        val currentX = containerWidthPx * navBgEtaXRatio
+                                        val currentY = containerHeightPx * navBgEtaYRatio
+                                        val newX = (currentX + delta.x).coerceIn(etaWidthPx / 2f, containerWidthPx - etaWidthPx / 2f)
+                                        val newY = (currentY + delta.y).coerceIn(etaHeightPx / 2f, containerHeightPx - etaHeightPx / 2f)
+                                        navBgEtaXRatio = newX / containerWidthPx
+                                        navBgEtaYRatio = newY / containerHeightPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setNavBgEtaPosition(context, navBgEtaXRatio, navBgEtaYRatio)
+                                },
+                                modifier = Modifier
+                                    .offset(x = with(density) { etaLeftPx.toDp() }, y = with(density) { etaTopPx.toDp() })
+                                    .zIndex(170f),
+                            )
+                        }
+
+                        // Freely Movable Background Navigation Overlay 7: Lanes Block
+                        if (navBgLanesVisible) {
+                            val lanesWidthPx = with(density) { 120.dp.toPx() }
+                            val lanesHeightPx = with(density) { 34.dp.toPx() }
+                            val lanesCenterX = containerWidthPx * navBgLanesXRatio
+                            val lanesCenterY = containerHeightPx * navBgLanesYRatio
+                            val lanesLeftPx = (lanesCenterX - lanesWidthPx / 2f).coerceIn(0f, (containerWidthPx - lanesWidthPx).coerceAtLeast(0f))
+                            val lanesTopPx = (lanesCenterY - lanesHeightPx / 2f).coerceIn(0f, (containerHeightPx - lanesHeightPx).coerceAtLeast(0f))
+
+                            LauncherNavBgLanesOverlay(
+                                onDrag = { delta ->
+                                    if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                        val currentX = containerWidthPx * navBgLanesXRatio
+                                        val currentY = containerHeightPx * navBgLanesYRatio
+                                        val newX = (currentX + delta.x).coerceIn(lanesWidthPx / 2f, containerWidthPx - lanesWidthPx / 2f)
+                                        val newY = (currentY + delta.y).coerceIn(lanesHeightPx / 2f, containerHeightPx - lanesHeightPx / 2f)
+                                        navBgLanesXRatio = newX / containerWidthPx
+                                        navBgLanesYRatio = newY / containerHeightPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setNavBgLanesPosition(context, navBgLanesXRatio, navBgLanesYRatio)
+                                },
+                                modifier = Modifier
+                                    .offset(x = with(density) { lanesLeftPx.toDp() }, y = with(density) { lanesTopPx.toDp() })
+                                    .zIndex(171f),
+                            )
+                        }
+
+                        // Freely Movable Background Navigation Overlay 8: Traffic Light Block
+                        if (navBgTrafficLightVisible) {
+                            val btlWidthPx = with(density) { 70.dp.toPx() }
+                            val btlHeightPx = with(density) { 34.dp.toPx() }
+                            val btlCenterX = containerWidthPx * navBgTrafficLightXRatio
+                            val btlCenterY = containerHeightPx * navBgTrafficLightYRatio
+                            val btlLeftPx = (btlCenterX - btlWidthPx / 2f).coerceIn(0f, (containerWidthPx - btlWidthPx).coerceAtLeast(0f))
+                            val btlTopPx = (btlCenterY - btlHeightPx / 2f).coerceIn(0f, (containerHeightPx - btlHeightPx).coerceAtLeast(0f))
+
+                            LauncherNavBgTrafficLightOverlay(
+                                onDrag = { delta ->
+                                    if (containerWidthPx > 0f && containerHeightPx > 0f) {
+                                        val currentX = containerWidthPx * navBgTrafficLightXRatio
+                                        val currentY = containerHeightPx * navBgTrafficLightYRatio
+                                        val newX = (currentX + delta.x).coerceIn(btlWidthPx / 2f, containerWidthPx - btlWidthPx / 2f)
+                                        val newY = (currentY + delta.y).coerceIn(btlHeightPx / 2f, containerHeightPx - btlHeightPx / 2f)
+                                        navBgTrafficLightXRatio = newX / containerWidthPx
+                                        navBgTrafficLightYRatio = newY / containerHeightPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setNavBgTrafficLightPosition(context, navBgTrafficLightXRatio, navBgTrafficLightYRatio)
+                                },
+                                modifier = Modifier
+                                    .offset(x = with(density) { btlLeftPx.toDp() }, y = with(density) { btlTopPx.toDp() })
+                                    .zIndex(172f),
                             )
                         }
                     }

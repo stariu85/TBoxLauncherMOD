@@ -29,6 +29,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.TextView
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import java.util.Locale
 
@@ -57,6 +61,13 @@ data class YandexNavState(
     val trafficLightLastUpdateMs: Long = 0L,
     val trafficLightCountdownLastUpdateMs: Long = 0L,
     val lastUpdateMs: Long = 0L,
+    val maneuverTopDescription: String? = null,
+    val maneuverPrimaryIcon: Bitmap? = null,
+    val maneuverSecondaryIcon: Bitmap? = null,
+    val etaProgressBitmap: Bitmap? = null,
+    val lanesBitmaps: List<Bitmap> = emptyList(),
+    val notificationTrafficLightText: String? = null,
+    val notificationTrafficLightBitmap: Bitmap? = null,
 )
 
 object YandexNavRepository {
@@ -579,11 +590,13 @@ object YandexNavRepository {
             }
         }.getOrNull()
 
-        var mDistance: String? = null
-        var streetText: String? = null
-        var remDist: String? = null
-        var remTime: String? = null
-        var arrTime: String? = null
+        val rvData = extractFromRemoteViews(context, notification)
+
+        var mDistance: String? = rvData?.distance
+        var streetText: String? = rvData?.street
+        var remDist: String? = rvData?.remainingDistance
+        var remTime: String? = rvData?.remainingTime
+        var arrTime: String? = rvData?.arrivalTime
 
         val parts = allStrings.flatMap { str ->
             str.split("•", "\n", "|", "·").map { it.trim() }
@@ -639,16 +652,144 @@ object YandexNavRepository {
         _state.update {
             it.copy(
                 isNavigating = true,
-                maneuverBitmap = iconBitmap ?: it.maneuverBitmap,
+                maneuverBitmap = rvData?.primaryIcon ?: iconBitmap ?: it.maneuverBitmap,
+                maneuverPrimaryIcon = rvData?.primaryIcon ?: it.maneuverPrimaryIcon,
+                maneuverSecondaryIcon = rvData?.secondaryIcon ?: it.maneuverSecondaryIcon,
+                maneuverTopDescription = rvData?.topDescription ?: it.maneuverTopDescription,
                 maneuverDistance = mDistance.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.maneuverDistance,
                 nextStreet = validStreet.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.nextStreet,
                 fullNotificationText = fullTextCandidate.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.fullNotificationText,
                 remainingDistance = remDist.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.remainingDistance,
                 remainingTime = remTime.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.remainingTime,
                 arrivalTime = arrTime.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.arrivalTime,
+                etaProgressBitmap = rvData?.etaProgressBitmap ?: it.etaProgressBitmap,
+                lanesBitmap = rvData?.lanesBitmap ?: it.lanesBitmap,
+                lanesBitmaps = if (rvData != null && rvData.lanesBitmaps.isNotEmpty()) rvData.lanesBitmaps else it.lanesBitmaps,
+                notificationTrafficLightText = rvData?.trafficLightText ?: it.notificationTrafficLightText,
+                notificationTrafficLightBitmap = rvData?.trafficLightBitmap ?: it.notificationTrafficLightBitmap,
                 lastUpdateMs = now,
             )
         }
+    }
+
+    private data class RemoteViewsData(
+        val distance: String? = null,
+        val street: String? = null,
+        val topDescription: String? = null,
+        val primaryIcon: Bitmap? = null,
+        val secondaryIcon: Bitmap? = null,
+        val remainingDistance: String? = null,
+        val remainingTime: String? = null,
+        val arrivalTime: String? = null,
+        val etaProgressBitmap: Bitmap? = null,
+        val lanesBitmap: Bitmap? = null,
+        val lanesBitmaps: List<Bitmap> = emptyList(),
+        val trafficLightText: String? = null,
+        val trafficLightBitmap: Bitmap? = null,
+    )
+
+    @Suppress("DEPRECATION")
+    private fun extractFromRemoteViews(context: Context, notification: Notification): RemoteViewsData? {
+        val remoteViews = notification.bigContentView ?: notification.contentView ?: return null
+        return runCatching {
+            val targetPackage = remoteViews.`package` ?: "ru.yandex.yandexnavi"
+            val packageContext = runCatching {
+                context.createPackageContext(targetPackage, Context.CONTEXT_RESTRICTED)
+            }.getOrElse { context }
+
+            val inflated = remoteViews.apply(packageContext, null)
+            val widthSpec = View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.AT_MOST)
+            val heightSpec = View.MeasureSpec.makeMeasureSpec(1920, View.MeasureSpec.AT_MOST)
+            inflated.measure(widthSpec, heightSpec)
+            inflated.layout(0, 0, inflated.measuredWidth, inflated.measuredHeight)
+
+            val viewsByName = mutableMapOf<String, View>()
+            fun collect(v: View) {
+                if (v.id != View.NO_ID) {
+                    runCatching {
+                        val name = v.resources.getResourceEntryName(v.id)
+                        viewsByName[name] = v
+                    }
+                }
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) {
+                        collect(v.getChildAt(i))
+                    }
+                }
+            }
+            collect(inflated)
+
+            fun getText(name: String): String? {
+                val tv = viewsByName[name] as? TextView ?: return null
+                if (tv.visibility != View.VISIBLE) return null
+                return tv.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
+            }
+
+            fun getBitmap(name: String): Bitmap? {
+                val v = viewsByName[name] ?: return null
+                if (v.visibility != View.VISIBLE) return null
+                if (v is ImageView) {
+                    return drawableToBitmap(v.drawable)
+                }
+                return viewToBitmap(v)
+            }
+
+            val distance = getText("titleView")
+            val street = getText("descriptionView")
+            val topDesc = getText("topDescriptionView")
+            val primaryIcon = getBitmap("primaryIcon") ?: getBitmap("primaryIconTinted")
+            val secondaryIcon = getBitmap("secondaryIcon") ?: getBitmap("secondaryIconTinted")
+            val remainingDist = getText("remainingDistanceView")
+            val remainingTime = getText("remainingTimeView")
+            val arrivalTime = getText("timeOfArrivalView")
+            val etaProgress = getBitmap("etaProgressImage")
+
+            val lanesViewGroup = viewsByName["lanes"] as? ViewGroup
+            val lanesBitmap = if (lanesViewGroup != null && lanesViewGroup.visibility == View.VISIBLE) {
+                viewToBitmap(lanesViewGroup)
+            } else null
+
+            val lanesList = mutableListOf<Bitmap>()
+            for (i in 1..8) {
+                val laneBmp = getBitmap("lane$i")
+                if (laneBmp != null) {
+                    lanesList.add(laneBmp)
+                }
+            }
+
+            val tlText = getText("traffic_light_data") ?: getText("traffic_light_data_expanded")
+            val tlBitmap = getBitmap("traffic_light_data_arrow") ?: getBitmap("traffic_light_expanded")
+
+            RemoteViewsData(
+                distance = distance,
+                street = street,
+                topDescription = topDesc,
+                primaryIcon = primaryIcon,
+                secondaryIcon = secondaryIcon,
+                remainingDistance = remainingDist,
+                remainingTime = remainingTime,
+                arrivalTime = arrivalTime,
+                etaProgressBitmap = etaProgress,
+                lanesBitmap = lanesBitmap,
+                lanesBitmaps = lanesList,
+                trafficLightText = tlText,
+                trafficLightBitmap = tlBitmap,
+            )
+        }.onFailure {
+            Log.d(TAG, "extractFromRemoteViews: error inflating RemoteViews: ${it.message}")
+        }.getOrNull()
+    }
+
+    private fun viewToBitmap(view: View): Bitmap? {
+        val w = view.measuredWidth.takeIf { it > 0 } ?: view.width
+        val h = view.measuredHeight.takeIf { it > 0 } ?: view.height
+        if (w <= 0 || h <= 0) return null
+        return runCatching {
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            view.draw(canvas)
+            bitmap
+        }.getOrNull()
     }
 
     fun onNotificationRemoved(sbn: StatusBarNotification) {
@@ -667,6 +808,14 @@ object YandexNavRepository {
                         remainingDistance = null,
                         remainingTime = null,
                         arrivalTime = null,
+                        maneuverTopDescription = null,
+                        maneuverPrimaryIcon = null,
+                        maneuverSecondaryIcon = null,
+                        etaProgressBitmap = null,
+                        lanesBitmap = null,
+                        lanesBitmaps = emptyList(),
+                        notificationTrafficLightText = null,
+                        notificationTrafficLightBitmap = null,
                     )
                 }
             }

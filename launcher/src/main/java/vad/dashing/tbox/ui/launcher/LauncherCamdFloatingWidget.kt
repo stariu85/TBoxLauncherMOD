@@ -102,7 +102,7 @@ internal fun CamdDockWidgetButton(
                     modifier = Modifier.size(width = 300.dp, height = 240.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    val flyoutSizeDp = 60.dp
+                    val flyoutSizeDp = (60f * 1.3f).dp
                     val radialDistanceDp = 135.dp
 
                     // Left button: Left / Right (-135°)
@@ -168,7 +168,7 @@ internal fun CamdDockWidgetButton(
                 painter = painterResource(R.drawable.ic_camd_widget_eye),
                 contentDescription = "Виджет камер",
                 colorFilter = ColorFilter.tint(iconTint),
-                modifier = Modifier.size(dockDp(26f)),
+                modifier = Modifier.size(dockDp(26f * 1.15f)),
             )
         }
     }
@@ -232,7 +232,7 @@ private fun CamdFlyingButton(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
             tint = iconTint,
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size((32f * 1.3f).dp),
         )
     }
 }

@@ -202,16 +202,26 @@ object MbCanEngineFacade {
         return availabilityRef.get()
     }
 
+    fun getCachedVehicleParam(propertyId: Int): Int? = lastVehicleCfgValues[propertyId]
+
+    fun updateCachedVehicleParam(propertyId: Int, value: Int) {
+        lastVehicleCfgValues[propertyId] = value
+    }
+
     fun canGetVehicleParam(propertyId: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
         vad.dashing.tbox.DclLogRecorder.recordCanRx()
-        return try {
+        val res = try {
             withNativeLock {
                 (canGetVehicleParamMethod?.invoke(engineInstance, propertyId) as? Int)
             }
         } catch (_: Throwable) {
             null
         }
+        if (res != null) {
+            lastVehicleCfgValues[propertyId] = res
+        }
+        return res
     }
 
     /** [com.mengbo.mbCan.MBCanEngine.canGetAudioParam] — [com.mengbo.mbCan.defines.MBAudioProperty] ordinal ids. */
@@ -242,6 +252,8 @@ object MbCanEngineFacade {
 
     fun canSetVehicleParam(propertyId: Int, value: Int): Int? {
         if (ensureInitialized() !is MbCanAvailability.Available) return null
+        lastVehicleCfgValues[propertyId] = value
+        vad.dashing.tbox.ui.launcher.LauncherVehicleControlRepository.notifyVehicleParamChanged(propertyId, value)
         vad.dashing.tbox.DclLogRecorder.recordCanTx()
         DclLogRecorder.log("CAN_TX", "canSetVehicleParam propId=$propertyId value=$value")
         return try {
@@ -548,6 +560,15 @@ object MbCanEngineFacade {
                             (getCachedZeroArgMethod(bcm.javaClass, "getHMA_Status")?.invoke(bcm) as? Number)?.toInt()
                         }.getOrNull() ?: 0
 
+                        val rainVal = runCatching {
+                            (getCachedZeroArgMethod(bcm.javaClass, "getRainDetectedSts")?.invoke(bcm) as? Number)?.toInt()
+                        }.getOrNull() ?: runCatching {
+                            val field = bcm.javaClass.getDeclaredField("nRainDetectedSts")
+                            field.isAccessible = true
+                            (field.get(bcm) as? Number)?.toInt()
+                        }.getOrNull() ?: 0
+                        CanDataRepository.updateRainSensorDetected(rainVal >= 2)
+
                         // OEM CEM A9: 2 = ON, 1 / 0 = OFF (High beam flash pulses 1 -> 2 -> 1)
                         val lowOn = low == 2
                         val highOn = high == 2
@@ -696,6 +717,7 @@ object MbCanEngineFacade {
                     return@InvocationHandler null
                 }
                 lastVehicleCfgValues[item] = value
+                vad.dashing.tbox.ui.launcher.LauncherVehicleControlRepository.notifyVehicleParamChanged(item, value)
                 if (DclLogRecorder.isLoggingActive() || MbCanDiagnostics.enabled.value) {
                     MbCanDiagnostics.log(
                         "DEBUG",

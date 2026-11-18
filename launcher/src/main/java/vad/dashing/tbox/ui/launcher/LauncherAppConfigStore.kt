@@ -19,6 +19,7 @@ private const val KEY_GRID = "grid_packages"
 private const val KEY_DOCK = "dock_packages"
 private const val KEY_CAR_PAINT = "car_paint_id"
 private const val KEY_DEFAULT_MEDIA = "default_media_package"
+private const val KEY_SELECTED_MEDIA_PACKAGES = "selected_media_packages"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
@@ -36,7 +37,7 @@ private const val KEY_TOP_BAR_RIGHT_ITEMS = "top_bar_right_items"
 internal val DEFAULT_TOP_BAR_ITEMS = listOf(
     "headlights", "trunk", "mirrors", "rear_fog", "hdc", "pdc", "avm",
     "spacer_small_1794639492605", "gps", "combined_temp", "air_quality",
-    "spacer_small_1794639527728", "avg_fuel", "fuel", "trip_cost",
+    "spacer_small_1794639527728", "avg_fuel", "fuel", "trip_cost", "trip_distance",
     "spacer_small_1794639591091", "engine_temp", "gearbox_temp", "voltage",
     "spacer_small_1794639626549", "vehicle_status", "maintenance"
 )
@@ -367,6 +368,18 @@ private const val KEY_NAV_TRAFFIC_LIGHT_Y_RATIO = "nav_traffic_light_y_ratio"
 private const val KEY_NAV_TEXT_X_RATIO = "nav_text_x_ratio"
 private const val KEY_NAV_TEXT_Y_RATIO = "nav_text_y_ratio"
 private const val KEY_NAV_TRAFFIC_LIGHT_SCALE = "nav_traffic_light_scale"
+private const val KEY_NAV_BG_MANEUVER_VISIBLE = "nav_bg_maneuver_visible"
+private const val KEY_NAV_BG_MANEUVER_X_RATIO = "nav_bg_maneuver_x_ratio"
+private const val KEY_NAV_BG_MANEUVER_Y_RATIO = "nav_bg_maneuver_y_ratio"
+private const val KEY_NAV_BG_ETA_VISIBLE = "nav_bg_eta_visible"
+private const val KEY_NAV_BG_ETA_X_RATIO = "nav_bg_eta_x_ratio"
+private const val KEY_NAV_BG_ETA_Y_RATIO = "nav_bg_eta_y_ratio"
+private const val KEY_NAV_BG_LANES_VISIBLE = "nav_bg_lanes_visible"
+private const val KEY_NAV_BG_LANES_X_RATIO = "nav_bg_lanes_x_ratio"
+private const val KEY_NAV_BG_LANES_Y_RATIO = "nav_bg_lanes_y_ratio"
+private const val KEY_NAV_BG_TRAFFIC_LIGHT_VISIBLE = "nav_bg_traffic_light_visible"
+private const val KEY_NAV_BG_TRAFFIC_LIGHT_X_RATIO = "nav_bg_traffic_light_x_ratio"
+private const val KEY_NAV_BG_TRAFFIC_LIGHT_Y_RATIO = "nav_bg_traffic_light_y_ratio"
 private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
 private const val KEY_SMART_PANEL_ENABLED = "smart_panel_enabled"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
@@ -462,6 +475,8 @@ internal object LauncherAppConfigStore {
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
     private val showPlayerNameInWidgetRevision = MutableStateFlow(0)
     internal val showPlayerNameInWidgetRevisionFlow: StateFlow<Int> = showPlayerNameInWidgetRevision
+    private val selectedMediaPackagesRevision = MutableStateFlow(0)
+    internal val selectedMediaPackagesRevisionFlow: StateFlow<Int> = selectedMediaPackagesRevision
     private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
     private val experimentalHideAppsOnHomeRevision = MutableStateFlow(0)
@@ -610,6 +625,26 @@ internal object LauncherAppConfigStore {
     internal val navTextPositionRevisionFlow: StateFlow<Int> = navTextPositionRevision
     private val navTrafficLightScaleRevision = MutableStateFlow(0)
     internal val navTrafficLightScaleRevisionFlow: StateFlow<Int> = navTrafficLightScaleRevision
+
+    private val navBgManeuverRevision = MutableStateFlow(0)
+    internal val navBgManeuverRevisionFlow: StateFlow<Int> = navBgManeuverRevision
+    private val navBgManeuverPositionRevision = MutableStateFlow(0)
+    internal val navBgManeuverPositionRevisionFlow: StateFlow<Int> = navBgManeuverPositionRevision
+
+    private val navBgEtaRevision = MutableStateFlow(0)
+    internal val navBgEtaRevisionFlow: StateFlow<Int> = navBgEtaRevision
+    private val navBgEtaPositionRevision = MutableStateFlow(0)
+    internal val navBgEtaPositionRevisionFlow: StateFlow<Int> = navBgEtaPositionRevision
+
+    private val navBgLanesRevision = MutableStateFlow(0)
+    internal val navBgLanesRevisionFlow: StateFlow<Int> = navBgLanesRevision
+    private val navBgLanesPositionRevision = MutableStateFlow(0)
+    internal val navBgLanesPositionRevisionFlow: StateFlow<Int> = navBgLanesPositionRevision
+
+    private val navBgTrafficLightRevision = MutableStateFlow(0)
+    internal val navBgTrafficLightRevisionFlow: StateFlow<Int> = navBgTrafficLightRevision
+    private val navBgTrafficLightPositionRevision = MutableStateFlow(0)
+    internal val navBgTrafficLightPositionRevisionFlow: StateFlow<Int> = navBgTrafficLightPositionRevision
     private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
     private val smartPanelRevision = MutableStateFlow(0)
@@ -774,6 +809,26 @@ internal object LauncherAppConfigStore {
 
     fun setDefaultMediaPackage(context: Context, packageName: String) {
         prefs(context).edit().putString(KEY_DEFAULT_MEDIA, packageName).apply()
+    }
+
+    fun selectedMediaPackages(context: Context): Set<String> {
+        val stored = prefs(context).getStringSet(KEY_SELECTED_MEDIA_PACKAGES, null)
+        if (!stored.isNullOrEmpty()) {
+            return stored.toSet()
+        }
+        val defaultPkg = defaultMediaPackage(context) ?: DEFAULT_MEDIA_PACKAGE
+        return setOf(defaultPkg)
+    }
+
+    fun setSelectedMediaPackages(context: Context, packages: Set<String>) {
+        val nonNullPackages = packages.filter { it.isNotBlank() }.toSet()
+        val toSave = if (nonNullPackages.isNotEmpty()) nonNullPackages else setOf(defaultMediaPackage(context) ?: DEFAULT_MEDIA_PACKAGE)
+        prefs(context).edit().putStringSet(KEY_SELECTED_MEDIA_PACKAGES, HashSet(toSave)).apply()
+        val currentDefault = defaultMediaPackage(context)
+        if (currentDefault == null || currentDefault !in toSave) {
+            toSave.firstOrNull()?.let { setDefaultMediaPackage(context, it) }
+        }
+        selectedMediaPackagesRevision.value++
     }
 
     fun mediaCardAlpha(context: Context): Float =
@@ -1556,6 +1611,62 @@ internal object LauncherAppConfigStore {
         navTextPositionRevision.value++
     }
 
+    fun navBgManeuverXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_MANEUVER_X_RATIO, 0.22f).coerceIn(0f, 1f)
+
+    fun navBgManeuverYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_MANEUVER_Y_RATIO, 0.16f).coerceIn(0f, 1f)
+
+    fun setNavBgManeuverPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_MANEUVER_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_MANEUVER_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgManeuverPositionRevision.value++
+    }
+
+    fun navBgEtaXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_ETA_X_RATIO, 0.22f).coerceIn(0f, 1f)
+
+    fun navBgEtaYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_ETA_Y_RATIO, 0.82f).coerceIn(0f, 1f)
+
+    fun setNavBgEtaPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_ETA_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_ETA_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgEtaPositionRevision.value++
+    }
+
+    fun navBgLanesXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_LANES_X_RATIO, 0.50f).coerceIn(0f, 1f)
+
+    fun navBgLanesYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_LANES_Y_RATIO, 0.28f).coerceIn(0f, 1f)
+
+    fun setNavBgLanesPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_LANES_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_LANES_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgLanesPositionRevision.value++
+    }
+
+    fun navBgTrafficLightXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_TRAFFIC_LIGHT_X_RATIO, 0.85f).coerceIn(0f, 1f)
+
+    fun navBgTrafficLightYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_TRAFFIC_LIGHT_Y_RATIO, 0.35f).coerceIn(0f, 1f)
+
+    fun setNavBgTrafficLightPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_TRAFFIC_LIGHT_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_TRAFFIC_LIGHT_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgTrafficLightPositionRevision.value++
+    }
+
     fun climateControlsVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CLIMATE_VISIBLE, true)
 
@@ -2206,6 +2317,38 @@ internal object LauncherAppConfigStore {
     fun setNavTextVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_TEXT_VISIBLE, visible).apply()
         navTextRevision.value++
+    }
+
+    fun navBgManeuverVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_MANEUVER_VISIBLE, true)
+
+    fun setNavBgManeuverVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_MANEUVER_VISIBLE, visible).apply()
+        navBgManeuverRevision.value++
+    }
+
+    fun navBgEtaVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_ETA_VISIBLE, true)
+
+    fun setNavBgEtaVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_ETA_VISIBLE, visible).apply()
+        navBgEtaRevision.value++
+    }
+
+    fun navBgLanesVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_LANES_VISIBLE, true)
+
+    fun setNavBgLanesVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_LANES_VISIBLE, visible).apply()
+        navBgLanesRevision.value++
+    }
+
+    fun navBgTrafficLightVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_TRAFFIC_LIGHT_VISIBLE, true)
+
+    fun setNavBgTrafficLightVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_TRAFFIC_LIGHT_VISIBLE, visible).apply()
+        navBgTrafficLightRevision.value++
     }
 
 

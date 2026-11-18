@@ -23,13 +23,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
@@ -76,6 +83,24 @@ internal object LauncherAppPickerOverlayWindow {
         apps: List<LaunchableAppEntry>,
         onPick: (LaunchableAppEntry) -> Unit,
         onDismiss: () -> Unit,
+    ): Boolean = show(
+        context = context,
+        title = title,
+        apps = apps,
+        initialSelectedPackages = emptySet(),
+        onConfirm = { set -> apps.firstOrNull { it.packageName in set }?.let(onPick) },
+        onPick = onPick,
+        onDismiss = onDismiss,
+    )
+
+    fun show(
+        context: Context,
+        title: String,
+        apps: List<LaunchableAppEntry>,
+        initialSelectedPackages: Set<String>,
+        onConfirm: (Set<String>) -> Unit,
+        onPick: ((LaunchableAppEntry) -> Unit)? = null,
+        onDismiss: () -> Unit,
     ): Boolean {
         hide()
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
@@ -106,8 +131,6 @@ internal object LauncherAppPickerOverlayWindow {
             height,
             type,
             WindowManager.LayoutParams.FLAG_DIM_BEHIND or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -128,13 +151,9 @@ internal object LauncherAppPickerOverlayWindow {
                 if (event.action == KeyEvent.ACTION_UP) dismiss()
                 true
             }
-            setOnTouchListener { _, event ->
-                if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                    dismiss()
-                    true
-                } else {
-                    false
-                }
+            setOnTouchListener { _, _ ->
+                // Do not dismiss on outside touch: closed only via Done button
+                false
             }
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
@@ -148,6 +167,15 @@ internal object LauncherAppPickerOverlayWindow {
                                 .clip(RoundedCornerShape(20.dp)),
                             color = LauncherColors.SurfaceDark,
                         ) {
+                            var selectedSet by remember {
+                                mutableStateOf(
+                                    if (initialSelectedPackages.isNotEmpty()) {
+                                        initialSelectedPackages
+                                    } else {
+                                        apps.firstOrNull()?.packageName?.let { setOf(it) } ?: emptySet()
+                                    }
+                                )
+                            }
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -174,14 +202,19 @@ internal object LauncherAppPickerOverlayWindow {
                                     verticalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     apps.forEach { app ->
+                                        val isChecked = app.packageName in selectedSet
+                                        val toggleCheck = {
+                                            selectedSet = if (isChecked) {
+                                                if (selectedSet.size > 1) selectedSet - app.packageName else selectedSet
+                                            } else {
+                                                selectedSet + app.packageName
+                                            }
+                                        }
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(10.dp))
-                                                .clickable {
-                                                    onPick(app)
-                                                    dismiss()
-                                                }
+                                                .clickable(onClick = toggleCheck)
                                                 .padding(horizontal = 8.dp, vertical = 6.dp)
                                                 .heightIn(min = 40.dp),
                                             verticalAlignment = Alignment.CenterVertically,
@@ -201,18 +234,38 @@ internal object LauncherAppPickerOverlayWindow {
                                                 fontSize = 14.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = { toggleCheck() },
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = LauncherColors.AccentCyan,
+                                                    uncheckedColor = LauncherColors.TextMuted,
+                                                    checkmarkColor = Color.Black,
+                                                ),
                                             )
                                         }
                                     }
                                 }
-                                TextButton(
-                                    onClick = dismiss,
-                                    modifier = Modifier.align(Alignment.End),
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        text = stringResource(R.string.action_cancel),
-                                        color = LauncherColors.AccentCyan,
-                                    )
+                                    TextButton(
+                                        onClick = {
+                                            onConfirm(selectedSet)
+                                            dismiss()
+                                        },
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.launcher_app_drawer_done),
+                                            color = LauncherColors.AccentCyan,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                        )
+                                    }
                                 }
                             }
                         }

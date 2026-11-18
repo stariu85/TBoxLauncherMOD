@@ -37,7 +37,7 @@ class LauncherDefaultConfigTest {
             listOf(
                 "headlights", "trunk", "mirrors", "rear_fog", "hdc", "pdc", "avm",
                 "spacer_small_1794639492605", "gps", "combined_temp", "air_quality",
-                "spacer_small_1794639527728", "avg_fuel", "fuel", "trip_cost",
+                "spacer_small_1794639527728", "avg_fuel", "fuel", "trip_cost", "trip_distance",
                 "spacer_small_1794639591091", "engine_temp", "gearbox_temp", "voltage",
                 "spacer_small_1794639626549", "vehicle_status", "maintenance"
             ),

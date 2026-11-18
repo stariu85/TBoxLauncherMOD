@@ -32,6 +32,7 @@ class CamdLowSpeedSideCamerasTest {
         isReverseGear: Boolean = false,
         invertSteerOnReverse: Boolean = false,
         isWidgetActive: Boolean = false,
+        disableStockAvm: Boolean = invertSteerOnReverse,
     ): Pair<TurnSignalSide?, Boolean> {
         return CamdCameraRepository.resolveTargetSideCamera(
             speed = speed,
@@ -48,6 +49,7 @@ class CamdLowSpeedSideCamerasTest {
             isReverseGear = isReverseGear,
             invertSteerOnReverse = invertSteerOnReverse,
             isWidgetActive = isWidgetActive,
+            disableStockAvm = disableStockAvm,
         )
     }
 
@@ -1021,5 +1023,169 @@ class CamdLowSpeedSideCamerasTest {
             rectCorners = false,
         )
         assertNull(bounds)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_closesAtSpeedZero() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = false,
+            activeGear = 'D',
+            speed = 0f,
+        )
+        assertTrue(close)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_closesInReverseGear() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = false,
+            activeGear = 'R',
+            speed = 5f,
+        )
+        assertTrue(close)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_doesNotCloseWhenMovingForward() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = false,
+            activeGear = 'D',
+            speed = 5f,
+        )
+        assertFalse(close)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmDisabled_doesNotCloseAtSpeedZero() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = true,
+            activeGear = 'D',
+            speed = 0f,
+        )
+        assertFalse(close)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmDisabled_doesNotCloseInReverseGear() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = true,
+            activeGear = 'R',
+            speed = 5f,
+        )
+        assertFalse(close)
+    }
+
+    @Test
+    fun shouldTriggerReverseAvmRetry_whenStockAvmEnabledAndNotActive_triggers() {
+        val retry = CamdCameraRepository.shouldTriggerReverseAvmRetry(
+            disableStockAvm = false,
+            activeGear = 'R',
+            isAvmActive = false,
+        )
+        assertTrue(retry)
+    }
+
+    @Test
+    fun shouldTriggerReverseAvmRetry_whenStockAvmAlreadyActive_doesNotTrigger() {
+        val retry = CamdCameraRepository.shouldTriggerReverseAvmRetry(
+            disableStockAvm = false,
+            activeGear = 'R',
+            isAvmActive = true,
+        )
+        assertFalse(retry)
+    }
+
+    @Test
+    fun shouldTriggerReverseAvmRetry_whenStockAvmDisabled_doesNotTrigger() {
+        val retry = CamdCameraRepository.shouldTriggerReverseAvmRetry(
+            disableStockAvm = true,
+            activeGear = 'R',
+            isAvmActive = false,
+        )
+        assertFalse(retry)
+    }
+
+    @Test
+    fun shouldTriggerReverseAvmRetry_whenNotReverseGear_doesNotTrigger() {
+        val retryD = CamdCameraRepository.shouldTriggerReverseAvmRetry(
+            disableStockAvm = false,
+            activeGear = 'D',
+            isAvmActive = false,
+        )
+        assertFalse(retryD)
+
+        val retryP = CamdCameraRepository.shouldTriggerReverseAvmRetry(
+            disableStockAvm = false,
+            activeGear = 'P',
+            isAvmActive = false,
+        )
+        assertFalse(retryP)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmEnabled_speedZero_suppressesSideCameras() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 0f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            disableStockAvm = false,
+        )
+        assertNull(side)
+        assertFalse(isLow)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmDisabled_speedZero_allowsLowSpeedSideCameras() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 0f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            disableStockAvm = true,
+        )
+        assertEquals(TurnSignalSide.Left, side)
+        assertTrue(isLow)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmEnabled_reverseGear_suppressesSideCameras() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 5f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            isReverseGear = true,
+            disableStockAvm = false,
+        )
+        assertNull(side)
+        assertFalse(isLow)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmDisabled_reverseGearWithInversion_allowsInvertedSideCamera() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 5f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = false,
+            triggerMode = "both",
+            turnSignalSide = null,
+            steerSide = TurnSignalSide.Left,
+            isReverseGear = true,
+            invertSteerOnReverse = true,
+            disableStockAvm = true,
+        )
+        assertEquals(TurnSignalSide.Right, side)
+        assertTrue(isLow)
     }
 }

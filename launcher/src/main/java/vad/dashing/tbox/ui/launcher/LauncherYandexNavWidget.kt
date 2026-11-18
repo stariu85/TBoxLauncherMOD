@@ -514,3 +514,383 @@ private fun SpeedLimitBadge(
         )
     }
 }
+
+/**
+ * Freely movable Overlay 5: Background Turn Maneuver block (from RemoteViews / Notification).
+ */
+@Composable
+internal fun LauncherNavBgManeuverOverlay(
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
+    val isSimulate = LauncherDevVehicleState.simulateEnabled
+
+    val primaryBmp = navState.maneuverPrimaryIcon ?: navState.maneuverBitmap
+    val secondaryBmp = navState.maneuverSecondaryIcon
+    val distance = navState.maneuverDistance ?: if (isSimulate && !navState.isNavigating) "400 м" else null
+    val street = navState.nextStreet ?: if (isSimulate && !navState.isNavigating) "Ленинградский просп." else null
+    val topDesc = navState.maneuverTopDescription ?: if (isSimulate && !navState.isNavigating) "Съезд 2" else null
+
+    val isVisible = (navState.isNavigating && (distance != null || primaryBmp != null || street != null)) ||
+            (isSimulate && distance != null)
+
+    if (!isVisible) return
+
+    val isDark = LauncherThemeState.darkTheme
+    val bgCard = if (isDark) Color(0xDD111827) else Color(0xEEFFFFFF)
+    val borderCard = if (isDark) Color.White.copy(alpha = 0.2f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
+    val primaryTextColor = if (isDark) Color.White else Color(0xFF0F172A)
+    val secondaryTextColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569)
+
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount)
+                    },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
+                )
+            }
+            .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgCard)
+            .border(1.dp, borderCard, RoundedCornerShape(12.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val turnIconFilter = if (isDark) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null
+
+            if (primaryBmp != null) {
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    Image(
+                        bitmap = primaryBmp.asImageBitmap(),
+                        contentDescription = null,
+                        colorFilter = turnIconFilter,
+                        modifier = Modifier.size(36.dp),
+                    )
+                    secondaryBmp?.let { sec ->
+                        Image(
+                            bitmap = sec.asImageBitmap(),
+                            contentDescription = null,
+                            colorFilter = turnIconFilter,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .offset(x = 2.dp, y = 2.dp),
+                        )
+                    }
+                }
+            } else {
+                val fallbackTurnBg = if (isDark) Color.White.copy(alpha = 0.15f) else LauncherColors.AccentCyan.copy(alpha = 0.2f)
+                val fallbackTurnColor = if (isDark) Color.White else LauncherColors.AccentCyan
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(fallbackTurnBg),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("↱", color = fallbackTurnColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                topDesc?.let {
+                    Text(
+                        text = it,
+                        color = LauncherColors.TextMuted,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                    )
+                }
+                distance?.let {
+                    Text(
+                        text = it,
+                        color = primaryTextColor,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
+                street?.let {
+                    Text(
+                        text = it,
+                        color = secondaryTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Freely movable Overlay 6: Background ETA & Distance block (from RemoteViews / Notification).
+ */
+@Composable
+internal fun LauncherNavBgEtaOverlay(
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
+    val isSimulate = LauncherDevVehicleState.simulateEnabled
+
+    val remDist = navState.remainingDistance ?: if (isSimulate && !navState.isNavigating) "8.4 км" else null
+    val remTime = navState.remainingTime ?: if (isSimulate && !navState.isNavigating) "18 мин" else null
+    val arrTime = navState.arrivalTime ?: if (isSimulate && !navState.isNavigating) "18:45" else null
+
+    val isVisible = (navState.isNavigating && (remDist != null || remTime != null || arrTime != null)) ||
+            (isSimulate && remDist != null)
+
+    if (!isVisible) return
+
+    val isDark = LauncherThemeState.darkTheme
+    val bgCard = if (isDark) Color(0xDD111827) else Color(0xEEFFFFFF)
+    val borderCard = if (isDark) Color.White.copy(alpha = 0.2f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
+    val primaryTextColor = if (isDark) Color.White else Color(0xFF0F172A)
+    val secondaryTextColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569)
+
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount)
+                    },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
+                )
+            }
+            .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgCard)
+            .border(1.dp, borderCard, RoundedCornerShape(12.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                remDist?.let {
+                    Text(
+                        text = it,
+                        color = primaryTextColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (remDist != null && remTime != null) {
+                    Text("·", color = LauncherColors.TextMuted, fontSize = 13.sp)
+                }
+                remTime?.let {
+                    Text(
+                        text = it,
+                        color = LauncherColors.AccentCyan,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                if (arrTime != null) {
+                    Text("·", color = LauncherColors.TextMuted, fontSize = 13.sp)
+                    Text(
+                        text = arrTime,
+                        color = secondaryTextColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+
+            navState.etaProgressBitmap?.let { bar ->
+                Image(
+                    bitmap = bar.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Freely movable Overlay 7: Background Lanes block (from RemoteViews / Notification).
+ */
+@Composable
+internal fun LauncherNavBgLanesOverlay(
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
+    val isSimulate = LauncherDevVehicleState.simulateEnabled
+
+    val hasLanes = navState.lanesBitmaps.isNotEmpty() || navState.lanesBitmap != null
+    val isVisible = (navState.isNavigating && hasLanes) || isSimulate
+
+    if (!isVisible) return
+
+    val isDark = LauncherThemeState.darkTheme
+    val bgCard = if (isDark) Color(0xDD111827) else Color(0xEEFFFFFF)
+    val borderCard = if (isDark) Color.White.copy(alpha = 0.2f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
+    val laneColorFilter = if (!isDark) ColorFilter.tint(Color(0xFF0F172A), BlendMode.SrcIn) else null
+
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount)
+                    },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
+                )
+            }
+            .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
+            .clip(RoundedCornerShape(8.dp))
+            .background(bgCard)
+            .border(1.dp, borderCard, RoundedCornerShape(8.dp))
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (navState.lanesBitmaps.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                navState.lanesBitmaps.forEach { lane ->
+                    Image(
+                        bitmap = lane.asImageBitmap(),
+                        contentDescription = null,
+                        colorFilter = laneColorFilter,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        } else if (navState.lanesBitmap != null) {
+            Image(
+                bitmap = navState.lanesBitmap!!.asImageBitmap(),
+                contentDescription = null,
+                colorFilter = laneColorFilter,
+                modifier = Modifier.height(26.dp),
+            )
+        } else {
+            // Simulation fallback sample lanes
+            val activeLaneColor = if (isDark) Color.White else Color(0xFF0F172A)
+            val inactiveLaneColor = activeLaneColor.copy(alpha = 0.35f)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("↑", color = inactiveLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("↑", color = activeLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("↗", color = inactiveLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/**
+ * Freely movable Overlay 8: Background Route Traffic Light (from RemoteViews / Notification).
+ */
+@Composable
+internal fun LauncherNavBgTrafficLightOverlay(
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
+    val isSimulate = LauncherDevVehicleState.simulateEnabled
+
+    val tlText = navState.notificationTrafficLightText ?: if (isSimulate && !navState.isNavigating) "15" else null
+    val tlBmp = navState.notificationTrafficLightBitmap
+
+    val isVisible = (navState.isNavigating && (tlText != null || tlBmp != null)) ||
+            (isSimulate && tlText != null)
+
+    if (!isVisible) return
+
+    val isDark = LauncherThemeState.darkTheme
+    val bgCard = if (isDark) Color(0xDD111827) else Color(0xEEFFFFFF)
+    val borderCard = if (isDark) Color.White.copy(alpha = 0.2f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
+    val primaryTextColor = if (isDark) Color.White else Color(0xFF0F172A)
+
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount)
+                    },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
+                )
+            }
+            .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
+            .clip(RoundedCornerShape(10.dp))
+            .background(bgCard)
+            .border(1.dp, borderCard, RoundedCornerShape(10.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            tlBmp?.let { bmp ->
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                )
+            } ?: Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF22C55E)),
+            )
+
+            tlText?.let { timer ->
+                Text(
+                    text = timer,
+                    color = primaryTextColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+

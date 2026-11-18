@@ -21,6 +21,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,6 +81,7 @@ import vad.dashing.tbox.R
 import vad.dashing.tbox.SharedMediaControlService
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.theme.tboxCaption
+import kotlin.math.abs
 
 private const val LAUNCHER_MEDIA_SOURCE_ID = "launcher_mini_player"
 
@@ -89,6 +92,7 @@ fun LauncherMediaMiniPlayer(
     sourceId: String = LAUNCHER_MEDIA_SOURCE_ID,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val res = LocalResources.current
     var defaultRevision by remember { mutableIntStateOf(0) }
     var pickerVisible by remember { mutableStateOf(false) }
@@ -179,8 +183,24 @@ fun LauncherMediaMiniPlayer(
         }.sortedBy { it.label.lowercase() }
     }
 
-    val preferredPackage = defaultPackage?.takeIf { it in monitorPackages }
-        ?: mediaPackages.firstOrNull().orEmpty()
+    val selectedPackagesRevision by LauncherAppConfigStore.selectedMediaPackagesRevisionFlow
+        .collectAsStateWithLifecycle()
+    val selectedPackages = remember(context, selectedPackagesRevision, defaultRevision) {
+        LauncherAppConfigStore.selectedMediaPackages(context)
+    }
+
+    val activeSelectedPackages = remember(mediaPickerApps, selectedPackages, defaultPackage) {
+        val appsInSelection = mediaPickerApps.map { it.packageName }.filter { it in selectedPackages }
+        if (appsInSelection.isNotEmpty()) {
+            appsInSelection
+        } else {
+            val fallback = defaultPackage ?: LauncherAppConfigStore.DEFAULT_MEDIA_PACKAGE
+            listOf(fallback)
+        }
+    }
+
+    val preferredPackage = defaultPackage?.takeIf { it in activeSelectedPackages }
+        ?: activeSelectedPackages.firstOrNull().orEmpty()
     val mediaState = remember(monitorPackages, playerStates, preferredPackage) {
         SharedMediaControlService.resolveWidgetState(
             selectedPackages = monitorPackages,
@@ -188,7 +208,43 @@ fun LauncherMediaMiniPlayer(
             preferredPackage = preferredPackage,
         )
     }
-    val activePkg = preferredPackage.ifBlank { mediaPackages.firstOrNull().orEmpty() }
+    val activePkg = preferredPackage.ifBlank { activeSelectedPackages.firstOrNull().orEmpty() }
+
+    val switchPlayer: (Boolean) -> Unit = { toNext ->
+        if (activeSelectedPackages.size > 1) {
+            val currentIndex = activeSelectedPackages.indexOf(activePkg).let { if (it < 0) 0 else it }
+            val targetIndex = if (toNext) {
+                (currentIndex + 1) % activeSelectedPackages.size
+            } else {
+                (currentIndex - 1 + activeSelectedPackages.size) % activeSelectedPackages.size
+            }
+            val nextPkg = activeSelectedPackages[targetIndex]
+            LauncherAppConfigStore.setDefaultMediaPackage(context, nextPkg)
+            defaultRevision++
+            view.playSoundEffect(SoundEffectConstants.CLICK)
+        }
+    }
+
+    val swipeModifier = Modifier.pointerInput(activeSelectedPackages, activePkg) {
+        var totalDragAmount = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { totalDragAmount = 0f },
+            onHorizontalDrag = { change, dragAmount ->
+                if (abs(dragAmount) > 2f) {
+                    change.consume()
+                }
+                totalDragAmount += dragAmount
+            },
+            onDragEnd = {
+                if (abs(totalDragAmount) > 30f) {
+                    switchPlayer(totalDragAmount < 0)
+                }
+            },
+            onDragCancel = {
+                totalDragAmount = 0f
+            },
+        )
+    }
     val openActivePlayer: () -> Unit = {
         activePkg.takeIf { it.isNotBlank() }?.let { pkg -> launchLauncherApp(context, pkg) }
     }
@@ -234,8 +290,9 @@ fun LauncherMediaMiniPlayer(
                 context = context,
                 title = pickerTitle,
                 apps = mediaPickerApps,
-                onPick = { entry ->
-                    LauncherAppConfigStore.setDefaultMediaPackage(context, entry.packageName)
+                initialSelectedPackages = selectedPackages,
+                onConfirm = { newSelected ->
+                    LauncherAppConfigStore.setSelectedMediaPackages(context, newSelected)
                     defaultRevision++
                     pickerVisible = false
                 },
@@ -249,13 +306,14 @@ fun LauncherMediaMiniPlayer(
     }
 
     if (pickerVisible && pickerFallback) {
-        LauncherAppPickerDialog(
+        LauncherAppPickerMultiSelectDialog(
             visible = true,
             title = pickerTitle,
             apps = mediaPickerApps,
+            initialSelectedPackages = selectedPackages,
             onDismiss = { pickerVisible = false },
-            onPick = { entry ->
-                LauncherAppConfigStore.setDefaultMediaPackage(context, entry.packageName)
+            onConfirm = { newSelected ->
+                LauncherAppConfigStore.setSelectedMediaPackages(context, newSelected)
                 defaultRevision++
                 pickerVisible = false
             },
@@ -284,6 +342,7 @@ fun LauncherMediaMiniPlayer(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(mediaCardColor)
+                .then(swipeModifier)
                 .animateContentSize()
                 .padding(
                     horizontal = 10.dp,
@@ -420,6 +479,7 @@ fun LauncherMediaMiniPlayer(
                 .clip(RoundedCornerShape(16.dp))
                 .background(mediaCardColor)
                 .background(isFlashed)
+                .then(swipeModifier)
                 .clickable(onClick = triggerPlayAction),
             contentAlignment = Alignment.Center,
         ) {

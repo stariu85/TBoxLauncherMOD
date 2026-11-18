@@ -51,6 +51,7 @@ enum class VehicleSettingsSection {
     Adas,
     Comfort,
     Cruise,
+    YandexNav,
     Launcher,
     Cameras,
     TbmApi,
@@ -143,6 +144,7 @@ object VehicleSettingsSectionIcons {
     val Adas = Icons.Filled.PlayArrow
     val Comfort = Icons.Filled.Settings
     val Cruise = Icons.Filled.PlayArrow
+    val YandexNav = Icons.Filled.PlayArrow
     val Launcher = Icons.Filled.Menu
     val Cameras = Icons.Filled.PlayArrow
     val TbmApi = Icons.Filled.Settings

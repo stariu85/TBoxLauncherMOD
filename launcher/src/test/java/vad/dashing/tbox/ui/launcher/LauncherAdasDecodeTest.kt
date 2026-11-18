@@ -160,6 +160,7 @@ class LauncherAdasDecodeTest {
         assertFalse(state9.accStandby)
         assertFalse(state9.accOverride)
         assertNull(state9.accSetSpeedKmh)
+        assertTrue(state9.hasAnyAlert)
 
         val state0 = buildLauncherAdasState(
             accModeRaw = 0.toByte(),

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -26,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -40,6 +43,97 @@ import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.theme.tboxCaption
 import java.util.UUID
 import kotlin.math.roundToInt
+
+@Composable
+internal fun LauncherAppPickerMultiSelectDialog(
+    visible: Boolean,
+    title: String,
+    apps: List<LaunchableAppEntry>,
+    initialSelectedPackages: Set<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    if (!visible) return
+    var selectedSet by remember(initialSelectedPackages) {
+        mutableStateOf(
+            if (initialSelectedPackages.isNotEmpty()) initialSelectedPackages
+            else apps.firstOrNull()?.packageName?.let { setOf(it) } ?: emptySet()
+        )
+    }
+
+    LauncherDarkAlertDialog(
+        onDismissRequest = { /* user requested close only via done button */ },
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                apps.forEach { app ->
+                    val isChecked = app.packageName in selectedSet
+                    val toggleCheck = {
+                        selectedSet = if (isChecked) {
+                            if (selectedSet.size > 1) selectedSet - app.packageName else selectedSet
+                        } else {
+                            selectedSet + app.packageName
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = toggleCheck)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        if (app.icon != null) {
+                            Image(
+                                bitmap = app.icon,
+                                contentDescription = app.label,
+                                modifier = Modifier.size(32.dp),
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
+                        Text(
+                            text = app.label,
+                            color = LauncherColors.TextPrimary,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Checkbox(
+                            checked = isChecked,
+                            onCheckedChange = { toggleCheck() },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = LauncherColors.AccentCyan,
+                                uncheckedColor = LauncherColors.TextMuted,
+                                checkmarkColor = Color.Black,
+                            ),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(selectedSet)
+                    onDismiss()
+                }
+            ) {
+                Text(
+                    text = stringResource(R.string.launcher_app_drawer_done),
+                    color = LauncherColors.AccentCyan,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+    )
+}
 
 @Composable
 internal fun LauncherAppPickerDialog(

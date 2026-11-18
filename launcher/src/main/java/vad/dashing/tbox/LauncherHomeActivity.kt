@@ -215,6 +215,9 @@ class LauncherHomeActivity : ComponentActivity() {
                 window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                window.decorView.isFocusable = true
+                window.decorView.isFocusableInTouchMode = true
+                window.decorView.requestFocus()
                 LauncherForegroundHandoff.restoreLauncherWindow()
                 window.decorView.visibility = View.VISIBLE
             }

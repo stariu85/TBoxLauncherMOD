@@ -255,6 +255,7 @@ internal object LauncherAdasQuickSettingsWindow {
             wm.addView(view, params)
             composeView = view
             _isShowingFlow.value = true
+            LauncherVehicleControlRepository.refreshNow()
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
             LauncherEdgeGestureOverlay.bringToFront()

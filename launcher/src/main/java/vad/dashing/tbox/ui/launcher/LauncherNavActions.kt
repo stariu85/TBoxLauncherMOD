@@ -127,12 +127,18 @@ internal fun goLauncherHome(
 
     val home = LauncherHomeActivityHolder.instance
     if (home != null) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            runCatching { home.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) }
-        } else {
-            home.runOnUiThread {
-                runCatching { home.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) }
+        val applyFocus = Runnable {
+            runCatching {
+                home.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                home.window.decorView.isFocusable = true
+                home.window.decorView.isFocusableInTouchMode = true
+                home.window.decorView.requestFocus()
             }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            applyFocus.run()
+        } else {
+            home.runOnUiThread { applyFocus.run() }
         }
     }
 
@@ -146,7 +152,12 @@ internal fun goLauncherHome(
 
     var broughtToFront = false
     if (home != null && !home.isFinishing && !home.isDestroyed) {
-        runCatching { home.window.decorView.visibility = View.VISIBLE }
+        runCatching {
+            home.window.decorView.visibility = View.VISIBLE
+            home.window.decorView.isFocusable = true
+            home.window.decorView.isFocusableInTouchMode = true
+            home.window.decorView.requestFocus()
+        }
         runCatching {
             val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             if (home.taskId > 0) {

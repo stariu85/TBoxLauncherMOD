@@ -61,6 +61,28 @@ internal enum class LauncherVehicleHealthStatus {
     Error,    // Красный значок Warning! в прямоугольной рамке
 }
 
+internal fun computeVehicleHealthStatus(
+    alerts: List<LauncherVehicleAlert>,
+    hasTireAttention: Boolean,
+    srrSystem: LauncherSrrSystemState,
+    accMode: LauncherAdasAccMode,
+    simShowAll: Boolean,
+): LauncherVehicleHealthStatus {
+    val hasCritical = simShowAll ||
+            alerts.any { it.severity == LauncherAlertSeverity.Critical } ||
+            hasTireAttention ||
+            srrSystem == LauncherSrrSystemState.Fault
+
+    if (hasCritical) return LauncherVehicleHealthStatus.Error
+
+    val hasWarning = alerts.any { it.severity == LauncherAlertSeverity.Warning } ||
+            accMode == LauncherAdasAccMode.Fault
+
+    if (hasWarning) return LauncherVehicleHealthStatus.Warning
+
+    return LauncherVehicleHealthStatus.Ok
+}
+
 @Composable
 internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val context = LocalContext.current
@@ -81,18 +103,15 @@ internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val alerts = if (simShowAll) alertsState.alerts else alertsState.alerts.filterNot { it.id.isBodyOpenAlert }
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasState
 
-    val hasCritical = simShowAll ||
-            alerts.any { it.severity == LauncherAlertSeverity.Critical } ||
-            effectiveTires.hasAttention(tirePressureLowThreshold) ||
-            adas.srrSystem == LauncherSrrSystemState.Fault
-
-    if (hasCritical) return LauncherVehicleHealthStatus.Error
-
-    val hasWarning = alerts.any { it.severity == LauncherAlertSeverity.Warning }
-
-    if (hasWarning) return LauncherVehicleHealthStatus.Warning
-
-    return LauncherVehicleHealthStatus.Ok
+    return remember(alerts, effectiveTires, tirePressureLowThreshold, adas, simShowAll) {
+        computeVehicleHealthStatus(
+            alerts = alerts,
+            hasTireAttention = effectiveTires.hasAttention(tirePressureLowThreshold),
+            srrSystem = adas.srrSystem,
+            accMode = adas.accMode,
+            simShowAll = simShowAll,
+        )
+    }
 }
 
 internal data class LauncherVehicleStatusDetailItem(
@@ -189,6 +208,16 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
                     title = "Ошибка боковых радаров (SRR)",
                     description = "Неисправность или перекрытие датчиков слепых зон.",
                     severity = LauncherAlertSeverity.Critical,
+                )
+            )
+        }
+
+        if (adas.accMode == LauncherAdasAccMode.Fault) {
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = stringResource(R.string.launcher_vehicle_status_radar_fault_title),
+                    description = stringResource(R.string.launcher_vehicle_status_radar_fault_desc),
+                    severity = LauncherAlertSeverity.Warning,
                 )
             )
         }

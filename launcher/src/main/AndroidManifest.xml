@@ -24,6 +24,9 @@
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.permission.MODIFY_DAY_NIGHT_MODE"
+        tools:ignore="ProtectedPermissions" />
     <!-- REAL_GET_TASKS (signature|development) — granted via pm grant; needed on Android 9
          so ActivityManager.getRunningTasks returns foreign tasks for the Back root guard. -->
     <uses-permission android:name="android.permission.GET_TASKS" />
