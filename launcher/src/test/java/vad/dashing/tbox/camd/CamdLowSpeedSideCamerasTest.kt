@@ -33,6 +33,8 @@ class CamdLowSpeedSideCamerasTest {
         invertSteerOnReverse: Boolean = false,
         isWidgetActive: Boolean = false,
         disableStockAvm: Boolean = invertSteerOnReverse,
+        activeGear: Char? = if (isReverseGear) 'R' else null,
+        minSpeed: Float = 1f,
     ): Pair<TurnSignalSide?, Boolean> {
         return CamdCameraRepository.resolveTargetSideCamera(
             speed = speed,
@@ -50,6 +52,8 @@ class CamdLowSpeedSideCamerasTest {
             invertSteerOnReverse = invertSteerOnReverse,
             isWidgetActive = isWidgetActive,
             disableStockAvm = disableStockAvm,
+            activeGear = activeGear,
+            minSpeed = minSpeed,
         )
     }
 
@@ -1046,6 +1050,38 @@ class CamdLowSpeedSideCamerasTest {
     }
 
     @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_closesInParkGear() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = false,
+            activeGear = 'P',
+            speed = 5f,
+        )
+        assertTrue(close)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_closesBelowMinSpeed() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = false,
+            activeGear = 'D',
+            speed = 4f,
+            minSpeed = 5f,
+        )
+        assertTrue(close)
+    }
+
+    @Test
+    fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_doesNotCloseAboveMinSpeed() {
+        val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
+            disableStockAvm = false,
+            activeGear = 'D',
+            speed = 6f,
+            minSpeed = 5f,
+        )
+        assertFalse(close)
+    }
+
+    @Test
     fun shouldCloseCamerasForStockAvm_whenStockAvmEnabled_doesNotCloseWhenMovingForward() {
         val close = CamdCameraRepository.shouldCloseCamerasForStockAvm(
             disableStockAvm = false,
@@ -1186,6 +1222,59 @@ class CamdLowSpeedSideCamerasTest {
             disableStockAvm = true,
         )
         assertEquals(TurnSignalSide.Right, side)
+        assertTrue(isLow)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmEnabled_parkGear_suppressesSideCameras() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 10f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            activeGear = 'P',
+            disableStockAvm = false,
+        )
+        assertNull(side)
+        assertFalse(isLow)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmEnabled_belowMinSpeed_suppressesSideCameras() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 4f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            activeGear = 'D',
+            disableStockAvm = false,
+            minSpeed = 5f,
+        )
+        assertNull(side)
+        assertFalse(isLow)
+    }
+
+    @Test
+    fun resolveTargetSideCamera_whenStockAvmEnabled_aboveMinSpeed_allowsSideCameras() {
+        val (side, isLow) = resolveTargetSideCamera(
+            speed = 6f,
+            lowSpeedThreshold = 20f,
+            lowSpeedEnabled = true,
+            turnSignalCamerasEnabled = true,
+            triggerMode = "both",
+            turnSignalSide = TurnSignalSide.Left,
+            steerSide = TurnSignalSide.Left,
+            activeGear = 'D',
+            disableStockAvm = false,
+            minSpeed = 5f,
+        )
+        assertEquals(TurnSignalSide.Left, side)
         assertTrue(isLow)
     }
 }

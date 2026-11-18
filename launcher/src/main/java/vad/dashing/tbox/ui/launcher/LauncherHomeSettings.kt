@@ -319,6 +319,7 @@ internal fun LauncherHomeSettingsContent() {
     ResetBottomSlotsButton()
     TopBarHeightSlider()
     TopBarLeftIndicatorsToggle()
+    IgnoreIdleFuelToggle()
     BottomBarHeightSlider()
     HiddenAppsSettings()
     LauncherSystemControlsContent()
@@ -584,6 +585,41 @@ private fun TopBarLeftIndicatorsToggle() {
         }
         Text(
             text = stringResource(R.string.launcher_top_bar_left_indicators_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun IgnoreIdleFuelToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.ignoreIdleFuelRevisionFlow.collectAsStateWithLifecycle()
+    var ignore by remember(context, revision) {
+        mutableStateOf(LauncherAppConfigStore.ignoreIdleFuel(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_ignore_idle_fuel_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Switch(
+                checked = ignore,
+                onCheckedChange = { enabled ->
+                    ignore = enabled
+                    LauncherAppConfigStore.setIgnoreIdleFuel(context, enabled)
+                },
+                colors = launcherSwitchColors(),
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_ignore_idle_fuel_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )

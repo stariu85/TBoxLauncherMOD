@@ -35,10 +35,11 @@ object BootSessionTracker {
         if (prevStartWall > 0L && !prev5MinPassed) {
             val systemRebooted = (currentUptime < prevStartRealtime) || (currentUptime < (FIVE_MIN_MS + 60_000L))
             val wallDelta = currentWall - prevStartWall
-            if (systemRebooted || (wallDelta in 1..(FIVE_MIN_MS + 120_000L))) {
+            val isWithinRebootWindow = (wallDelta in 1..(FIVE_MIN_MS + 120_000L)) || (wallDelta < 0 && currentUptime < (FIVE_MIN_MS + 60_000L))
+            if (systemRebooted && isWithinRebootWindow) {
                 Log.w(
                     TAG,
-                    "System reboot detected within 5 minutes of previous start (prevUptime=$prevStartRealtime, currentUptime=$currentUptime, wallDelta=${wallDelta}ms). Auto-enabling auto-backup for startup!",
+                    "System reboot detected within 5 minutes of previous start (prevUptime=$prevStartRealtime, currentUptime=$currentUptime, wallDelta=${wallDelta}ms). Auto-enabling auto-backup and boot log for startup!",
                 )
                 DclLogRecorder.log(
                     "BootTracker",
@@ -52,7 +53,7 @@ object BootSessionTracker {
                     }
                 }
 
-                // Also enable boot log toggle for next start
+                // Also enable boot log toggle
                 LauncherAppConfigStore.setBootLogEnabled(appCtx, true)
             }
         }
@@ -64,12 +65,13 @@ object BootSessionTracker {
             .putBoolean(KEY_5MIN_PASSED, false)
             .apply()
 
-        // Schedule 5-minute stable completion mark
+        // Schedule 5-minute stable completion mark: if no reboot occurred within 5 minutes, turn off boot logging
         scope.launch(Dispatchers.Default) {
             delay(FIVE_MIN_MS)
             prefs.edit().putBoolean(KEY_5MIN_PASSED, true).apply()
-            Log.i(TAG, "5 minutes of stable runtime reached for current session.")
-            DclLogRecorder.log("BootTracker", "5 minutes of stable runtime reached.")
+            LauncherAppConfigStore.setBootLogEnabled(appCtx, false)
+            Log.i(TAG, "5 minutes of stable runtime reached for current session. Boot log disabled.")
+            DclLogRecorder.log("BootTracker", "5 minutes of stable runtime reached. Boot log disabled.")
         }
     }
 }

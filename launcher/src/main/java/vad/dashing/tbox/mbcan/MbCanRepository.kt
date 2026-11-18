@@ -652,7 +652,7 @@ object MbCanRepository {
                     }
                     MbCanSignal.CarSpeed -> {
                         val current = _carSpeedState.value
-                        if (current == null || value == null || kotlin.math.abs(current - value) >= 0.5f) {
+                        if (current == null || value == null || kotlin.math.abs(current - value) >= 0.5f || (value == 0f && current != 0f)) {
                             _carSpeedState.value = value
                         }
                     }
@@ -1451,7 +1451,7 @@ object MbCanRepository {
             }
             val newSpeed = MbCanEngineFacade.readVehicleSpeed()?.coerceAtLeast(0f)
             val current = _carSpeedState.value
-            if (current == null || newSpeed == null || kotlin.math.abs(current - newSpeed) >= 0.5f) {
+            if (current == null || newSpeed == null || kotlin.math.abs(current - newSpeed) >= 0.5f || (newSpeed == 0f && current != 0f)) {
                 _carSpeedState.value = newSpeed
             }
         }

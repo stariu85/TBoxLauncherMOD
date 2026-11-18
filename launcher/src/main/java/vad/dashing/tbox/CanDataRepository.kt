@@ -131,9 +131,15 @@ object CanDataRepository {
     @Volatile
     private var overallAccumulatedFuelLiters: Float = 0f
     @Volatile
+    private var overallAccumulatedIdleFuelLiters: Double = 0.0
+    @Volatile
     private var currentSegmentDistKm: Float = 0f
     @Volatile
+    private var currentSegmentIdleFuelLiters: Double = 0.0
+    @Volatile
     private var lastKnownFuelLiters: Float? = null
+    @Volatile
+    private var lastIdleCheckMs: Long = 0L
 
     private const val PREFS_PERSISTENCE = "tbox_can_data_persistence"
     private const val KEY_AVG_FUEL = "saved_avg_fuel_consumption"
@@ -144,7 +150,9 @@ object CanDataRepository {
     private const val KEY_TRIP_START_TIME = "saved_trip_start_time"
     private const val KEY_OVERALL_DIST = "saved_overall_distance_km"
     private const val KEY_OVERALL_FUEL = "saved_overall_fuel_liters"
+    private const val KEY_OVERALL_IDLE_FUEL = "saved_overall_idle_fuel_liters"
     private const val KEY_SEGMENT_DIST = "saved_segment_distance_km"
+    private const val KEY_SEGMENT_IDLE_FUEL = "saved_segment_idle_fuel_liters"
 
     @Volatile
     private var isPersistedStateLoaded = false
@@ -210,12 +218,28 @@ object CanDataRepository {
                 if (prefs.contains(KEY_OVERALL_FUEL)) {
                     overallAccumulatedFuelLiters = prefs.getFloat(KEY_OVERALL_FUEL, 0f)
                 }
+                if (prefs.contains(KEY_OVERALL_IDLE_FUEL)) {
+                    overallAccumulatedIdleFuelLiters = prefs.getFloat(KEY_OVERALL_IDLE_FUEL, 0f).toDouble()
+                }
                 if (prefs.contains(KEY_SEGMENT_DIST)) {
                     currentSegmentDistKm = prefs.getFloat(KEY_SEGMENT_DIST, 0f)
                 }
+                if (prefs.contains(KEY_SEGMENT_IDLE_FUEL)) {
+                    currentSegmentIdleFuelLiters = prefs.getFloat(KEY_SEGMENT_IDLE_FUEL, 0f).toDouble()
+                }
                 val totalDist = overallAccumulatedDistanceKm + currentSegmentDistKm
-                if (totalDist > 0f && overallAccumulatedFuelLiters > 0f) {
-                    val calculated = (overallAccumulatedFuelLiters / totalDist) * 100f
+                val isIgnoreIdle = AppContextHolder.appContextOrNull?.let {
+                    vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.ignoreIdleFuel(it)
+                } ?: false
+                val totalFuel = overallAccumulatedFuelLiters
+                val totalIdle = (overallAccumulatedIdleFuelLiters + currentSegmentIdleFuelLiters).toFloat()
+                val effectiveFuel = if (isIgnoreIdle) {
+                    (totalFuel - totalIdle).coerceAtLeast(0f)
+                } else {
+                    totalFuel
+                }
+                if (totalDist > 0f && effectiveFuel > 0f) {
+                    val calculated = (effectiveFuel / totalDist) * 100f
                     if (calculated > 0f && calculated < 50f) {
                         _averageFuelConsumption.value = calculated
                         previousAvgConsumption = calculated
@@ -252,7 +276,9 @@ object CanDataRepository {
             editor.putLong(KEY_TRIP_START_TIME, tripStartTimeMs)
             editor.putFloat(KEY_OVERALL_DIST, overallAccumulatedDistanceKm)
             editor.putFloat(KEY_OVERALL_FUEL, overallAccumulatedFuelLiters)
+            editor.putFloat(KEY_OVERALL_IDLE_FUEL, overallAccumulatedIdleFuelLiters.toFloat())
             editor.putFloat(KEY_SEGMENT_DIST, currentSegmentDistKm)
+            editor.putFloat(KEY_SEGMENT_IDLE_FUEL, currentSegmentIdleFuelLiters.toFloat())
             editor.apply()
         }
     }
@@ -397,10 +423,12 @@ object CanDataRepository {
         if (current == null || kotlin.math.abs(current - newValue) >= 1.0f || (newValue == 0f && current != 0f)) {
             _carSpeed.value = newValue
         }
+        updateIdleFuelTracking()
     }
 
     fun updateCarSpeedAccurate(newValue: Float) {
         _carSpeedAccurate.setIfChanged(newValue)
+        updateIdleFuelTracking()
     }
 
     fun updateOdometer(newValue: UInt) {
@@ -459,7 +487,10 @@ object CanDataRepository {
         loadPersistedStateIfNeeded()
         overallAccumulatedDistanceKm = 0f
         overallAccumulatedFuelLiters = 0f
+        overallAccumulatedIdleFuelLiters = 0.0
         currentSegmentDistKm = 0f
+        currentSegmentIdleFuelLiters = 0.0
+        lastIdleCheckMs = 0L
         val currentPercent = getEffectiveFuelPercentage()
         initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
         lastKnownFuelLiters = initialFuelLiters
@@ -480,8 +511,54 @@ object CanDataRepository {
         _localTripDurationSeconds.value = durationSec
     }
 
+    fun isEngineRunning(): Boolean {
+        val rpm = _engineRPM.value
+            ?: vad.dashing.tbox.mbcan.UniversalCanRepository.engineRpmState.value
+        if (rpm != null) {
+            return rpm > 300f
+        }
+        val currentCons = _currentFuelConsumption.value
+        if (currentCons != null && currentCons > 0f) {
+            return true
+        }
+        return false
+    }
+
+    fun isVehicleStationary(): Boolean {
+        val speed = _carSpeedAccurate.value
+            ?: _carSpeed.value
+            ?: vad.dashing.tbox.mbcan.UniversalCanRepository.carSpeedState.value
+            ?: 0f
+        return speed < 1.0f
+    }
+
+    private fun updateIdleFuelTracking() {
+        val now = System.currentTimeMillis()
+        val isRunning = isEngineRunning()
+        val isStationary = isVehicleStationary()
+        if (isRunning && isStationary) {
+            if (lastIdleCheckMs > 0L) {
+                val deltaMs = now - lastIdleCheckMs
+                if (deltaMs in 20L..5000L) {
+                    val currentCons = _currentFuelConsumption.value
+                    val rateLitersPerHour = if (currentCons != null && currentCons in 0.3f..5.0f) {
+                        currentCons
+                    } else {
+                        0.8f
+                    }
+                    val idleFuelDelta = (rateLitersPerHour / 3_600_000.0) * deltaMs
+                    currentSegmentIdleFuelLiters += idleFuelDelta
+                }
+            }
+            lastIdleCheckMs = now
+        } else {
+            lastIdleCheckMs = 0L
+        }
+    }
+
     private fun recalculateLocalAverageFuelConsumption() {
         loadPersistedStateIfNeeded()
+        updateIdleFuelTracking()
         val currentPercent = getEffectiveFuelPercentage()
             ?: (_fuelLevelCalibratedLitersActual.value ?: _fuelLevelCalibratedLiters.value)?.let { (it / getTankCapacityLiters()) * 100f }
             ?: return
@@ -497,6 +574,8 @@ object CanDataRepository {
             // Refuel detected: commit segment fuel and distance to overall totals
             val segUsed = (initFuel - (lastKnownFuelLiters ?: initFuel)).coerceAtLeast(0f)
             overallAccumulatedFuelLiters += segUsed
+            overallAccumulatedIdleFuelLiters += currentSegmentIdleFuelLiters
+            currentSegmentIdleFuelLiters = 0.0
             overallAccumulatedDistanceKm += currentSegmentDistKm
             currentSegmentDistKm = 0f
             initFuel = currentFuelLiters
@@ -507,9 +586,20 @@ object CanDataRepository {
         val segUsedLiters = (initFuel - currentFuelLiters).coerceAtLeast(0f)
         val combinedTotalDist = overallAccumulatedDistanceKm + currentSegmentDistKm
         val combinedTotalFuel = overallAccumulatedFuelLiters + segUsedLiters
+        val combinedTotalIdleFuel = (overallAccumulatedIdleFuelLiters + currentSegmentIdleFuelLiters).toFloat()
 
-        val overallAvg = if (combinedTotalDist >= 0.1f && combinedTotalFuel > 0f) {
-            (combinedTotalFuel / combinedTotalDist) * 100f
+        val isIgnoreIdle = AppContextHolder.appContextOrNull?.let {
+            vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.ignoreIdleFuel(it)
+        } ?: false
+
+        val effectiveFuel = if (isIgnoreIdle) {
+            (combinedTotalFuel - combinedTotalIdleFuel).coerceAtLeast(0f)
+        } else {
+            combinedTotalFuel
+        }
+
+        val overallAvg = if (combinedTotalDist >= 0.1f && effectiveFuel > 0f) {
+            (effectiveFuel / combinedTotalDist) * 100f
         } else {
             previousAvgConsumption
         }
@@ -519,6 +609,10 @@ object CanDataRepository {
             _averageFuelConsumption.value = overallAvg
             savePersistedState()
         }
+    }
+
+    fun onIgnoreIdleFuelSettingChanged() {
+        recalculateLocalAverageFuelConsumption()
     }
 
     fun updateDistanceToNextMaintenance(newValue: UInt) {
@@ -561,6 +655,7 @@ object CanDataRepository {
 
     fun updateCurrentFuelConsumption(newValue: Float?) {
         _currentFuelConsumption.setIfChanged(newValue)
+        updateIdleFuelTracking()
     }
 
     fun updateAverageFuelConsumption(newValue: Float?) {
@@ -593,6 +688,7 @@ object CanDataRepository {
 
     fun updateEngineRPM(newValue: Float) {
         _engineRPM.setIfChanged(newValue)
+        updateIdleFuelTracking()
     }
 
     fun updateParam5(newValue: Float?) {

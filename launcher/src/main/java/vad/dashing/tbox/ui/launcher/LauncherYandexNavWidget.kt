@@ -244,7 +244,7 @@ internal fun LauncherNavTrafficLightOverlay(
             )
 
             navState.trafficLightDistanceMeters?.let { dist ->
-                val distBg = if (isDark) Color(0xCC111827) else Color(0xFFE2E8F0)
+                val distBg = (if (isDark) Color(0xFF111827) else Color(0xFFE2E8F0)).copy(alpha = 0.7f)
                 val distBorder = if (isDark) Color.White.copy(alpha = 0.25f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
                 Box(
                     modifier = Modifier
@@ -317,7 +317,7 @@ private fun TrafficLightHousing(
     val yellowColor = if (isYellow) Color(0xFFF59E0B) else inactiveLampColor
     val redColor = if (isRed) Color(0xFFEF4444) else inactiveLampColor
 
-    val housingBg = if (isDark) Color(0xFF111827) else Color(0xFFE2E8F0)
+    val housingBg = (if (isDark) Color(0xFF111827) else Color(0xFFE2E8F0)).copy(alpha = 0.7f)
     val housingBorder = if (isDark) Color.White.copy(alpha = 0.25f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
 
     val formattedArrow = when (arrowStr?.lowercase()?.trim()) {
@@ -436,7 +436,7 @@ private fun CurrentSpeedBadge(
     isDark: Boolean = LauncherThemeState.darkTheme,
 ) {
     val text = speedKmh.toString()
-    val bgColor = if (isDark) Color(0xFF1E293B) else Color.White
+    val bgColor = (if (isDark) Color(0xFF1E293B) else Color.White).copy(alpha = 0.7f)
     val textColor = if (isDark) Color.White else Color.Black
     val fontSize = if (text.length >= 3) 16.sp else 22.sp
 
@@ -477,9 +477,9 @@ private fun SpeedLimitBadge(
     }
 
     val bgColor = when {
-        isBlinkingRed -> Color(0xFFEF4444)
-        isDark -> Color(0xFF1E293B)
-        else -> Color.White
+        isBlinkingRed -> Color(0xFFEF4444).copy(alpha = 0.7f)
+        isDark -> Color(0xFF1E293B).copy(alpha = 0.7f)
+        else -> Color.White.copy(alpha = 0.7f)
     }
     val textColor = when {
         isBlinkingRed -> Color.White
@@ -839,7 +839,7 @@ internal fun LauncherNavBgTrafficLightOverlay(
     if (!isVisible) return
 
     val isDark = LauncherThemeState.darkTheme
-    val bgCard = if (isDark) Color(0xDD111827) else Color(0xEEFFFFFF)
+    val bgCard = (if (isDark) Color(0xFF111827) else Color.White).copy(alpha = 0.7f)
     val borderCard = if (isDark) Color.White.copy(alpha = 0.2f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
     val primaryTextColor = if (isDark) Color.White else Color(0xFF0F172A)
 

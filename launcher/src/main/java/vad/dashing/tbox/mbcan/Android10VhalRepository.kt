@@ -1028,7 +1028,7 @@ object Android10VhalRepository {
             VHAL_CAR_SPEED_PROPERTY_ID -> {
                 val newSpeed = decodeCarSpeed(rawValue)
                 val current = _carSpeedState.value
-                if (current == null || newSpeed == null || kotlin.math.abs(current - newSpeed) >= 0.5f) {
+                if (current == null || newSpeed == null || kotlin.math.abs(current - newSpeed) >= 0.5f || (newSpeed == 0f && current != 0f)) {
                     _carSpeedState.value = newSpeed
                 }
             }

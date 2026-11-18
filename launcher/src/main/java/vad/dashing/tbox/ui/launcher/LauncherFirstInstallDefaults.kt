@@ -150,6 +150,7 @@ object LauncherFirstInstallDefaults {
         putIfMissing("cruise_decrease_interval", 50L)
         putIfMissing("car_model_visible", true)
         putIfMissing("dcl_logs_enabled", false)
+        putIfMissing("boot_log_enabled", false)
         putIfMissing("adas_panel_visible", true)
         putIfMissing("acc_presets_in_quick_settings_visible", false)
         putIfMissing("top_bar_items", "headlights|trunk|mirrors|rear_fog|hdc|pdc|avm|spacer_small_1794639492605|gps|combined_temp|air_quality|spacer_small_1794639527728|avg_fuel|fuel|trip_cost|trip_distance|spacer_small_1794639591091|engine_temp|gearbox_temp|voltage|spacer_small_1794639626549|vehicle_status|maintenance")

@@ -38,6 +38,7 @@ import vad.dashing.tbox.LocValues
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -53,6 +54,48 @@ internal fun computeGpsBearing(lat1: Double, lon1: Double, lat2: Double, lon2: D
     val x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda)
     val bearingRad = atan2(y, x)
     return ((Math.toDegrees(bearingRad).toFloat() + 360f) % 360f)
+}
+
+/**
+ * Simple GPS coordinate pair.
+ */
+internal data class GpsPoint(val lat: Double, val lon: Double)
+
+/**
+ * Computes the mean direction (bearing) in degrees [0, 360) across a sequence of GPS points
+ * by calculating the average unit vector between consecutive points.
+ *
+ * For points P0, P1, ..., Pn, each consecutive step Pi -> Pi+1 produces a bearing vector
+ * (sin(bearing), cos(bearing)). Averaging these vectors cancels out lateral GPS jitter
+ * and correctly handles 0°/360° North wrap-around.
+ *
+ * Returns null if points list has fewer than 2 points, or if the vectors cancel each other out.
+ */
+internal fun computeAverageVectorBearing(points: List<GpsPoint>): Float? {
+    if (points.size < 2) return null
+
+    var sumX = 0.0
+    var sumY = 0.0
+
+    for (i in 0 until points.size - 1) {
+        val (lat1, lon1) = points[i]
+        val (lat2, lon2) = points[i + 1]
+        val bearing = computeGpsBearing(lat1, lon1, lat2, lon2)
+        val rad = Math.toRadians(bearing.toDouble())
+        sumX += sin(rad)
+        sumY += cos(rad)
+    }
+
+    val count = points.size - 1
+    val avgX = sumX / count
+    val avgY = sumY / count
+
+    if (hypot(avgX, avgY) < 1e-4) {
+        return null
+    }
+
+    val avgBearingRad = atan2(avgX, avgY)
+    return ((Math.toDegrees(avgBearingRad).toFloat() + 360f) % 360f)
 }
 
 /**
@@ -84,16 +127,29 @@ internal fun computeDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon
 /**
  * Global state holder tracking vehicle heading strictly from GPS coordinate changes.
  * Preserves last known heading across drive view transitions (e.g. traffic lights/stops).
+ *
+ * Calculates heading by maintaining a history of up to 4 previous points + current point
+ * (5 points total, yielding up to 4 consecutive displacement vectors) and computing
+ * the average direction vector between them to eliminate GPS jitter.
  */
 internal object LauncherGpsCompassTracker {
-    private var lastLat: Double = 0.0
-    private var lastLon: Double = 0.0
+    /**
+     * Number of previous points kept to smooth the heading vector.
+     * 4 previous points + 1 current point = 5 points in history,
+     * forming 4 consecutive displacement vectors between them.
+     */
+    const val MAX_PREVIOUS_POINTS = 4
+    const val MAX_HISTORY_POINTS = MAX_PREVIOUS_POINTS + 1
+
+    private val pointHistory = ArrayDeque<GpsPoint>(MAX_HISTORY_POINTS)
+
     var currentHeading: Float = 0f
         private set
 
     private val _headingFlow = MutableStateFlow(0f)
     val headingFlow: StateFlow<Float> = _headingFlow.asStateFlow()
 
+    @Synchronized
     fun onLocationUpdate(loc: LocValues): Float {
         val lat = loc.latitude
         val lon = loc.longitude
@@ -106,35 +162,43 @@ internal object LauncherGpsCompassTracker {
         return onCoordinatesUpdate(lat, lon)
     }
 
+    @Synchronized
     fun onCoordinatesUpdate(lat: Double, lon: Double): Float {
         if (abs(lat) < 0.001 || abs(lon) < 0.001) {
             return currentHeading
         }
 
-        if (abs(lastLat) < 0.001 || abs(lastLon) < 0.001) {
-            lastLat = lat
-            lastLon = lon
-            return currentHeading
+        val lastPoint = pointHistory.lastOrNull()
+        if (lastPoint != null) {
+            val distance = computeDistanceMeters(lastPoint.lat, lastPoint.lon, lat, lon)
+            if (distance < MIN_GPS_DISPLACEMENT_METERS) {
+                return currentHeading
+            }
         }
 
-        val distance = computeDistanceMeters(lastLat, lastLon, lat, lon)
+        if (pointHistory.size >= MAX_HISTORY_POINTS) {
+            pointHistory.removeFirst()
+        }
+        pointHistory.addLast(GpsPoint(lat, lon))
 
-        if (distance >= MIN_GPS_DISPLACEMENT_METERS) {
-            currentHeading = computeGpsBearing(lastLat, lastLon, lat, lon)
-            lastLat = lat
-            lastLon = lon
+        val avgBearing = computeAverageVectorBearing(pointHistory.toList())
+        if (avgBearing != null) {
+            currentHeading = avgBearing
             _headingFlow.value = currentHeading
         }
 
         return currentHeading
     }
 
+    @Synchronized
     fun reset() {
-        lastLat = 0.0
-        lastLon = 0.0
+        pointHistory.clear()
         currentHeading = 0f
         _headingFlow.value = 0f
     }
+
+    @Synchronized
+    internal fun getHistoryPoints(): List<GpsPoint> = pointHistory.toList()
 }
 
 private val CARDINAL_POINTS = listOf(

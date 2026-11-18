@@ -121,6 +121,13 @@ object LauncherCar3DModelTrigger {
         _paintChangedEvent.value = SystemClock.uptimeMillis()
     }
 
+    private val _parkEngagedEvent = MutableStateFlow(0L)
+    val parkEngagedEvent: StateFlow<Long> = _parkEngagedEvent.asStateFlow()
+
+    fun notifyParkEngaged() {
+        _parkEngagedEvent.value = SystemClock.uptimeMillis()
+    }
+
     private val _settingsOrbitEvent = MutableStateFlow(0L)
     val settingsOrbitEvent: StateFlow<Long> = _settingsOrbitEvent.asStateFlow()
 
@@ -444,6 +451,9 @@ private fun LauncherCarFilamentContent(
     val reverseCamerasClosedEvent by LauncherCar3DModelTrigger.reverseCamerasClosedEvent.collectAsStateWithLifecycle()
     val paintChangedEvent by LauncherCar3DModelTrigger.paintChangedEvent.collectAsStateWithLifecycle()
     val settingsOrbitEvent by LauncherCar3DModelTrigger.settingsOrbitEvent.collectAsStateWithLifecycle()
+    val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(
+        minActiveState = Lifecycle.State.CREATED,
+    )
     val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
         LauncherAppConfigStore.cameraAnimationEnabled(context)
@@ -544,18 +554,29 @@ private fun LauncherCarFilamentContent(
         topShadeClosedEvent,
         paintChangedEvent,
         settingsOrbitEvent,
+        parkEngagedEvent,
     ) {
         val nowMs = SystemClock.uptimeMillis()
         val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
         val isOrbitRecentNow = (nowMs - settingsOrbitEvent) < 2000L
+        val isParkEngageRecent = (nowMs - parkEngagedEvent) < 2000L
 
-        if (topShadeOpen || isAvmActive || (carHidden && !isPaintChangeRecent)) {
+        val shouldPause = topShadeOpen ||
+            ((isAvmActive || carHidden) && !isPaintChangeRecent && !isParkEngageRecent)
+
+        if (shouldPause) {
             customSceneLifecycleOwner.pauseScene()
         } else {
             // Resume scene immediately when exiting camera/settings, when triggers fire,
-            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged/Orbit is pressed/triggered
+            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged/Orbit/Park is pressed/triggered
             customSceneLifecycleOwner.resumeScene()
-            if (!isTriggerActive && !isPaintChangeRecent && !isOrbitRecentNow) {
+            if (isParkEngageRecent && (isAvmActive || carHidden)) {
+                // Keep rendering active for 2 seconds when shifted to P (even while cameras/overlays are still active), then pause
+                val elapsed = SystemClock.uptimeMillis() - parkEngagedEvent
+                val remaining = (2_000L - elapsed).coerceAtLeast(0L)
+                delay(remaining)
+                customSceneLifecycleOwner.pauseScene()
+            } else if (!isTriggerActive && !isPaintChangeRecent && !isOrbitRecentNow) {
                 // At system startup, keep rendering active for 5 seconds before freezing.
                 // For subsequent events (e.g. camera/settings exit, action completion, Home/Back press), keep active for 2 seconds.
                 val waitMs = if (!initialStartupDone) {
@@ -706,6 +727,8 @@ private fun LauncherCarFilamentContent(
                         val reverseCamerasClosedEventMs = LauncherCar3DModelTrigger.reverseCamerasClosedEvent.value
                         val settingsOrbitEventMs = LauncherCar3DModelTrigger.settingsOrbitEvent.value
                         val isOrbitRecentFrame = (nowMs - settingsOrbitEventMs) < 2000L
+                        val parkEngagedEventMs = LauncherCar3DModelTrigger.parkEngagedEvent.value
+                        val isParkEngageRecentFrame = (nowMs - parkEngagedEventMs) < 2000L
                         val isActionRecent = (nowMs - homeEventMs) < 2000L ||
                             (nowMs - backEventMs) < 2000L ||
                             (nowMs - prevAppEventMs) < 2000L ||
@@ -714,7 +737,8 @@ private fun LauncherCarFilamentContent(
                             (nowMs - reverseCamerasClosedEventMs) < 2000L ||
                             isTopShadeClosedRecent ||
                             isPaintChangeRecent ||
-                            isOrbitRecentFrame
+                            isOrbitRecentFrame ||
+                            isParkEngageRecentFrame
 
                         val isStartupRecent = (nowMs - startupUptimeMs) < 5000L
 

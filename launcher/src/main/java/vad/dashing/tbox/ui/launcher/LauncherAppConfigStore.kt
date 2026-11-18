@@ -32,6 +32,7 @@ private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover
 private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
 private const val KEY_TOP_BAR_HEIGHT = "top_bar_height_dp"
 private const val KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE = "top_bar_left_indicators_visible"
+private const val KEY_IGNORE_IDLE_FUEL = "ignore_idle_fuel"
 private const val KEY_TOP_BAR_ITEMS = "top_bar_items"
 private const val KEY_TOP_BAR_RIGHT_ITEMS = "top_bar_right_items"
 internal val DEFAULT_TOP_BAR_ITEMS = listOf(
@@ -52,6 +53,8 @@ private const val KEY_CAMERA_ANIMATION_ENABLED = "camera_animation_enabled"
 private const val KEY_TRUNK_LONG_PRESS_ENABLED = "trunk_long_press_enabled"
 private const val KEY_AVM_CAMERA_ACTION = "avm_camera_action"
 private const val KEY_CAMD_USE_STOCK_AVM = "camd_use_stock_avm"
+private const val KEY_CAMD_STOCK_AVM_SIDE_CAMERAS_MIN_SPEED = "camd_stock_avm_side_cam_min_speed"
+private const val DEFAULT_CAMD_STOCK_AVM_SIDE_CAMERAS_MIN_SPEED = 1
 private const val KEY_CAMD_AUTO_DISABLE_STOCK_AVM = "camd_auto_disable_stock_avm"
 private const val KEY_CAMD_AUTO_AVM_ON_SPEED = "camd_auto_avm_on_speed"
 private const val KEY_CAMD_AUTO_AVM_OFF_SPEED = "camd_auto_avm_off_speed"
@@ -493,6 +496,8 @@ internal object LauncherAppConfigStore {
     internal val topBarHeightRevisionFlow: StateFlow<Int> = topBarHeightRevision
     private val topBarLeftIndicatorsRevision = MutableStateFlow(0)
     internal val topBarLeftIndicatorsRevisionFlow: StateFlow<Int> = topBarLeftIndicatorsRevision
+    private val ignoreIdleFuelRevision = MutableStateFlow(0)
+    internal val ignoreIdleFuelRevisionFlow: StateFlow<Int> = ignoreIdleFuelRevision
     private val topBarItemsRevision = MutableStateFlow(0)
     internal val topBarItemsRevisionFlow: StateFlow<Int> = topBarItemsRevision
     private val topBarIndicatorsBorderRevision = MutableStateFlow(0)
@@ -708,7 +713,7 @@ internal object LauncherAppConfigStore {
     val activeSubPanelsState: Map<String, String> get() = activeSubPanelsMap
 
     val DEFAULT_QUICK_SETTINGS_TOP_PANELS = listOf(
-        "car_color", "drive_mode_offroad", "smart_control", "lanes", "chassis", "radars"
+        "car_color", "drive_mode_offroad", "smart_control", "lanes", "chassis", "radars", "acc_presets", "ngp_lka_ldw"
     )
     val DEFAULT_QUICK_SETTINGS_BOTTOM_PANELS = listOf(
         "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats"
@@ -933,6 +938,15 @@ internal object LauncherAppConfigStore {
     fun setTopBarLeftIndicatorsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_TOP_BAR_LEFT_INDICATORS_VISIBLE, visible).apply()
         topBarLeftIndicatorsRevision.value++
+    }
+
+    fun ignoreIdleFuel(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_IGNORE_IDLE_FUEL, false)
+
+    fun setIgnoreIdleFuel(context: Context, ignore: Boolean) {
+        prefs(context).edit().putBoolean(KEY_IGNORE_IDLE_FUEL, ignore).apply()
+        ignoreIdleFuelRevision.value++
+        CanDataRepository.onIgnoreIdleFuelSettingChanged()
     }
 
     private val topBarModemCellularVisibleRevision = MutableStateFlow(0)
@@ -1922,6 +1936,18 @@ internal object LauncherAppConfigStore {
         setCamdUseStockAvm(context, !disableStock)
     }
 
+    fun camdStockAvmSideCamerasMinSpeed(context: Context): Int {
+        val sp = prefs(context)
+        val v = sp.getInt(KEY_CAMD_STOCK_AVM_SIDE_CAMERAS_MIN_SPEED, DEFAULT_CAMD_STOCK_AVM_SIDE_CAMERAS_MIN_SPEED)
+        return v.coerceIn(1, 30)
+    }
+
+    fun setCamdStockAvmSideCamerasMinSpeed(context: Context, speed: Int) {
+        val next = speed.coerceIn(1, 30)
+        prefs(context).edit().putInt(KEY_CAMD_STOCK_AVM_SIDE_CAMERAS_MIN_SPEED, next).apply()
+        camdConfigRevision.value++
+    }
+
     fun camdAutoDisableStockAvm(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CAMD_AUTO_DISABLE_STOCK_AVM, false)
 
@@ -2724,6 +2750,7 @@ internal object LauncherAppConfigStore {
         dockIconScaleRevision.value++
         topBarHeightRevision.value++
         topBarLeftIndicatorsRevision.value++
+        ignoreIdleFuelRevision.value++
         topBarItemsRevision.value++
         topBarIndicatorsBorderRevision.value++
         topBarCellularNetworkTypeVisibleRevision.value++

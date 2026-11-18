@@ -161,6 +161,9 @@ fun LauncherVirtualRoad(
     val effectiveIsSnow = manualSnow || (!manualRain && autoWeatherType == AutoWeatherType.Snow)
     val effectiveIsRain = (!effectiveIsSnow) && (manualRain || autoWeatherType == AutoWeatherType.Rain)
 
+    val currentEffectiveIsSnow by rememberUpdatedState(effectiveIsSnow)
+    val currentEffectiveIsRain by rememberUpdatedState(effectiveIsRain)
+
     val context = LocalContext.current
 
     val snowflakes = remember {
@@ -216,7 +219,7 @@ fun LauncherVirtualRoad(
                 val spd = currentSpeedKmh
                 val steer = currentSteerDeg
 
-                if (effectiveIsSnow) {
+                if (currentEffectiveIsSnow) {
                     val speedMultiplier = when {
                         spd <= 0f -> 0.15f
                         spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
@@ -238,7 +241,7 @@ fun LauncherVirtualRoad(
                     }
                 }
 
-                if (effectiveIsRain) {
+                if (currentEffectiveIsRain) {
                     val speedMultiplier = when {
                         spd <= 0f -> 0.45f
                         spd <= 100f -> 0.45f + (spd / 100f) * 0.95f
@@ -1751,7 +1754,7 @@ private fun DrawScope.drawSpeedLimitSign(
     val cx = size.width / 2f
     val cy = size.height / 2f
     val radius = minOf(cx, cy) - (if (active) 5f else 3f)
-    val circleColor = if (isBlinkingRed) Color(0xFFEF4444) else Color.White.copy(alpha = 0.92f)
+    val circleColor = if (isBlinkingRed) Color(0xFFEF4444).copy(alpha = 0.7f) else Color.White.copy(alpha = 0.7f)
     val ringColor = if (isBlinkingRed) Color.White else accent
 
     drawCircle(color = circleColor, radius = radius, center = Offset(cx, cy))

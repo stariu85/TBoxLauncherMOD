@@ -613,7 +613,7 @@ object DclLogRecorder {
             if (!isSessionActive) return
             val nowMs = SystemClock.elapsedRealtime()
             if (nowMs >= sessionDeadlineMs) {
-                stopSession("2 minutes expired")
+                stopSession("Session expired")
             } else {
                 val remaining = sessionDeadlineMs - nowMs
                 mainHandler.removeCallbacks(stopRunnable)
@@ -638,8 +638,7 @@ object DclLogRecorder {
                 if (activeFile == null && memoryBuffer.isNotEmpty()) {
                     flushEmergencyFallback(appCtx)
                 }
-                vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.setBootLogEnabled(appCtx, false)
-                Log.i(TAG, "Boot log session ended after 3 minutes, bootLogEnabled toggle reset to false.")
+                Log.i(TAG, "Boot log session ended after 3 minutes.")
             }
             isBootSession = false
 

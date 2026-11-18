@@ -52,6 +52,9 @@ fun LauncherCamerasSettingsContent(
     val disableStockAvm = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdDisableStockAvm(context)
     }
+    val stockAvmMinSpeed = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdStockAvmSideCamerasMinSpeed(context)
+    }
     val reverseCameras = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdReverseCameras(context)
     }
@@ -245,6 +248,57 @@ fun LauncherCamerasSettingsContent(
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
+
+        val isStockAvmEnabled = isInstalled && !disableStockAvm
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_stock_avm_min_speed_title),
+                    color = if (isStockAvmEnabled) LauncherColors.TextPrimary else LauncherColors.TextMuted,
+                    fontSize = 15.sp,
+                )
+                Text(
+                    text = "$stockAvmMinSpeed км/ч",
+                    color = if (isStockAvmEnabled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Text(
+                text = stringResource(R.string.camd_stock_avm_min_speed_desc),
+                color = if (isStockAvmEnabled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+                fontSize = 12.sp,
+            )
+            Slider(
+                value = stockAvmMinSpeed.toFloat(),
+                onValueChange = { next ->
+                    LauncherAppConfigStore.setCamdStockAvmSideCamerasMinSpeed(context, next.roundToInt())
+                },
+                valueRange = 1f..30f,
+                steps = 28,
+                enabled = isStockAvmEnabled,
+                colors = SliderDefaults.colors(
+                    thumbColor = LauncherColors.AccentCyan,
+                    activeTrackColor = LauncherColors.AccentCyan,
+                    inactiveTrackColor = LauncherColors.TextMuted,
+                    disabledThumbColor = LauncherColors.TextMuted,
+                    disabledActiveTrackColor = LauncherColors.TextMuted,
+                    disabledInactiveTrackColor = LauncherColors.TextMuted.copy(alpha = 0.3f),
+                ),
+            )
+        }
 
         if (isInstalled && disableStockAvm) {
             Spacer(modifier = Modifier.height(4.dp))

@@ -227,6 +227,8 @@
     <string name="camd_use_stock_avm_desc">When disabled, Camd service is used</string>
     <string name="camd_disable_stock_avm_title">Disable OEM 360 system</string>
     <string name="camd_disable_stock_avm_desc">Force holding com.mengbo.avm disabled via vad.dashing.camd (AVM ON / AVM OFF)</string>
+    <string name="camd_stock_avm_min_speed_title">Speed below which side cameras do not activate</string>
+    <string name="camd_stock_avm_min_speed_desc">When OEM AVM is enabled, side cameras do not activate below this speed</string>
     <string name="camd_reverse_cameras_title">Enable cameras on R</string>
     <string name="camd_reverse_cameras_desc">Show 4-camera 360 view between top and bottom panels when in reverse gear (R). Closes in P or in D above 15 km/h</string>
     <string name="camd_pdc_cameras_title">Enable cameras on parking sensors</string>
@@ -1246,6 +1248,8 @@
     <string name="reg_search">searching network</string>
     <string name="launcher_top_bar_left_indicators_title">Top bar left indicators</string>
     <string name="launcher_top_bar_left_indicators_desc">Show temperature, fuel level, battery voltage, CPU and RAM usage in top bar left corner</string>
+    <string name="launcher_ignore_idle_fuel_title">Ignore idle when calculating consumption</string>
+    <string name="launcher_ignore_idle_fuel_desc">Do not take into account fuel consumption while idling with engine running in the status bar widget</string>
     <string name="reg_reject">registration rejected</string>
     <string name="reg_roaming">roaming</string>
 

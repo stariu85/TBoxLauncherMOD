@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import vad.dashing.tbox.ui.clickableWithSound
+import vad.dashing.tbox.ui.combinedClickableWithSound
+import kotlin.math.abs
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -883,6 +886,340 @@ fun LauncherWiperControlBar(
             onClick = onSensitivityClick,
             iconSize = 22.dp,
             fontSize = 16.sp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+    }
+}
+
+/**
+ * Panel 1: ACC and 4 speed presets (5 buttons).
+ * All buttons are rectangular with RoundedCornerShape(12.dp), same padding and dimensions as other panels.
+ */
+@Composable
+fun LauncherAccPresetsBar(
+    canViewModel: CanDataViewModel,
+    adas: LauncherAdasState,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val tboxCruise by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
+
+    // ACC state
+    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
+    val accState = when {
+        LauncherDevVehicleState.simulateEnabled -> {
+            if (LauncherDevVehicleState.adasCruiseActive) AssistChipState.Active else AssistChipState.Off
+        }
+        cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override -> AssistChipState.Active
+        cruiseState == AccCruiseState.Standby -> AssistChipState.Standby
+        else -> AssistChipState.Off
+    }
+
+    // Presets state
+    val presetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val rawPresets = remember(context, presetsRevision) {
+        LauncherAppConfigStore.cruisePresetsKmh(context)
+    }
+    val presets = remember(rawPresets) {
+        val list = rawPresets.take(4).toMutableList()
+        val defaults = listOf(60, 80, 100, 120)
+        while (list.size < 4) {
+            list.add(defaults.getOrElse(list.size) { 60 + list.size * 20 })
+        }
+        list
+    }
+    val lastSpeed = remember(context, presetsRevision, tboxCruise) {
+        LauncherAppConfigStore.lastCruiseSpeedKmh(context)
+    }
+    val adjustingTargetSpeed by LauncherCruisePresetController.adjustingTargetSpeed.collectAsStateWithLifecycle()
+
+    val activeSpeed = if (LauncherDevVehicleState.simulateEnabled) {
+        lastSpeed
+    } else {
+        adas.accSetSpeedKmh ?: tboxCruise?.toInt()?.takeIf { it > 0 } ?: lastSpeed
+    }
+
+    var pendingTargetSpeed by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(activeSpeed) {
+        if (activeSpeed != null && pendingTargetSpeed == activeSpeed) {
+            pendingTargetSpeed = null
+        }
+    }
+
+    LaunchedEffect(pendingTargetSpeed) {
+        if (pendingTargetSpeed != null) {
+            delay(3500L)
+            pendingTargetSpeed = null
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Button 1: ACC
+        AssistButtonChip(
+            label = "ACC",
+            iconRes = null,
+            state = accState,
+            onClick = {
+                LauncherCruisePresetController.launchStatusSingleTap(context)
+            },
+            fontSize = 18.sp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Buttons 2-5: 4 Presets
+        presets.forEach { kmh ->
+            val isAdjusting = adjustingTargetSpeed == kmh
+            val isPending = pendingTargetSpeed == kmh
+            val inRange = activeSpeed != null && activeSpeed >= kmh - 2 && activeSpeed <= kmh + 12
+            val matchingPreset = presets.minByOrNull { p ->
+                val speed = activeSpeed
+                if (speed != null && speed >= p - 2 && speed <= p + 12) {
+                    abs(p - speed)
+                } else {
+                    Int.MAX_VALUE
+                }
+            }
+            val isSelected = isAdjusting || isPending || (accState != AssistChipState.Off && inRange && matchingPreset == kmh)
+
+            RectangularPresetChip(
+                label = kmh.toString(),
+                isSelected = isSelected,
+                onClick = {
+                    pendingTargetSpeed = kmh
+                    LauncherCruisePresetController.launchEngageToTarget(context, kmh)
+                },
+                onLongClick = {
+                    LauncherCruisePresetController.launchFullOff(context)
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(ButtonHeight),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RectangularPresetChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val activeGreen = Color(0xFF10B981)
+    val textColor = if (isSelected) activeGreen else LauncherColors.LeftTextPrimary
+    val border = if (isSelected) activeGreen else Color.Transparent
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(LauncherColors.LeftPanelCard)
+            .then(
+                if (isSelected) {
+                    Modifier.border(1.5.dp, border, RoundedCornerShape(12.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .combinedClickableWithSound(
+                onClickLabel = label,
+                onClick = {
+                    DclLogRecorder.logUiClick("RectangularPresetChip", label = label)
+                    onClick()
+                },
+                onLongClick = {
+                    DclLogRecorder.logUiClick("RectangularPresetChip_Long", label = label)
+                    onLongClick()
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.tboxCaption,
+            color = textColor,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/**
+ * Panel 2: NGP, LKA, and LDW assistant toggle buttons (3 buttons).
+ * Functionality and visual style copied from existing buttons in other panels.
+ */
+@Composable
+fun LauncherNgpLkaLdwBar(
+    adas: LauncherAdasState,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val tjaIcaState by UniversalCanRepository.tjaIcaState.collectAsStateWithLifecycle()
+    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+
+    val currentLasMode = vehicleControls.lasMode ?: adas.lasMode
+    val currentLasSensitivity = vehicleControls.lasSensitivity
+
+    var ldwTapCount by remember { mutableIntStateOf(0) }
+    var lkaTapCount by remember { mutableIntStateOf(0) }
+    var sensitivityFallbackJob by remember { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(currentLasMode) {
+        if (currentLasMode != 1) ldwTapCount = 0
+        if (currentLasMode != 2) lkaTapCount = 0
+    }
+
+    // 1. NGP State & Click
+    val ngpState = when {
+        LauncherDevVehicleState.simulateEnabled -> {
+            if (LauncherDevVehicleState.adasLanesActive) AssistChipState.Active else AssistChipState.Off
+        }
+        tjaIcaState is MbCanBinaryState.Unavailable -> AssistChipState.Unavailable
+        adas.tja == LauncherAdasAssistIcon.Active -> AssistChipState.Active
+        tjaIcaState is MbCanBinaryState.On || adas.tja == LauncherAdasAssistIcon.Dark -> AssistChipState.Standby
+        else -> AssistChipState.Off
+    }
+
+    val onNgpClick: () -> Unit = {
+        if (ngpState != AssistChipState.Unavailable) {
+            LauncherCruisePresetController.launchNgpWithSetMinus(context)
+        }
+    }
+
+    // 2. LKA State & Click
+    val isLkaActive = currentLasMode == 2
+    val lkaColor = when {
+        !isLkaActive -> null // OFF
+        currentLasSensitivity == 1 -> Color(0xFFF97316) // Level 1 (High) = Orange
+        else -> Color(0xFF10B981) // Level 0 (Min / Low) = Green
+    }
+
+    val onLkaClick: () -> Unit = {
+        if (!isLkaActive) {
+            val wasBothOff = currentLasMode != 1
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 2)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 2)
+            lkaTapCount = 1
+            ldwTapCount = 0
+
+            if (wasBothOff) {
+                sensitivityFallbackJob?.cancel()
+                sensitivityFallbackJob = scope.launch {
+                    delay(1000L)
+                    if (vehicleControls.lasSensitivity == null) {
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
+                    }
+                }
+            }
+        } else {
+            sensitivityFallbackJob?.cancel()
+            val nextTap = lkaTapCount + 1
+            if (nextTap >= 3) {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 1)
+                lkaTapCount = 0
+            } else {
+                val currentSens = currentLasSensitivity ?: 0
+                val nextSens = if (currentSens >= 1) 0 else 1
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, nextSens)
+                lkaTapCount = nextTap
+            }
+        }
+    }
+
+    // 3. LDW State & Click
+    val isLdwActive = currentLasMode == 1
+    val ldwColor = when {
+        !isLdwActive -> null // OFF
+        currentLasSensitivity == 1 -> Color(0xFFF97316) // Level 1 (High) = Orange
+        else -> Color(0xFF10B981) // Level 0 (Min / Low) = Green
+    }
+
+    val onLdwClick: () -> Unit = {
+        if (!isLdwActive) {
+            val wasBothOff = currentLasMode != 2
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 1)
+            sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 2)
+            ldwTapCount = 1
+            lkaTapCount = 0
+
+            if (wasBothOff) {
+                sensitivityFallbackJob?.cancel()
+                sensitivityFallbackJob = scope.launch {
+                    delay(1000L)
+                    if (vehicleControls.lasSensitivity == null) {
+                        sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
+                    }
+                }
+            }
+        } else {
+            sensitivityFallbackJob?.cancel()
+            val nextTap = ldwTapCount + 1
+            if (nextTap >= 3) {
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_MODE_SELECTION, 3)
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LDW_SWITCH, 1)
+                ldwTapCount = 0
+            } else {
+                val currentSens = currentLasSensitivity ?: 0
+                val nextSens = if (currentSens >= 1) 0 else 1
+                sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, nextSens)
+                ldwTapCount = nextTap
+            }
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(ButtonHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Slot 1: NGP Button
+        AssistButtonChip(
+            label = stringResource(R.string.launcher_cruise_ngp_title),
+            iconRes = R.drawable.ic_adas_steering_wheel,
+            state = ngpState,
+            onClick = onNgpClick,
+            iconSize = 22.dp,
+            fontSize = 19.sp,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 2: LKA Button
+        AssistColoredChip(
+            label = "LKA",
+            iconRes = R.drawable.ic_adas_lka,
+            activeColor = lkaColor,
+            onClick = onLkaClick,
+            modifier = Modifier
+                .weight(1f)
+                .height(ButtonHeight),
+        )
+
+        // Slot 3: LDW Button
+        AssistColoredChip(
+            label = "LDW",
+            iconRes = R.drawable.ic_adas_lka,
+            activeColor = ldwColor,
+            onClick = onLdwClick,
             modifier = Modifier
                 .weight(1f)
                 .height(ButtonHeight),

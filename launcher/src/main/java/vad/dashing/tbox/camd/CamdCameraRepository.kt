@@ -300,6 +300,7 @@ object CamdCameraRepository {
         }
 
         autoAvmJob = scope.launch {
+            var lastAutoAvmGear: Char? = null
             combine(
                 LauncherAppConfigStore.camdConfigRevisionFlow,
                 UniversalCanRepository.carSpeedState,
@@ -310,6 +311,10 @@ object CamdCameraRepository {
                 val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc ?: adasLive.pdc
                 AutoAvmInputs(speed, activeGear, pdc, isAvmActive)
             }.collect { inputs ->
+                if (inputs.activeGear == 'P' && lastAutoAvmGear != null && lastAutoAvmGear != 'P') {
+                    LauncherCar3DModelTrigger.notifyParkEngaged()
+                }
+                lastAutoAvmGear = inputs.activeGear
                 checkAutoAvmSpeed(appCtx, inputs.speed, inputs.activeGear)
                 check360Cameras(appCtx, inputs.speed, inputs.activeGear, inputs.pdc, inputs.isAvmActive)
                 evaluateSideCameraState(appCtx)
@@ -545,11 +550,12 @@ object CamdCameraRepository {
         disableStockAvm: Boolean,
         activeGear: Char?,
         speed: Float?,
+        minSpeed: Float = 1f,
     ): Boolean {
         if (disableStockAvm) return false
-        val isReverseGear = activeGear == 'R'
-        val isSpeedZero = speed != null && speed <= 0f
-        return isReverseGear || isSpeedZero
+        val isBlockedGear = activeGear == 'R' || activeGear == 'P'
+        val isBelowMinSpeed = speed == null || speed < minSpeed
+        return isBlockedGear || isBelowMinSpeed
     }
 
     internal fun shouldTriggerReverseAvmRetry(
@@ -1134,10 +1140,11 @@ object CamdCameraRepository {
         val activeGear = getCurrentActiveGear()
         val isReverseGear = activeGear == 'R'
         val isAvmActive = LauncherAvmRepository.isAvmActive.value
+        val minSpeed = LauncherAppConfigStore.camdStockAvmSideCamerasMinSpeed(context).toFloat()
 
         checkReverseAvmRetry(context, activeGear, isAvmActive)
 
-        if (shouldCloseCamerasForStockAvm(disableStockAvm, activeGear, speed)) {
+        if (shouldCloseCamerasForStockAvm(disableStockAvm, activeGear, speed, minSpeed)) {
             if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true || reverseCamerasJob?.isActive == true) {
                 closeAllIfOpen(context)
             }
@@ -1192,6 +1199,8 @@ object CamdCameraRepository {
             invertSteerOnReverse = invertSteerOnReverse,
             isWidgetActive = isWidgetActive,
             disableStockAvm = disableStockAvm,
+            activeGear = activeGear,
+            minSpeed = minSpeed,
         )
 
         applyTargetSideCamera(context, targetSide, targetIsLowSpeed)
@@ -1213,15 +1222,17 @@ object CamdCameraRepository {
         invertSteerOnReverse: Boolean = false,
         isWidgetActive: Boolean = false,
         disableStockAvm: Boolean = invertSteerOnReverse,
+        activeGear: Char? = if (isReverseGear) 'R' else null,
+        minSpeed: Float = 1f,
     ): Pair<TurnSignalSide?, Boolean> {
         if (isAvmActive || isReverseActive || isWidgetActive) {
             return null to false
         }
 
         // When stock OEM AVM is enabled (!disableStockAvm):
-        // 1. At complete stop (speed <= 0f), side cameras must close / not activate
-        // 2. In reverse gear (R), side cameras must close / not activate so they do not block OEM AVM
-        if (shouldCloseCamerasForStockAvm(disableStockAvm, if (isReverseGear) 'R' else null, speed)) {
+        // 1. In gears R or P, side cameras must close / not activate
+        // 2. Below minSpeed, side cameras must close / not activate
+        if (shouldCloseCamerasForStockAvm(disableStockAvm, activeGear, speed, minSpeed)) {
             return null to false
         }
 

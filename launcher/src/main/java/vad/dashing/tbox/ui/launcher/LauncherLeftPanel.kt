@@ -80,6 +80,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -208,8 +209,8 @@ fun LauncherLeftPanel(
         compassYRatio = LauncherAppConfigStore.adasCompassYRatio(context)
     }
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
-    val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
-    val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle()
+    val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
@@ -298,6 +299,13 @@ fun LauncherLeftPanel(
         if (parsedGear != null) latchedGear = parsedGear
     }
     val activeGear = parsedGear ?: latchedGear
+    var lastTrackedGear by remember { mutableStateOf(activeGear) }
+    LaunchedEffect(activeGear) {
+        if (activeGear == 'P' && lastTrackedGear != 'P') {
+            LauncherCar3DModelTrigger.notifyParkEngaged()
+        }
+        lastTrackedGear = activeGear
+    }
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
@@ -454,7 +462,7 @@ fun LauncherLeftPanel(
         isHighBeamBurning = headlightBeams.highBeam,
         showAll = simulateEnabled && LauncherDevVehicleState.showAllIndicators,
     )
-    val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle()
+    val isAvmActive by LauncherAvmRepository.isAvmActive.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val pasOn = (parkingRadar is MbCanBinaryState.On) || adas.pdcActive || adas.pdc.hasAny || (simulateEnabled && LauncherDevVehicleState.showAllIndicators)
     val pasObstacle = adas.pdc.hasAny
@@ -727,6 +735,19 @@ fun LauncherLeftPanel(
                             )
                         }
                     }
+                    "acc_presets" -> {
+                        LauncherAccPresetsBar(
+                            canViewModel = canViewModel,
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    "ngp_lka_ldw" -> {
+                        LauncherNgpLkaLdwBar(
+                            adas = adas,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     "lanes" -> {
                         LauncherLanesControlBar(
                             adas = adas,
@@ -811,7 +832,9 @@ fun LauncherLeftPanel(
             val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
             val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
-            val showCarInComposition = carModelVisible && (cameraAnimEnabled || !carHidden)
+            val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+            val isParkEngageRecent = (SystemClock.uptimeMillis() - parkEngagedEvent) < 2000L
+            val showCarInComposition = carModelVisible && (cameraAnimEnabled || !carHidden || isParkEngageRecent)
             if (showCarInComposition) {
                 LauncherCar3DModel(
                     rigState = rigState,
@@ -940,7 +963,7 @@ fun LauncherLeftPanel(
                     val containerWidthPx = with(density) { maxWidth.toPx() }
                     val containerHeightPx = with(density) { maxHeight.toPx() }
 
-                    if (showDriveView || navState.isNavigating || LauncherDevVehicleState.simulateEnabled) {
+                    if (showDriveView) {
                         if (classicSpeedLimitVisible && tsrSystemEnabled) {
                             val centerX = containerWidthPx * speedLimitXRatio
                             val centerY = containerHeightPx * speedLimitYRatio
@@ -1189,7 +1212,7 @@ fun LauncherLeftPanel(
                         }
                     }
 
-                    val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY
+                    val alertsTopOffset = maxHeight * 0.24f + alertsDriveViewOffsetY + 36.dp
 
                     // Left vertical section: Telltale alerts (Индикаторы предупреждений)
                     Box(

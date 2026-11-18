@@ -422,6 +422,8 @@ private fun LauncherAdasQuickSettingsContent(
             "lights",
             "wipers",
             "car_color",
+            "acc_presets",
+            "ngp_lka_ldw",
         )
         allCandidates.filter { candidate ->
             if (candidate == "smart_panel") return@filter false
@@ -869,6 +871,8 @@ private fun RenderQuickPanelCard(
             "lights" -> LauncherLightsControlBar(adas = adas, modifier = Modifier.fillMaxWidth())
             "wipers" -> LauncherWiperControlBar(modifier = Modifier.fillMaxWidth())
             "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 60.dp)
+            "acc_presets" -> LauncherAccPresetsBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
+            "ngp_lka_ldw" -> LauncherNgpLkaLdwBar(adas = adas, modifier = Modifier.fillMaxWidth())
         }
 
         if (showPlus) {

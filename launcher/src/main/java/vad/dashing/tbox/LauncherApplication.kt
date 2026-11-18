@@ -23,6 +23,9 @@ class LauncherApplication : Application() {
         AppContextHolder.init(this)
         vad.dashing.tbox.ui.launcher.LauncherFirstInstallDefaults.applyIfNeeded(this)
 
+        val settings = SettingsManager(this)
+        BootSessionTracker.onAppStart(this, appScope)
+
         if (vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.bootLogEnabled(this)) {
             DclLogRecorder.startBootSession(this)
         } else {
@@ -30,8 +33,6 @@ class LauncherApplication : Application() {
         }
 
         DiagFileLog.install(this)
-        val settings = SettingsManager(this)
-        BootSessionTracker.onAppStart(this, appScope)
         YandexNavRepository.start(this)
 
         // Asynchronously preload heavy assets on IO so they are ready before the first Compose frame
