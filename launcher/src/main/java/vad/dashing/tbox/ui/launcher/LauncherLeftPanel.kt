@@ -679,26 +679,27 @@ fun LauncherLeftPanel(
         }
 
         val isPanelVisible: (String) -> Boolean = { panelId ->
-            if (panelId == "media_player") {
-                miniPlayerVisible
-            } else {
-                val family = when (panelId) {
-                    "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
-                    "drive_mode", "drive_mode_offroad" -> "drive_mode"
-                    "presets", "smart_control" -> "assist"
-                    else -> panelId
-                }
-                if (family !in enabledPanels) {
-                    false
-                } else {
-                    when (panelId) {
-                        "drive_mode" -> driveModeBarVisible
-                        "assist", "presets" -> assistPanelVisible
-                        "body_controls" -> bodyControlsPanelVisible
-                        "car_color" -> carColorPanelVisible
-                        "smart_panel" -> smartPanelEnabled
-                        "lanes" -> true
-                        else -> true
+            when (panelId) {
+                "media_player" -> miniPlayerVisible
+                "smart_panel" -> smartPanelEnabled
+                else -> {
+                    val family = when (panelId) {
+                        "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
+                        "drive_mode", "drive_mode_offroad" -> "drive_mode"
+                        "presets", "smart_control" -> "assist"
+                        else -> panelId
+                    }
+                    if (family !in enabledPanels) {
+                        false
+                    } else {
+                        when (panelId) {
+                            "drive_mode" -> driveModeBarVisible
+                            "assist", "presets" -> assistPanelVisible
+                            "body_controls" -> bodyControlsPanelVisible
+                            "car_color" -> carColorPanelVisible
+                            "lanes" -> true
+                            else -> true
+                        }
                     }
                 }
             }

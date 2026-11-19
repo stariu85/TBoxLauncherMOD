@@ -84,6 +84,7 @@ internal fun DraggableAdasPanel(
             "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, false)
             "nav_speed" -> LauncherAppConfigStore.setNavSpeedVisible(context, false)
             "nav_traffic_light" -> LauncherAppConfigStore.setNavTrafficLightVisible(context, false)
+            "smart_panel" -> LauncherAppConfigStore.setSmartPanelEnabled(context, false)
         }
 
         LauncherAppConfigStore.setAdasPanelsLayout(context, newTop, newBottom)

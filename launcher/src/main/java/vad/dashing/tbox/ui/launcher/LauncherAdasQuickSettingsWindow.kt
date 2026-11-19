@@ -354,6 +354,11 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.adasBottomPanels(context)
     }
 
+    val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow.collectAsStateWithLifecycle()
+    val smartPanelEnabled = remember(context, smartPanelRevision) {
+        LauncherAppConfigStore.smartPanelEnabled(context)
+    }
+
     val activeSubPanelsRevision by LauncherAppConfigStore.activeSubPanelsRevisionFlow.collectAsStateWithLifecycle()
 
     val primarySlots = remember(
@@ -363,6 +368,7 @@ private fun LauncherAdasQuickSettingsContent(
         assistPanelVisible,
         bodyControlsPanelVisible,
         carColorPanelVisible,
+        smartPanelEnabled,
         navSpeedVisible,
         navTrafficLightVisible,
         adasTopPanels,
@@ -378,6 +384,7 @@ private fun LauncherAdasQuickSettingsContent(
                     "body_controls" -> bodyControlsPanelVisible
                     "media_player" -> miniPlayerVisible
                     "car_color" -> carColorPanelVisible
+                    "smart_panel" -> smartPanelEnabled
                     "lanes" -> true
                     else -> true
                 }
