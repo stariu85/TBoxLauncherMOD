@@ -87,7 +87,7 @@ android {
 val validateLauncherCarRigAssets by tasks.registering {
     group = "verification"
     description = "Verifies that launcher GLB and pivot metadata contain required rig nodes."
-    val glb = layout.projectDirectory.file("src/main/assets/models/jetour_dashing_site.glb")
+    val glb = layout.projectDirectory.file("src/main/assets/models/jetour_new.glb")
     val pivots = layout.projectDirectory.file("src/main/assets/models/jetour_car_pivots.json")
     inputs.files(glb, pivots)
 

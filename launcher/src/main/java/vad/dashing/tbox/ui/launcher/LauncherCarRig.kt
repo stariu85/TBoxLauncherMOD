@@ -1,7 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 /** Offline GLB path for the Jetour Dashing 720 launcher model. */
-const val LAUNCHER_CAR_MODEL_ASSET = "models/jetour_dashing_site.glb"
+const val LAUNCHER_CAR_MODEL_ASSET = "models/jetour_new.glb"
 
 /** Vehicle body / drive state for the 3D model. Sunroof is intentionally not driven. */
 data class LauncherCarRigState(
