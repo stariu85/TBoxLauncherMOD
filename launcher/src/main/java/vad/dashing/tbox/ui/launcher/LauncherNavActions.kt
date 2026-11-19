@@ -42,6 +42,7 @@ internal fun goLauncherHome(
     fromHomeIntent: Boolean = false,
     source: String = "unknown",
 ) {
+    clearLaunchingPackage()
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
     val now = SystemClock.uptimeMillis()
     if (now - lastHomeAtMs < HOME_DEBOUNCE_MS) {

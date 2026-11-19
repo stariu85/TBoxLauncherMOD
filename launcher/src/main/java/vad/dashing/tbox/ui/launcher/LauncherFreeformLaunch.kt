@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -306,7 +307,7 @@ internal fun tryLaunchIntentInBounds(
     bounds: Rect,
     launchAdjacent: Boolean = false,
 ): Boolean {
-    currentLaunchingPackage = packageName
+    markPackageLaunching(packageName)
     cancelPendingMinimizeTasks()
     closeFullWidthAppsIfOpen(context, launchingPackage = packageName, targetBounds = bounds)
     val home = LauncherHomeActivityHolder.instance
@@ -799,7 +800,24 @@ private var activeMinimizeJob: Job? = null
 private val minimizeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 @Volatile
-internal var currentLaunchingPackage: String? = null
+private var launchingPackage: String? = null
+@Volatile
+private var launchingPackageUntilMs: Long = 0L
+
+internal fun markPackageLaunching(packageName: String, windowMs: Long = 1500L) {
+    launchingPackage = packageName
+    launchingPackageUntilMs = SystemClock.uptimeMillis() + windowMs
+}
+
+internal fun clearLaunchingPackage() {
+    launchingPackage = null
+    launchingPackageUntilMs = 0L
+}
+
+internal fun isPackageCurrentlyLaunching(packageName: String): Boolean {
+    if (launchingPackage != packageName) return false
+    return SystemClock.uptimeMillis() < launchingPackageUntilMs
+}
 
 internal fun cancelPendingMinimizeTasks() {
     activeMinimizeJob?.cancel()
@@ -814,7 +832,6 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
     context: Context,
     source: String = "unknown",
 ): Boolean {
-    val launchingPkg = currentLaunchingPackage
     val client = DclwmClient()
     val tasks = runCatching {
         client.list()
@@ -830,8 +847,8 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
         if (Thread.currentThread().isInterrupted) return false
         if (task.packageName == launcherPackage) continue
         if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
-        if (launchingPkg != null && task.packageName == launchingPkg) {
-            Log.w("LauncherAppLaunch", "dclwm minimize: skipping launching package $launchingPkg")
+        if (isPackageCurrentlyLaunching(task.packageName)) {
+            Log.w("LauncherAppLaunch", "dclwm minimize: skipping launching package ${task.packageName}")
             continue
         }
         if (task.left >= DclwmProtocol.OFF_LEFT || task.top >= DclwmProtocol.OFF_TOP) continue
@@ -913,10 +930,9 @@ internal fun minimizeForeignFreeformTasks(
             val taskIdsToMinimize = mutableSetOf<Int>()
             taskIdsToMinimize += foreignTaskIds
 
-            val currentLaunching = currentLaunchingPackage
             for (pkg in tracked) {
                 if (!isActive) return@launch
-                if (pkg == currentLaunching) continue
+                if (isPackageCurrentlyLaunching(pkg)) continue
                 findTaskIdForPackage(am, pkg)?.let { taskId ->
                     taskIdsToMinimize += taskId
                 }

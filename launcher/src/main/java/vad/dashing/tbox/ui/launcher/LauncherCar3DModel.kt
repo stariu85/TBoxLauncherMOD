@@ -164,6 +164,7 @@ private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val BASE_MODEL_SCALE = 0.378f
+private const val TRANSITION_FRAME_INTERVAL_NS = 14_000_000L // 60 FPS target during transitions (1 VSYNC tick at 60Hz = 16.6ms with 14ms tolerance)
 private const val DYNAMIC_FRAME_INTERVAL_NS = 42_000_000L // 20 FPS target (3 VSYNC ticks at 60Hz = 50ms with 42ms hysteresis tolerance margin)
 private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS in statics (~1000ms)
 private const val DYNAMIC_GRACE_PERIOD_NS = 2_000_000_000L // 2 seconds grace period
@@ -443,6 +444,7 @@ private fun LauncherCarFilamentContent(
     val projectPdcRef = rememberUpdatedState(projectPdcRings)
     val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
     val isAvmRef = rememberUpdatedState(isAvmActive)
+    val settingsProgressRef = rememberUpdatedState(settingsProgress)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
@@ -710,7 +712,7 @@ private fun LauncherCarFilamentContent(
                         val currentRigState = rigStateRef.value
                         val currentSteering = steeringDeg
                         val orbit = settingsOrbitRef.value
-                        val rawTransition = settingsProgress.coerceIn(0f, 1f)
+                        val rawTransition = settingsProgressRef.value.coerceIn(0f, 1f)
                         val transition = if (rawTransition < 0.001f) 0f else rawTransition
 
                         val isHoldingStartupTopView = cameraAnimEnabledRef.value && !LauncherCar3DModelTrigger.startupTopViewDone.value
@@ -777,7 +779,11 @@ private fun LauncherCarFilamentContent(
                             lastFrameNs = 0L
                         }
 
-                        val requiredIntervalNs = if (isDynamic) DYNAMIC_FRAME_INTERVAL_NS else STATIC_FRAME_INTERVAL_NS
+                        val requiredIntervalNs = when {
+                            isCameraSwitching -> TRANSITION_FRAME_INTERVAL_NS
+                            isDynamic -> DYNAMIC_FRAME_INTERVAL_NS
+                            else -> STATIC_FRAME_INTERVAL_NS
+                        }
 
                         if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
                             return@runCatching
