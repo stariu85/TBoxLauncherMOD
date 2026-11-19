@@ -405,7 +405,12 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.isConventionalCruise(context)
     }
 
-    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible, isConventional) {
+    val enabledPanelsRevision by LauncherAppConfigStore.enabledAdasPanelsRevisionFlow.collectAsStateWithLifecycle()
+    val enabledPanels = remember(context, enabledPanelsRevision) {
+        LauncherAppConfigStore.enabledAdasPanels(context)
+    }
+
+    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible, isConventional, enabledPanels) {
         val allCandidates = listOf(
             "media_player",
             "drive_mode",
@@ -426,6 +431,16 @@ private fun LauncherAdasQuickSettingsContent(
             "ngp_lka_ldw",
         )
         allCandidates.filter { candidate ->
+            if (candidate == "media_player") {
+                return@filter miniPlayerVisible && candidate !in directlyVisiblePanels
+            }
+            val family = when (candidate) {
+                "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
+                "drive_mode", "drive_mode_offroad" -> "drive_mode"
+                "presets", "smart_control" -> "assist"
+                else -> candidate
+            }
+            if (family !in enabledPanels) return@filter false
             if (candidate == "smart_panel") return@filter false
             if (candidate == "car_color" && !carColorPanelVisible) return@filter false
             if (candidate == "presets" && !accPresetsInQuickSettingsVisible) return@filter false

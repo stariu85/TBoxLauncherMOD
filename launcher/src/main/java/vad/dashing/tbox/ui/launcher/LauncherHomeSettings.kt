@@ -4,16 +4,26 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
+import vad.dashing.tbox.ui.clickableWithSound
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
@@ -2084,6 +2094,8 @@ fun CruiseControlSettingsContent() {
             }
         }
 
+        AdasPanelsSelectorSection()
+
         val launcherSettingsOnDoubleTapRevision by LauncherAppConfigStore.launcherSettingsOnDoubleTapRevisionFlow
             .collectAsStateWithLifecycle()
         val launcherSettingsOnDoubleTap = remember(context, launcherSettingsOnDoubleTapRevision) {
@@ -2099,25 +2111,6 @@ fun CruiseControlSettingsContent() {
         )
         Text(
             text = stringResource(R.string.launcher_settings_on_double_tap_desc),
-            color = LauncherColors.TextMuted,
-            fontSize = 12.sp,
-        )
-
-        val carColorPanelRevision by LauncherAppConfigStore.carColorPanelRevisionFlow
-            .collectAsStateWithLifecycle()
-        val carColorPanelVisible = remember(context, carColorPanelRevision) {
-            LauncherAppConfigStore.carColorPanelVisible(context)
-        }
-
-        LauncherSettingsToggleRow(
-            label = stringResource(R.string.launcher_car_color_panel_visible_title),
-            active = carColorPanelVisible,
-            onClick = {
-                LauncherAppConfigStore.setCarColorPanelVisible(context, !carColorPanelVisible)
-            },
-        )
-        Text(
-            text = stringResource(R.string.launcher_car_color_panel_visible_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
@@ -2232,6 +2225,449 @@ fun CruiseControlSettingsContent() {
         AdasAccSpeedOffsetSlider()
 
         CruisePresetsSettings()
+    }
+}
+
+private data class AdasPanelSelectorItem(
+    val id: String,
+    val title: String,
+    val isComposite: Boolean,
+    val content: @Composable () -> Unit,
+)
+
+@Composable
+private fun MiniButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    textColor: Color = if (LauncherThemeState.darkTheme) Color.White else LauncherColors.TextPrimary,
+    bgColor: Color = if (LauncherThemeState.darkTheme) Color(0xFF263238) else Color(0xFFE2E8F0),
+    fontSize: TextUnit = 8.sp,
+    borderColor: Color = Color.Transparent,
+) {
+    val resolvedBorder = if (borderColor != Color.Transparent) {
+        borderColor
+    } else if (!LauncherThemeState.darkTheme) {
+        Color(0xFFCBD5E1)
+    } else {
+        Color.Transparent
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(bgColor)
+            .then(
+                if (resolvedBorder != Color.Transparent) {
+                    Modifier.border(0.8.dp, resolvedBorder, RoundedCornerShape(3.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun MiniatureAccPresets() {
+    val green = if (LauncherThemeState.darkTheme) Color(0xFF10B981) else Color(0xFF059669)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("ACC", textColor = green, borderColor = green, fontSize = 7.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("60", fontSize = 7.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("80", fontSize = 7.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("100", fontSize = 7.sp, modifier = Modifier.weight(1f))
+        MiniButton("120", fontSize = 7.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureNgpLkaLdw() {
+    val green = if (LauncherThemeState.darkTheme) Color(0xFF10B981) else Color(0xFF059669)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("NGP", textColor = green, borderColor = green, fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("LKA", textColor = green, borderColor = green, fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("LDW", textColor = green, borderColor = green, fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureLanes() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("LDW", fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("LKA", fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("FCW", fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureRadars() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("BSD", fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("DOW", fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("RAD", fontSize = 8.5.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureChassis() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("ESC", fontSize = 8.sp, modifier = Modifier.weight(1f))
+        MiniButton("HDC", fontSize = 8.sp, modifier = Modifier.weight(1f))
+        MiniButton("HOLD", fontSize = 7.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureLights() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("AUTO", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("LOW", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("POS", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("OFF", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        MiniButton("FOG", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureWipers() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MiniButton("Сервис", fontSize = 8.sp, modifier = Modifier.weight(1f))
+        MiniButton("Авто", fontSize = 8.sp, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun MiniatureCarColor() {
+    val bg = if (LauncherThemeState.darkTheme) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+    val border = if (LauncherThemeState.darkTheme) Color.Transparent else Color(0xFFCBD5E1)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(bg)
+            .then(
+                if (border != Color.Transparent) {
+                    Modifier.border(0.8.dp, border, RoundedCornerShape(3.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val colors = listOf(Color.White, Color.Gray, Color.DarkGray, Color(0xFF1E3A8A), Color(0xFFB91C1C), Color(0xFF047857))
+        colors.forEach { c ->
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(c)
+                    .border(0.5.dp, if (c == Color.White) Color.LightGray else Color.Transparent, CircleShape),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AdasAssistCompositeMiniature() {
+    val green = if (LauncherThemeState.darkTheme) Color(0xFF10B981) else Color(0xFF059669)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.2.dp, Color.Black, RoundedCornerShape(4.dp))
+            .padding(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("ACC", textColor = green, borderColor = green, fontSize = 7.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("NGP", textColor = green, borderColor = green, fontSize = 7.5.sp, modifier = Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("60", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("80", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("100", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("120", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("DIST", fontSize = 7.sp, modifier = Modifier.weight(1f))
+            MiniButton("Умный", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun AdasDriveModeCompositeMiniature() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.2.dp, Color.Black, RoundedCornerShape(4.dp))
+            .padding(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("ECO", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("COMF", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("SPORT", fontSize = 5.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("SP+", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("Снег", fontSize = 6.sp, modifier = Modifier.weight(1f))
+            MiniButton("Грязь", fontSize = 5.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("Песок", fontSize = 5.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("Бездор", fontSize = 5.5.sp, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun AdasBodyControlsCompositeMiniature() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.2.dp, Color.Black, RoundedCornerShape(4.dp))
+            .padding(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("DRV1", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("DRV2", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("DRV3", fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("Багаж", fontSize = 6.sp, modifier = Modifier.weight(1f))
+            MiniButton("Окна", fontSize = 6.sp, modifier = Modifier.weight(1f))
+            MiniButton("Зерк", fontSize = 6.sp, modifier = Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("Зеркала", fontSize = 6.sp, modifier = Modifier.weight(1f))
+            MiniButton("Пасс", fontSize = 6.sp, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun AdasPanelsSelectorSection() {
+    val context = LocalContext.current
+    val enabledPanelsRevision by LauncherAppConfigStore.enabledAdasPanelsRevisionFlow.collectAsStateWithLifecycle()
+    val enabledPanels = remember(context, enabledPanelsRevision) {
+        LauncherAppConfigStore.enabledAdasPanels(context)
+    }
+
+    val panelItems = remember {
+        listOf(
+            // Row 1
+            AdasPanelSelectorItem(
+                id = "assist",
+                title = "ACC + NGP + Пресеты",
+                isComposite = true,
+                content = { AdasAssistCompositeMiniature() },
+            ),
+            AdasPanelSelectorItem(
+                id = "acc_presets",
+                title = "ACC + Пресеты",
+                isComposite = false,
+                content = { MiniatureAccPresets() },
+            ),
+            AdasPanelSelectorItem(
+                id = "ngp_lka_ldw",
+                title = "NGP + LKA + LDW",
+                isComposite = false,
+                content = { MiniatureNgpLkaLdw() },
+            ),
+            AdasPanelSelectorItem(
+                id = "lanes",
+                title = "Полосы (LKA/LDW)",
+                isComposite = false,
+                content = { MiniatureLanes() },
+            ),
+
+            // Row 2
+            AdasPanelSelectorItem(
+                id = "drive_mode",
+                title = "Режимы движения",
+                isComposite = true,
+                content = { AdasDriveModeCompositeMiniature() },
+            ),
+            AdasPanelSelectorItem(
+                id = "chassis",
+                title = "Шасси (ESC/HOLD)",
+                isComposite = false,
+                content = { MiniatureChassis() },
+            ),
+            AdasPanelSelectorItem(
+                id = "radars",
+                title = "Радары (BSD/RAD)",
+                isComposite = false,
+                content = { MiniatureRadars() },
+            ),
+            AdasPanelSelectorItem(
+                id = "lights",
+                title = "Свет",
+                isComposite = false,
+                content = { MiniatureLights() },
+            ),
+
+            // Row 3
+            AdasPanelSelectorItem(
+                id = "body_controls",
+                title = "Кузов и сиденья",
+                isComposite = true,
+                content = { AdasBodyControlsCompositeMiniature() },
+            ),
+            AdasPanelSelectorItem(
+                id = "wipers",
+                title = "Дворники",
+                isComposite = false,
+                content = { MiniatureWipers() },
+            ),
+            AdasPanelSelectorItem(
+                id = "car_color",
+                title = "Цвет кузова",
+                isComposite = false,
+                content = { MiniatureCarColor() },
+            ),
+        )
+    }
+
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(
+            text = "Панели",
+            color = LauncherColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 2.dp),
+        )
+        Text(
+            text = "Выберите панели для быстрого меню ADAS (синяя рамка — выбрана)",
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+
+        val rows = remember(panelItems) { panelItems.chunked(4) }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            rows.forEach { rowItems ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Max),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    rowItems.forEach { item ->
+                        val isSelected = item.id in enabledPanels
+                        val borderColor = if (isSelected) {
+                            Color(0xFF3B82F6)
+                        } else if (LauncherThemeState.darkTheme) {
+                            Color(0xFF4B5563)
+                        } else {
+                            Color(0xFFCBD5E1)
+                        }
+                        val borderWidth = if (isSelected) 2.dp else 1.dp
+
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LauncherColors.LeftPanelCard)
+                                .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
+                                .clickableWithSound(onClickLabel = item.title) {
+                                    LauncherAppConfigStore.setAdasPanelEnabled(context, item.id, !isSelected)
+                                }
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(42.dp)
+                                    .padding(bottom = 4.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = item.title,
+                                    color = if (isSelected) {
+                                        if (LauncherThemeState.darkTheme) Color(0xFF60A5FA) else Color(0xFF2563EB)
+                                    } else {
+                                        LauncherColors.TextPrimary
+                                    },
+                                    fontSize = 15.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f, fill = false),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                item.content()
+                            }
+                        }
+                    }
+                    repeat(4 - rowItems.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
     }
 }
 

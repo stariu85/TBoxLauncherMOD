@@ -688,6 +688,24 @@ internal object LauncherAppConfigStore {
     private val quickSettingsPanelsRevision = MutableStateFlow(0)
     internal val quickSettingsPanelsRevisionFlow: StateFlow<Int> = quickSettingsPanelsRevision
 
+    private const val KEY_ENABLED_ADAS_PANEL_IDS = "enabled_adas_panel_ids"
+    private val enabledAdasPanelsRevision = MutableStateFlow(0)
+    internal val enabledAdasPanelsRevisionFlow: StateFlow<Int> = enabledAdasPanelsRevision
+
+    val ALL_ADAS_PANEL_IDS = listOf(
+        "assist",
+        "acc_presets",
+        "ngp_lka_ldw",
+        "lanes",
+        "drive_mode",
+        "chassis",
+        "radars",
+        "lights",
+        "body_controls",
+        "wipers",
+        "car_color",
+    )
+
     private val activeSubPanelsMap = mutableStateMapOf<String, String>()
     private val activeSubPanelsRevision = MutableStateFlow(0)
     internal val activeSubPanelsRevisionFlow: StateFlow<Int> = activeSubPanelsRevision
@@ -743,6 +761,64 @@ internal object LauncherAppConfigStore {
             .putString(KEY_QUICK_SETTINGS_BOTTOM_PANELS, cleanBottom.joinToString(","))
             .apply()
         quickSettingsPanelsRevision.value++
+    }
+
+    fun enabledAdasPanels(context: Context): Set<String> {
+        val raw = prefs(context).getString(KEY_ENABLED_ADAS_PANEL_IDS, null)
+        if (raw != null) {
+            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        }
+        val defaults = ALL_ADAS_PANEL_IDS.toMutableSet()
+        if (!carColorPanelVisible(context)) {
+            defaults.remove("car_color")
+        }
+        return defaults
+    }
+
+    fun isAdasPanelEnabled(context: Context, panelId: String): Boolean {
+        return panelId in enabledAdasPanels(context)
+    }
+
+    fun setAdasPanelEnabled(context: Context, panelId: String, enabled: Boolean) {
+        val current = enabledAdasPanels(context).toMutableSet()
+        if (enabled) {
+            current.add(panelId)
+        } else {
+            current.remove(panelId)
+        }
+        prefs(context).edit().putString(KEY_ENABLED_ADAS_PANEL_IDS, current.joinToString(",")).apply()
+        enabledAdasPanelsRevision.value++
+
+        when (panelId) {
+            "car_color" -> setCarColorPanelVisible(context, enabled)
+            "drive_mode" -> setDriveModeBarVisible(context, enabled)
+            "body_controls" -> setBodyControlsPanelVisible(context, enabled)
+            "assist" -> setAssistPanelVisible(context, enabled)
+        }
+
+        fun canonicalFamily(id: String): String = when (id) {
+            "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
+            "drive_mode_offroad" -> "drive_mode"
+            "presets", "smart_control" -> "assist"
+            else -> id
+        }
+
+        if (!enabled) {
+            val top = adasTopPanels(context).filter { canonicalFamily(it) != panelId }
+            val bottom = adasBottomPanels(context).filter { canonicalFamily(it) != panelId }
+            setAdasPanelsLayout(context, top, bottom)
+
+            val quickTop = quickSettingsTopPanels(context).filter { canonicalFamily(it) != panelId }
+            val quickBottom = quickSettingsBottomPanels(context).filter { canonicalFamily(it) != panelId }
+            setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
+        } else {
+            val quickTop = quickSettingsTopPanels(context).toMutableList()
+            val quickBottom = quickSettingsBottomPanels(context).toMutableList()
+            if (panelId !in quickTop && panelId !in quickBottom) {
+                quickBottom.add(panelId)
+                setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
+            }
+        }
     }
 
     private fun prefs(context: Context): SharedPreferences =
@@ -2446,8 +2522,13 @@ internal object LauncherAppConfigStore {
         prefs(context).edit()
             .remove(KEY_ADAS_TOP_PANELS)
             .remove(KEY_ADAS_BOTTOM_PANELS)
+            .remove(KEY_QUICK_SETTINGS_TOP_PANELS)
+            .remove(KEY_QUICK_SETTINGS_BOTTOM_PANELS)
+            .remove(KEY_ENABLED_ADAS_PANEL_IDS)
             .apply()
         adasPanelsRevision.value++
+        quickSettingsPanelsRevision.value++
+        enabledAdasPanelsRevision.value++
     }
 
     fun driveModeGlowVisible(context: Context): Boolean =
