@@ -1621,4 +1621,15 @@
     <string name="launcher_edge_action_back">Back</string>
     <string name="launcher_edge_action_previous_app">Previous application</string>
     <string name="launcher_edge_action_close_all">Close all applications</string>
+
+    <!-- USB Mount Settings -->
+    <string name="settings_usb_mount_title">USB Drive Mounting</string>
+    <string name="settings_usb_mount_desc">Mount NTFS and exFAT flash drives when System UI is hidden</string>
+    <string name="settings_usb_mount_switch_title">Automatic flash drive mounting</string>
+    <string name="settings_usb_mount_switch_desc">Clears vold system lock during boot (Stage 2) and on device connection</string>
+    <string name="settings_usb_mount_handler_error">Stock USB handler (android.car.usb.handler) is not hidden! Hide it before enabling USB mount (pm hide android.car.usb.handler) to avoid black screen.</string>
+    <string name="settings_usb_mount_remount_btn">Remount USB now</string>
+    <string name="settings_usb_mount_remounting">Mounting…</string>
+    <string name="settings_usb_mount_remount_ok">Successfully mounted</string>
+    <string name="settings_usb_mount_remount_fail">Mount failed: %1$s</string>
 </resources>

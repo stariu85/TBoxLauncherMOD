@@ -67,6 +67,7 @@ class SettingsManager(private val context: Context) {
         private val KEY_TBM_API_PORT = intPreferencesKey("tbm_api_port")
         private val KEY_UI_CLICK_SOUNDS = booleanPreferencesKey("ui_click_sounds_enabled")
         private val KEY_AUTO_BACKUP_ENABLED = booleanPreferencesKey("auto_backup_enabled")
+        private val KEY_USB_MOUNT_ENABLED = booleanPreferencesKey("usb_mount_enabled")
         private const val MAX_ICON_EDGE_PX = 512
     }
 
@@ -75,6 +76,10 @@ class SettingsManager(private val context: Context) {
 
     val autoBackupEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[KEY_AUTO_BACKUP_ENABLED] ?: true
+    }
+
+    val usbMountEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_USB_MOUNT_ENABLED] ?: true
     }
 
     val uiClickSoundsEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
@@ -183,6 +188,12 @@ class SettingsManager(private val context: Context) {
     suspend fun saveAutoBackupEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { it[KEY_AUTO_BACKUP_ENABLED] = enabled }
     }
+
+    suspend fun saveUsbMountEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_USB_MOUNT_ENABLED] = enabled }
+    }
+
+    suspend fun isUsbMountEnabled(): Boolean = usbMountEnabledFlow.first()
 
     suspend fun getTbmApiToken(): String? = tbmApiTokenFlow.first()
 

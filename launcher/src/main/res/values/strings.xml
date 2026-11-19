@@ -1627,4 +1627,15 @@
     <string name="launcher_edge_action_back">«Назад»</string>
     <string name="launcher_edge_action_previous_app">«Предыдущее приложение»</string>
     <string name="launcher_edge_action_close_all">«Закрыть все приложения»</string>
+
+    <!-- USB Mount Settings -->
+    <string name="settings_usb_mount_title">Монтирование USB-накопителей</string>
+    <string name="settings_usb_mount_desc">Монтирование флешек NTFS и exFAT при скрытом System UI</string>
+    <string name="settings_usb_mount_switch_title">Автоматическое монтирование флешек</string>
+    <string name="settings_usb_mount_switch_desc">Снимает системную блокировку vold при загрузке (Stage 2) и подключении</string>
+    <string name="settings_usb_mount_handler_error">Штатный обработчик USB (android.car.usb.handler) не скрыт! Скройте его перед включением монтирования (pm hide android.car.usb.handler), иначе при подключении флешки появится чёрный экран.</string>
+    <string name="settings_usb_mount_remount_btn">Перемонтировать USB сейчас</string>
+    <string name="settings_usb_mount_remounting">Монтирование…</string>
+    <string name="settings_usb_mount_remount_ok">Успешно смонтировано</string>
+    <string name="settings_usb_mount_remount_fail">Ошибка монтирования: %1$s</string>
 </resources>

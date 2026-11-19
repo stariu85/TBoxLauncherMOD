@@ -241,6 +241,15 @@ fun LauncherSystemAndAboutSettingsContent(
                 .background(LauncherColors.SettingsBorder),
         )
 
+        UsbMountSection(settingsManager = manager)
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(LauncherColors.SettingsBorder),
+        )
+
         SystemWallpaperSection()
 
         Box(
