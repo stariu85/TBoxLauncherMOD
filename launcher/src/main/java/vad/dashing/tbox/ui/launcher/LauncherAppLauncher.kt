@@ -488,6 +488,7 @@ private fun startResolved(
     preferEmbedded: Boolean = true,
     forceFullscreen: Boolean = false,
 ) {
+    cancelPendingMinimizeTasks()
     val activity = context.findLauncherActivity()
     val launchIntent = Intent(intent).apply {
         if (action.isNullOrBlank()) action = Intent.ACTION_MAIN

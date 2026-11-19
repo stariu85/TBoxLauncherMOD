@@ -135,6 +135,13 @@ object LauncherCar3DModelTrigger {
         _settingsOrbitEvent.value = SystemClock.uptimeMillis()
     }
 
+    private val _startupTopViewDone = MutableStateFlow(false)
+    val startupTopViewDone: StateFlow<Boolean> = _startupTopViewDone.asStateFlow()
+
+    fun notifyStartupTopViewDone() {
+        _startupTopViewDone.value = true
+    }
+
     fun setTopShadeOpen(open: Boolean) {
         if (_topShadeOpen.value && !open) {
             _topShadeClosedEvent.value = SystemClock.uptimeMillis()

@@ -21,7 +21,7 @@ import vad.dashing.tbox.camd.CamdCameraRepository
 import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "LauncherNav"
-private const val HOME_DEBOUNCE_MS = 200L
+private const val HOME_DEBOUNCE_MS = 300L
 
 @Volatile
 private var lastHomeAtMs = 0L
@@ -44,13 +44,13 @@ internal fun goLauncherHome(
 ) {
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
     val now = SystemClock.uptimeMillis()
-    if (!fromHomeIntent && (now - lastHomeAtMs < HOME_DEBOUNCE_MS)) {
-        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source")
+    if (now - lastHomeAtMs < HOME_DEBOUNCE_MS) {
+        Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source (elapsed=${now - lastHomeAtMs}ms)")
         LauncherNavLogger.logNavAction(
             action = "HOME",
             source = source,
             stateBefore = stateBefore,
-            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms)",
+            decision = "Skipped due to debounce (<${HOME_DEBOUNCE_MS}ms, elapsed=${now - lastHomeAtMs}ms)",
         )
         return
     }
