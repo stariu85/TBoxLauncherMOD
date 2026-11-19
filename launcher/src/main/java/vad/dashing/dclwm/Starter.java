@@ -49,6 +49,13 @@ public final class Starter {
         }
 
         synchronized (vad.dashing.tbox.usbmount.RootOrchestrator.ROOT_LOCK) {
+            File flagFile = new File(Protocol.AUTORUN_FLAG);
+            if (flagFile.exists()) {
+                long waitDeadline = System.currentTimeMillis() + 3000L;
+                while (flagFile.exists() && System.currentTimeMillis() < waitDeadline) {
+                    Thread.sleep(200);
+                }
+            }
             vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Starting dclwm: copying dex and writing autorun.sh");
             File dex = new File(context.getFilesDir(), Protocol.DEX_ASSET);
             copyAsset(context, dex);
