@@ -142,6 +142,10 @@ object LauncherCar3DModelTrigger {
         _startupTopViewDone.value = true
     }
 
+    fun resetStartupTopView() {
+        _startupTopViewDone.value = false
+    }
+
     fun setTopShadeOpen(open: Boolean) {
         if (_topShadeOpen.value && !open) {
             _topShadeClosedEvent.value = SystemClock.uptimeMillis()
@@ -466,6 +470,9 @@ private fun LauncherCarFilamentContent(
         LauncherAppConfigStore.cameraAnimationEnabled(context)
     }
     val cameraAnimEnabledRef = rememberUpdatedState(cameraAnimEnabled)
+    val startupTopViewDone by LauncherCar3DModelTrigger.startupTopViewDone.collectAsStateWithLifecycle()
+    val isStartupTopViewActive = cameraAnimEnabled && !startupTopViewDone
+    var firstRenderTimeMs by remember(modelInstance) { mutableLongStateOf(0L) }
     var currentDriveBlend by remember(modelInstance) {
         mutableFloatStateOf(0f)
     }
@@ -488,7 +495,7 @@ private fun LauncherCarFilamentContent(
 
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
     var renderedScale by remember(modelInstance) { mutableFloatStateOf(BASE_MODEL_SCALE) }
-    var modelReady by remember(modelInstance) { mutableStateOf(modelInstance != null) }
+    var modelReady by remember(modelInstance) { mutableStateOf(false) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
         animationSpec = tween(durationMillis = 200),
@@ -521,7 +528,7 @@ private fun LauncherCarFilamentContent(
     // Trigger 2: Camera switching or drive gear blend transition
     val rawTransition = settingsProgress.coerceIn(0f, 1f)
     val transition = if (rawTransition < 0.001f) 0f else rawTransition
-    val targetDriveBlend = if (transition > 0.02f) {
+    val targetDriveBlend = if (transition > 0.02f || isStartupTopViewActive) {
         0f
     } else if (inDriveGear || steerPreview) {
         1f
@@ -545,7 +552,13 @@ private fun LauncherCarFilamentContent(
     // Trigger 4: Initializing / loading
     val isInitializing = !modelReady
 
-    val isTriggerActive = bodyActive || cameraSwitching || orbitInteracting || isInitializing
+    val isTriggerActive = bodyActive || cameraSwitching || orbitInteracting || isInitializing || isStartupTopViewActive
+
+    LaunchedEffect(cameraAnimEnabled) {
+        if (!cameraAnimEnabled && !LauncherCar3DModelTrigger.startupTopViewDone.value) {
+            LauncherCar3DModelTrigger.notifyStartupTopViewDone()
+        }
+    }
 
     LaunchedEffect(
         isTriggerActive,
@@ -562,6 +575,7 @@ private fun LauncherCarFilamentContent(
         paintChangedEvent,
         settingsOrbitEvent,
         parkEngagedEvent,
+        startupTopViewDone,
     ) {
         val nowMs = SystemClock.uptimeMillis()
         val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
@@ -699,7 +713,9 @@ private fun LauncherCarFilamentContent(
                         val rawTransition = settingsProgress.coerceIn(0f, 1f)
                         val transition = if (rawTransition < 0.001f) 0f else rawTransition
 
-                        val targetDriveBlend = if (transition > 0.02f) {
+                        val isHoldingStartupTopView = cameraAnimEnabledRef.value && !LauncherCar3DModelTrigger.startupTopViewDone.value
+
+                        val targetDriveBlend = if (transition > 0.02f || isHoldingStartupTopView) {
                             0f
                         } else if (inDriveGearRef.value) {
                             1f
@@ -751,7 +767,7 @@ private fun LauncherCarFilamentContent(
 
                         val wasDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
 
-                        if (bodyStateChanged || isCameraSwitching || isInitializing || isActionRecent || isStartupRecent) {
+                        if (bodyStateChanged || isCameraSwitching || isInitializing || isActionRecent || isStartupRecent || isHoldingStartupTopView) {
                             lastDynamicNs = frameNs
                         }
 
@@ -785,9 +801,7 @@ private fun LauncherCarFilamentContent(
                             }
                         } else {
                             lastTargetDriveBlend = targetDriveBlend
-                            if (preparedFrames <= 1) {
-                                currentDriveBlend = targetDriveBlend
-                            } else if (currentDriveBlend < targetDriveBlend) {
+                            if (currentDriveBlend < targetDriveBlend) {
                                 currentDriveBlend = (currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
                             } else if (currentDriveBlend > targetDriveBlend) {
                                 currentDriveBlend = (currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
@@ -939,6 +953,18 @@ private fun LauncherCarFilamentContent(
                                 renderedScale += (targetScale - renderedScale) * scaleResponse
                             }
                             node.scale = Scale(renderedScale)
+                        }
+
+                        if (modelReady && widthPx > 0 && heightPx > 0) {
+                            if (firstRenderTimeMs == 0L) {
+                                firstRenderTimeMs = nowMs
+                                DclLogRecorder.log("ModelRender", "First 3D model frame rendered in top view at nowMs=$nowMs")
+                            } else if (!LauncherCar3DModelTrigger.startupTopViewDone.value) {
+                                if (!cameraAnimEnabledRef.value || nowMs - firstRenderTimeMs >= 2000L) {
+                                    DclLogRecorder.log("ModelRender", "Startup top view hold 2000ms completed, transitioning view")
+                                    LauncherCar3DModelTrigger.notifyStartupTopViewDone()
+                                }
+                            }
                         }
 
                         if (DclLogRecorder.isLoggingActive()) {

@@ -492,22 +492,20 @@ fun LauncherLeftPanel(
     var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
     val hasBodyOpen = effectiveBody.anyDoorOpen()
 
-    val launcherBootMs = remember { SystemClock.elapsedRealtime() }
-    var isStartupGracePeriod by remember {
-        mutableStateOf(cameraAnimEnabled && (SystemClock.elapsedRealtime() - launcherBootMs < 5000L))
-    }
-    LaunchedEffect(cameraAnimEnabled) {
-        if (cameraAnimEnabled) {
-            val elapsed = SystemClock.elapsedRealtime() - launcherBootMs
-            if (elapsed < 5000L) {
-                isStartupGracePeriod = true
-                delay(5000L - elapsed)
-                isStartupGracePeriod = false
-            } else {
-                isStartupGracePeriod = false
+    val startupTopViewDone by LauncherCar3DModelTrigger.startupTopViewDone.collectAsStateWithLifecycle()
+    val isStartupGracePeriod = cameraAnimEnabled && carModelVisible && !startupTopViewDone
+
+    // Safety fallback: if 3D model takes abnormally long or is disabled, release startup grace period after 15s
+    LaunchedEffect(cameraAnimEnabled, carModelVisible) {
+        if (!cameraAnimEnabled || !carModelVisible) {
+            if (!LauncherCar3DModelTrigger.startupTopViewDone.value) {
+                LauncherCar3DModelTrigger.notifyStartupTopViewDone()
             }
         } else {
-            isStartupGracePeriod = false
+            delay(15_000L)
+            if (!LauncherCar3DModelTrigger.startupTopViewDone.value) {
+                LauncherCar3DModelTrigger.notifyStartupTopViewDone()
+            }
         }
     }
 

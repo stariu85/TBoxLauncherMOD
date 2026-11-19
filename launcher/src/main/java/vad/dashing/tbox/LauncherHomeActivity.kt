@@ -70,6 +70,7 @@ class LauncherHomeActivity : ComponentActivity() {
         vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onCreate intent=$intent savedInstanceState=${savedInstanceState != null}")
 
         applyLauncherWindowFlags()
+        vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.resetStartupTopView()
         settingsManager = SettingsManager(this)
         appDataManager = AppDataManager(this)
 
