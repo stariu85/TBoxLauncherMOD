@@ -675,6 +675,8 @@
     <string name="launcher_vs_exp_hide_apps_on_home_toggle">Скрывать приложения вместо закрытия</string>
     <string name="launcher_vs_exp_home_move_task_to_back_title">Кнопка «Домой»: moveTaskToBack</string>
     <string name="launcher_vs_exp_home_move_task_to_back_desc">Сворачивание текущих окон приложений в фон (moveTaskToBack) через root-демон dclwm</string>
+    <string name="launcher_vs_exp_home_windowing_mode_title">Кнопка «Домой»: Freeform → Fullscreen</string>
+    <string name="launcher_vs_exp_home_windowing_mode_desc">Смена режима окна в фоновый Fullscreen (setWindowingMode) через dclwm, чтобы лаунчер накрывал окно</string>
     <string name="launcher_vs_exp_welcome_lamp">Подсветка встречи / прощания</string>
     <string name="launcher_vs_exp_breathing_unlock">Дыхание при отпирании</string>
     <string name="launcher_vs_exp_breathing_lock">Дыхание при запирании</string>

@@ -173,6 +173,7 @@ object LauncherFirstInstallDefaults {
         putIfMissing("seat_mirror_launch_mode", "standard")
         putIfMissing("exp_hide_apps_on_home", false)
         putIfMissing("exp_home_move_task_to_back", false)
+        putIfMissing("exp_home_windowing_mode", false)
         putIfMissing("dock_icon_scale", 1.0f)
         putIfMissing("top_bar_cellular_network_type_visible", true)
         putIfMissing("top_bar_time_signal_border_enabled", true)

@@ -18,6 +18,7 @@ public final class SessionTest {
         failed += check("launcher", launcherProtected());
         failed += check("arm", arm());
         failed += check("move_task_to_back", moveTaskToBackTest());
+        failed += check("set_windowing_mode", setWindowingModeTest());
         if (failed != 0) {
             System.exit(1);
         }
@@ -134,6 +135,15 @@ public final class SessionTest {
         String response = new Session(am).handle("MOVE_TASK_TO_BACK 406", 0, 10098);
         return "OK\n".equals(response)
                 && am.calls.get(1).equals(Arrays.asList("am", "stack", "movetask", "406", "4", "false"));
+    }
+
+    private static boolean setWindowingModeTest() {
+        Fake am = new Fake();
+        am.outputs.add(sample(344, 37, 1920, 1000, 0, 0, 1920, 1080));
+        am.outputs.add("");
+        String response = new Session(am).handle("SET_WINDOWING_MODE 406 1", 0, 10098);
+        return "OK\n".equals(response)
+                && am.calls.get(1).equals(Arrays.asList("am", "task", "set-windowing-mode", "406", "1"));
     }
 
     private static String sample(

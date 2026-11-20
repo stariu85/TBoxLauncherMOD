@@ -66,6 +66,14 @@ public final class Client {
         ok(command("MOVE_TASK_TO_BACK"));
     }
 
+    public void setWindowingMode(int taskId, int windowingMode) throws Exception {
+        ok(command("SET_WINDOWING_MODE " + taskId + " " + windowingMode));
+    }
+
+    public void setWindowingMode(int windowingMode) throws Exception {
+        ok(command("SET_WINDOWING_MODE " + windowingMode));
+    }
+
     public static void main(String[] args) throws Exception {
         String drop = System.getenv("DCLWM_UID");
         if (drop != null) {
@@ -105,6 +113,15 @@ public final class Client {
             System.out.println("OK");
         } else if ("MOVE_TASK_TO_BACK".equals(op) && args.length == 1) {
             client.moveTaskToBack();
+            System.out.println("OK");
+        } else if ("SET_WINDOWING_MODE".equals(op) && args.length == 3) {
+            client.setWindowingMode(Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+            System.out.println("OK");
+        } else if ("SET_WINDOWING_MODE".equals(op) && args.length == 2) {
+            client.setWindowingMode(Integer.parseInt(args[1]), 1);
+            System.out.println("OK");
+        } else if ("SET_WINDOWING_MODE".equals(op) && args.length == 1) {
+            client.setWindowingMode(1);
             System.out.println("OK");
         } else {
             System.out.println("ERR bad_args");

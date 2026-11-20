@@ -27,6 +27,7 @@ private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME = "exp_hide_apps_on_home"
 private const val KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK = "exp_home_move_task_to_back"
+private const val KEY_EXPERIMENTAL_HOME_WINDOWING_MODE = "exp_home_windowing_mode"
 private const val KEY_BOOT_LOG_ENABLED = "boot_log_enabled"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
@@ -488,6 +489,8 @@ internal object LauncherAppConfigStore {
     internal val experimentalHideAppsOnHomeRevisionFlow: StateFlow<Int> = experimentalHideAppsOnHomeRevision
     private val experimentalHomeMoveTaskToBackRevision = MutableStateFlow(0)
     internal val experimentalHomeMoveTaskToBackRevisionFlow: StateFlow<Int> = experimentalHomeMoveTaskToBackRevision
+    private val experimentalHomeWindowingModeRevision = MutableStateFlow(0)
+    internal val experimentalHomeWindowingModeRevisionFlow: StateFlow<Int> = experimentalHomeWindowingModeRevision
     private val bootLogRevision = MutableStateFlow(0)
     internal val bootLogRevisionFlow: StateFlow<Int> = bootLogRevision
     private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
@@ -977,7 +980,9 @@ internal object LauncherAppConfigStore {
         val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, enabled)
         if (enabled) {
             editor.putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, false)
+            editor.putBoolean(KEY_EXPERIMENTAL_HOME_WINDOWING_MODE, false)
             experimentalHomeMoveTaskToBackRevision.value++
+            experimentalHomeWindowingModeRevision.value++
         }
         editor.apply()
         experimentalHideAppsOnHomeRevision.value++
@@ -990,15 +995,33 @@ internal object LauncherAppConfigStore {
         val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, enabled)
         if (enabled) {
             editor.putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
+            editor.putBoolean(KEY_EXPERIMENTAL_HOME_WINDOWING_MODE, false)
             experimentalHideAppsOnHomeRevision.value++
+            experimentalHomeWindowingModeRevision.value++
         }
         editor.apply()
         experimentalHomeMoveTaskToBackRevision.value++
     }
 
+    fun experimentalHomeWindowingMode(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_HOME_WINDOWING_MODE, false)
+
+    fun setExperimentalHomeWindowingMode(context: Context, enabled: Boolean) {
+        val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HOME_WINDOWING_MODE, enabled)
+        if (enabled) {
+            editor.putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
+            editor.putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, false)
+            experimentalHideAppsOnHomeRevision.value++
+            experimentalHomeMoveTaskToBackRevision.value++
+        }
+        editor.apply()
+        experimentalHomeWindowingModeRevision.value++
+    }
+
     fun isAnyDclwmRequired(context: Context): Boolean =
         experimentalHideAppsOnHome(context) ||
-            experimentalHomeMoveTaskToBack(context)
+            experimentalHomeMoveTaskToBack(context) ||
+            experimentalHomeWindowingMode(context)
 
     fun bootLogEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_BOOT_LOG_ENABLED, false)

@@ -54,6 +54,16 @@ public final class Session {
                     return moveForeignTasksToBack();
                 }
             }
+            if ("SET_WINDOWING_MODE".equals(op) && (parts.length == 1 || parts.length == 2 || parts.length == 3)) {
+                int mode = 1; // 1 = WINDOWING_MODE_FULLSCREEN
+                if (parts.length == 3) {
+                    return setTaskWindowingMode(parseId(parts[1]), Integer.parseInt(parts[2]));
+                } else if (parts.length == 2) {
+                    return setTaskWindowingMode(parseId(parts[1]), mode);
+                } else {
+                    return setForeignTasksWindowingMode(mode);
+                }
+            }
             return "ERR unknown\n";
         } catch (NumberFormatException bad) {
             return "ERR bad_args\n";
@@ -220,6 +230,84 @@ public final class Session {
             }
         }
         return "OK\n";
+    }
+
+    private String setTaskWindowingMode(int taskId, int windowingMode) throws AmFailure {
+        WindowTask task = StackListParser.find(read(), taskId);
+        String rejected = reject(task);
+        if (rejected != null) {
+            return rejected;
+        }
+        boolean done = applyTaskWindowingMode(taskId, windowingMode, false);
+        return done ? "OK\n" : "ERR failed\n";
+    }
+
+    private String setForeignTasksWindowingMode(int windowingMode) throws AmFailure {
+        List<WindowTask> tasks = read();
+        for (int i = 0; i < tasks.size(); i++) {
+            WindowTask t = tasks.get(i);
+            if (Protocol.LAUNCHER_PACKAGE.equals(t.packageName)) {
+                continue;
+            }
+            if ("freeform".equalsIgnoreCase(t.mode) || t.stackId != 0) {
+                applyTaskWindowingMode(t.id, windowingMode, false);
+            }
+        }
+        return "OK\n";
+    }
+
+    private boolean applyTaskWindowingMode(int taskId, int windowingMode, boolean toTop) {
+        boolean invoked = false;
+        // 1. Try ActivityTaskManager (Android 10+)
+        try {
+            Class<?> atmClass = Class.forName("android.app.ActivityTaskManager");
+            Object iatm = atmClass.getMethod("getService").invoke(null);
+            if (iatm != null) {
+                for (java.lang.reflect.Method m : iatm.getClass().getMethods()) {
+                    if ("setTaskWindowingMode".equals(m.getName())) {
+                        Class<?>[] p = m.getParameterTypes();
+                        if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
+                            m.invoke(iatm, taskId, windowingMode, toTop);
+                            invoked = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        // 2. Try ActivityManager (Android 9 Pie)
+        if (!invoked) {
+            try {
+                Class<?> amClass = Class.forName("android.app.ActivityManager");
+                Object iam = amClass.getMethod("getService").invoke(null);
+                if (iam != null) {
+                    for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
+                        if ("setTaskWindowingMode".equals(m.getName())) {
+                            Class<?>[] p = m.getParameterTypes();
+                            if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
+                                m.invoke(iam, taskId, windowingMode, toTop);
+                                invoked = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        // 3. Fallback to CLI
+        try {
+            am.run("am", "task", "set-windowing-mode", Integer.toString(taskId), Integer.toString(windowingMode));
+            invoked = true;
+        } catch (Throwable ignored) {
+        }
+        try {
+            am.run("cmd", "activity", "task", "set-windowing-mode", Integer.toString(taskId), Integer.toString(windowingMode));
+            invoked = true;
+        } catch (Throwable ignored) {
+        }
+        return invoked;
     }
 
     /** @return an ERR line, or null when the task may be moved */

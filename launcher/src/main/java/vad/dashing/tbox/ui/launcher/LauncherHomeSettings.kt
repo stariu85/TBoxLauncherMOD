@@ -220,17 +220,23 @@ private fun UiClickSoundsSettingToggle() {
 @Composable
 internal fun LauncherExpHomeMoveTaskToBackSettings() {
     val context = LocalContext.current
-    val revision by LauncherAppConfigStore.experimentalHomeMoveTaskToBackRevisionFlow
+    val moveBackRevision by LauncherAppConfigStore.experimentalHomeMoveTaskToBackRevisionFlow
         .collectAsStateWithLifecycle()
-    val enabled = remember(context, revision) {
+    val isMoveBackEnabled = remember(context, moveBackRevision) {
         LauncherAppConfigStore.experimentalHomeMoveTaskToBack(context)
+    }
+
+    val windowingModeRevision by LauncherAppConfigStore.experimentalHomeWindowingModeRevisionFlow
+        .collectAsStateWithLifecycle()
+    val isWindowingModeEnabled = remember(context, windowingModeRevision) {
+        LauncherAppConfigStore.experimentalHomeWindowingMode(context)
     }
 
     LauncherSettingsToggleRow(
         label = stringResource(R.string.launcher_vs_exp_home_move_task_to_back_title),
-        active = enabled,
+        active = isMoveBackEnabled,
         onClick = {
-            val next = !enabled
+            val next = !isMoveBackEnabled
             LauncherAppConfigStore.setExperimentalHomeMoveTaskToBack(context, next)
             if (next) {
                 startDclwmStorageWatcher(context.applicationContext)
@@ -241,6 +247,25 @@ internal fun LauncherExpHomeMoveTaskToBackSettings() {
     )
     Text(
         text = stringResource(R.string.launcher_vs_exp_home_move_task_to_back_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_home_windowing_mode_title),
+        active = isWindowingModeEnabled,
+        onClick = {
+            val next = !isWindowingModeEnabled
+            LauncherAppConfigStore.setExperimentalHomeWindowingMode(context, next)
+            if (next) {
+                startDclwmStorageWatcher(context.applicationContext)
+            } else {
+                stopDclwmStorageWatcherIfUnused(context.applicationContext)
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_home_windowing_mode_desc),
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )

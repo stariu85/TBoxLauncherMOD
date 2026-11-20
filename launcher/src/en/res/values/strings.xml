@@ -1505,6 +1505,8 @@
     <string name="launcher_vs_exp_hide_apps_on_home_toggle">Hide apps instead of closing</string>
     <string name="launcher_vs_exp_home_move_task_to_back_title">Home button: moveTaskToBack</string>
     <string name="launcher_vs_exp_home_move_task_to_back_desc">Move current app windows to the background (moveTaskToBack) via root daemon dclwm</string>
+    <string name="launcher_vs_exp_home_windowing_mode_title">Home button: Freeform → Fullscreen</string>
+    <string name="launcher_vs_exp_home_windowing_mode_desc">Switch window mode to background Fullscreen (setWindowingMode) via dclwm so launcher covers the window</string>
     <string name="launcher_vs_section_lights">Lights</string>
     <string name="launcher_vs_section_lights_sub">Headlights and path illumination</string>
     <string name="launcher_vs_section_model">3D Model</string>

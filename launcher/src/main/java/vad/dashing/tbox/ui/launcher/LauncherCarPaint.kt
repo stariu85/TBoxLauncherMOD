@@ -22,7 +22,8 @@ object LauncherCarPaint {
         // Near-black: 0x222222 reads as charcoal under Filament IBL/specular.
         LauncherCarPaintOption("cheqi03", R.string.launcher_paint_black, 0xFF050505.toInt()),
         LauncherCarPaintOption("cheqi04", R.string.launcher_paint_white, 0xFFCACACA.toInt()),
-        LauncherCarPaintOption("cheqi05", R.string.launcher_paint_gray, 0xFF141618.toInt()),
+        // Phantom Grey / Gunmetal: noticeable grey under Filament IBL, distinguishable from black and white.
+        LauncherCarPaintOption("cheqi05", R.string.launcher_paint_gray, 0xFF585C60.toInt()),
         // Deep British-racing green. IBL lifts mid-greens, so the stored
         // swatch is already darker than #013220 and apply() shades it again.
         LauncherCarPaintOption("cheqi06", R.string.launcher_paint_green, 0xFF000C08.toInt()),

@@ -924,6 +924,49 @@ internal fun moveForeignFreeformTasksToBackViaDclwm(
 }
 
 /**
+ * Switch foreign app tasks from Freeform to Fullscreen (windowingMode = 1)
+ * via dclwm root helper, so the fullscreen launcher naturally draws over them.
+ */
+internal fun switchForeignFreeformTasksToFullscreenViaDclwm(
+    context: Context,
+    source: String = "unknown",
+): Boolean {
+    val client = DclwmClient()
+    val tasks = runCatching {
+        client.list()
+    }.recoverCatching { err ->
+        Log.w("LauncherAppLaunch", "dclwm client.list() failed: ${err.message}, trying Starter.ensure")
+        DclwmStarter.ensure(context.applicationContext)
+        client.list()
+    }.getOrNull() ?: return false
+
+    val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
+    var switchedCount = 0
+    for (task in tasks) {
+        if (Thread.currentThread().isInterrupted) return false
+        if (task.packageName == launcherPackage) continue
+        if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
+        if (isPackageCurrentlyLaunching(task.packageName)) {
+            Log.w("LauncherAppLaunch", "dclwm setWindowingMode: skipping launching package ${task.packageName}")
+            continue
+        }
+        runCatching {
+            // 1 = WINDOWING_MODE_FULLSCREEN
+            client.setWindowingMode(task.id, 1)
+            switchedCount++
+            if (isYandexNavigationPackage(task.packageName)) {
+                YandexNavWindowTracker.onWindowMinimized(task.packageName)
+            }
+            Log.w("LauncherAppLaunch", "dclwm switched task to fullscreen id=${task.id} pkg=${task.packageName}")
+        }.onFailure { err ->
+            Log.w("LauncherAppLaunch", "dclwm setWindowingMode failed for task id=${task.id} pkg=${task.packageName}", err)
+        }
+    }
+    Log.w("LauncherAppLaunch", "dclwm setWindowingMode complete: switched $switchedCount tasks (source=$source)")
+    return true
+}
+
+/**
  * Hide/minimize freeform, full-width, or split windows when Home is pressed.
  * Moves foreign app tasks to the background (moveTaskToBack / moveTaskBackwards)
  * WITHOUT force-stopping them, so apps continue running in the background.
@@ -942,7 +985,27 @@ internal fun minimizeForeignFreeformTasks(
     activeMinimizeJob = minimizeScope.launch {
         if (!isActive) return@launch
         runCatching {
-            if (LauncherAppConfigStore.experimentalHomeMoveTaskToBack(appCtx)) {
+            if (LauncherAppConfigStore.experimentalHomeWindowingMode(appCtx)) {
+                val dclwmOk = runCatching {
+                    switchForeignFreeformTasksToFullscreenViaDclwm(appCtx, source)
+                }.getOrDefault(false)
+
+                if (!isActive) return@launch
+
+                if (dclwmOk) {
+                    LauncherNavLogger.logNavAction(
+                        action = "SET_WINDOWING_MODE_DCLWM",
+                        source = source,
+                        stateBefore = stateBefore,
+                        result = "Successfully switched foreign tasks to fullscreen via dclwm",
+                    )
+                    withContext(Dispatchers.Main) {
+                        onComplete()
+                    }
+                    return@launch
+                }
+                Log.w("LauncherAppLaunch", "dclwm setWindowingMode failed or returned false, falling back to legacy cleanup")
+            } else if (LauncherAppConfigStore.experimentalHomeMoveTaskToBack(appCtx)) {
                 val dclwmOk = runCatching {
                     moveForeignFreeformTasksToBackViaDclwm(appCtx, source)
                 }.getOrDefault(false)
