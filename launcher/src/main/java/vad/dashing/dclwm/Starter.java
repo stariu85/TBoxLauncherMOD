@@ -48,34 +48,43 @@ public final class Starter {
             return;
         }
 
-        vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Starting dclwm: copying dex and writing autorun.sh");
-        File dex = new File(context.getFilesDir(), Protocol.DEX_ASSET);
-        copyAsset(context, dex);
-        String script = ArmScript.text(dex.getAbsolutePath());
-        File autorun = new File(Protocol.AUTORUN);
-        writeLf(autorun, script);
-        exec("chmod", "777", autorun.getAbsolutePath());
-        new File(Protocol.AUTORUN_FLAG).createNewFile();
-        exec("chmod", "666", Protocol.AUTORUN_FLAG);
-        exec("setprop", Protocol.AUTORUN_PROP, "");
-        Thread.sleep(300);
-        exec("setprop", Protocol.AUTORUN_PROP, Protocol.AUTORUN_FLAG);
-        long deadline = System.currentTimeMillis() + WAIT_MS;
-        File marker = new File(Protocol.ARM_MARKER);
-        while (System.currentTimeMillis() < deadline) {
-            String text = readIfAny(marker);
-            if (text.contains("started") || text.contains("already")) {
-                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm started successfully: marker=" + text);
-                return;
+        synchronized (vad.dashing.tbox.usbmount.RootOrchestrator.ROOT_LOCK) {
+            File flagFile = new File(Protocol.AUTORUN_FLAG);
+            if (flagFile.exists()) {
+                long waitDeadline = System.currentTimeMillis() + 3000L;
+                while (flagFile.exists() && System.currentTimeMillis() < waitDeadline) {
+                    Thread.sleep(200);
+                }
             }
-            if (text.contains("missing") || text.contains("failed")) {
-                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm failed to stay up: marker=" + text);
-                throw new IllegalStateException("dclwm did not stay up, see " + Protocol.LOG_FILE);
+            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Starting dclwm: copying dex and writing autorun.sh");
+            File dex = new File(context.getFilesDir(), Protocol.DEX_ASSET);
+            copyAsset(context, dex);
+            String script = ArmScript.text(dex.getAbsolutePath());
+            File autorun = new File(Protocol.AUTORUN);
+            writeLf(autorun, script);
+            exec("chmod", "777", autorun.getAbsolutePath());
+            new File(Protocol.AUTORUN_FLAG).createNewFile();
+            exec("chmod", "666", Protocol.AUTORUN_FLAG);
+            exec("setprop", Protocol.AUTORUN_PROP, "");
+            Thread.sleep(300);
+            exec("setprop", Protocol.AUTORUN_PROP, Protocol.AUTORUN_FLAG);
+            long deadline = System.currentTimeMillis() + WAIT_MS;
+            File marker = new File(Protocol.ARM_MARKER);
+            while (System.currentTimeMillis() < deadline) {
+                String text = readIfAny(marker);
+                if (text.contains("started") || text.contains("already")) {
+                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm started successfully: marker=" + text);
+                    return;
+                }
+                if (text.contains("missing") || text.contains("failed")) {
+                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm failed to stay up: marker=" + text);
+                    throw new IllegalStateException("dclwm did not stay up, see " + Protocol.LOG_FILE);
+                }
+                Thread.sleep(200);
             }
-            Thread.sleep(200);
+            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "mb_daemon did not start dclwm within deadline");
+            throw new IllegalStateException("mb_daemon did not start dclwm");
         }
-        vad.dashing.tbox.DclLogRecorder.log("DCLWM", "mb_daemon did not start dclwm within deadline");
-        throw new IllegalStateException("mb_daemon did not start dclwm");
     }
 
     private static void copyAsset(Context context, File dest) throws Exception {

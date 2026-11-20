@@ -134,6 +134,7 @@
         <package android:name="com.google.android.wallpaper" />
         <package android:name="com.android.settings" />
         <package android:name="vad.dashing.tbox" />
+        <package android:name="android.car.usb.handler" />
         <provider android:authorities="vad.dashing.tbox.localaccess" />
         <provider android:authorities="com.wt.launcher3" />
     </queries>
@@ -271,5 +272,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <receiver
+            android:name="vad.dashing.tbox.usbmount.UsbMountReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+                <action android:name="android.intent.action.MEDIA_CHECKING" />
+                <action android:name="vad.dashing.usbmount.ARM" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -160,6 +160,9 @@ class LauncherHomeActivity : ComponentActivity() {
             // Start CAN auto-bind now that desktop and UI thread are completely unblocked
             UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
 
+            // Start USB Mount watcher in Stage 2 (checks storage every 1s until ready, before full boot ends)
+            vad.dashing.tbox.usbmount.UsbMountManager.startStage2Watcher(appCtx)
+
             // --- Stage 3: Autostart shortcut, dclwm storage watcher & foreign stack cleanup ---
             delay(1000L)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: autostart shortcut, dclwm storage watcher")
