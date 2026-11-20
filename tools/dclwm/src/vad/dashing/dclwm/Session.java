@@ -47,16 +47,12 @@ public final class Session {
             if ("DISMISS".equals(op) && parts.length == 2) {
                 return dismiss(parseId(parts[1]));
             }
-            if ("FRONT_A".equals(op) && (parts.length == 1 || parts.length == 2)) {
-                int taskId = parts.length == 2 ? parseId(parts[1]) : -1;
-                return frontA(taskId);
-            }
-            if ("FRONT_B".equals(op) && (parts.length == 1 || parts.length == 2)) {
-                int taskId = parts.length == 2 ? parseId(parts[1]) : -1;
-                return frontB(taskId);
-            }
-            if ("FRONT_C".equals(op) && (parts.length == 1 || parts.length == 2)) {
-                return frontC();
+            if ("MOVE_TASK_TO_BACK".equals(op) && (parts.length == 1 || parts.length == 2)) {
+                if (parts.length == 2) {
+                    return moveTaskToBack(parseId(parts[1]));
+                } else {
+                    return moveForeignTasksToBack();
+                }
             }
             return "ERR unknown\n";
         } catch (NumberFormatException bad) {
@@ -152,89 +148,77 @@ public final class Session {
         return "OK\n";
     }
 
-    private String frontA(int taskId) throws AmFailure {
-        int targetTask = taskId;
-        if (targetTask <= 0) {
-            List<WindowTask> tasks = read();
-            for (int i = 0; i < tasks.size(); i++) {
-                WindowTask t = tasks.get(i);
-                if (Protocol.LAUNCHER_PACKAGE.equals(t.packageName)) {
-                    targetTask = t.id;
-                    break;
-                }
-            }
+    private String moveTaskToBack(int taskId) throws AmFailure {
+        WindowTask task = StackListParser.find(read(), taskId);
+        String rejected = reject(task);
+        if (rejected != null) {
+            return rejected;
         }
-        if (targetTask > 0) {
-            am.run("am", "task", "to-top", Integer.toString(targetTask));
-        }
-        am.run("am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME", "-f", "0x10200000");
-        return "OK\n";
-    }
-
-    private String frontB(int taskId) {
+        boolean done = false;
         try {
             Class<?> amClass = Class.forName("android.app.ActivityManager");
             Object iam = amClass.getMethod("getService").invoke(null);
-            if (iam == null) {
-                return "ERR no_service\n";
-            }
-            int targetTask = taskId;
-            int targetStack = -1;
-            if (targetTask <= 0) {
-                try {
-                    List<WindowTask> tasks = read();
-                    for (int i = 0; i < tasks.size(); i++) {
-                        WindowTask t = tasks.get(i);
-                        if (Protocol.LAUNCHER_PACKAGE.equals(t.packageName)) {
-                            targetTask = t.id;
-                            targetStack = t.stackId;
-                            break;
-                        }
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-            if (targetTask > 0) {
-                boolean moved = false;
+            if (iam != null) {
                 for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
-                    if ("moveTaskToFront".equals(m.getName())) {
+                    if ("moveTaskToBack".equals(m.getName())) {
                         Class<?>[] p = m.getParameterTypes();
-                        if (p.length == 3 && p[0] == int.class && p[1] == int.class) {
-                            m.invoke(iam, targetTask, 1 /* MOVE_TASK_WITH_HOME */, null);
-                            moved = true;
+                        if (p.length == 1 && p[0] == int.class) {
+                            m.invoke(iam, taskId);
+                            done = true;
                             break;
                         }
                     }
                 }
-                if (!moved) {
-                    for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
-                        if ("moveTaskToFront".equals(m.getName())) {
-                            Class<?>[] p = m.getParameterTypes();
-                            if (p.length == 2 && p[0] == int.class && p[1] == int.class) {
-                                m.invoke(iam, targetTask, 1 /* MOVE_TASK_WITH_HOME */);
-                                moved = true;
-                                break;
-                            }
-                        }
-                    }
-                }
             }
-            if (targetStack >= 0) {
+        } catch (Throwable ignored) {
+        }
+        if (task != null) {
+            try {
+                am.run("am", "stack", "movetask", Integer.toString(taskId), Integer.toString(task.stackId), "false");
+                done = true;
+            } catch (Throwable ignored) {
+            }
+        }
+        return done ? "OK\n" : "ERR failed\n";
+    }
+
+    private String moveForeignTasksToBack() throws AmFailure {
+        List<WindowTask> tasks = read();
+        Class<?> amClass = null;
+        Object iam = null;
+        java.lang.reflect.Method moveMethod = null;
+        try {
+            amClass = Class.forName("android.app.ActivityManager");
+            iam = amClass.getMethod("getService").invoke(null);
+            if (iam != null) {
                 for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
-                    if ("setFocusedStack".equals(m.getName()) && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class) {
-                        m.invoke(iam, targetStack);
+                    if ("moveTaskToBack".equals(m.getName()) && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class) {
+                        moveMethod = m;
                         break;
                     }
                 }
             }
-            return "OK\n";
-        } catch (Throwable t) {
-            return "ERR " + t.getMessage() + "\n";
+        } catch (Throwable ignored) {
         }
-    }
 
-    private String frontC() throws AmFailure {
-        am.run("input", "keyevent", "KEYCODE_HOME");
+        for (int i = 0; i < tasks.size(); i++) {
+            WindowTask t = tasks.get(i);
+            if (Protocol.LAUNCHER_PACKAGE.equals(t.packageName)) {
+                continue;
+            }
+            if ("freeform".equalsIgnoreCase(t.mode) || t.stackId != 0) {
+                if (moveMethod != null && iam != null) {
+                    try {
+                        moveMethod.invoke(iam, t.id);
+                    } catch (Throwable ignored) {
+                    }
+                }
+                try {
+                    am.run("am", "stack", "movetask", Integer.toString(t.id), Integer.toString(t.stackId), "false");
+                } catch (Throwable ignored) {
+                }
+            }
+        }
         return "OK\n";
     }
 

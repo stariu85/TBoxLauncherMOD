@@ -26,9 +26,7 @@ private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME = "exp_hide_apps_on_home"
-private const val KEY_EXPERIMENTAL_FRONT_MODE_A = "exp_front_mode_a"
-private const val KEY_EXPERIMENTAL_FRONT_MODE_B = "exp_front_mode_b"
-private const val KEY_EXPERIMENTAL_FRONT_MODE_C = "exp_front_mode_c"
+private const val KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK = "exp_home_move_task_to_back"
 private const val KEY_BOOT_LOG_ENABLED = "boot_log_enabled"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
@@ -488,12 +486,8 @@ internal object LauncherAppConfigStore {
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
     private val experimentalHideAppsOnHomeRevision = MutableStateFlow(0)
     internal val experimentalHideAppsOnHomeRevisionFlow: StateFlow<Int> = experimentalHideAppsOnHomeRevision
-    private val experimentalFrontModeARevision = MutableStateFlow(0)
-    internal val experimentalFrontModeARevisionFlow: StateFlow<Int> = experimentalFrontModeARevision
-    private val experimentalFrontModeBRevision = MutableStateFlow(0)
-    internal val experimentalFrontModeBRevisionFlow: StateFlow<Int> = experimentalFrontModeBRevision
-    private val experimentalFrontModeCRevision = MutableStateFlow(0)
-    internal val experimentalFrontModeCRevisionFlow: StateFlow<Int> = experimentalFrontModeCRevision
+    private val experimentalHomeMoveTaskToBackRevision = MutableStateFlow(0)
+    internal val experimentalHomeMoveTaskToBackRevisionFlow: StateFlow<Int> = experimentalHomeMoveTaskToBackRevision
     private val bootLogRevision = MutableStateFlow(0)
     internal val bootLogRevisionFlow: StateFlow<Int> = bootLogRevision
     private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
@@ -980,60 +974,31 @@ internal object LauncherAppConfigStore {
         prefs(context).getBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
 
     fun setExperimentalHideAppsOnHome(context: Context, enabled: Boolean) {
-        prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, enabled).apply()
+        val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, enabled)
+        if (enabled) {
+            editor.putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, false)
+            experimentalHomeMoveTaskToBackRevision.value++
+        }
+        editor.apply()
         experimentalHideAppsOnHomeRevision.value++
     }
 
-    fun experimentalFrontModeA(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_EXPERIMENTAL_FRONT_MODE_A, false)
+    fun experimentalHomeMoveTaskToBack(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, false)
 
-    fun setExperimentalFrontModeA(context: Context, enabled: Boolean) {
-        val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_A, enabled)
+    fun setExperimentalHomeMoveTaskToBack(context: Context, enabled: Boolean) {
+        val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, enabled)
         if (enabled) {
-            editor.putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_B, false)
-            editor.putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_C, false)
-            experimentalFrontModeBRevision.value++
-            experimentalFrontModeCRevision.value++
+            editor.putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
+            experimentalHideAppsOnHomeRevision.value++
         }
         editor.apply()
-        experimentalFrontModeARevision.value++
-    }
-
-    fun experimentalFrontModeB(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_EXPERIMENTAL_FRONT_MODE_B, false)
-
-    fun setExperimentalFrontModeB(context: Context, enabled: Boolean) {
-        val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_B, enabled)
-        if (enabled) {
-            editor.putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_A, false)
-            editor.putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_C, false)
-            experimentalFrontModeARevision.value++
-            experimentalFrontModeCRevision.value++
-        }
-        editor.apply()
-        experimentalFrontModeBRevision.value++
-    }
-
-    fun experimentalFrontModeC(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_EXPERIMENTAL_FRONT_MODE_C, false)
-
-    fun setExperimentalFrontModeC(context: Context, enabled: Boolean) {
-        val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_C, enabled)
-        if (enabled) {
-            editor.putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_A, false)
-            editor.putBoolean(KEY_EXPERIMENTAL_FRONT_MODE_B, false)
-            experimentalFrontModeARevision.value++
-            experimentalFrontModeBRevision.value++
-        }
-        editor.apply()
-        experimentalFrontModeCRevision.value++
+        experimentalHomeMoveTaskToBackRevision.value++
     }
 
     fun isAnyDclwmRequired(context: Context): Boolean =
         experimentalHideAppsOnHome(context) ||
-            experimentalFrontModeA(context) ||
-            experimentalFrontModeB(context) ||
-            experimentalFrontModeC(context)
+            experimentalHomeMoveTaskToBack(context)
 
     fun bootLogEnabled(context: Context): Boolean =
         prefs(context).getBoolean(KEY_BOOT_LOG_ENABLED, false)

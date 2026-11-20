@@ -17,8 +17,7 @@ public final class SessionTest {
         failed += check("dismiss", dismiss());
         failed += check("launcher", launcherProtected());
         failed += check("arm", arm());
-        failed += check("front_a", frontA());
-        failed += check("front_c", frontC());
+        failed += check("move_task_to_back", moveTaskToBackTest());
         if (failed != 0) {
             System.exit(1);
         }
@@ -128,23 +127,13 @@ public final class SessionTest {
                 && script.contains("setsid /system/bin/app_process /system/bin vad.dashing.dclwm.Helper");
     }
 
-    private static boolean frontA() {
+    private static boolean moveTaskToBackTest() {
         Fake am = new Fake();
         am.outputs.add(sample(344, 37, 1920, 1000, 0, 0, 1920, 1080));
         am.outputs.add("");
-        am.outputs.add("");
-        String response = new Session(am).handle("FRONT_A", 10098, 10098);
+        String response = new Session(am).handle("MOVE_TASK_TO_BACK 406", 0, 10098);
         return "OK\n".equals(response)
-                && am.calls.get(1).equals(Arrays.asList("am", "task", "to-top", "402"))
-                && am.calls.get(2).equals(Arrays.asList("am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME", "-f", "0x10200000"));
-    }
-
-    private static boolean frontC() {
-        Fake am = new Fake();
-        am.outputs.add("");
-        String response = new Session(am).handle("FRONT_C", 10098, 10098);
-        return "OK\n".equals(response)
-                && am.calls.get(0).equals(Arrays.asList("input", "keyevent", "KEYCODE_HOME"));
+                && am.calls.get(1).equals(Arrays.asList("am", "stack", "movetask", "406", "4", "false"));
     }
 
     private static String sample(

@@ -994,14 +994,7 @@ internal fun LauncherVehicleSettingsContent(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.launcher_vs_exp_front_section_title),
-                color = LauncherColors.TextPrimary,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-            )
-            LauncherExpFrontModeSettings()
+            LauncherExpHomeMoveTaskToBackSettings()
             Spacer(modifier = Modifier.height(8.dp))
             ExperimentalAdasSliders()
             Spacer(modifier = Modifier.height(8.dp))

@@ -58,24 +58,12 @@ public final class Client {
         ok(command("DISMISS " + taskId));
     }
 
-    public void moveLauncherToFrontA(int taskId) throws Exception {
-        ok(command("FRONT_A " + taskId));
+    public void moveTaskToBack(int taskId) throws Exception {
+        ok(command("MOVE_TASK_TO_BACK " + taskId));
     }
 
-    public void moveLauncherToFrontA() throws Exception {
-        ok(command("FRONT_A"));
-    }
-
-    public void moveLauncherToFrontB(int taskId) throws Exception {
-        ok(command("FRONT_B " + taskId));
-    }
-
-    public void moveLauncherToFrontB() throws Exception {
-        ok(command("FRONT_B"));
-    }
-
-    public void moveLauncherToFrontC() throws Exception {
-        ok(command("FRONT_C"));
+    public void moveTaskToBack() throws Exception {
+        ok(command("MOVE_TASK_TO_BACK"));
     }
 
     public static void main(String[] args) throws Exception {
@@ -111,6 +99,12 @@ public final class Client {
                     Integer.parseInt(args[3]),
                     Integer.parseInt(args[4]),
                     Integer.parseInt(args[5]));
+            System.out.println("OK");
+        } else if ("MOVE_TASK_TO_BACK".equals(op) && args.length == 2) {
+            client.moveTaskToBack(Integer.parseInt(args[1]));
+            System.out.println("OK");
+        } else if ("MOVE_TASK_TO_BACK".equals(op) && args.length == 1) {
+            client.moveTaskToBack();
             System.out.println("OK");
         } else {
             System.out.println("ERR bad_args");

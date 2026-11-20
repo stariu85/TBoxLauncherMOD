@@ -882,6 +882,48 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
 }
 
 /**
+ * Move foreign app tasks to the background (moveTaskToBack)
+ * via dclwm root helper, keeping them alive in the background.
+ */
+internal fun moveForeignFreeformTasksToBackViaDclwm(
+    context: Context,
+    source: String = "unknown",
+): Boolean {
+    val client = DclwmClient()
+    val tasks = runCatching {
+        client.list()
+    }.recoverCatching { err ->
+        Log.w("LauncherAppLaunch", "dclwm client.list() failed: ${err.message}, trying Starter.ensure")
+        DclwmStarter.ensure(context.applicationContext)
+        client.list()
+    }.getOrNull() ?: return false
+
+    val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
+    var movedCount = 0
+    for (task in tasks) {
+        if (Thread.currentThread().isInterrupted) return false
+        if (task.packageName == launcherPackage) continue
+        if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
+        if (isPackageCurrentlyLaunching(task.packageName)) {
+            Log.w("LauncherAppLaunch", "dclwm moveTaskToBack: skipping launching package ${task.packageName}")
+            continue
+        }
+        runCatching {
+            client.moveTaskToBack(task.id)
+            movedCount++
+            if (isYandexNavigationPackage(task.packageName)) {
+                YandexNavWindowTracker.onWindowMinimized(task.packageName)
+            }
+            Log.w("LauncherAppLaunch", "dclwm moved task to back id=${task.id} pkg=${task.packageName}")
+        }.onFailure { err ->
+            Log.w("LauncherAppLaunch", "dclwm moveTaskToBack failed for task id=${task.id} pkg=${task.packageName}", err)
+        }
+    }
+    Log.w("LauncherAppLaunch", "dclwm moveTaskToBack complete: moved $movedCount tasks (source=$source)")
+    return true
+}
+
+/**
  * Hide/minimize freeform, full-width, or split windows when Home is pressed.
  * Moves foreign app tasks to the background (moveTaskToBack / moveTaskBackwards)
  * WITHOUT force-stopping them, so apps continue running in the background.
@@ -900,7 +942,27 @@ internal fun minimizeForeignFreeformTasks(
     activeMinimizeJob = minimizeScope.launch {
         if (!isActive) return@launch
         runCatching {
-            if (LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
+            if (LauncherAppConfigStore.experimentalHomeMoveTaskToBack(appCtx)) {
+                val dclwmOk = runCatching {
+                    moveForeignFreeformTasksToBackViaDclwm(appCtx, source)
+                }.getOrDefault(false)
+
+                if (!isActive) return@launch
+
+                if (dclwmOk) {
+                    LauncherNavLogger.logNavAction(
+                        action = "MOVE_TASK_TO_BACK_DCLWM",
+                        source = source,
+                        stateBefore = stateBefore,
+                        result = "Successfully moved foreign tasks to back via dclwm",
+                    )
+                    withContext(Dispatchers.Main) {
+                        onComplete()
+                    }
+                    return@launch
+                }
+                Log.w("LauncherAppLaunch", "dclwm moveTaskToBack failed or returned false, falling back to legacy cleanup")
+            } else if (LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
                 val dclwmOk = runCatching {
                     minimizeForeignFreeformTasksViaDclwm(appCtx, source)
                 }.getOrDefault(false)

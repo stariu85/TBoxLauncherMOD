@@ -1503,13 +1503,8 @@
     <string name="launcher_vs_exp_hide_apps_on_home_title">Hide apps on Home button</string>
     <string name="launcher_vs_exp_hide_apps_on_home_desc">Move windows off-screen without killing apps (dclwm). Background music and navigation stay alive without extra CPU load</string>
     <string name="launcher_vs_exp_hide_apps_on_home_toggle">Hide apps instead of closing</string>
-    <string name="launcher_vs_exp_front_section_title">Bring Launcher to front (Move to front)</string>
-    <string name="launcher_vs_exp_front_a_title">Home button: Variant A</string>
-    <string name="launcher_vs_exp_front_a_desc">Bring launcher to front on Home button press via root daemon dclwm (am task to-top / am start HOME). Does not hide foreign windows</string>
-    <string name="launcher_vs_exp_front_b_title">Home button: Variant B</string>
-    <string name="launcher_vs_exp_front_b_desc">Instantly bring launcher to front via direct moveTaskToFront call on ActivityManager service via dclwm. Does not hide foreign windows</string>
-    <string name="launcher_vs_exp_front_c_title">Home button: Variant C</string>
-    <string name="launcher_vs_exp_front_c_desc">Hardware Home button emulation (input keyevent KEYCODE_HOME) via root daemon dclwm. Does not hide foreign windows</string>
+    <string name="launcher_vs_exp_home_move_task_to_back_title">Home button: moveTaskToBack</string>
+    <string name="launcher_vs_exp_home_move_task_to_back_desc">Move current app windows to the background (moveTaskToBack) via root daemon dclwm</string>
     <string name="launcher_vs_section_lights">Lights</string>
     <string name="launcher_vs_section_lights_sub">Headlights and path illumination</string>
     <string name="launcher_vs_section_model">3D Model</string>

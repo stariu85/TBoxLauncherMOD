@@ -1699,7 +1699,7 @@ private fun LauncherBottomDockButtonContent(
                 painter = painterResource(recircRes),
                 contentDescription = null,
                 modifier = Modifier.size(dockDp(34.606f)),
-                colorFilter = ColorFilter.tint(HvacOffColor),
+                colorFilter = ColorFilter.tint(if (isRecircOn) HvacOnColor else HvacOffColor),
             )
         }
         "seat_heat_right" -> LauncherDockIcon(

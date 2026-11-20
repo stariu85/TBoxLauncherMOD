@@ -218,32 +218,20 @@ private fun UiClickSoundsSettingToggle() {
 }
 
 @Composable
-internal fun LauncherExpFrontModeSettings() {
+internal fun LauncherExpHomeMoveTaskToBackSettings() {
     val context = LocalContext.current
-    val expFrontModeARevision by LauncherAppConfigStore.experimentalFrontModeARevisionFlow
+    val revision by LauncherAppConfigStore.experimentalHomeMoveTaskToBackRevisionFlow
         .collectAsStateWithLifecycle()
-    val isFrontA = remember(context, expFrontModeARevision) {
-        LauncherAppConfigStore.experimentalFrontModeA(context)
-    }
-
-    val expFrontModeBRevision by LauncherAppConfigStore.experimentalFrontModeBRevisionFlow
-        .collectAsStateWithLifecycle()
-    val isFrontB = remember(context, expFrontModeBRevision) {
-        LauncherAppConfigStore.experimentalFrontModeB(context)
-    }
-
-    val expFrontModeCRevision by LauncherAppConfigStore.experimentalFrontModeCRevisionFlow
-        .collectAsStateWithLifecycle()
-    val isFrontC = remember(context, expFrontModeCRevision) {
-        LauncherAppConfigStore.experimentalFrontModeC(context)
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.experimentalHomeMoveTaskToBack(context)
     }
 
     LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_vs_exp_front_a_title),
-        active = isFrontA,
+        label = stringResource(R.string.launcher_vs_exp_home_move_task_to_back_title),
+        active = enabled,
         onClick = {
-            val next = !isFrontA
-            LauncherAppConfigStore.setExperimentalFrontModeA(context, next)
+            val next = !enabled
+            LauncherAppConfigStore.setExperimentalHomeMoveTaskToBack(context, next)
             if (next) {
                 startDclwmStorageWatcher(context.applicationContext)
             } else {
@@ -252,45 +240,7 @@ internal fun LauncherExpFrontModeSettings() {
         },
     )
     Text(
-        text = stringResource(R.string.launcher_vs_exp_front_a_desc),
-        color = LauncherColors.TextMuted,
-        fontSize = 12.sp,
-    )
-
-    LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_vs_exp_front_b_title),
-        active = isFrontB,
-        onClick = {
-            val next = !isFrontB
-            LauncherAppConfigStore.setExperimentalFrontModeB(context, next)
-            if (next) {
-                startDclwmStorageWatcher(context.applicationContext)
-            } else {
-                stopDclwmStorageWatcherIfUnused(context.applicationContext)
-            }
-        },
-    )
-    Text(
-        text = stringResource(R.string.launcher_vs_exp_front_b_desc),
-        color = LauncherColors.TextMuted,
-        fontSize = 12.sp,
-    )
-
-    LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_vs_exp_front_c_title),
-        active = isFrontC,
-        onClick = {
-            val next = !isFrontC
-            LauncherAppConfigStore.setExperimentalFrontModeC(context, next)
-            if (next) {
-                startDclwmStorageWatcher(context.applicationContext)
-            } else {
-                stopDclwmStorageWatcherIfUnused(context.applicationContext)
-            }
-        },
-    )
-    Text(
-        text = stringResource(R.string.launcher_vs_exp_front_c_desc),
+        text = stringResource(R.string.launcher_vs_exp_home_move_task_to_back_desc),
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
@@ -325,7 +275,7 @@ internal fun LauncherHomeSettingsContent() {
         fontSize = 12.sp,
     )
 
-    LauncherExpFrontModeSettings()
+    LauncherExpHomeMoveTaskToBackSettings()
 
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
