@@ -130,6 +130,7 @@ private const val KEY_ADAS_DISTANCE_LABEL_OFFSET_PERCENT = "adas_distance_label_
 private const val KEY_ADAS_LEAD_CAR_MIN_DIST_OFFSET_PERCENT = "adas_lead_car_min_dist_offset_percent"
 private const val KEY_ADAS_LEAD_CAR_MIN_DIST_GAP_DP = "adas_lead_car_min_dist_gap_dp"
 const val DEFAULT_ADAS_LEAD_CAR_MIN_DIST_GAP_DP = 20f
+private const val KEY_BACKFLIP_ANIMATION_ENABLED = "backflip_animation_enabled"
 private const val KEY_ADAS_PANEL_VISIBLE = "adas_panel_visible"
 private const val KEY_ADAS_ALERTS_IN_LEFT_PANEL = "adas_alerts_in_left_panel"
 private const val KEY_ADAS_BSD_ALERT_OVERLAY = "adas_bsd_alert_overlay_enabled"
@@ -554,6 +555,8 @@ internal object LauncherAppConfigStore {
     internal val adasLeadCarMinDistGapDpRevisionFlow: StateFlow<Int> = adasLeadCarMinDistGapDpRevision
     private val adasPanelVisibleRevision = MutableStateFlow(0)
     internal val adasPanelVisibleRevisionFlow: StateFlow<Int> = adasPanelVisibleRevision
+    private val backflipAnimationRevision = MutableStateFlow(0)
+    internal val backflipAnimationRevisionFlow: StateFlow<Int> = backflipAnimationRevision
     private val adasAlertsPlacementRevision = MutableStateFlow(0)
     internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
     private val adasBsdAlertOverlayRevision = MutableStateFlow(0)
@@ -1977,6 +1980,14 @@ internal object LauncherAppConfigStore {
     fun setCameraAnimationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_CAMERA_ANIMATION_ENABLED, enabled).apply()
         cameraAnimationRevision.value++
+    }
+
+    fun backflipAnimationEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_BACKFLIP_ANIMATION_ENABLED, false)
+
+    fun setBackflipAnimationEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_BACKFLIP_ANIMATION_ENABLED, enabled).apply()
+        backflipAnimationRevision.value++
     }
 
     fun trunkLongPressEnabled(context: Context): Boolean =

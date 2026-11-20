@@ -1939,6 +1939,12 @@ fun CruiseControlSettingsContent() {
         LauncherAppConfigStore.carModelVisible(context)
     }
 
+    val backflipAnimationRevision by LauncherAppConfigStore.backflipAnimationRevisionFlow
+        .collectAsStateWithLifecycle()
+    val backflipAnimationEnabled = remember(context, backflipAnimationRevision) {
+        LauncherAppConfigStore.backflipAnimationEnabled(context)
+    }
+
     val gearboxTypeRevision by LauncherAppConfigStore.gearboxTypeRevisionFlow
         .collectAsStateWithLifecycle()
     val gearboxType = remember(context, gearboxTypeRevision) {
@@ -2045,6 +2051,19 @@ fun CruiseControlSettingsContent() {
         )
         Text(
             text = stringResource(R.string.launcher_car_model_visible_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_backflip_animation_title),
+            active = backflipAnimationEnabled,
+            onClick = {
+                LauncherAppConfigStore.setBackflipAnimationEnabled(context, !backflipAnimationEnabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_backflip_animation_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )

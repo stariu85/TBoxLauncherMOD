@@ -14,6 +14,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -290,6 +291,15 @@ fun LauncherLeftPanel(
     }
     var pdcRings by remember { mutableStateOf<LauncherPdcRingFrame?>(null) }
     var headlightFrame by remember { mutableStateOf<LauncherHeadlightFrame?>(null) }
+    var isCameraSwitching by remember { mutableStateOf(false) }
+    var viewTransitionActive by remember { mutableStateOf(false) }
+    var lastSettledDriveView by remember { mutableStateOf(false) }
+    val isOverlayTransitioning = isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
+    val carOverlayAlpha by animateFloatAsState(
+        targetValue = if (isOverlayTransitioning) 0f else 1f,
+        animationSpec = tween(durationMillis = 200),
+        label = "carOverlayAlpha",
+    )
 
     // Simulation gear override (hidden settings tab) takes precedence over live gearbox.
     val parsedGear = LauncherDevVehicleState.gearSlotOverride
@@ -544,6 +554,14 @@ fun LauncherLeftPanel(
         } else {
             delay(5000L)
             showDriveView = false
+        }
+    }
+    LaunchedEffect(showDriveView) {
+        if (showDriveView != lastSettledDriveView) {
+            viewTransitionActive = true
+            delay(2000L)
+            viewTransitionActive = false
+            lastSettledDriveView = showDriveView
         }
     }
 
@@ -900,6 +918,13 @@ fun LauncherLeftPanel(
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
+                    onCameraSwitchingChanged = { switching ->
+                        isCameraSwitching = switching
+                        if (!switching) {
+                            viewTransitionActive = false
+                            lastSettledDriveView = showDriveView
+                        }
+                    },
                     projectPdcRings = !racing,
                     projectHeadlights = !racing && (projectHeadlightsEnabled || isHighBeamIndicated),
                     textureSurface = racing,
@@ -912,25 +937,30 @@ fun LauncherLeftPanel(
                 )
             }
             val showTireBadgesAdas = !tirePressureOnlyTopView || !showDriveView
-            if (!carHidden && !racing && showTireBadgesAdas) {
-                LauncherTireBadges(
-                    state = effectiveTires,
-                    // ADAS strip shows a small pressure-only pill next to the wheel.
-                    compact = true,
-                    wheelAnchorsPx = wheelAnchors,
-                    showAll = !tirePressureOnlyLow,
-                    lowPressureThreshold = tirePressureLowThreshold,
-                    speedKmh = effectiveSpeed,
-                    steerAngleDeg = 0f,
-                    isRearView = showDriveView,
-                    inertiaEnabled = tirePressureInertiaEnabled,
-                    badgeShape = tirePressureBadgeShape,
-                    showHundredths = tirePressureShowHundredths,
-                    showTemperature = tirePressureShowTemperature,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            if (!carHidden && !racing) {
+            if (!carHidden && !racing && carOverlayAlpha > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = carOverlayAlpha },
+                ) {
+                    if (showTireBadgesAdas) {
+                        LauncherTireBadges(
+                            state = effectiveTires,
+                            // ADAS strip shows a small pressure-only pill next to the wheel.
+                            compact = true,
+                            wheelAnchorsPx = wheelAnchors,
+                            showAll = !tirePressureOnlyLow,
+                            lowPressureThreshold = tirePressureLowThreshold,
+                            speedKmh = effectiveSpeed,
+                            steerAngleDeg = 0f,
+                            isRearView = showDriveView,
+                            inertiaEnabled = tirePressureInertiaEnabled,
+                            badgeShape = tirePressureBadgeShape,
+                            showHundredths = tirePressureShowHundredths,
+                            showTemperature = tirePressureShowTemperature,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (!bodyRigAvailable) {
                         LauncherDoorBadges(
                             body = effectiveBody,
@@ -962,6 +992,7 @@ fun LauncherLeftPanel(
                         frame = headlightFrame,
                         modifier = Modifier.fillMaxSize(),
                     )
+                }
             }
 
             val classicSpeedLimitRevision by LauncherAppConfigStore.classicSpeedLimitRevisionFlow.collectAsStateWithLifecycle()

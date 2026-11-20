@@ -41,6 +41,7 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.math.Position
@@ -177,6 +178,26 @@ private const val SETTINGS_MODEL_Y = -0.02f
 private const val HOME_MODEL_Z = 0f
 private const val SETTINGS_MODEL_Z = 0f
 
+private fun quaternionFromAxisAngle(axis: Float3, angleDeg: Float): Quaternion {
+    val r = Math.toRadians(angleDeg.toDouble()).toFloat()
+    val halfSin = kotlin.math.sin(r * 0.5f)
+    val halfCos = kotlin.math.cos(r * 0.5f)
+    val len = kotlin.math.sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z)
+    val nx = if (len > 0f) axis.x / len else 0f
+    val ny = if (len > 0f) axis.y / len else 0f
+    val nz = if (len > 0f) axis.z / len else 0f
+    return Quaternion(nx * halfSin, ny * halfSin, nz * halfSin, halfCos)
+}
+
+private fun multiplyQuaternions(q1: Quaternion, q2: Quaternion): Quaternion {
+    return Quaternion(
+        x = q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
+        y = q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
+        z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
+        w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z,
+    )
+}
+
 /** Offline Filament 3D car (Dashing 720) with pivot rig, paint colors and drive camera. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -206,6 +227,7 @@ fun LauncherCar3DModel(
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit = {},
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
+    onCameraSwitchingChanged: (Boolean) -> Unit = {},
     customModelScale: Float = 1f,
     customModelDriveScale: Float = 1f,
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
@@ -266,6 +288,7 @@ fun LauncherCar3DModel(
                 onPdcRingsChanged = onPdcRingsChanged,
                 onHeadlightFrameChanged = onHeadlightFrameChanged,
                 onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
+                onCameraSwitchingChanged = onCameraSwitchingChanged,
                 projectPdcRings = projectPdcRings,
                 projectHeadlights = projectHeadlights,
                 textureSurface = textureSurface,
@@ -304,6 +327,7 @@ private fun LauncherCarFilamentModel(
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit,
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
+    onCameraSwitchingChanged: (Boolean) -> Unit = {},
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
@@ -349,6 +373,7 @@ private fun LauncherCarFilamentModel(
                 onPdcRingsChanged = onPdcRingsChanged,
                 onHeadlightFrameChanged = onHeadlightFrameChanged,
                 onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
+                onCameraSwitchingChanged = onCameraSwitchingChanged,
                 projectPdcRings = projectPdcRings,
                 projectHeadlights = projectHeadlights,
                 textureSurface = textureSurface,
@@ -386,6 +411,7 @@ private fun LauncherCarFilamentContent(
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit,
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
+    onCameraSwitchingChanged: (Boolean) -> Unit = {},
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
@@ -445,7 +471,16 @@ private fun LauncherCarFilamentContent(
     val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
     val isAvmRef = rememberUpdatedState(isAvmActive)
     val settingsProgressRef = rememberUpdatedState(settingsProgress)
+    val cameraSwitchingCallbackRef = rememberUpdatedState(onCameraSwitchingChanged)
+    val backflipAnimationRevision by LauncherAppConfigStore.backflipAnimationRevisionFlow
+        .collectAsStateWithLifecycle()
+    val backflipAnimationEnabled = remember(context, backflipAnimationRevision) {
+        LauncherAppConfigStore.backflipAnimationEnabled(context)
+    }
+    val backflipAnimationEnabledRef = rememberUpdatedState(backflipAnimationEnabled)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
+    var wasCameraSwitching by remember(modelInstance) { mutableStateOf(false) }
+    var isRollingPtoD by remember(modelInstance) { mutableStateOf(false) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
     var lastXCheckNs by remember(modelInstance) { mutableLongStateOf(0L) }
@@ -678,6 +713,12 @@ private fun LauncherCarFilamentContent(
         LauncherCarPaint.apply(materials, paintId)
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            cameraSwitchingCallbackRef.value(false)
+        }
+    }
+
     Box(modifier = modifier) {
         if (modelInstance != null) {
             SceneView(
@@ -736,10 +777,20 @@ private fun LauncherCarFilamentContent(
                         // Trigger 2: Camera view switching or settings transition/orbiting
                         val isOrbitActive = (orbit?.interacting == true) ||
                             (orbit != null && abs(orbit.yawVelocityDegPerSec) > 0.1f)
+                        val transitionMoving = abs(transition - lastFrameTransition) > 0.001f
                         val isCameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
-                            abs(transition - lastFrameTransition) > 0.001f ||
-                            isOrbitActive
+                            transitionMoving ||
+                            isOrbitActive ||
+                            isRollingPtoD
                         lastFrameTransition = transition
+
+                        val transitionJustStarted = !wasCameraSwitching && isCameraSwitching
+                        if (transitionJustStarted) {
+                            wasCameraSwitching = true
+                            overlayPublishHandler.post {
+                                cameraSwitchingCallbackRef.value(true)
+                            }
+                        }
 
                         // Trigger 3: Initial frames before model is ready
                         val isInitializing = !modelReady
@@ -806,6 +857,9 @@ private fun LauncherCarFilamentContent(
                                 currentDriveBlend = targetDriveBlend
                             }
                         } else {
+                            if (backflipAnimationEnabledRef.value && lastTargetDriveBlend == 0f && targetDriveBlend == 1f && transition <= 0.02f) {
+                                isRollingPtoD = true
+                            }
                             lastTargetDriveBlend = targetDriveBlend
                             if (currentDriveBlend < targetDriveBlend) {
                                 currentDriveBlend = (currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
@@ -814,7 +868,11 @@ private fun LauncherCarFilamentContent(
                             }
                             if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
                                 currentDriveBlend = targetDriveBlend
+                                isRollingPtoD = false
                             }
+                        }
+                        if (targetDriveBlend != 1f || transition > 0.02f) {
+                            isRollingPtoD = false
                         }
 
                         lastSteeringDeg = currentSteering
@@ -871,7 +929,15 @@ private fun LauncherCarFilamentContent(
                             SETTINGS_YAW_DEG + userYaw,
                             transition,
                         )
-                        node.rotation = Rotation(y = modelYaw)
+
+                        val qBase = quaternionFromAxisAngle(Float3(0f, 1f, 0f), modelYaw)
+                        if (isRollingPtoD) {
+                            val rollAngle = driveBlend * 360f
+                            val qRoll = quaternionFromAxisAngle(Float3(0f, 0f, -1f), rollAngle)
+                            node.quaternion = multiplyQuaternions(qRoll, qBase)
+                        } else {
+                            node.quaternion = qBase
+                        }
                         val targetDriveModelX = 0f
                         val driveModelX = lerp(HOME_MODEL_X, targetDriveModelX, driveBlend)
                         val driveModelZ = lerp(HOME_MODEL_Z, -0.21f, driveBlend)
@@ -1006,8 +1072,21 @@ private fun LauncherCarFilamentContent(
                         }
 
                         animationController?.update(rigStateRef.value, dt)
+                        val isStillSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
+                            transitionMoving ||
+                            isOrbitActive ||
+                            isRollingPtoD
+                        val transitionJustFinished = wasCameraSwitching && !isStillSwitching
+                        wasCameraSwitching = isStillSwitching
+
+                        if (transitionJustFinished) {
+                            overlayPublishHandler.post {
+                                cameraSwitchingCallbackRef.value(false)
+                            }
+                        }
+
                         val publishNs = 1_000_000_000L // 1 second interval
-                        if (frameNs - lastAnchorPublishNs >= publishNs) {
+                        if (!isStillSwitching && (transitionJustFinished || lastAnchorPublishNs == 0L || frameNs - lastAnchorPublishNs >= publishNs)) {
                             lastAnchorPublishNs = frameNs
                             val wheels = runCatching {
                                 rigController?.projectWheelAnchors(
