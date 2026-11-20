@@ -58,6 +58,26 @@ public final class Client {
         ok(command("DISMISS " + taskId));
     }
 
+    public void moveLauncherToFrontA(int taskId) throws Exception {
+        ok(command("FRONT_A " + taskId));
+    }
+
+    public void moveLauncherToFrontA() throws Exception {
+        ok(command("FRONT_A"));
+    }
+
+    public void moveLauncherToFrontB(int taskId) throws Exception {
+        ok(command("FRONT_B " + taskId));
+    }
+
+    public void moveLauncherToFrontB() throws Exception {
+        ok(command("FRONT_B"));
+    }
+
+    public void moveLauncherToFrontC() throws Exception {
+        ok(command("FRONT_C"));
+    }
+
     @android.annotation.SuppressLint({"DiscouragedPrivateApi", "BlockedPrivateApi"})
     @SuppressWarnings({"all"})
     public static void main(String[] args) throws Exception {

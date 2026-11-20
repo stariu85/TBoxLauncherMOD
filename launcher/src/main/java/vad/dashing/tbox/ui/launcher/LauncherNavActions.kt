@@ -19,6 +19,9 @@ import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.MainActivity
 import vad.dashing.tbox.camd.CamdCameraRepository
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 private const val TAG = "LauncherNav"
 private const val HOME_DEBOUNCE_MS = 300L
@@ -141,6 +144,50 @@ internal fun goLauncherHome(
         } else {
             home.runOnUiThread { applyFocus.run() }
         }
+    }
+
+    val isFrontA = LauncherAppConfigStore.experimentalFrontModeA(context)
+    val isFrontB = LauncherAppConfigStore.experimentalFrontModeB(context)
+    val isFrontC = LauncherAppConfigStore.experimentalFrontModeC(context)
+    if (isFrontA || isFrontB || isFrontC) {
+        val targetTaskId = home?.taskId ?: -1
+        val modeName = when {
+            isFrontA -> "A"
+            isFrontB -> "B"
+            else -> "C"
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            val client = vad.dashing.dclwm.Client()
+            val ok = runCatching {
+                when {
+                    isFrontA -> if (targetTaskId > 0) client.moveLauncherToFrontA(targetTaskId) else client.moveLauncherToFrontA()
+                    isFrontB -> if (targetTaskId > 0) client.moveLauncherToFrontB(targetTaskId) else client.moveLauncherToFrontB()
+                    else -> client.moveLauncherToFrontC()
+                }
+                true
+            }.onFailure { err ->
+                Log.w(TAG, "goLauncherHome dclwm front $modeName failed: ${err.message}, ensuring daemon")
+                runCatching {
+                    vad.dashing.dclwm.Starter.ensure(context.applicationContext)
+                    when {
+                        isFrontA -> if (targetTaskId > 0) client.moveLauncherToFrontA(targetTaskId) else client.moveLauncherToFrontA()
+                        isFrontB -> if (targetTaskId > 0) client.moveLauncherToFrontB(targetTaskId) else client.moveLauncherToFrontB()
+                        else -> client.moveLauncherToFrontC()
+                    }
+                }
+            }.getOrDefault(false)
+            Log.w(TAG, "goLauncherHome dclwm front $modeName complete: taskId=$targetTaskId success=$ok")
+        }
+
+        LauncherRightPanelOverlayWindow.hide()
+        LauncherNavLogger.logNavAction(
+            action = "HOME_FRONT_$modeName",
+            source = source,
+            stateBefore = stateBefore,
+            decision = "closedOverlays=[${closedList.joinToString()}], settingsWereOpen=$settingsWereOpen, frontMode=$modeName, targetTaskId=$targetTaskId",
+            result = "dispatched via dclwm $modeName",
+        )
+        return
     }
 
     val hasForeignApp = hasActiveForeignApp(context)

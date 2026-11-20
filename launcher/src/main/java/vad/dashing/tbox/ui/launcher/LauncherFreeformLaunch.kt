@@ -749,7 +749,7 @@ private const val MAX_DCLWM_ATTEMPTS = 10
  */
 internal fun startDclwmStorageWatcher(context: Context) {
     val appCtx = context.applicationContext
-    if (!LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) return
+    if (!LauncherAppConfigStore.isAnyDclwmRequired(appCtx)) return
     if (dclwmWatcherJob?.isActive == true) return
 
     dclwmWatcherJob = dclwmWatcherScope.launch {
@@ -757,8 +757,8 @@ internal fun startDclwmStorageWatcher(context: Context) {
         var attempt = 0
         while (isActive) {
             attempt++
-            if (!LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
-                Log.i("LauncherAppLaunch", "dclwm watcher stopped: experimentalHideAppsOnHome is disabled")
+            if (!LauncherAppConfigStore.isAnyDclwmRequired(appCtx)) {
+                Log.i("LauncherAppLaunch", "dclwm watcher stopped: dclwm features are disabled")
                 break
             }
 
@@ -802,6 +802,12 @@ internal fun startDclwmStorageWatcher(context: Context) {
 internal fun stopDclwmStorageWatcher() {
     dclwmWatcherJob?.cancel()
     dclwmWatcherJob = null
+}
+
+internal fun stopDclwmStorageWatcherIfUnused(context: Context) {
+    if (!LauncherAppConfigStore.isAnyDclwmRequired(context)) {
+        stopDclwmStorageWatcher()
+    }
 }
 
 private var activeMinimizeJob: Job? = null

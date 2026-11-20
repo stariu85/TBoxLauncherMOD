@@ -218,6 +218,85 @@ private fun UiClickSoundsSettingToggle() {
 }
 
 @Composable
+internal fun LauncherExpFrontModeSettings() {
+    val context = LocalContext.current
+    val expFrontModeARevision by LauncherAppConfigStore.experimentalFrontModeARevisionFlow
+        .collectAsStateWithLifecycle()
+    val isFrontA = remember(context, expFrontModeARevision) {
+        LauncherAppConfigStore.experimentalFrontModeA(context)
+    }
+
+    val expFrontModeBRevision by LauncherAppConfigStore.experimentalFrontModeBRevisionFlow
+        .collectAsStateWithLifecycle()
+    val isFrontB = remember(context, expFrontModeBRevision) {
+        LauncherAppConfigStore.experimentalFrontModeB(context)
+    }
+
+    val expFrontModeCRevision by LauncherAppConfigStore.experimentalFrontModeCRevisionFlow
+        .collectAsStateWithLifecycle()
+    val isFrontC = remember(context, expFrontModeCRevision) {
+        LauncherAppConfigStore.experimentalFrontModeC(context)
+    }
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_front_a_title),
+        active = isFrontA,
+        onClick = {
+            val next = !isFrontA
+            LauncherAppConfigStore.setExperimentalFrontModeA(context, next)
+            if (next) {
+                startDclwmStorageWatcher(context.applicationContext)
+            } else {
+                stopDclwmStorageWatcherIfUnused(context.applicationContext)
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_front_a_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_front_b_title),
+        active = isFrontB,
+        onClick = {
+            val next = !isFrontB
+            LauncherAppConfigStore.setExperimentalFrontModeB(context, next)
+            if (next) {
+                startDclwmStorageWatcher(context.applicationContext)
+            } else {
+                stopDclwmStorageWatcherIfUnused(context.applicationContext)
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_front_b_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_front_c_title),
+        active = isFrontC,
+        onClick = {
+            val next = !isFrontC
+            LauncherAppConfigStore.setExperimentalFrontModeC(context, next)
+            if (next) {
+                startDclwmStorageWatcher(context.applicationContext)
+            } else {
+                stopDclwmStorageWatcherIfUnused(context.applicationContext)
+            }
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_front_c_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+}
+
+@Composable
 internal fun LauncherHomeSettingsContent() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -236,7 +315,7 @@ internal fun LauncherHomeSettingsContent() {
             if (next) {
                 startDclwmStorageWatcher(context.applicationContext)
             } else {
-                stopDclwmStorageWatcher()
+                stopDclwmStorageWatcherIfUnused(context.applicationContext)
             }
         },
     )
@@ -245,6 +324,8 @@ internal fun LauncherHomeSettingsContent() {
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
+
+    LauncherExpFrontModeSettings()
 
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
