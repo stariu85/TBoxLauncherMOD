@@ -20,6 +20,9 @@ object UsbMountManager {
     const val USB_HANDLER_PACKAGE = "android.car.usb.handler"
     const val ACTION_ARM = "vad.dashing.usbmount.ARM"
 
+    private const val MAX_REARM_ATTEMPTS = 10
+    private const val MAX_STORAGE_WAIT_ATTEMPTS = 10
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var stage2Job: Job? = null
 
@@ -79,6 +82,8 @@ object UsbMountManager {
      * If external storage is not ready yet, checks every 1 second until mounted, then runs unlockusb.
      * Unlocking the vold gate is needed only once per boot. Even if no USB flash drive is currently
      * inserted, unlocking the gate succeeds and vold will automatically mount drives upon later insertion.
+     * After [isGateAlreadyUnlocked] is true, no re-arming is performed.
+     * In case of failures, attempts are strictly limited to [MAX_REARM_ATTEMPTS] (10 attempts).
      */
     fun startStage2Watcher(context: Context) {
         val appCtx = context.applicationContext
@@ -109,22 +114,22 @@ object UsbMountManager {
                 return@launch
             }
 
-            Log.i(TAG, "Starting Stage 2 USB mount watcher (checking storage every 1s)")
+            Log.i(TAG, "Starting Stage 2 USB mount watcher (checking storage every 1s, max $MAX_STORAGE_WAIT_ATTEMPTS attempts)")
             DclLogRecorder.log("USBMNT", "Stage 2: watcher started (checking storage every 1s)")
 
-            var attempt = 0
+            var storageAttempt = 0
             while (isActive) {
-                attempt++
+                storageAttempt++
                 if (RootOrchestrator.isStorageMounted()) {
-                    DclLogRecorder.log("USBMNT", "Stage 2: storage is ready (attempt $attempt)")
+                    DclLogRecorder.log("USBMNT", "Stage 2: storage is ready (attempt $storageAttempt/$MAX_STORAGE_WAIT_ATTEMPTS)")
                     break
                 } else {
-                    Log.d(TAG, "Stage 2: storage not mounted yet (state=${Environment.getExternalStorageState()}, attempt $attempt), retry in 1s")
+                    Log.d(TAG, "Stage 2: storage not mounted yet (state=${Environment.getExternalStorageState()}, attempt $storageAttempt), retry in 1s")
                 }
 
-                if (attempt >= 30) {
-                    Log.w(TAG, "Stage 2: storage wait timed out after 30 attempts")
-                    DclLogRecorder.log("USBMNT", "Stage 2: storage wait timed out after 30s")
+                if (storageAttempt >= MAX_STORAGE_WAIT_ATTEMPTS) {
+                    Log.w(TAG, "Stage 2: storage wait timed out after $MAX_STORAGE_WAIT_ATTEMPTS attempts")
+                    DclLogRecorder.log("USBMNT", "Stage 2: storage wait timed out after ${MAX_STORAGE_WAIT_ATTEMPTS}s")
                     return@launch
                 }
                 delay(1000L)
@@ -138,23 +143,24 @@ object UsbMountManager {
                 return@launch
             }
 
-            // Execute unlockUsb with bounded retries (max 3 attempts with backoff)
-            val backoffs = listOf(0L, 3000L, 7000L)
-            for ((idx, backoff) in backoffs.withIndex()) {
+            // Execute unlockUsb with bounded retries (max 10 attempts with backoff)
+            for (attempt in 1..MAX_REARM_ATTEMPTS) {
                 if (!isActive) break
-                if (backoff > 0) delay(backoff)
-                val attemptNum = idx + 1
-                DclLogRecorder.log("USBMNT", "Stage 2: executing unlockUsb (attempt $attemptNum/3)")
+                if (attempt > 1) {
+                    val backoffMs = ((attempt - 1) * 1500L).coerceAtMost(10_000L)
+                    delay(backoffMs)
+                }
+                DclLogRecorder.log("USBMNT", "Stage 2: executing unlockUsb (attempt $attempt/$MAX_REARM_ATTEMPTS)")
                 val ok = RootOrchestrator.runUnlockUsb(appCtx)
                 if (ok) {
                     isGateUnlockedThisBoot = true
                     DclLogRecorder.log("USBMNT", "Stage 2: unlockUsb succeeded (gate unlocked)")
                     return@launch
                 } else {
-                    DclLogRecorder.log("USBMNT", "Stage 2: unlockUsb failed on attempt $attemptNum/3")
+                    DclLogRecorder.log("USBMNT", "Stage 2: unlockUsb failed on attempt $attempt/$MAX_REARM_ATTEMPTS")
                 }
             }
-            DclLogRecorder.log("USBMNT", "Stage 2: unlockUsb exhausted all 3 attempts")
+            DclLogRecorder.log("USBMNT", "Stage 2: unlockUsb exhausted all $MAX_REARM_ATTEMPTS attempts")
         }
     }
 
@@ -189,6 +195,11 @@ object UsbMountManager {
     }
 
     fun onBootOrQuickboot(context: Context) {
+        val appCtx = context.applicationContext
+        if (isGateAlreadyUnlocked(appCtx)) {
+            Log.i(TAG, "onBootOrQuickboot: gate already unlocked this boot, skipping")
+            return
+        }
         startStage2Watcher(context)
     }
 

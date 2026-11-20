@@ -740,10 +740,12 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
 
 private var dclwmWatcherJob: Job? = null
 private val dclwmWatcherScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+private const val MAX_DCLWM_ATTEMPTS = 10
 
 /**
  * Periodically checks if external storage is mounted (every 10s) and starts the dclwm daemon
- * as soon as storage is ready. Terminates once dclwm is up and running.
+ * as soon as storage is ready. Terminates once dclwm is up and running, or after at most
+ * [MAX_DCLWM_ATTEMPTS] attempts (to prevent endless loop).
  */
 internal fun startDclwmStorageWatcher(context: Context) {
     val appCtx = context.applicationContext
@@ -751,7 +753,7 @@ internal fun startDclwmStorageWatcher(context: Context) {
     if (dclwmWatcherJob?.isActive == true) return
 
     dclwmWatcherJob = dclwmWatcherScope.launch {
-        Log.i("LauncherAppLaunch", "Starting dclwm storage watcher (check every 10s)")
+        Log.i("LauncherAppLaunch", "Starting dclwm storage watcher (check every 10s, max $MAX_DCLWM_ATTEMPTS attempts)")
         var attempt = 0
         while (isActive) {
             attempt++
@@ -767,23 +769,29 @@ internal fun startDclwmStorageWatcher(context: Context) {
 
             if (DclwmStarter.isStorageMounted()) {
                 vad.dashing.tbox.DclLogRecorder.tryFlushMemoryBuffer(appCtx)
-                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: storage mounted (attempt $attempt), starting dclwm...")
-                Log.i("LauncherAppLaunch", "dclwm watcher: external storage is ready (attempt $attempt), starting dclwm...")
+                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: storage mounted (attempt $attempt/$MAX_DCLWM_ATTEMPTS), starting dclwm...")
+                Log.i("LauncherAppLaunch", "dclwm watcher: external storage is ready (attempt $attempt/$MAX_DCLWM_ATTEMPTS), starting dclwm...")
                 val started = runCatching {
                     DclwmStarter.ensure(appCtx)
                     DclwmStarter.isRunning()
                 }.onFailure { err ->
-                    Log.w("LauncherAppLaunch", "dclwm watcher Starter.ensure failed (attempt $attempt): ${err.message}")
+                    Log.w("LauncherAppLaunch", "dclwm watcher Starter.ensure failed (attempt $attempt/$MAX_DCLWM_ATTEMPTS): ${err.message}")
                     vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: Starter.ensure failed: ${err.message}")
                 }.getOrDefault(false)
 
                 if (started) {
-                    Log.i("LauncherAppLaunch", "dclwm daemon successfully started by storage watcher (attempt $attempt)")
-                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: dclwm daemon successfully started (attempt $attempt)")
+                    Log.i("LauncherAppLaunch", "dclwm daemon successfully started by storage watcher (attempt $attempt/$MAX_DCLWM_ATTEMPTS)")
+                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: dclwm daemon successfully started (attempt $attempt/$MAX_DCLWM_ATTEMPTS)")
                     break
                 }
             } else {
-                Log.d("LauncherAppLaunch", "dclwm watcher: storage not mounted yet (state=${Environment.getExternalStorageState()}), attempt $attempt. Next check in 10s")
+                Log.d("LauncherAppLaunch", "dclwm watcher: storage not mounted yet (state=${Environment.getExternalStorageState()}), attempt $attempt/$MAX_DCLWM_ATTEMPTS. Next check in 10s")
+            }
+
+            if (attempt >= MAX_DCLWM_ATTEMPTS) {
+                Log.w("LauncherAppLaunch", "dclwm watcher reached maximum attempts ($MAX_DCLWM_ATTEMPTS), stopping watcher")
+                vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Watcher: reached max attempts ($MAX_DCLWM_ATTEMPTS), stopped")
+                break
             }
 
             delay(10_000L)
