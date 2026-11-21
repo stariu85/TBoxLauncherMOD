@@ -65,7 +65,12 @@ object LauncherAvmBlackOverlayWindow {
                 PixelFormat.OPAQUE,
             )
 
-            val bgColor = LauncherAvmBlankActivity.getThemeBackgroundColor(appCtx)
+            val isDark = runCatching { LauncherThemeState.darkTheme }.getOrDefault(true)
+            val bgColor = if (isDark) {
+                android.graphics.Color.parseColor("#1A1D24")
+            } else {
+                android.graphics.Color.parseColor("#E5E7EB")
+            }
             val view = View(appCtx).apply {
                 setBackgroundColor(bgColor)
                 isFocusable = true

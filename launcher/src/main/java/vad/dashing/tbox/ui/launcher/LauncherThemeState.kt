@@ -64,13 +64,13 @@ object LauncherThemeState {
     private const val KEY_RAIN_THEME = "rain_theme_enabled"
     private const val KEY_AUTO_WEATHER = "auto_weather_rain_snow_enabled"
 
-    var darkTheme by mutableStateOf(false)
+    var darkTheme by mutableStateOf(true)
         private set
 
     var autoThemeSystemEnabled by mutableStateOf(false)
         private set
 
-    var autoThemeSolarEnabled by mutableStateOf(true)
+    var autoThemeSolarEnabled by mutableStateOf(false)
         private set
 
     var themeButtonVisible by mutableStateOf(false)
@@ -88,11 +88,15 @@ object LauncherThemeState {
     var autoWeatherEnabled by mutableStateOf(false)
         private set
 
+    private var initialized = false
+
     fun init(context: Context) {
+        if (initialized) return
+        initialized = true
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        darkTheme = prefs.getBoolean(KEY_DARK, false)
+        darkTheme = prefs.getBoolean(KEY_DARK, true)
         autoThemeSystemEnabled = prefs.getBoolean(KEY_AUTO_SYSTEM, false)
-        autoThemeSolarEnabled = prefs.getBoolean(KEY_AUTO_SOLAR, true)
+        autoThemeSolarEnabled = prefs.getBoolean(KEY_AUTO_SOLAR, false)
         themeButtonVisible = prefs.getBoolean(KEY_THEME_BUTTON_VISIBLE, false)
         winterThemeEnabled = prefs.getBoolean(KEY_WINTER_THEME, false)
         winterThemeTempBelowZeroEnabled = prefs.getBoolean(KEY_WINTER_TEMP_ZERO, true)

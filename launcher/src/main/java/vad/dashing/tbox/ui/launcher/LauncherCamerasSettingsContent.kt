@@ -125,6 +125,15 @@ fun LauncherCamerasSettingsContent(
     val widgetUdBottomPreset = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdWidgetUdBottomPreset(context)
     }
+    val recorderEnabled = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdRecorderEnabled(context)
+    }
+    val recorderAutoOffBySpeed = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)
+    }
+    val recorderAutoOffSpeed = remember(context, camdConfigRevision) {
+        LauncherAppConfigStore.camdRecorderAutoOffSpeed(context)
+    }
 
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
 
@@ -138,6 +147,10 @@ fun LauncherCamerasSettingsContent(
         if (s is CamdConnectionStatus.Connected) {
             if (s.keepAvm != disableStockAvm) {
                 LauncherAppConfigStore.setCamdDisableStockAvm(context, s.keepAvm)
+            }
+            val currentRec = s.recActive || s.recEnabled
+            if (currentRec != recorderEnabled) {
+                LauncherAppConfigStore.setCamdRecorderEnabled(context, currentRec)
             }
         }
     }
@@ -260,6 +273,124 @@ fun LauncherCamerasSettingsContent(
         }
 
         val isInstalled = status !is CamdConnectionStatus.NotInstalled
+
+        // Video Recorder Section
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.camd_recorder_title),
+            active = recorderEnabled,
+            enabled = isInstalled,
+            onClick = if (isInstalled) {
+                {
+                    val next = !recorderEnabled
+                    LauncherAppConfigStore.setCamdRecorderEnabled(context, next)
+                    scope.launch {
+                        CamdCameraRepository.setRecorderEnabled(context, next)
+                    }
+                }
+            } else null,
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.camd_recorder_desc),
+                color = if (isInstalled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+                fontSize = 13.sp,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+            )
+            OutlinedButton(
+                onClick = {
+                    closeVehicleSettingsOverlay(context)
+                    launchLauncherApp(context, CamdSocketClient.CAMD_PACKAGE_NAME)
+                },
+                enabled = isInstalled,
+            ) {
+                Text(
+                    text = stringResource(R.string.camd_open_app_button),
+                    fontSize = 13.sp,
+                    color = if (isInstalled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                )
+            }
+        }
+
+        if (recorderEnabled) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.camd_recorder_auto_off_title),
+                active = recorderAutoOffBySpeed,
+                enabled = isInstalled,
+                onClick = if (isInstalled) {
+                    {
+                        val next = !recorderAutoOffBySpeed
+                        LauncherAppConfigStore.setCamdRecorderAutoOffBySpeed(context, next)
+                    }
+                } else null,
+            )
+
+            Text(
+                text = stringResource(R.string.camd_recorder_auto_off_desc),
+                color = if (isInstalled) LauncherColors.TextSecondary else LauncherColors.TextMuted,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+
+            if (recorderAutoOffBySpeed) {
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.camd_recorder_auto_off_speed_title),
+                            color = LauncherColors.TextPrimary,
+                            fontSize = 15.sp,
+                        )
+                        Text(
+                            text = "$recorderAutoOffSpeed км/ч",
+                            color = LauncherColors.AccentCyan,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.camd_recorder_auto_off_speed_desc),
+                        color = LauncherColors.TextMuted,
+                        fontSize = 12.sp,
+                    )
+                    Slider(
+                        value = recorderAutoOffSpeed.toFloat(),
+                        onValueChange = { next ->
+                            LauncherAppConfigStore.setCamdRecorderAutoOffSpeed(context, next.roundToInt())
+                        },
+                        valueRange = 1f..30f,
+                        steps = 28,
+                        colors = SliderDefaults.colors(
+                            thumbColor = LauncherColors.AccentCyan,
+                            activeTrackColor = LauncherColors.AccentCyan,
+                            inactiveTrackColor = LauncherColors.TextMuted,
+                        ),
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         // Option 1: "Выключить штатную систему 360"
         val canToggleManualAvm = isInstalled && !autoDisableStockAvm

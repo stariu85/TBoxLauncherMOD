@@ -22,9 +22,10 @@ class LauncherCarRigController private constructor(
     private val boundNodes: Map<String, BoundNode>,
     val missingNodes: Set<String>,
 ) {
-    private data class BoundNode(
+    private class BoundNode(
         val entity: Int,
         val instance: Int,
+        val initialTranslation: FloatArray,
     )
 
     private val workTransform = FloatArray(16)
@@ -473,7 +474,9 @@ class LauncherCarRigController private constructor(
         val last = lastAppliedRadians[name]
         if (last == null && kotlin.math.abs(radians) < 0.0001f) return
         if (last != null && kotlin.math.abs(last - radians) < 0.0001f) return
-        val translation = PIVOT_TRANSLATIONS[name] ?: return
+        val translation = node.initialTranslation.takeIf { t ->
+            t.any { kotlin.math.abs(it) > 0.0001f }
+        } ?: PIVOT_TRANSLATIONS[name] ?: return
         workTransform.fill(0f)
         workTransform[0] = 1f
         workTransform[5] = 1f
@@ -567,11 +570,11 @@ class LauncherCarRigController private constructor(
             LauncherWheelCorner.RR to DOOR_RR,
         )
         private val PIVOT_TRANSLATIONS = mapOf(
-            DOOR_FL to floatArrayOf(-0.929257f, 1.0214f, 0.896827f),
-            DOOR_FR to floatArrayOf(-0.929257f, 1.0214f, -0.896827f),
-            DOOR_RL to floatArrayOf(0.111599f, 1.05741f, 0.903843f),
-            DOOR_RR to floatArrayOf(0.111599f, 1.05741f, -0.903843f),
-            TAILGATE to floatArrayOf(1.39406f, 1.60524f, 0.36237f),
+            DOOR_FL to floatArrayOf(-0.811079f, 0.770906f, 0.867381f),
+            DOOR_FR to floatArrayOf(-0.811079f, 0.770906f, -0.867446f),
+            DOOR_RL to floatArrayOf(0.224438f, 0.790118f, 0.864500f),
+            DOOR_RR to floatArrayOf(0.224438f, 0.790118f, -0.864564f),
+            TAILGATE to floatArrayOf(1.502024f, 1.585487f, -0.000032f),
         )
         private val loggedMissingNodes = mutableSetOf<String>()
 
@@ -618,17 +621,25 @@ class LauncherCarRigController private constructor(
                     if (!name.isNullOrBlank()) put(name, entity)
                 }
             }
+            val tempTransform = FloatArray(16)
             val nodes = buildMap {
                 requiredNodeNames.forEach { name ->
                     val entity = entitiesByName[name] ?: return@forEach
                     if (!manager.hasComponent(entity)) return@forEach
                     val instance = manager.getInstance(entity)
                     if (instance == 0) return@forEach
+                    manager.getTransform(instance, tempTransform)
+                    val initialTranslation = floatArrayOf(
+                        tempTransform[12],
+                        tempTransform[13],
+                        tempTransform[14],
+                    )
                     put(
                         name,
                         BoundNode(
                             entity = entity,
                             instance = instance,
+                            initialTranslation = initialTranslation,
                         ),
                     )
                 }

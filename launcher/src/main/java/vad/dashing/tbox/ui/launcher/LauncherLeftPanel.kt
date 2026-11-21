@@ -239,6 +239,9 @@ fun LauncherLeftPanel(
     val tirePressureShowTemperature = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureShowTemperature(context)
     }
+    val tireLowTempAlertEnabled = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tireLowTempAlertEnabled(context)
+    }
 
     LaunchedEffect(context) {
         LauncherTireRepository.init(context)
@@ -292,12 +295,13 @@ fun LauncherLeftPanel(
     var pdcRings by remember { mutableStateOf<LauncherPdcRingFrame?>(null) }
     var headlightFrame by remember { mutableStateOf<LauncherHeadlightFrame?>(null) }
     var isCameraSwitching by remember { mutableStateOf(false) }
+    var is3dModelReady by remember { mutableStateOf(false) }
     var viewTransitionActive by remember { mutableStateOf(false) }
     var lastSettledDriveView by remember { mutableStateOf(false) }
-    val isOverlayTransitioning = isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
+    val isOverlayTransitioning = !is3dModelReady || isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
     val carOverlayAlpha by animateFloatAsState(
         targetValue = if (isOverlayTransitioning) 0f else 1f,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = 1000),
         label = "carOverlayAlpha",
     )
 
@@ -703,7 +707,7 @@ fun LauncherLeftPanel(
                         "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
                         "drive_mode", "drive_mode_offroad" -> "drive_mode"
                         "presets", "smart_control" -> "assist"
-                        "camd_controls", "cameras" -> "camd_controls"
+                        "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
                         else -> panelId
                     }
                     if (family !in enabledPanels) {
@@ -847,9 +851,16 @@ fun LauncherLeftPanel(
                             )
                         }
                     }
-                    "camd_controls", "cameras" -> {
+                    "camd_controls", "cameras", "camd_cameras" -> {
                         LauncherCameraAndDvrBar(
                             modifier = Modifier.fillMaxWidth(),
+                            initialPage = 0,
+                        )
+                    }
+                    "camd_dvr" -> {
+                        LauncherCameraAndDvrBar(
+                            modifier = Modifier.fillMaxWidth(),
+                            initialPage = 1,
                         )
                     }
 
@@ -931,6 +942,7 @@ fun LauncherLeftPanel(
                             lastSettledDriveView = showDriveView
                         }
                     },
+                    onModelReadyChanged = { is3dModelReady = it },
                     projectPdcRings = !racing,
                     projectHeadlights = !racing && (projectHeadlightsEnabled || isHighBeamIndicated),
                     textureSurface = racing,
@@ -957,6 +969,7 @@ fun LauncherLeftPanel(
                             wheelAnchorsPx = wheelAnchors,
                             showAll = !tirePressureOnlyLow,
                             lowPressureThreshold = tirePressureLowThreshold,
+                            allowLowTempNotification = tireLowTempAlertEnabled,
                             speedKmh = effectiveSpeed,
                             steerAngleDeg = 0f,
                             isRearView = showDriveView,

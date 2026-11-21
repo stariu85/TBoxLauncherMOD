@@ -2574,6 +2574,29 @@ private fun AdasBodyControlsCompositeMiniature() {
 }
 
 @Composable
+private fun AdasCamdControlsCompositeMiniature() {
+    val red = Color(0xFFEF4444)
+    val blue = Color(0xFF3B82F6)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.2.dp, Color.Black, RoundedCornerShape(4.dp))
+            .padding(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("CAM ◄►", fontSize = 5.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("CAM ▲▼", fontSize = 5.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("CAM 360", textColor = blue, borderColor = blue, fontSize = 5.5.sp, modifier = Modifier.weight(1.1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            MiniButton("● REC", textColor = red, borderColor = red, fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+            MiniButton("SOS", textColor = red, fontSize = 6.5.sp, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
 private fun AdasPanelsSelectorSection() {
     val context = LocalContext.current
     val enabledPanelsRevision by LauncherAppConfigStore.enabledAdasPanelsRevisionFlow.collectAsStateWithLifecycle()
@@ -2653,6 +2676,12 @@ private fun AdasPanelsSelectorSection() {
                 title = "Цвет кузова",
                 isComposite = false,
                 content = { MiniatureCarColor() },
+            ),
+            AdasPanelSelectorItem(
+                id = "camd_controls",
+                title = "Камеры / Регистратор",
+                isComposite = true,
+                content = { AdasCamdControlsCompositeMiniature() },
             ),
         )
     }

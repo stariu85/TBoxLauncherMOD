@@ -15,38 +15,57 @@ import java.nio.ByteBuffer
 internal object LauncherCarModelCache {
     private const val TAG = "LauncherCarModelCache"
 
+    private val lock = Any()
+
     @Volatile
     private var cachedBuffer: ByteBuffer? = null
 
+    @Volatile
+    private var isPreloading = false
+
     fun preload(context: Context) {
-        if (cachedBuffer != null) return
+        if (cachedBuffer != null || isPreloading) return
         val appCtx = context.applicationContext
+        synchronized(lock) {
+            if (cachedBuffer != null || isPreloading) return
+            isPreloading = true
+        }
         CoroutineScope(Dispatchers.IO).launch {
-            runCatching {
-                appCtx.assets.open(LAUNCHER_CAR_MODEL_ASSET).use { input ->
-                    val bytes = input.readBytes()
-                    val directBuffer = ByteBuffer.allocateDirect(bytes.size).apply {
-                        put(bytes)
-                        flip()
-                    }
-                    cachedBuffer = directBuffer
-                    Log.w(TAG, "Preloaded $LAUNCHER_CAR_MODEL_ASSET into RAM (${bytes.size} bytes)")
+            try {
+                loadIntoCache(appCtx)
+            } finally {
+                synchronized(lock) {
+                    isPreloading = false
                 }
-            }.onFailure {
-                Log.w(TAG, "Failed to preload $LAUNCHER_CAR_MODEL_ASSET: ${it.message}")
             }
         }
     }
 
-    fun getBuffer(context: Context): ByteBuffer {
-        val existing = cachedBuffer
-        if (existing != null) return existing.duplicate()
-        val bytes = context.assets.open(LAUNCHER_CAR_MODEL_ASSET).use { it.readBytes() }
-        val directBuffer = ByteBuffer.allocateDirect(bytes.size).apply {
-            put(bytes)
-            flip()
+    private fun loadIntoCache(context: Context): ByteBuffer {
+        synchronized(lock) {
+            cachedBuffer?.let { return it }
+            val directBuffer = runCatching {
+                context.assets.open(LAUNCHER_CAR_MODEL_ASSET).use { input ->
+                    val bytes = input.readBytes()
+                    val buffer = ByteBuffer.allocateDirect(bytes.size).apply {
+                        put(bytes)
+                        flip()
+                    }
+                    Log.w(TAG, "Loaded $LAUNCHER_CAR_MODEL_ASSET into RAM (${bytes.size} bytes)")
+                    buffer
+                }
+            }.getOrElse { ex ->
+                Log.w(TAG, "Failed to load $LAUNCHER_CAR_MODEL_ASSET: ${ex.message}")
+                throw ex
+            }
+            cachedBuffer = directBuffer
+            return directBuffer
         }
-        cachedBuffer = directBuffer
-        return directBuffer.duplicate()
+    }
+
+    fun getBuffer(context: Context): ByteBuffer {
+        cachedBuffer?.let { return it.duplicate() }
+        val buffer = loadIntoCache(context.applicationContext)
+        return buffer.duplicate()
     }
 }

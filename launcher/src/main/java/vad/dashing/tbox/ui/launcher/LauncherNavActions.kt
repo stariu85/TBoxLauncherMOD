@@ -47,7 +47,7 @@ internal fun goLauncherHome(
     clearLaunchingPackage()
     val stateBefore = LauncherNavLogger.captureCurrentState(context)
     val now = SystemClock.uptimeMillis()
-    if (now - lastHomeAtMs < HOME_DEBOUNCE_MS) {
+    if (!source.startsWith("AVM") && now - lastHomeAtMs < HOME_DEBOUNCE_MS) {
         Log.w(TAG, "goLauncherHome: debounce skip fromHomeIntent=$fromHomeIntent source=$source (elapsed=${now - lastHomeAtMs}ms)")
         LauncherNavLogger.logNavAction(
             action = "HOME",

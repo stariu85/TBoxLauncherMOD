@@ -90,6 +90,11 @@ class LauncherDefaultConfigTest {
     }
 
     @Test
+    fun verifyDefaultTireLowTempAlertEnabled() {
+        assertEquals(true, DEFAULT_TIRE_LOW_TEMP_ALERT_ENABLED)
+    }
+
+    @Test
     fun verifyDefaultTopShadeTilesCount() {
         assertEquals(18, LauncherTopShadeConfigStore.DEFAULT_TILES.size)
     }

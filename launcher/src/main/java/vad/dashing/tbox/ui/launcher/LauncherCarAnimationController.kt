@@ -18,13 +18,15 @@ class LauncherCarAnimationController private constructor(
     private var tailgate = 0f
     private var settleSec = 0f
 
-    fun update(state: LauncherCarRigState, dtSec: Float) {
+    fun update(state: LauncherCarRigState, dtSec: Float, modelReady: Boolean = true) {
         // A freshly bound rig always shows every body part closed first, then animates
         // toward the live state. Snapping to an already-open pose on bind (e.g. settings
         // opened with the trunk open) made the model appear broken; the settle window
         // covers model warmup + fade-in so the closed pose is actually seen first.
-        settleSec += dtSec.coerceIn(0f, 0.1f)
-        val settled = settleSec >= SETTLE_BEFORE_OPEN_SEC
+        if (modelReady) {
+            settleSec += dtSec.coerceIn(0f, 0.1f)
+        }
+        val settled = modelReady && (settleSec >= SETTLE_BEFORE_OPEN_SEC)
 
         doorFl = stepDoor(doorFl, state.doorFlOpen, settled, dtSec)
         doorFr = stepDoor(doorFr, state.doorFrOpen, settled, dtSec)
@@ -79,7 +81,12 @@ class LauncherCarAnimationController private constructor(
                 }
             }
             if (!indices.keys.containsAll(REQUIRED_CLIPS)) return null
-            return LauncherCarAnimationController(animator, indices)
+            val controller = LauncherCarAnimationController(animator, indices)
+            indices.values.forEach { clipIndex ->
+                animator.applyAnimation(clipIndex, 0f)
+            }
+            animator.updateBoneMatrices()
+            return controller
         }
     }
 }

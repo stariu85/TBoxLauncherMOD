@@ -283,6 +283,13 @@
     <string name="camd_widget_ud_top_preset_title">Front camera preset</string>
     <string name="camd_widget_ud_bottom_preset_title">Rear camera preset</string>
     <string name="camd_widget_360_info">The \"360\" button uses the selected presets for left, right, front, and rear cameras.</string>
+    <string name="camd_recorder_title">Dashcam (DVR)</string>
+    <string name="camd_recorder_desc">Recording settings in the camd app</string>
+    <string name="camd_open_app_button">Open camd</string>
+    <string name="camd_recorder_auto_off_title">Auto-off dashcam by speed</string>
+    <string name="camd_recorder_auto_off_desc">Automatically turn off dashcam recording when vehicle exceeds set speed</string>
+    <string name="camd_recorder_auto_off_speed_title">Dashcam shutoff speed</string>
+    <string name="camd_recorder_auto_off_speed_desc">Speed at or above which dashcam will be turned off (1–30 km/h)</string>
     <string name="launcher_vs_section_theme">Theme</string>
     <string name="launcher_vs_section_theme_sub">Light and dark theme settings</string>
     <string name="launcher_vs_auto_theme_system">Auto theme by system</string>
@@ -375,6 +382,7 @@
     <string name="launcher_alert_hood">Hood</string>
     <string name="launcher_alert_trunk">Trunk</string>
     <string name="launcher_alert_tire">Tire pressure</string>
+    <string name="launcher_alert_tire_temperature">Tire temperature</string>
     <string name="launcher_alert_fuel">Low fuel</string>
     <string name="launcher_alert_speeding">Speeding</string>
     <string name="launcher_alert_high_temp">Overheating</string>
@@ -1530,6 +1538,7 @@
     <string name="launcher_vs_tire_pressure_persist">Remember tire pressure from last trip</string>
     <string name="launcher_vs_tire_pressure_show_hundredths">Display hundredths of pressure</string>
     <string name="launcher_vs_tire_pressure_show_temperature">Tire temperature</string>
+    <string name="launcher_vs_tire_low_temp_alert">Low tire temperature notification</string>
     <string name="launcher_vs_sim_acc">ACC Cruise Active</string>
     <string name="launcher_vs_sim_acc_fault">Radar error (ACC Fault)</string>
     <string name="launcher_vs_sim_adas_header">ADAS / Assists</string>

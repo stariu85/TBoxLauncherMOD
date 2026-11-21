@@ -88,6 +88,9 @@ public final class Starter {
     }
 
     private static void copyAsset(Context context, File dest) throws Exception {
+        if (dest.exists() && dest.length() > 0) {
+            return;
+        }
         InputStream in = context.getAssets().open(Protocol.DEX_ASSET);
         FileOutputStream out = null;
         try {

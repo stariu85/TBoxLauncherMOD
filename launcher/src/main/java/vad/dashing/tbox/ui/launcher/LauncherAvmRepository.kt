@@ -48,6 +48,50 @@ object LauncherAvmRepository {
         return clean !in OFF_VALUES
     }
 
+    private fun captureTargetBeforeAvm(context: Context): LaunchedTarget? {
+        val foreign = findForeignAppTask(context)
+        val trackedPackages = FreeformLaunchRegistry.snapshot()
+        val isHomeActive = LauncherHomeActivityHolder.isResumed && foreign == null && trackedPackages.isEmpty()
+
+        val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
+            isCameraPackage(LauncherHistoryTracker.lastActivePackage()) ||
+            trackedPackages.any { isCameraPackage(it) }
+
+        if (isHomeActive || (foreign == null && trackedPackages.isEmpty()) || activePkgIsCamera) {
+            return null
+        }
+
+        val history = LauncherHistoryTracker.getHistory(context)
+        val lastTarget = history.lastOrNull { !isCameraTarget(it) }
+
+        return when {
+            trackedPackages.size >= 2 || lastTarget is LaunchedTarget.SplitPreset -> {
+                if (lastTarget is LaunchedTarget.SplitPreset) {
+                    lastTarget
+                } else {
+                    val sorted = trackedPackages.toList().sortedBy {
+                        FreeformLaunchRegistry.lastBounds(it)?.left ?: 0
+                    }
+                    LaunchedTarget.SplitPreset(
+                        leftPackage = sorted[0],
+                        rightPackage = sorted[1],
+                    )
+                }
+            }
+            trackedPackages.size == 1 -> {
+                val singlePkg = trackedPackages.first()
+                if (lastTarget is LaunchedTarget.SingleApp && lastTarget.packageName == singlePkg) {
+                    lastTarget
+                } else {
+                    LaunchedTarget.SingleApp(singlePkg)
+                }
+            }
+            lastTarget != null -> lastTarget
+            foreign != null -> LaunchedTarget.SingleApp(foreign.packageName, foreign.topActivityClass)
+            else -> null
+        }
+    }
+
     fun startObserving(context: Context) {
         val appCtx = context.applicationContext
         val resolver = appCtx.contentResolver
@@ -63,13 +107,14 @@ object LauncherAvmRepository {
                 DiagFileLog.i(TAG, "avm_state changed raw='$raw' active=$active isInitial=$isInitial")
 
                 if (isInitial) {
-                    // On initial cold startup check, record baseline state without triggering overlay/blank activity actions
+                    // On initial cold startup check, record baseline state without triggering actions
                     return
                 }
 
                 if (active) {
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
-                    vad.dashing.tbox.DclLogRecorder.log("AVM", "avm_state changed raw='$raw' active=$active cameraAction=$cameraAction")
+                    val isOverlayFullscreenHome = LauncherAppConfigStore.experimentalHomeWindowingMode(appCtx)
+                    vad.dashing.tbox.DclLogRecorder.log("AVM", "avm_state changed raw='$raw' active=$active cameraAction=$cameraAction overlayFullscreen=$isOverlayFullscreenHome")
 
                     when (cameraAction) {
                         AVM_CAMERA_ACTION_DO_NOTHING -> {
@@ -77,37 +122,38 @@ object LauncherAvmRepository {
                             targetBeforeAvm = null
                         }
                         AVM_CAMERA_ACTION_CLOSE_APPS -> {
-                            val isHomeActive = LauncherHomeActivityHolder.isResumed
-                            val foreign = if (!isHomeActive) findForeignAppTask(appCtx) else null
-
-                            val activePkgIsCamera = isCameraPackage(foreign?.packageName) ||
-                                isCameraPackage(LauncherHistoryTracker.lastActivePackage())
-
-                            if (isHomeActive || foreign == null || activePkgIsCamera) {
-                                targetBeforeAvm = null
-                            } else {
-                                val history = LauncherHistoryTracker.getHistory(appCtx)
-                                targetBeforeAvm = history.lastOrNull { !isCameraTarget(it) }
-                            }
-                            Log.w(TAG, "AVM turned ON: cameraAction=CLOSE_APPS -> targetBeforeAvm=$targetBeforeAvm, closing foreign tasks & going Home")
-                            dismissForeignFreeformTasks(appCtx)
-                            goLauncherHome(appCtx)
-                        }
-                        else -> { // AVM_CAMERA_ACTION_MINIMIZE_APPS
-                            Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> capturing home snapshot & starting blank activity to pause foreign apps")
-                            targetBeforeAvm = null
+                            targetBeforeAvm = captureTargetBeforeAvm(appCtx)
+                            Log.w(TAG, "AVM turned ON: cameraAction=CLOSE_APPS -> targetBeforeAvm=$targetBeforeAvm, capturing snapshot & blank activity between app and cameras")
                             LauncherHomeSnapshotHolder.captureSnapshot(LauncherHomeActivityHolder.instance) {
                                 LauncherAvmBlankActivity.show(appCtx)
+                                dismissForeignFreeformTasks(appCtx)
+                                goLauncherHome(appCtx, source = "AVM:camera_on")
+                            }
+                        }
+                        else -> { // AVM_CAMERA_ACTION_MINIMIZE_APPS
+                            targetBeforeAvm = captureTargetBeforeAvm(appCtx)
+                            if (isOverlayFullscreenHome) {
+                                Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS (overlay-fullscreen) -> targetBeforeAvm=$targetBeforeAvm, going Home without snapshot or blank activity")
+                                goLauncherHome(appCtx, source = "AVM:camera_on")
+                            } else {
+                                Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS (offscreen minimize) -> targetBeforeAvm=$targetBeforeAvm, capturing snapshot & blank activity between app and cameras")
+                                LauncherHomeSnapshotHolder.captureSnapshot(LauncherHomeActivityHolder.instance) {
+                                    LauncherAvmBlankActivity.show(appCtx)
+                                    goLauncherHome(appCtx, source = "AVM:camera_on")
+                                }
                             }
                         }
                     }
                 } else {
-                    LauncherAvmBlankActivity.hide()
+                    if (LauncherAvmBlankActivity.isShowing()) {
+                        LauncherAvmBlankActivity.hide()
+                    }
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null
-                    if (cameraAction == AVM_CAMERA_ACTION_CLOSE_APPS && restoreTarget != null) {
-                        Log.w(TAG, "AVM turned OFF: cameraAction=CLOSE_APPS -> restoring targetBeforeAvm=$restoreTarget")
+                    if (cameraAction != AVM_CAMERA_ACTION_DO_NOTHING && restoreTarget != null) {
+                        Log.w(TAG, "AVM turned OFF: cameraAction=$cameraAction -> restoring targetBeforeAvm=$restoreTarget")
+                        vad.dashing.tbox.DclLogRecorder.log("AVM", "AVM turned OFF: restoring targetBeforeAvm=$restoreTarget")
                         launchTarget(appCtx, restoreTarget)
                     } else {
                         Log.w(TAG, "AVM turned OFF: cameraAction=$cameraAction -> staying as is")

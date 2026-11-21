@@ -28,12 +28,36 @@ data class LauncherTireWheelState(
     val calibrating: Boolean = false,
     val available: Boolean = false,
 ) {
-    /** Show callout next to the 3D car — OEM abnormal or clearly low pressure (< [lowPressureThreshold]). */
-    fun needsAttention(lowPressureThreshold: Float = LOW_PRESSURE_BAR): Boolean =
-        pressureBar != null && (pressureBar < lowPressureThreshold || warningSts != 0)
+    /** True if tire has low pressure error. */
+    fun isLowPressure(lowPressureThreshold: Float = LOW_PRESSURE_BAR): Boolean {
+        if (!available || calibrating || pressureBar == null) return false
+        if (pressureBar < lowPressureThreshold) return true
+        if (warningSts != 0 && !isLowTemperature()) return true
+        return false
+    }
+
+    /** True if tire has low temperature error. */
+    fun isLowTemperature(): Boolean {
+        if (!available) return false
+        if (warningSts == 4 || (warningSts and 4 != 0)) return true
+        if (warningSts != 0 && (temperatureC != null && temperatureC <= 0)) return true
+        if (warningSts != 0 && pressureBar != null && pressureBar >= LOW_PRESSURE_BAR && (temperatureC != null && temperatureC <= 5)) return true
+        return false
+    }
+
+    /** Show callout next to the 3D car — OEM abnormal or clearly low pressure/temperature. */
+    fun needsAttention(
+        lowPressureThreshold: Float = LOW_PRESSURE_BAR,
+        allowLowTempNotification: Boolean = true,
+    ): Boolean {
+        if (!available || calibrating || pressureBar == null) return false
+        val lowPress = isLowPressure(lowPressureThreshold)
+        val lowTemp = allowLowTempNotification && isLowTemperature()
+        return lowPress || lowTemp
+    }
 
     val needsAttention: Boolean
-        get() = needsAttention(LOW_PRESSURE_BAR)
+        get() = needsAttention(LOW_PRESSURE_BAR, true)
 
     companion object {
         /** User-requested visual threshold for low-pressure callout. */
@@ -55,14 +79,29 @@ data class LauncherTireState(
         LauncherWheelCorner.RR -> rr
     }
 
-    fun hasAttention(lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR): Boolean =
-        fl.needsAttention(lowPressureThreshold) ||
-            fr.needsAttention(lowPressureThreshold) ||
-            rl.needsAttention(lowPressureThreshold) ||
-            rr.needsAttention(lowPressureThreshold)
+    fun hasAttention(
+        lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
+        allowLowTempNotification: Boolean = true,
+    ): Boolean =
+        fl.needsAttention(lowPressureThreshold, allowLowTempNotification) ||
+            fr.needsAttention(lowPressureThreshold, allowLowTempNotification) ||
+            rl.needsAttention(lowPressureThreshold, allowLowTempNotification) ||
+            rr.needsAttention(lowPressureThreshold, allowLowTempNotification)
 
     val hasAttention: Boolean
-        get() = hasAttention(LauncherTireWheelState.LOW_PRESSURE_BAR)
+        get() = hasAttention(LauncherTireWheelState.LOW_PRESSURE_BAR, true)
+
+    fun hasLowPressure(lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR): Boolean =
+        fl.isLowPressure(lowPressureThreshold) ||
+            fr.isLowPressure(lowPressureThreshold) ||
+            rl.isLowPressure(lowPressureThreshold) ||
+            rr.isLowPressure(lowPressureThreshold)
+
+    fun hasLowTemperature(): Boolean =
+        fl.isLowTemperature() ||
+            fr.isLowTemperature() ||
+            rl.isLowTemperature() ||
+            rr.isLowTemperature()
 
     val hasAvailableData: Boolean
         get() = (fl.available && fl.pressureBar != null) ||

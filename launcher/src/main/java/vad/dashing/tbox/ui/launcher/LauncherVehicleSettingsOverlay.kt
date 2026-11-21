@@ -272,6 +272,9 @@ internal fun LauncherVehicleSettingsContent(
     var tirePressureShowTemperature by remember(context, tirePressureConfigRevision) {
         mutableStateOf(LauncherAppConfigStore.tirePressureShowTemperature(context))
     }
+    var tireLowTempAlertEnabled by remember(context, tirePressureConfigRevision) {
+        mutableStateOf(LauncherAppConfigStore.tireLowTempAlertEnabled(context))
+    }
     val parkingRadar by UniversalCanRepository.parkingRadarState.collectAsStateWithLifecycle()
     val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val pasOn = parkingRadar is MbCanBinaryState.On
@@ -383,6 +386,16 @@ internal fun LauncherVehicleSettingsContent(
                     val next = !tirePressureShowTemperature
                     tirePressureShowTemperature = next
                     LauncherAppConfigStore.setTirePressureShowTemperature(context, next)
+                },
+            )
+
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_tire_low_temp_alert),
+                active = tireLowTempAlertEnabled,
+                onClick = {
+                    val next = !tireLowTempAlertEnabled
+                    tireLowTempAlertEnabled = next
+                    LauncherAppConfigStore.setTireLowTempAlertEnabled(context, next)
                 },
             )
 

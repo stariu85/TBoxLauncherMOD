@@ -313,9 +313,11 @@ object CamdCameraRepository {
         val pdcCameras = LauncherAppConfigStore.camdDisableStockAvm(context) &&
             LauncherAppConfigStore.camdPdcCameras(context)
         val trigger = LauncherAppConfigStore.camdLowSpeedSideTrigger(context)
+        val recorderAutoOff = LauncherAppConfigStore.camdRecorderEnabled(context) &&
+            LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)
 
         val signals = mutableSetOf<MbCanSignal>()
-        if (lowSpeedEnabled || turnSignalCameras || reverseCameras || pdcCameras) {
+        if (lowSpeedEnabled || turnSignalCameras || reverseCameras || pdcCameras || recorderAutoOff) {
             signals.add(MbCanSignal.CarSpeed)
         }
         if (lowSpeedEnabled && (trigger == CAMD_LOW_SPEED_TRIGGER_STEERING || trigger == CAMD_LOW_SPEED_TRIGGER_BOTH)) {
@@ -341,7 +343,7 @@ object CamdCameraRepository {
             CanDataRepository.gearBoxMode,
             CanDataRepository.gearBoxCurrentGear,
         ) { gearMode, currentGear ->
-            vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverride
+            vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverrideFlow.value
                 ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(gearMode, currentGear)
         }
 
@@ -365,12 +367,33 @@ object CamdCameraRepository {
                 check360Cameras(appCtx, inputs.speed, inputs.activeGear, inputs.pdc, inputs.isAvmActive)
                 evaluateSideCameraState(appCtx)
                 checkReverseAvmRetry(appCtx, inputs.activeGear, inputs.isAvmActive)
+                checkRecorderAutoOffSpeed(appCtx, inputs.speed)
+            }
+        }
+    }
+
+    private suspend fun checkRecorderAutoOffSpeed(context: Context, speed: Float?) {
+        val recorderEnabled = LauncherAppConfigStore.camdRecorderEnabled(context)
+        val autoOffEnabled = LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)
+        if (!recorderEnabled || !autoOffEnabled) return
+        if (speed == null || !speed.isFinite() || speed < 0f) return
+
+        val autoOffSpeed = LauncherAppConfigStore.camdRecorderAutoOffSpeed(context).toFloat()
+        if (speed >= autoOffSpeed) {
+            val s = _status.value as? CamdConnectionStatus.Connected
+            val isCurrentlyRecording = s?.recActive == true || s?.recEnabled == true
+            if (isCurrentlyRecording) {
+                vad.dashing.tbox.DclLogRecorder.log(
+                    "CamdCameraRepository",
+                    "Recorder auto-off triggered: speed=$speed km/h >= threshold=$autoOffSpeed km/h -> turning OFF"
+                )
+                setRecorderEnabled(context, false)
             }
         }
     }
 
     internal fun getCurrentActiveGear(): Char? {
-        return vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverride
+        return vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverrideFlow.value
             ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(
                 CanDataRepository.gearBoxMode.value,
                 CanDataRepository.gearBoxCurrentGear.value,
@@ -451,6 +474,8 @@ object CamdCameraRepository {
                 val hasAllFour = listOf(CAMERA_ID_LEFT, CAMERA_ID_RIGHT, CAMERA_ID_FRONT, CAMERA_ID_REAR)
                     .all { it in physicalWindows }
                 _isDesktopCamerasOpen.value = hasAllFour
+                val currentRec = s.recActive || s.recEnabled
+                LauncherAppConfigStore.setCamdRecorderEnabled(context, currentRec)
             }
         }
     }
@@ -463,6 +488,7 @@ object CamdCameraRepository {
 
     suspend fun setRecorderEnabled(context: Context, enabled: Boolean): Result<String> {
         val res = CamdSocketClient.setRecorder(context, enabled)
+        LauncherAppConfigStore.setCamdRecorderEnabled(context, enabled)
         refreshStatus(context)
         return res
     }

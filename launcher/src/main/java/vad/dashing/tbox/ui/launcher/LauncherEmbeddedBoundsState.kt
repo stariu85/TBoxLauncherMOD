@@ -1,24 +1,47 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.graphics.Rect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
 
-/** Screen-pixel zones for embedded / split app windows. */
+/** Screen-pixel zones for embedded / split app windows. Thread-safe across UI and background workers. */
 object LauncherEmbeddedBoundsState {
-    var leftPanelBounds: Rect? by mutableStateOf(null)
-    var embeddedZoneBounds: Rect? by mutableStateOf(null)
-    var dockGridTopPx: Int by mutableIntStateOf(0)
-    var topHeaderBottomPx: Int by mutableIntStateOf(0)
-    var rightFooterBottomPx: Int by mutableIntStateOf(0)
-    var contentRowBounds: Rect? by mutableStateOf(null)
-    var screenBounds: Rect? by mutableStateOf(null)
-    var bottomBarTopPx: Int by mutableIntStateOf(0)
-    var bottomBarTopOnScreenPx: Int by mutableIntStateOf(0)
-    var bottomBarHeightOnScreenPx: Int by mutableIntStateOf(0)
-    var slot0Bounds: Rect? by mutableStateOf(null)
+    val leftPanelBoundsFlow = MutableStateFlow<Rect?>(null)
+    var leftPanelBounds: Rect?
+        get() = leftPanelBoundsFlow.value
+        set(value) { leftPanelBoundsFlow.value = value }
+
+    val embeddedZoneBoundsFlow = MutableStateFlow<Rect?>(null)
+    var embeddedZoneBounds: Rect?
+        get() = embeddedZoneBoundsFlow.value
+        set(value) { embeddedZoneBoundsFlow.value = value }
+
+    val contentRowBoundsFlow = MutableStateFlow<Rect?>(null)
+    var contentRowBounds: Rect?
+        get() = contentRowBoundsFlow.value
+        set(value) { contentRowBoundsFlow.value = value }
+
+    val screenBoundsFlow = MutableStateFlow<Rect?>(null)
+    var screenBounds: Rect?
+        get() = screenBoundsFlow.value
+        set(value) { screenBoundsFlow.value = value }
+
+    val slot0BoundsFlow = MutableStateFlow<Rect?>(null)
+    var slot0Bounds: Rect?
+        get() = slot0BoundsFlow.value
+        set(value) { slot0BoundsFlow.value = value }
+
+    @Volatile
+    var dockGridTopPx: Int = 0
+    @Volatile
+    var topHeaderBottomPx: Int = 0
+    @Volatile
+    var rightFooterBottomPx: Int = 0
+    @Volatile
+    var bottomBarTopPx: Int = 0
+    @Volatile
+    var bottomBarTopOnScreenPx: Int = 0
+    @Volatile
+    var bottomBarHeightOnScreenPx: Int = 0
 
     /** No gap between split panes — even 8px left a ~4px HOME strip visible between apps. */
     private const val SPLIT_GAP_PX = 0

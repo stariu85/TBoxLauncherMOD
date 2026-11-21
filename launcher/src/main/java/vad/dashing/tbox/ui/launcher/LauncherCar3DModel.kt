@@ -228,6 +228,7 @@ fun LauncherCar3DModel(
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
     onCameraSwitchingChanged: (Boolean) -> Unit = {},
+    onModelReadyChanged: (Boolean) -> Unit = {},
     customModelScale: Float = 1f,
     customModelDriveScale: Float = 1f,
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
@@ -289,6 +290,7 @@ fun LauncherCar3DModel(
                 onHeadlightFrameChanged = onHeadlightFrameChanged,
                 onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
                 onCameraSwitchingChanged = onCameraSwitchingChanged,
+                onModelReadyChanged = onModelReadyChanged,
                 projectPdcRings = projectPdcRings,
                 projectHeadlights = projectHeadlights,
                 textureSurface = textureSurface,
@@ -328,6 +330,7 @@ private fun LauncherCarFilamentModel(
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
     onCameraSwitchingChanged: (Boolean) -> Unit = {},
+    onModelReadyChanged: (Boolean) -> Unit = {},
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
@@ -374,6 +377,7 @@ private fun LauncherCarFilamentModel(
                 onHeadlightFrameChanged = onHeadlightFrameChanged,
                 onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
                 onCameraSwitchingChanged = onCameraSwitchingChanged,
+                onModelReadyChanged = onModelReadyChanged,
                 projectPdcRings = projectPdcRings,
                 projectHeadlights = projectHeadlights,
                 textureSurface = textureSurface,
@@ -412,6 +416,7 @@ private fun LauncherCarFilamentContent(
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
     onCameraSwitchingChanged: (Boolean) -> Unit = {},
+    onModelReadyChanged: (Boolean) -> Unit = {},
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
@@ -472,6 +477,7 @@ private fun LauncherCarFilamentContent(
     val isAvmRef = rememberUpdatedState(isAvmActive)
     val settingsProgressRef = rememberUpdatedState(settingsProgress)
     val cameraSwitchingCallbackRef = rememberUpdatedState(onCameraSwitchingChanged)
+    val modelReadyCallbackRef = rememberUpdatedState(onModelReadyChanged)
     val backflipAnimationRevision by LauncherAppConfigStore.backflipAnimationRevisionFlow
         .collectAsStateWithLifecycle()
     val backflipAnimationEnabled = remember(context, backflipAnimationRevision) {
@@ -519,6 +525,9 @@ private fun LauncherCarFilamentContent(
     var lastFrameTransition by remember(modelInstance) {
         mutableFloatStateOf(settingsProgress.coerceIn(0f, 1f))
     }
+    var wasHoldingStartupTopView by remember(modelInstance) {
+        mutableStateOf(true)
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val customSceneLifecycleOwner = remember(modelInstance, lifecycleOwner) {
@@ -535,7 +544,7 @@ private fun LauncherCarFilamentContent(
     var modelReady by remember(modelInstance) { mutableStateOf(false) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = 1000),
         label = "launcherCarModelAlpha",
     )
 
@@ -716,6 +725,7 @@ private fun LauncherCarFilamentContent(
     DisposableEffect(Unit) {
         onDispose {
             cameraSwitchingCallbackRef.value(false)
+            modelReadyCallbackRef.value(false)
         }
     }
 
@@ -757,6 +767,8 @@ private fun LauncherCarFilamentContent(
                         val transition = if (rawTransition < 0.001f) 0f else rawTransition
 
                         val isHoldingStartupTopView = cameraAnimEnabledRef.value && !LauncherCar3DModelTrigger.startupTopViewDone.value
+                        val exitedStartupTopView = wasHoldingStartupTopView && !isHoldingStartupTopView
+                        wasHoldingStartupTopView = isHoldingStartupTopView
 
                         val targetDriveBlend = if (transition > 0.02f || isHoldingStartupTopView) {
                             0f
@@ -857,7 +869,13 @@ private fun LauncherCarFilamentContent(
                                 currentDriveBlend = targetDriveBlend
                             }
                         } else {
-                            if (backflipAnimationEnabledRef.value && lastTargetDriveBlend == 0f && targetDriveBlend == 1f && transition <= 0.02f) {
+                            if (backflipAnimationEnabledRef.value &&
+                                !exitedStartupTopView &&
+                                !isHoldingStartupTopView &&
+                                lastTargetDriveBlend == 0f &&
+                                targetDriveBlend == 1f &&
+                                transition <= 0.02f
+                            ) {
                                 isRollingPtoD = true
                             }
                             lastTargetDriveBlend = targetDriveBlend
@@ -1015,6 +1033,9 @@ private fun LauncherCarFilamentContent(
                             if (preparedFrames >= 3 && widthPx > 0 && heightPx > 0) {
                                 modelReady = true
                                 node.isVisible = true
+                                overlayPublishHandler.post {
+                                    modelReadyCallbackRef.value(true)
+                                }
                             }
                         } else {
                             node.isVisible = true
@@ -1071,7 +1092,7 @@ private fun LauncherCarFilamentContent(
                             }
                         }
 
-                        animationController?.update(rigStateRef.value, dt)
+                        animationController?.update(rigStateRef.value, dt, modelReady = modelReady)
                         val isStillSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
                             transitionMoving ||
                             isOrbitActive ||

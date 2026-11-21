@@ -310,6 +310,7 @@ object LauncherVehicleAlertsRepository {
             )
         val threshold = applicationContext?.let { LauncherAppConfigStore.tirePressureLowThreshold(it) }
             ?: LauncherTireWheelState.LOW_PRESSURE_BAR
+        val allowLowTemp = applicationContext?.let { LauncherAppConfigStore.tireLowTempAlertEnabled(it) } ?: true
         val fuelPct = vad.dashing.tbox.CanDataRepository.fuelLevelPercentageFiltered.value
             ?: vad.dashing.tbox.CanDataRepository.fuelLevelPercentage.value
         val range = vad.dashing.tbox.CanDataRepository.distanceToFuelEmpty.value
@@ -346,7 +347,8 @@ object LauncherVehicleAlertsRepository {
                 add(LauncherAlertId.DoorRearRight, body.doorRrOpen, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.TirePressure, tires.hasAttention(threshold), LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.TirePressure, tires.hasLowPressure(threshold), LauncherAlertSeverity.Critical)
+                add(LauncherAlertId.TireTemperature, allowLowTemp && tires.hasLowTemperature(), LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.LowFuel, isLowFuel, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
                 add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)

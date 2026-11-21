@@ -209,6 +209,7 @@ internal val LauncherAlertId.labelRes: Int
         LauncherAlertId.HoodOpen -> R.string.launcher_alert_hood
         LauncherAlertId.TrunkOpen -> R.string.launcher_alert_trunk
         LauncherAlertId.TirePressure -> R.string.launcher_alert_tire
+        LauncherAlertId.TireTemperature -> R.string.launcher_alert_tire_temperature
         LauncherAlertId.LowFuel -> R.string.launcher_alert_fuel
         LauncherAlertId.Speeding -> R.string.launcher_alert_speeding
         LauncherAlertId.HighTemperature -> R.string.launcher_alert_high_temp
@@ -237,7 +238,9 @@ private val LauncherAlertId.iconRes: Int
         -> R.drawable.ic_launcher_door
         LauncherAlertId.HoodOpen -> R.drawable.ic_launcher_hood
         LauncherAlertId.TrunkOpen -> R.drawable.ic_launcher_trunk
-        LauncherAlertId.TirePressure -> R.drawable.ic_refuel_price_warning
+        LauncherAlertId.TirePressure,
+        LauncherAlertId.TireTemperature,
+        -> R.drawable.ic_refuel_price_warning
         LauncherAlertId.LowFuel -> R.drawable.ic_launcher_fuel
         LauncherAlertId.LowBatterySoc,
         LauncherAlertId.BattFault,

@@ -138,6 +138,9 @@ fun LauncherVehicleSettingsScreen(
     val tirePressureShowTemperature = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureShowTemperature(context)
     }
+    val tireLowTempAlertEnabled = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tireLowTempAlertEnabled(context)
+    }
     val simulate = LauncherDevVehicleState.simulateEnabled
     val effectiveBody = if (simulate) LauncherDevVehicleState.bodyState() else vehicleBody
     val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
@@ -404,7 +407,7 @@ fun LauncherVehicleSettingsScreen(
                 textureSurface = true,
                 modifier = Modifier.fillMaxSize(),
             )
-            val showBadgesInSettings = tirePressureAlwaysInSettings || effectiveTires.hasAttention(tirePressureLowThreshold)
+            val showBadgesInSettings = tirePressureAlwaysInSettings || effectiveTires.hasAttention(tirePressureLowThreshold, tireLowTempAlertEnabled)
             val showAllInSettings = tirePressureAlwaysInSettings || !tirePressureOnlyLow
 
             if (showBadgesInSettings) {
@@ -413,6 +416,7 @@ fun LauncherVehicleSettingsScreen(
                     wheelAnchorsPx = wheelAnchors,
                     showAll = showAllInSettings,
                     lowPressureThreshold = tirePressureLowThreshold,
+                    allowLowTempNotification = tireLowTempAlertEnabled,
                     speedKmh = motion.speedKmh,
                     steerAngleDeg = steer,
                     isRearView = true,

@@ -740,10 +740,10 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
 
 private var dclwmWatcherJob: Job? = null
 private val dclwmWatcherScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-private const val MAX_DCLWM_ATTEMPTS = 10
+private const val MAX_DCLWM_ATTEMPTS = 15
 
 /**
- * Periodically checks if external storage is mounted (every 10s) and starts the dclwm daemon
+ * Periodically checks if external storage is mounted (every 1s) and starts the dclwm daemon
  * as soon as storage is ready. Terminates once dclwm is up and running, or after at most
  * [MAX_DCLWM_ATTEMPTS] attempts (to prevent endless loop).
  */
@@ -753,7 +753,7 @@ internal fun startDclwmStorageWatcher(context: Context) {
     if (dclwmWatcherJob?.isActive == true) return
 
     dclwmWatcherJob = dclwmWatcherScope.launch {
-        Log.i("LauncherAppLaunch", "Starting dclwm storage watcher (check every 10s, max $MAX_DCLWM_ATTEMPTS attempts)")
+        Log.i("LauncherAppLaunch", "Starting dclwm storage watcher (check every 1s, max $MAX_DCLWM_ATTEMPTS attempts)")
         var attempt = 0
         while (isActive) {
             attempt++
@@ -785,7 +785,7 @@ internal fun startDclwmStorageWatcher(context: Context) {
                     break
                 }
             } else {
-                Log.d("LauncherAppLaunch", "dclwm watcher: storage not mounted yet (state=${Environment.getExternalStorageState()}), attempt $attempt/$MAX_DCLWM_ATTEMPTS. Next check in 10s")
+                Log.d("LauncherAppLaunch", "dclwm watcher: storage not mounted yet (state=${Environment.getExternalStorageState()}), attempt $attempt/$MAX_DCLWM_ATTEMPTS. Next check in 1s")
             }
 
             if (attempt >= MAX_DCLWM_ATTEMPTS) {
@@ -794,7 +794,7 @@ internal fun startDclwmStorageWatcher(context: Context) {
                 break
             }
 
-            delay(10_000L)
+            delay(1000L)
         }
     }
 }

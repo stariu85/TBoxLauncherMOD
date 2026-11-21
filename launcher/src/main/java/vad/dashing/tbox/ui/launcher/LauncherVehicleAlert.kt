@@ -24,6 +24,7 @@ enum class LauncherAlertId {
     HoodOpen,
     TrunkOpen,
     TirePressure,
+    TireTemperature,
     LowFuel,
     Speeding,
     HighTemperature,

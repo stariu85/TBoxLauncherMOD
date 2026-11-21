@@ -412,7 +412,7 @@ object LauncherAdasRepository {
         pdcWatchdogJob = adasScope.launch {
             launch {
                 UniversalCanRepository.parkingRadarState.collect { radarState ->
-                    if (radarState !is MbCanBinaryState.On && !LauncherDevVehicleState.simulateEnabled) {
+                    if (radarState !is MbCanBinaryState.On && !LauncherDevVehicleState.simulateEnabledFlow.value) {
                         pdcActive = false
                         if (pdcZones.hasAny) {
                             pdcZones = LauncherPdcZones()

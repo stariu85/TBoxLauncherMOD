@@ -73,6 +73,7 @@ class LauncherHomeActivity : ComponentActivity() {
         vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.resetStartupTopView()
         settingsManager = SettingsManager(this)
         appDataManager = AppDataManager(this)
+        LauncherThemeState.init(applicationContext)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -153,27 +154,25 @@ class LauncherHomeActivity : ComponentActivity() {
             // --- Stage 2: Heavy subsystems, mbCAN & caches (+400ms after Stage 1) ---
             delay(400L)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 2 start: caches, UniversalCanRepository auto-bind")
-            LauncherThemeState.init(appCtx)
             LauncherWifiApRepository.init(appCtx)
             vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
 
             // Start CAN auto-bind now that desktop and UI thread are completely unblocked
             UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
 
-            // Start USB Mount watcher in Stage 2 (checks storage every 1s until ready, before full boot ends)
+            // Start USB Mount watcher and dclwm watcher in Stage 2 (check storage every 1s until ready, before full boot ends)
             vad.dashing.tbox.usbmount.UsbMountManager.startStage2Watcher(appCtx)
+            startDclwmStorageWatcher(appCtx)
 
-            // --- Stage 3: Autostart shortcut, dclwm storage watcher & foreign stack cleanup ---
+            // --- Stage 3: Autostart shortcut & foreign stack cleanup ---
             delay(1000L)
-            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: autostart shortcut, dclwm storage watcher")
+            vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 3 start: autostart shortcut & cleanup")
             if (!autostartFired && LauncherHomeActivityHolder.isResumed && !isFinishing && !isDestroyed) {
                 autostartFired = true
                 Log.i(TAG, "Triggering autostart shortcut with Activity context after desktop is fully ready")
                 launchAutostartShortcut(this@LauncherHomeActivity)
             }
 
-            // Launcher fully loaded -> Start cyclic storage check for dclwm (every 10s until ready)
-            startDclwmStorageWatcher(appCtx)
             vad.dashing.tbox.ui.launcher.LauncherHistoryTracker.clearHistory(appCtx)
             minimizeForeignFreeformTasks(appCtx)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "scheduleStagedWarmup completed")

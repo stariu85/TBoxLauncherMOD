@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import vad.dashing.tbox.MIRROR_FOLD_SWITCH_VALUE_FOLD
 import vad.dashing.tbox.MirrorFoldLastCommandStore
+import vad.dashing.tbox.camd.CamdSocketClient
 import vad.dashing.tbox.ui.sendToggleMirrorFold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -386,6 +387,7 @@ private fun LauncherAdasQuickSettingsContent(
                     "car_color" -> carColorPanelVisible
                     "smart_panel" -> smartPanelEnabled
                     "lanes" -> true
+                    "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> CamdSocketClient.isInstalled(context)
                     else -> true
                 }
             }
@@ -436,6 +438,8 @@ private fun LauncherAdasQuickSettingsContent(
             "car_color",
             "acc_presets",
             "ngp_lka_ldw",
+            "camd_cameras",
+            "camd_dvr",
         )
         allCandidates.filter { candidate ->
             if (candidate == "media_player") {
@@ -445,9 +449,11 @@ private fun LauncherAdasQuickSettingsContent(
                 "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
                 "drive_mode", "drive_mode_offroad" -> "drive_mode"
                 "presets", "smart_control" -> "assist"
+                "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
                 else -> candidate
             }
             if (family !in enabledPanels) return@filter false
+            if (family == "camd_controls" && !CamdSocketClient.isInstalled(context)) return@filter false
             if (candidate == "smart_panel") return@filter false
             if (candidate == "car_color" && !carColorPanelVisible) return@filter false
             if (candidate == "presets" && !accPresetsInQuickSettingsVisible) return@filter false
@@ -469,6 +475,7 @@ private fun LauncherAdasQuickSettingsContent(
             "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
             "drive_mode", "drive_mode_offroad" -> "drive_mode"
             "presets" -> "assist"
+            "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
             else -> id
         }
 
@@ -525,6 +532,7 @@ private fun LauncherAdasQuickSettingsContent(
             "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
             "drive_mode_offroad" -> "drive_mode"
             "presets" -> "assist"
+            "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
             else -> id
         }
 
@@ -558,6 +566,7 @@ private fun LauncherAdasQuickSettingsContent(
             "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, true)
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, true)
             "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, true)
+            "camd_controls" -> LauncherAppConfigStore.setAdasPanelEnabled(context, "camd_controls", true)
         }
 
         // 3. Always add to bottom ADAS panels at index 0 and persist layout
@@ -780,6 +789,7 @@ private fun RenderQuickPanelCard(
         "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
         "presets", "lanes" -> "assist"
         "drive_mode_offroad" -> "drive_mode"
+        "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
         else -> id
     }
     val isBasePanelAlreadyInAdas = basePanelId in primarySlots
@@ -895,7 +905,8 @@ private fun RenderQuickPanelCard(
             "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 60.dp)
             "acc_presets" -> LauncherAccPresetsBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
             "ngp_lka_ldw" -> LauncherNgpLkaLdwBar(adas = adas, modifier = Modifier.fillMaxWidth())
-            "camd_controls" -> LauncherCameraAndDvrBar(modifier = Modifier.fillMaxWidth())
+            "camd_controls", "camd_cameras" -> LauncherCamdCamerasPage(modifier = Modifier.fillMaxWidth())
+            "camd_dvr" -> LauncherCamdDvrPage(modifier = Modifier.fillMaxWidth())
         }
 
         if (showPlus) {

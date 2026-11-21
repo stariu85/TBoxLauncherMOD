@@ -88,4 +88,30 @@ class LauncherVehicleHealthStatusTest {
         )
         assertEquals(LauncherVehicleHealthStatus.Error, status)
     }
+
+    @Test
+    fun computeVehicleHealthStatus_tireTempAttentionReturnsWarning() {
+        val status = computeVehicleHealthStatus(
+            alerts = emptyList(),
+            hasTireAttention = false,
+            hasTireTempAttention = true,
+            srrSystem = LauncherSrrSystemState.Hidden,
+            accMode = LauncherAdasAccMode.Off,
+            simShowAll = false,
+        )
+        assertEquals(LauncherVehicleHealthStatus.Warning, status)
+    }
+
+    @Test
+    fun computeVehicleHealthStatus_tireTempAttentionWithCriticalTirePressureReturnsError() {
+        val status = computeVehicleHealthStatus(
+            alerts = emptyList(),
+            hasTireAttention = true,
+            hasTireTempAttention = true,
+            srrSystem = LauncherSrrSystemState.Hidden,
+            accMode = LauncherAdasAccMode.Off,
+            simShowAll = false,
+        )
+        assertEquals(LauncherVehicleHealthStatus.Error, status)
+    }
 }

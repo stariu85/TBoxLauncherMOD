@@ -25,6 +25,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -53,6 +54,7 @@ fun LauncherTireBadges(
     compact: Boolean = false,
     enabled: Boolean = true,
     lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
+    allowLowTempNotification: Boolean = true,
     speedKmh: Float = 0f,
     steerAngleDeg: Float = 0f,
     isRearView: Boolean = false,
@@ -62,7 +64,7 @@ fun LauncherTireBadges(
     showTemperature: Boolean = false,
 ) {
     if (!enabled) return
-    val needsAttentionAny = state.hasAttention(lowPressureThreshold)
+    val needsAttentionAny = state.hasAttention(lowPressureThreshold, allowLowTempNotification)
     if (!showAll && !needsAttentionAny) return
 
     val currentSpeedState = rememberUpdatedState(speedKmh)
@@ -176,11 +178,13 @@ fun LauncherTireBadges(
 
                 val endX = if (shiftedLeft < anchor.x) shiftedLeft + rect.width else shiftedLeft
                 val wheel = state.wheel(corner)
+                val isLowPress = wheel.isLowPressure(lowPressureThreshold)
+                val isLowTemp = allowLowTempNotification && wheel.isLowTemperature()
                 drawLine(
-                    color = if (wheel.needsAttention(lowPressureThreshold)) {
-                        LauncherColors.WarningRed.copy(alpha = 0.85f)
-                    } else {
-                        LauncherColors.AccentCyan.copy(alpha = 0.55f)
+                    color = when {
+                        isLowPress -> LauncherColors.WarningRed.copy(alpha = 0.85f)
+                        isLowTemp -> Color(0xFF38BDF8).copy(alpha = 0.85f)
+                        else -> LauncherColors.AccentCyan.copy(alpha = 0.55f)
                     },
                     start = anchor,
                     end = Offset(endX, shiftedTop + rect.height / 2f),
@@ -202,6 +206,7 @@ fun LauncherTireBadges(
                 wheel = state.wheel(corner),
                 compact = compact,
                 lowPressureThreshold = lowPressureThreshold,
+                allowLowTempNotification = allowLowTempNotification,
                 badgeShape = badgeShape,
                 badgeHeight = badgeHeight,
                 showHundredths = showHundredths,
@@ -221,6 +226,7 @@ private fun LauncherTireBadge(
     compact: Boolean,
     modifier: Modifier = Modifier,
     lowPressureThreshold: Float = LauncherTireWheelState.LOW_PRESSURE_BAR,
+    allowLowTempNotification: Boolean = true,
     badgeShape: LauncherTireBadgeShape = LauncherTireBadgeShape.RECTANGLE,
     badgeHeight: Dp = if (compact) 40.dp else 68.dp,
     showHundredths: Boolean = false,
@@ -237,9 +243,11 @@ private fun LauncherTireBadge(
             LauncherWheelCorner.RR -> R.string.launcher_vs_wheel_rr
         },
     )
+    val isLowPress = wheel.isLowPressure(lowPressureThreshold)
+    val isLowTemp = allowLowTempNotification && wheel.isLowTemperature()
     val tint = when {
-        wheel.needsAttention(lowPressureThreshold) ->
-            LauncherColors.WarningRed
+        isLowPress -> LauncherColors.WarningRed
+        isLowTemp -> Color(0xFF38BDF8)
         wheel.calibrating || (wheel.available && wheel.pressureBar == null) ->
             LauncherColors.LeftTextSecondary
         wheel.available -> LauncherColors.LeftTextPrimary

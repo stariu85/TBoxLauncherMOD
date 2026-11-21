@@ -6,12 +6,24 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.mbcan.VehicleBodyState
 import kotlin.math.roundToInt
 
 /** Debug overrides for launcher vehicle animation when not in the car. */
 object LauncherDevVehicleState {
-    var simulateEnabled by mutableStateOf(false)
+    private val _simulateEnabledFlow = MutableStateFlow(false)
+    val simulateEnabledFlow: StateFlow<Boolean> = _simulateEnabledFlow.asStateFlow()
+    var simulateEnabled: Boolean
+        get() = _simulateEnabledState.value
+        set(value) {
+            _simulateEnabledFlow.value = value
+            _simulateEnabledState.value = value
+        }
+    private val _simulateEnabledState = mutableStateOf(false)
+
     var showAllIndicators by mutableStateOf(false)
     /**
      * Preview steer animation from the physical wheel while stationary (real CAN steer, speed visual = 0).
@@ -29,8 +41,17 @@ object LauncherDevVehicleState {
     var keyBatteryLow by mutableStateOf(false)
     var tirePressureOverride by mutableStateOf<Map<LauncherWheelCorner, Float>>(emptyMap())
     var batteryVoltageOverride by mutableStateOf<Float?>(null)
+
+    private val _gearSlotOverrideFlow = MutableStateFlow<Char?>(null)
+    val gearSlotOverrideFlow: StateFlow<Char?> = _gearSlotOverrideFlow.asStateFlow()
     /** 'P'/'R'/'N'/'D' override; null = real gearbox state. */
-    var gearSlotOverride by mutableStateOf<Char?>(null)
+    var gearSlotOverride: Char?
+        get() = _gearSlotOverrideState.value
+        set(value) {
+            _gearSlotOverrideFlow.value = value
+            _gearSlotOverrideState.value = value
+        }
+    private val _gearSlotOverrideState = mutableStateOf<Char?>(null)
 
     // --- ADAS simulation (cruise / lanes / BSD / front object / parking sensors) ---
     var adasCruiseActive by mutableStateOf(false)
@@ -278,7 +299,7 @@ object LauncherDevVehicleState {
 
     /** Simulated ADAS state, or null when no ADAS sim values are set (live data shows). */
     fun adasStateOrNull(): LauncherAdasState? {
-        if (!simulateEnabled) return null
+        if (!_simulateEnabledFlow.value) return null
         if (showAllIndicators) {
             return LauncherAdasState(
                 accMode = LauncherAdasAccMode.ActiveBlue,

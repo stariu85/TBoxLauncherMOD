@@ -87,6 +87,14 @@ private const val KEY_CAMD_WIDGET_LR_RIGHT_PRESET = "camd_widget_lr_right_preset
 private const val KEY_CAMD_WIDGET_UD_TOP_PRESET = "camd_widget_ud_top_preset"
 private const val KEY_CAMD_WIDGET_UD_BOTTOM_PRESET = "camd_widget_ud_bottom_preset"
 
+private const val KEY_CAMD_RECORDER_ENABLED = "camd_recorder_enabled"
+private const val KEY_CAMD_RECORDER_AUTO_OFF_BY_SPEED = "camd_recorder_auto_off_by_speed"
+private const val KEY_CAMD_RECORDER_AUTO_OFF_SPEED = "camd_recorder_auto_off_speed"
+
+private const val DEFAULT_CAMD_RECORDER_ENABLED = false
+private const val DEFAULT_CAMD_RECORDER_AUTO_OFF_BY_SPEED = false
+private const val DEFAULT_CAMD_RECORDER_AUTO_OFF_SPEED = 20
+
 private const val DEFAULT_CAMD_WIDGET_X_RATIO = 0.82f
 private const val DEFAULT_CAMD_WIDGET_Y_RATIO = 0.50f
 
@@ -423,6 +431,8 @@ private const val KEY_TIRE_PRESSURE_INERTIA_ANIMATION_ENABLED = "tire_pressure_i
 private const val KEY_TIRE_PRESSURE_BADGE_SHAPE = "tire_pressure_badge_shape"
 private const val KEY_TIRE_PRESSURE_SHOW_HUNDREDTHS = "tire_pressure_show_hundredths"
 private const val KEY_TIRE_PRESSURE_SHOW_TEMPERATURE = "tire_pressure_show_temperature"
+private const val KEY_TIRE_LOW_TEMP_ALERT_ENABLED = "tire_low_temp_alert_enabled"
+internal const val DEFAULT_TIRE_LOW_TEMP_ALERT_ENABLED = true
 private const val KEY_SAVED_TIRE_PRESSURE_FL = "saved_tire_pressure_fl"
 private const val KEY_SAVED_TIRE_PRESSURE_FR = "saved_tire_pressure_fr"
 private const val KEY_SAVED_TIRE_PRESSURE_RL = "saved_tire_pressure_rl"
@@ -728,13 +738,21 @@ internal object LauncherAppConfigStore {
     }
 
     fun getVisibleSubPanel(slotPanelId: String): String {
-        return activeSubPanelsMap[slotPanelId] ?: defaultSubPanel(slotPanelId)
+        val canonicalSlot = when (slotPanelId) {
+            "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
+            "drive_mode_offroad" -> "drive_mode"
+            "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
+            "presets" -> "assist"
+            else -> slotPanelId
+        }
+        return activeSubPanelsMap[canonicalSlot] ?: defaultSubPanel(canonicalSlot)
     }
 
     fun defaultSubPanel(slotPanelId: String): String = when (slotPanelId) {
-        "body_controls" -> "body_controls_seat_memory"
+        "body_controls", "body_controls_seat_memory", "body_controls_trunk", "body_controls_seats" -> "body_controls_seat_memory"
         "assist", "presets" -> "assist"
-        "drive_mode" -> "drive_mode"
+        "drive_mode", "drive_mode_offroad" -> "drive_mode"
+        "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> "camd_cameras"
         else -> slotPanelId
     }
 
@@ -744,7 +762,7 @@ internal object LauncherAppConfigStore {
         "car_color", "drive_mode_offroad", "smart_control", "lanes", "chassis", "radars", "acc_presets", "ngp_lka_ldw"
     )
     val DEFAULT_QUICK_SETTINGS_BOTTOM_PANELS = listOf(
-        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats", "camd_controls"
+        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats", "camd_dvr"
     )
 
     fun quickSettingsTopPanels(context: Context): List<String> {
@@ -810,6 +828,7 @@ internal object LauncherAppConfigStore {
             "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
             "drive_mode_offroad" -> "drive_mode"
             "presets", "smart_control" -> "assist"
+            "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
             else -> id
         }
 
@@ -1620,6 +1639,15 @@ internal object LauncherAppConfigStore {
         tirePressureConfigRevision.value++
     }
 
+    fun tireLowTempAlertEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TIRE_LOW_TEMP_ALERT_ENABLED, DEFAULT_TIRE_LOW_TEMP_ALERT_ENABLED)
+
+    fun setTireLowTempAlertEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TIRE_LOW_TEMP_ALERT_ENABLED, enabled).apply()
+        tirePressureConfigRevision.value++
+        LauncherVehicleAlertsRepository.refresh()
+    }
+
     fun saveTirePressures(context: Context, state: LauncherTireState) {
         if (!tirePressurePersistEnabled(context)) return
         val edit = prefs(context).edit()
@@ -2310,6 +2338,37 @@ internal object LauncherAppConfigStore {
     fun setCamdWidgetUdBottomPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, preset).apply()
         camdConfigRevision.value++
+    }
+
+    fun camdRecorderEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_RECORDER_ENABLED, DEFAULT_CAMD_RECORDER_ENABLED)
+
+    fun setCamdRecorderEnabled(context: Context, enabled: Boolean) {
+        if (camdRecorderEnabled(context) != enabled) {
+            prefs(context).edit().putBoolean(KEY_CAMD_RECORDER_ENABLED, enabled).apply()
+            camdConfigRevision.value++
+        }
+    }
+
+    fun camdRecorderAutoOffBySpeed(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_RECORDER_AUTO_OFF_BY_SPEED, DEFAULT_CAMD_RECORDER_AUTO_OFF_BY_SPEED)
+
+    fun setCamdRecorderAutoOffBySpeed(context: Context, enabled: Boolean) {
+        if (camdRecorderAutoOffBySpeed(context) != enabled) {
+            prefs(context).edit().putBoolean(KEY_CAMD_RECORDER_AUTO_OFF_BY_SPEED, enabled).apply()
+            camdConfigRevision.value++
+        }
+    }
+
+    fun camdRecorderAutoOffSpeed(context: Context): Int =
+        prefs(context).getInt(KEY_CAMD_RECORDER_AUTO_OFF_SPEED, DEFAULT_CAMD_RECORDER_AUTO_OFF_SPEED).coerceIn(1, 30)
+
+    fun setCamdRecorderAutoOffSpeed(context: Context, speed: Int) {
+        val coerced = speed.coerceIn(1, 30)
+        if (camdRecorderAutoOffSpeed(context) != coerced) {
+            prefs(context).edit().putInt(KEY_CAMD_RECORDER_AUTO_OFF_SPEED, coerced).apply()
+            camdConfigRevision.value++
+        }
     }
 
     fun pdcVisualMode(context: Context): Int =

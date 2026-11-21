@@ -64,6 +64,7 @@ internal enum class LauncherVehicleHealthStatus {
 internal fun computeVehicleHealthStatus(
     alerts: List<LauncherVehicleAlert>,
     hasTireAttention: Boolean,
+    hasTireTempAttention: Boolean = false,
     srrSystem: LauncherSrrSystemState,
     accMode: LauncherAdasAccMode,
     simShowAll: Boolean,
@@ -76,6 +77,7 @@ internal fun computeVehicleHealthStatus(
     if (hasCritical) return LauncherVehicleHealthStatus.Error
 
     val hasWarning = alerts.any { it.severity == LauncherAlertSeverity.Warning } ||
+            hasTireTempAttention ||
             accMode == LauncherAdasAccMode.Fault
 
     if (hasWarning) return LauncherVehicleHealthStatus.Warning
@@ -90,6 +92,9 @@ internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureLowThreshold(context)
     }
+    val allowLowTempAlert = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tireLowTempAlertEnabled(context)
+    }
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tiresState by LauncherTireRepository.state.collectAsStateWithLifecycle()
@@ -103,10 +108,11 @@ internal fun rememberVehicleHealthStatus(): LauncherVehicleHealthStatus {
     val alerts = if (simShowAll) alertsState.alerts else alertsState.alerts.filterNot { it.id.isBodyOpenAlert }
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasState
 
-    return remember(alerts, effectiveTires, tirePressureLowThreshold, adas, simShowAll) {
+    return remember(alerts, effectiveTires, tirePressureLowThreshold, allowLowTempAlert, adas, simShowAll) {
         computeVehicleHealthStatus(
             alerts = alerts,
-            hasTireAttention = effectiveTires.hasAttention(tirePressureLowThreshold),
+            hasTireAttention = effectiveTires.hasLowPressure(tirePressureLowThreshold),
+            hasTireTempAttention = allowLowTempAlert && effectiveTires.hasLowTemperature(),
             srrSystem = adas.srrSystem,
             accMode = adas.accMode,
             simShowAll = simShowAll,
@@ -134,6 +140,7 @@ private val LauncherAlertId.detailDescription: String
         LauncherAlertId.HoodOpen -> "Крышка капота неплотно закрыта. Проверьте фиксацию защёлки."
         LauncherAlertId.TrunkOpen -> "Дверь багажного отделения открыта."
         LauncherAlertId.TirePressure -> "Давление в колёсах ниже установленного порога."
+        LauncherAlertId.TireTemperature -> "Температура в шинах ниже нормы. Прогрейте шины при движении."
         LauncherAlertId.LowFuel -> "Минимальный остаток топлива в баке. Пополните запас топлива."
         LauncherAlertId.Speeding -> "Текущая скорость превышает установленное ограничение."
         LauncherAlertId.HighTemperature -> "Высокая температура охлаждающей жидкости. Остановите движение и дайте двигателю остыть."
@@ -156,6 +163,9 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
     }
     val tirePressureLowThreshold = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureLowThreshold(context)
+    }
+    val allowLowTempAlert = remember(context, tirePressureConfigRevision) {
+        LauncherAppConfigStore.tireLowTempAlertEnabled(context)
     }
     val alertsState by LauncherVehicleAlertsRepository.state.collectAsStateWithLifecycle()
     val adasState by LauncherAdasRepository.state.collectAsStateWithLifecycle()
@@ -181,22 +191,34 @@ internal fun rememberVehicleStatusDetailItems(): List<LauncherVehicleStatusDetai
             )
         }
 
-        if (effectiveTires.hasAttention(tirePressureLowThreshold)) {
-            val lowCorners = listOf(
-                "Переднее левое" to effectiveTires.fl,
-                "Переднее правое" to effectiveTires.fr,
-                "Заднее левое" to effectiveTires.rl,
-                "Заднее правое" to effectiveTires.rr,
-            ).filter { it.second.needsAttention(tirePressureLowThreshold) }
+        val corners = listOf(
+            "Переднее левое" to effectiveTires.fl,
+            "Переднее правое" to effectiveTires.fr,
+            "Заднее левое" to effectiveTires.rl,
+            "Заднее правое" to effectiveTires.rr,
+        )
+        val lowPressureCorners = corners.filter { it.second.isLowPressure(tirePressureLowThreshold) }
+        lowPressureCorners.forEach { (cornerName, wheel) ->
+            val accuracy = if (tirePressureShowHundredths) 2 else 1
+            val press = wheel.pressureBar?.let { "${valueToString(it, accuracy)} bar" } ?: "—"
+            add(
+                LauncherVehicleStatusDetailItem(
+                    title = "Низкое давление: $cornerName",
+                    description = "Текущее давление $press ниже установленного порога (${valueToString(tirePressureLowThreshold, 1)} bar). Проверьте колесо.",
+                    severity = LauncherAlertSeverity.Critical,
+                )
+            )
+        }
 
-            lowCorners.forEach { (cornerName, wheel) ->
-                val accuracy = if (tirePressureShowHundredths) 2 else 1
-                val press = wheel.pressureBar?.let { "${valueToString(it, accuracy)} bar" } ?: "—"
+        if (allowLowTempAlert) {
+            val lowTempCorners = corners.filter { it.second.isLowTemperature() }
+            lowTempCorners.forEach { (cornerName, wheel) ->
+                val tempStr = wheel.temperatureC?.let { "$it°C" } ?: "—"
                 add(
                     LauncherVehicleStatusDetailItem(
-                        title = "Низкое давление: $cornerName",
-                        description = "Текущее давление $press ниже установленного порога (${valueToString(tirePressureLowThreshold, 1)} bar). Проверьте колесо.",
-                        severity = LauncherAlertSeverity.Critical,
+                        title = "Низкая температура: $cornerName",
+                        description = "Текущая температура $tempStr слишком низкая. Рекомендуется прогреть шины при плавном движении.",
+                        severity = LauncherAlertSeverity.Warning,
                     )
                 )
             }

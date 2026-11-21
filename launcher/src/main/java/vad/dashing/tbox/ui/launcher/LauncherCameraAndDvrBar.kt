@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,11 +16,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +50,7 @@ private val AdasPanelButtonHeight = 60.dp
 
 /**
  * 2-page ADAS panel:
- * Page 0 (Первая панель): 3 camera buttons (Left/Right, Rear/Front, 360) with "CAM" label.
+ * Page 0 (Первая панель): 3 camera buttons (Left/Right, Rear/Front, 360).
  * Page 1 (Вторая панель): 2 DVR buttons (REC, SOS).
  * Swipe left switches from Cameras to DVR.
  */
@@ -58,8 +59,23 @@ private val AdasPanelButtonHeight = 60.dp
 fun LauncherCameraAndDvrBar(
     modifier: Modifier = Modifier,
     initialPage: Int = 0,
+    reportSubPanel: Boolean = true,
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 2 }
+
+    LaunchedEffect(initialPage) {
+        if (pagerState.currentPage != initialPage) {
+            pagerState.scrollToPage(initialPage)
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage, reportSubPanel) {
+        if (reportSubPanel) {
+            val visibleSub = if (pagerState.currentPage == 1) "camd_dvr" else "camd_cameras"
+            LauncherAppConfigStore.setVisibleSubPanel("camd_controls", visibleSub)
+            LauncherAppConfigStore.setVisibleSubPanel("cameras", visibleSub)
+        }
+    }
 
     HorizontalPager(
         state = pagerState,
@@ -76,7 +92,7 @@ fun LauncherCameraAndDvrBar(
 
 /**
  * Первая панель: 3 кнопки камер (как в виджете камеры в доке): лево/право, зад/перед, 360.
- * С надписью CAM на каждой кнопке.
+ * Значки увеличены на 50% и отцентрированы без подписей.
  */
 @Composable
 fun LauncherCamdCamerasPage(
@@ -96,7 +112,6 @@ fun LauncherCamdCamerasPage(
         CamdControlButton(
             modifier = Modifier.weight(1f),
             iconRes = R.drawable.ic_camd_widget_left_right,
-            label = "CAM",
             contentDescription = "Камеры Право / Лево",
             isActive = activeMode == CamdWidgetCameraMode.LEFT_RIGHT,
             onClick = {
@@ -108,7 +123,6 @@ fun LauncherCamdCamerasPage(
         CamdControlButton(
             modifier = Modifier.weight(1f),
             iconRes = R.drawable.ic_camd_widget_up_down,
-            label = "CAM",
             contentDescription = "Камеры Верх / Низ",
             isActive = activeMode == CamdWidgetCameraMode.UP_DOWN,
             onClick = {
@@ -120,7 +134,6 @@ fun LauncherCamdCamerasPage(
         CamdControlButton(
             modifier = Modifier.weight(1f),
             iconRes = R.drawable.ic_camd_widget_360,
-            label = "CAM",
             contentDescription = "Камеры 360",
             isActive = activeMode == CamdWidgetCameraMode.ALL_360,
             onClick = {
@@ -132,8 +145,7 @@ fun LauncherCamdCamerasPage(
 
 /**
  * Вторая панель: панель видеорегистратора (REC и SOS).
- * REC: включает/выключает регистратор. Кружок внутри круга - красный при записи, серый когда не идет.
- * SOS: аварийное сохранение. Во время сохранения значок красный.
+ * Значки слева от надписей, всё отцентрировано, размер надписей согласован с другими панелями ADAS (19.sp).
  */
 @Composable
 fun LauncherCamdDvrPage(
@@ -188,9 +200,9 @@ fun LauncherCamdDvrPage(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 Image(
                     painter = painterResource(
@@ -199,11 +211,11 @@ fun LauncherCamdDvrPage(
                     contentDescription = "REC",
                     modifier = Modifier.size(24.dp),
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "REC",
                     color = if (isRecording) Color(0xFFEF4444) else LauncherColors.LeftTextPrimary,
-                    fontSize = 11.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -249,9 +261,9 @@ fun LauncherCamdDvrPage(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_camd_sos),
@@ -259,11 +271,11 @@ fun LauncherCamdDvrPage(
                     modifier = Modifier.size(24.dp),
                     colorFilter = ColorFilter.tint(sosIconTint),
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = if (showSosActive) "SOS..." else "SOS",
                     color = if (showSosActive) Color(0xFFEF4444) else LauncherColors.LeftTextPrimary,
-                    fontSize = 11.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                 )
             }
@@ -274,7 +286,6 @@ fun LauncherCamdDvrPage(
 @Composable
 private fun CamdControlButton(
     iconRes: Int,
-    label: String,
     contentDescription: String,
     isActive: Boolean,
     onClick: () -> Unit,
@@ -310,23 +321,11 @@ private fun CamdControlButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
-                modifier = Modifier.size(24.dp),
-                colorFilter = ColorFilter.tint(tintColor),
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = label,
-                color = tintColor,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(36.dp),
+            colorFilter = ColorFilter.tint(tintColor),
+        )
     }
 }

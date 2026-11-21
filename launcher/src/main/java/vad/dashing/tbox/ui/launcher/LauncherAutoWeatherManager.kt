@@ -26,7 +26,7 @@ object LauncherAutoWeatherManager {
     const val TEMP_RAIN_SNOW_THRESHOLD = 3.0f // < 3°C -> snow, >= 3°C -> rain
     const val CONTINUOUS_RAIN_EVENT_INTERVAL_MS = 5_000L // Interval to register repeated event during steady rain
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
 
     private val _autoWeatherType = MutableStateFlow(AutoWeatherType.None)
