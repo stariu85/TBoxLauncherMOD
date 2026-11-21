@@ -895,6 +895,7 @@ private fun RenderQuickPanelCard(
             "car_color" -> LauncherCarColorPickerBar(modifier = Modifier.fillMaxWidth(), heightDp = 60.dp)
             "acc_presets" -> LauncherAccPresetsBar(canViewModel = canViewModel, adas = adas, modifier = Modifier.fillMaxWidth())
             "ngp_lka_ldw" -> LauncherNgpLkaLdwBar(adas = adas, modifier = Modifier.fillMaxWidth())
+            "camd_controls" -> LauncherCameraAndDvrBar(modifier = Modifier.fillMaxWidth())
         }
 
         if (showPlus) {

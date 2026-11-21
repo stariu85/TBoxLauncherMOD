@@ -713,6 +713,7 @@ internal object LauncherAppConfigStore {
         "body_controls",
         "wipers",
         "car_color",
+        "camd_controls",
     )
 
     private val activeSubPanelsMap = mutableStateMapOf<String, String>()
@@ -743,7 +744,7 @@ internal object LauncherAppConfigStore {
         "car_color", "drive_mode_offroad", "smart_control", "lanes", "chassis", "radars", "acc_presets", "ngp_lka_ldw"
     )
     val DEFAULT_QUICK_SETTINGS_BOTTOM_PANELS = listOf(
-        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats"
+        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats", "camd_controls"
     )
 
     fun quickSettingsTopPanels(context: Context): List<String> {
@@ -2563,6 +2564,9 @@ internal object LauncherAppConfigStore {
         }
         if (bodyControlsPanelVisible(context) && "body_controls" !in top && "body_controls" !in mapped) {
             mapped.add("body_controls")
+        }
+        if (vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context) && "camd_controls" !in top && "camd_controls" !in mapped) {
+            mapped.add("camd_controls")
         }
         return mapped.filter { it !in top }
     }

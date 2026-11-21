@@ -95,6 +95,7 @@ internal object LauncherTopBarDescriptors {
         LauncherTopBarItemDescriptor("gps", "Спутники / Геопозиция", isButton = false, iconRes = R.drawable.ic_launcher_satellite),
         LauncherTopBarItemDescriptor("maintenance", "Пробег до ТО", isButton = false, iconRes = R.drawable.ic_launcher_maintenance),
         LauncherTopBarItemDescriptor("vehicle_status", "Статус авто", isButton = false, iconRes = R.drawable.ic_launcher_vehicle_status),
+        LauncherTopBarItemDescriptor("camd_rec", "Видеорегистратор", isButton = false, iconRes = R.drawable.ic_camd_rec_active),
     )
 
     val ALL_BUTTONS = listOf(

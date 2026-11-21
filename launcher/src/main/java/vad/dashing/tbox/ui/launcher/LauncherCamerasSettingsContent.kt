@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.camd.CamdCameraRepository
@@ -162,13 +163,21 @@ fun LauncherCamerasSettingsContent(
                     ""
                 }
                 val avmDetail = if (s.keepAvm) " • Штатная AVM выключена" else " • Штатная AVM активна"
+                val recDetail = when {
+                    s.recSos -> " • Регистратор: SOS!"
+                    s.recActive -> " • Регистратор: запись (${s.recSegSeconds ?: 180}с)"
+                    s.recEnabled -> " • Регистратор: включен"
+                    else -> ""
+                }
                 val presetsDetail = if (s.presets.isNotEmpty()) " • Пресетов: ${s.presets.size}" else ""
-                "${stringResource(R.string.camd_status_connected)}$detail$avmDetail$presetsDetail" to Color(0xFF10B981)
+                "${stringResource(R.string.camd_status_connected)}$detail$avmDetail$recDetail$presetsDetail" to Color(0xFF10B981)
             }
             is CamdConnectionStatus.NoConnection -> {
                 stringResource(R.string.camd_status_no_connection, s.errorMessage) to Color(0xFFEF4444)
             }
         }
+
+        var isSosTriggering by remember { mutableStateOf(false) }
 
         Column(
             modifier = Modifier
@@ -221,6 +230,33 @@ fun LauncherCamerasSettingsContent(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
             )
+
+            val connectedStatus = status as? CamdConnectionStatus.Connected
+            if (connectedStatus != null && (connectedStatus.recActive || connectedStatus.recEnabled)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                isSosTriggering = true
+                                CamdCameraRepository.triggerRecorderSos(context)
+                                delay(1500L)
+                                isSosTriggering = false
+                            }
+                        },
+                        enabled = !isSosTriggering && !connectedStatus.recSos,
+                    ) {
+                        Text(
+                            text = if (connectedStatus.recSos) "SOS выполняется..." else "REC SOS (Аварийное сохранение)",
+                            fontSize = 13.sp,
+                            color = Color(0xFFEF4444),
+                        )
+                    }
+                }
+            }
         }
 
         val isInstalled = status !is CamdConnectionStatus.NotInstalled

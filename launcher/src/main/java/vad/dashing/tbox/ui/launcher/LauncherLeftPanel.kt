@@ -703,6 +703,7 @@ fun LauncherLeftPanel(
                         "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
                         "drive_mode", "drive_mode_offroad" -> "drive_mode"
                         "presets", "smart_control" -> "assist"
+                        "camd_controls", "cameras" -> "camd_controls"
                         else -> panelId
                     }
                     if (family !in enabledPanels) {
@@ -845,6 +846,11 @@ fun LauncherLeftPanel(
                                 sourceId = "launcher_mini_player_main",
                             )
                         }
+                    }
+                    "camd_controls", "cameras" -> {
+                        LauncherCameraAndDvrBar(
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
 
                 }
@@ -1568,6 +1574,8 @@ private enum class AssistPresetsTab {
     Main,         // Page 0: ACC + NGP (Default Main Central Page)
     Presets,      // Page 1: Speed Presets (Swipe Left from Main)
     SmartControl, // Page 2: Smart ACC & DIST (Swipe Left from Presets)
+    Cameras,      // Page 3: 3 camera buttons (Swipe Left from SmartControl/Presets)
+    Dvr,          // Page 4: DVR REC + SOS (Swipe Left from Cameras)
 }
 
 @Composable
@@ -1596,6 +1604,8 @@ internal fun LauncherAssistAndPresetsPanel(
             AssistPresetsTab.Main -> "assist"
             AssistPresetsTab.Presets -> "presets"
             AssistPresetsTab.SmartControl -> "smart_control"
+            AssistPresetsTab.Cameras -> "camd_cameras"
+            AssistPresetsTab.Dvr -> "camd_dvr"
         }
         LauncherAppConfigStore.setVisibleSubPanel("assist", visibleSub)
     }
@@ -1626,8 +1636,10 @@ internal fun LauncherAssistAndPresetsPanel(
                 }
             }
         } else if (!isCruiseEngaged && prevEngaged) {
-            // Cruise deactivated -> immediately return to Central Main page
-            activeTab = AssistPresetsTab.Main
+            // Cruise deactivated -> if in cruise presets/smart_control, return to Central Main page
+            if (activeTab == AssistPresetsTab.Presets || activeTab == AssistPresetsTab.SmartControl) {
+                activeTab = AssistPresetsTab.Main
+            }
         }
         prevEngaged = isCruiseEngaged
     }
@@ -1649,12 +1661,16 @@ internal fun LauncherAssistAndPresetsPanel(
                             // Swipe Left -> next page
                             activeTab = when (activeTab) {
                                 AssistPresetsTab.Main -> AssistPresetsTab.Presets
-                                AssistPresetsTab.Presets -> if (isConventional) AssistPresetsTab.Presets else AssistPresetsTab.SmartControl
-                                AssistPresetsTab.SmartControl -> AssistPresetsTab.SmartControl
+                                AssistPresetsTab.Presets -> if (isConventional) AssistPresetsTab.Cameras else AssistPresetsTab.SmartControl
+                                AssistPresetsTab.SmartControl -> AssistPresetsTab.Cameras
+                                AssistPresetsTab.Cameras -> AssistPresetsTab.Dvr
+                                AssistPresetsTab.Dvr -> AssistPresetsTab.Dvr
                             }
                         } else if (totalDragAmount > 30f) {
                             // Swipe Right -> previous page
                             activeTab = when (activeTab) {
+                                AssistPresetsTab.Dvr -> AssistPresetsTab.Cameras
+                                AssistPresetsTab.Cameras -> if (isConventional) AssistPresetsTab.Presets else AssistPresetsTab.SmartControl
                                 AssistPresetsTab.SmartControl -> AssistPresetsTab.Presets
                                 AssistPresetsTab.Presets -> AssistPresetsTab.Main
                                 AssistPresetsTab.Main -> AssistPresetsTab.Main
@@ -1697,6 +1713,12 @@ internal fun LauncherAssistAndPresetsPanel(
                 AssistPresetsTab.SmartControl -> LauncherSmartAccAndDistControl(
                     canViewModel = canViewModel,
                     adas = adas,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AssistPresetsTab.Cameras -> LauncherCamdCamerasPage(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AssistPresetsTab.Dvr -> LauncherCamdDvrPage(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

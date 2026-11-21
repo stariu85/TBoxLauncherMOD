@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1040,6 +1041,14 @@ private fun RenderTopBarItemContent(
                     ),
             )
         }
+        itemId == "camd_rec" -> {
+            LauncherTopBarRecWidget(
+                indicatorIconSizeDp = indicatorIconSizeDp,
+                indicatorFontSizeSp = indicatorFontSizeSp,
+                indicatorTextStyle = indicatorTextStyle,
+                modifier = Modifier.fillMaxHeight(),
+            )
+        }
         itemId == "temp" -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1973,6 +1982,13 @@ internal fun LauncherHeaderStatusIcons(
                 )
             }
         }
+        if (vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context)) {
+            LauncherTopBarRecWidget(
+                indicatorIconSizeDp = indicatorIconSizeDp,
+                indicatorFontSizeSp = (indicatorIconSizeDp.value * 0.75f).sp,
+                indicatorTextStyle = cellularTextStyle,
+            )
+        }
     }
 }
 
@@ -2246,6 +2262,62 @@ internal fun LauncherTopBarModemCellularWidget(
                 colorFilter = ColorFilter.tint(IndicatorIconTint),
             )
         }
+    }
+}
+
+@Composable
+internal fun LauncherTopBarRecWidget(
+    indicatorIconSizeDp: Dp,
+    indicatorFontSizeSp: TextUnit,
+    modifier: Modifier = Modifier,
+    indicatorTextStyle: TextStyle? = null,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val status by vad.dashing.tbox.camd.CamdCameraRepository.status.collectAsStateWithLifecycle()
+    val connected = status as? vad.dashing.tbox.camd.CamdConnectionStatus.Connected
+    val isRecording = connected?.recActive == true || connected?.recEnabled == true
+
+    val textStyle = indicatorTextStyle?.copy(
+        fontSize = indicatorFontSizeSp,
+        lineHeight = indicatorFontSizeSp,
+        fontWeight = FontWeight.Bold,
+    ) ?: TextStyle(
+        fontSize = indicatorFontSizeSp,
+        lineHeight = indicatorFontSizeSp,
+        fontWeight = FontWeight.Bold,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both,
+        ),
+    )
+
+    Row(
+        modifier = modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = {
+                scope.launch {
+                    vad.dashing.tbox.camd.CamdCameraRepository.setRecorderEnabled(context, !isRecording)
+                }
+            },
+        ),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painter = painterResource(
+                if (isRecording) R.drawable.ic_camd_rec_active else R.drawable.ic_camd_rec_idle,
+            ),
+            contentDescription = "Rec",
+            modifier = Modifier.size(indicatorIconSizeDp),
+        )
+        Text(
+            text = "Rec",
+            color = if (isRecording) Color(0xFFEF4444) else LauncherColors.TextMuted,
+            style = textStyle,
+        )
     }
 }
 

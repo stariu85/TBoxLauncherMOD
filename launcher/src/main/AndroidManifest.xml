@@ -54,6 +54,7 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="vad.dashing.camd.permission.START" />
 
     <permission
         android:name="ras.dashing.tbox.launcher.permission.CALL_LAUNCHER_API"

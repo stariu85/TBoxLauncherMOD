@@ -116,6 +116,52 @@ object CamdCameraRepository {
     const val CAMERA_ID_FRONT = 8
     const val CAMERA_ID_REAR = 9
 
+    // Stock AVM views (camd >= 0.8.0, vendor mesh calibration /vendor/etc/mbhal/avm/...)
+    const val CAMERA_ID_STOCK_FRONT = 40
+    const val CAMERA_ID_STOCK_RIGHT = 41
+    const val CAMERA_ID_STOCK_REAR = 42
+    const val CAMERA_ID_STOCK_LEFT = 43
+    const val CAMERA_ID_STOCK_WIDE_FRONT = 44
+    const val CAMERA_ID_STOCK_WIDE_REAR = 45
+
+    val RAW_CAMERA_IDS = listOf(
+        CAMERA_ID_CABIN,
+        CAMERA_ID_OMS,
+        CAMERA_ID_DMS,
+        CAMERA_ID_LEFT,
+        CAMERA_ID_RIGHT,
+        CAMERA_ID_FRONT,
+        CAMERA_ID_REAR,
+    )
+
+    val STOCK_AVM_CAMERA_IDS = listOf(
+        CAMERA_ID_STOCK_FRONT,
+        CAMERA_ID_STOCK_RIGHT,
+        CAMERA_ID_STOCK_REAR,
+        CAMERA_ID_STOCK_LEFT,
+        CAMERA_ID_STOCK_WIDE_FRONT,
+        CAMERA_ID_STOCK_WIDE_REAR,
+    )
+
+    val ALL_KNOWN_CAMERA_IDS = RAW_CAMERA_IDS + STOCK_AVM_CAMERA_IDS
+
+    fun getPhysicalCameraId(id: Int): Int = when (id) {
+        CAMERA_ID_STOCK_FRONT, CAMERA_ID_STOCK_WIDE_FRONT -> CAMERA_ID_FRONT
+        CAMERA_ID_STOCK_RIGHT -> CAMERA_ID_RIGHT
+        CAMERA_ID_STOCK_REAR, CAMERA_ID_STOCK_WIDE_REAR -> CAMERA_ID_REAR
+        CAMERA_ID_STOCK_LEFT -> CAMERA_ID_LEFT
+        else -> id
+    }
+
+    fun isStockAvmCameraId(id: Int): Boolean = id in 40..45
+
+    fun isSurroundCamera(id: Int): Boolean = when (id) {
+        CAMERA_ID_LEFT, CAMERA_ID_RIGHT, CAMERA_ID_FRONT, CAMERA_ID_REAR,
+        CAMERA_ID_STOCK_FRONT, CAMERA_ID_STOCK_RIGHT, CAMERA_ID_STOCK_REAR,
+        CAMERA_ID_STOCK_LEFT, CAMERA_ID_STOCK_WIDE_FRONT, CAMERA_ID_STOCK_WIDE_REAR -> true
+        else -> false
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _status = MutableStateFlow<CamdConnectionStatus>(CamdConnectionStatus.NotInstalled)
@@ -399,9 +445,11 @@ object CamdCameraRepository {
         scope.launch {
             val s = CamdSocketClient.checkStatus(context)
             _status.value = s
+            vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "refreshStatus: status=$s")
             if (s is CamdConnectionStatus.Connected) {
+                val physicalWindows = s.openWindows.map { getPhysicalCameraId(it) }
                 val hasAllFour = listOf(CAMERA_ID_LEFT, CAMERA_ID_RIGHT, CAMERA_ID_FRONT, CAMERA_ID_REAR)
-                    .all { it in s.openWindows }
+                    .all { it in physicalWindows }
                 _isDesktopCamerasOpen.value = hasAllFour
             }
         }
@@ -409,6 +457,18 @@ object CamdCameraRepository {
 
     suspend fun setHoldStockAvm(context: Context, holdOff: Boolean): Result<String> {
         val res = CamdSocketClient.setAvmHold(context, holdOff)
+        refreshStatus(context)
+        return res
+    }
+
+    suspend fun setRecorderEnabled(context: Context, enabled: Boolean): Result<String> {
+        val res = CamdSocketClient.setRecorder(context, enabled)
+        refreshStatus(context)
+        return res
+    }
+
+    suspend fun triggerRecorderSos(context: Context): Result<String> {
+        val res = CamdSocketClient.triggerRecorderSos(context)
         refreshStatus(context)
         return res
     }
@@ -474,6 +534,10 @@ object CamdCameraRepository {
         }
 
         val target360 = reverseCamerasTriggered || pdcCamerasTriggered
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "check360Cameras: target360=$target360 (revTriggered=$reverseCamerasTriggered, pdcTriggered=$pdcCamerasTriggered, gear=$activeGear, speed=$speed)"
+        )
         apply360CamerasState(context, target360)
     }
 
@@ -624,6 +688,10 @@ object CamdCameraRepository {
     }
 
     internal fun checkReverseGearCameras(context: Context, speed: Float?, activeGear: Char?) {
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "checkReverseGearCameras: speed=$speed activeGear=$activeGear"
+        )
         val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc
             ?: LauncherAdasRepository.state.value.pdc
         val isAvmActive = LauncherAvmRepository.isAvmActive.value
@@ -658,6 +726,10 @@ object CamdCameraRepository {
         if (targetActive == _isReverseCamerasOpen.value && reverseCamerasJob?.isActive != true) {
             return
         }
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "apply360CamerasState: targetActive=$targetActive currentOpen=${_isReverseCamerasOpen.value}"
+        )
 
         if (targetActive) {
             if (!_isReverseCamerasOpen.value && reverseCamerasJob?.isActive != true) {
@@ -692,6 +764,10 @@ object CamdCameraRepository {
             ?: Rect(0, 51, 1920, 998)
 
         val commands = build360CameraCommands(context, appRect, dispW, dispH)
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "openReverseCameras: commands=$commands bounds=$appRect"
+        )
         if (commands.isEmpty()) {
             _isReverseCamerasOpen.value = false
             return@withLock
@@ -705,7 +781,12 @@ object CamdCameraRepository {
                 CamdSocketClient.sendCommand(cmd)
             }
             val responseText = res.getOrNull().orEmpty()
-            if (res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)) {
+            val isSuccess = res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "openReverseCameras: cmd='$cmd' success=$isSuccess resp='$responseText' err=${res.exceptionOrNull()?.message}"
+            )
+            if (isSuccess) {
                 successCount++
             } else {
                 Log.w(TAG, "Failed reverse camera command '$cmd': $responseText err=${res.exceptionOrNull()?.message}")
@@ -716,6 +797,7 @@ object CamdCameraRepository {
     }
 
     private suspend fun closeReverseCameras(context: Context) = cameraOperationMutex.withLock {
+        vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "closeReverseCameras: sending CLOSE")
         val res = CamdSocketClient.sendCommand("CLOSE")
         if (res.isFailure) {
             CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
@@ -747,7 +829,10 @@ object CamdCameraRepository {
         val udBottomPreset = LauncherAppConfigStore.camdWidgetUdBottomPreset(context).trim()
 
         fun buildCameraCommand(presetName: String, fallbackCamId: Int, x: Float, y: Float, w: Float, h: Float): String {
-            return if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
+            val numId = presetName.toIntOrNull()
+            return if (numId != null) {
+                formatCmd(numId, x, y, w, h)
+            } else if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
                 formatPresetCmd(presetName, x, y, w, h)
             } else if (presetName.isNotEmpty()) {
                 val targetId = connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: fallbackCamId
@@ -802,6 +887,11 @@ object CamdCameraRepository {
      * - Front (#8) & Rear (#9) in the middle up to half height
      */
     fun toggleDesktopCameras(context: Context) {
+        val installed = CamdSocketClient.isInstalled(context)
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "toggleDesktopCameras: isDesktopOpen=${_isDesktopCamerasOpen.value} isInstalled=$installed"
+        )
         desktopOperationJob?.cancel()
         desktopOperationJob = scope.launch {
             if (_isDesktopCamerasOpen.value) {
@@ -827,6 +917,10 @@ object CamdCameraRepository {
     fun closeAllIfOpen(context: Context) {
         if (!CamdSocketClient.isInstalled(context)) return
         if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true || reverseCamerasJob?.isActive == true) {
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "closeAllIfOpen: closing cameras (active=${hasActiveCameras()})"
+            )
             desktopOperationJob?.cancel()
             turnSignalJob?.cancel()
             reverseCamerasJob?.cancel()
@@ -849,7 +943,12 @@ object CamdCameraRepository {
     fun toggleWidgetCameras(context: Context, mode: CamdWidgetCameraMode) {
         val appCtx = context.applicationContext
         appContext = appCtx
-        if (!CamdSocketClient.isInstalled(appCtx)) return
+        val isInstalled = CamdSocketClient.isInstalled(appCtx)
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "toggleWidgetCameras: mode=$mode activeMode=${_activeWidgetCameraMode.value} isInstalled=$isInstalled"
+        )
+        if (!isInstalled) return
 
         if (_activeWidgetCameraMode.value == mode) {
             closeAllIfOpen(appCtx)
@@ -889,7 +988,10 @@ object CamdCameraRepository {
         val udBottomPreset = LauncherAppConfigStore.camdWidgetUdBottomPreset(context).trim()
 
         fun buildCameraCommand(presetName: String, fallbackCamId: Int, x: Float, y: Float, w: Float, h: Float): String {
-            return if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
+            val numId = presetName.toIntOrNull()
+            return if (numId != null) {
+                formatCmd(numId, x, y, w, h)
+            } else if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
                 formatPresetCmd(presetName, x, y, w, h)
             } else if (presetName.isNotEmpty()) {
                 val targetId = connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: fallbackCamId
@@ -941,9 +1043,11 @@ object CamdCameraRepository {
         }
 
         if (commands.isEmpty()) {
+            vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "openWidgetCameras: mode=$mode has empty commands")
             _activeWidgetCameraMode.value = CamdWidgetCameraMode.NONE
             return@withLock
         }
+        vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "openWidgetCameras: mode=$mode commands=$commands")
 
         var successCount = 0
         for ((idx, cmd) in commands.withIndex()) {
@@ -953,7 +1057,12 @@ object CamdCameraRepository {
                 CamdSocketClient.sendCommand(cmd)
             }
             val responseText = res.getOrNull().orEmpty()
-            if (res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)) {
+            val isSuccess = res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "openWidgetCameras: cmd='$cmd' success=$isSuccess resp='$responseText' err=${res.exceptionOrNull()?.message}"
+            )
+            if (isSuccess) {
                 successCount++
             } else {
                 Log.w(TAG, "Failed widget command '$cmd': $responseText err=${res.exceptionOrNull()?.message}")
@@ -1028,6 +1137,10 @@ object CamdCameraRepository {
             formatCmd(CAMERA_ID_FRONT, frontX, frontY, frontW, frontH),
             formatCmd(CAMERA_ID_REAR, rearX, rearY, rearW, rearH),
         )
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "openDesktopCameras: commands=$commands bounds=$appRect"
+        )
 
         var successCount = 0
         for ((idx, cmd) in commands.withIndex()) {
@@ -1038,7 +1151,12 @@ object CamdCameraRepository {
                 CamdSocketClient.sendCommand(cmd)
             }
             val responseText = res.getOrNull().orEmpty()
-            if (res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)) {
+            val isSuccess = res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "openDesktopCameras: cmd='$cmd' success=$isSuccess resp='$responseText' err=${res.exceptionOrNull()?.message}"
+            )
+            if (isSuccess) {
                 successCount++
             } else {
                 Log.w(TAG, "Failed command '$cmd': $responseText err=${res.exceptionOrNull()?.message}")
@@ -1049,6 +1167,7 @@ object CamdCameraRepository {
     }
 
     suspend fun closeAll(context: Context) {
+        vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "closeAll")
         steerOffJob?.cancel()
         steerOffJob = null
         turnSignalJob?.cancel()
@@ -1073,13 +1192,13 @@ object CamdCameraRepository {
     suspend fun closeCamera(context: Context, id: Int?) {
         cameraOperationMutex.withLock {
             val cmd = if (id != null) "CLOSE $id" else "CLOSE"
-            vad.dashing.tbox.DclLogRecorder.log("CAMD_CAMERA", "closeCamera cmd='$cmd' id=$id")
+            vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "closeCamera cmd='$cmd' id=$id")
             val res = CamdSocketClient.sendCommand(cmd)
             if (res.isFailure) {
                 CamdSocketClient.sendCommandWithWakeup(context, cmd)
             }
             if (id != null && (res.isFailure || CamdSocketClient.isErrorResponse(res.getOrNull().orEmpty()))) {
-                vad.dashing.tbox.DclLogRecorder.log("CAMD_CAMERA", "closeCamera id=$id failed (${res.getOrNull()}), fallback to CLOSE")
+                vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "closeCamera id=$id failed (${res.getOrNull()}), fallback to CLOSE")
                 CamdSocketClient.sendCommandWithWakeup(context, "CLOSE")
             }
             if (id == null) {
@@ -1145,6 +1264,10 @@ object CamdCameraRepository {
         checkReverseAvmRetry(context, activeGear, isAvmActive)
 
         if (shouldCloseCamerasForStockAvm(disableStockAvm, activeGear, speed, minSpeed)) {
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "evaluateSideCameraState: suppressed by shouldCloseCamerasForStockAvm (disableStockAvm=$disableStockAvm, activeGear=$activeGear, speed=$speed, minSpeed=$minSpeed)"
+            )
             if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true || reverseCamerasJob?.isActive == true) {
                 closeAllIfOpen(context)
             }
@@ -1283,7 +1406,7 @@ object CamdCameraRepository {
 
     private fun applyTargetSideCamera(context: Context, targetSide: TurnSignalSide?, isLowSpeed: Boolean) {
         vad.dashing.tbox.DclLogRecorder.log(
-            "CAMD_CAMERA",
+            "CamdCameraRepository",
             "applyTargetSideCamera target=$targetSide isLowSpeed=$isLowSpeed active=${_activeTurnSignalSide.value} activeLow=$_activeIsLowSpeed"
         )
         if (_activeTurnSignalSide.value == targetSide && _activeIsLowSpeed == isLowSpeed) {
@@ -1335,6 +1458,10 @@ object CamdCameraRepository {
     fun testSideCamera(context: Context, cameraId: Int) {
         val side = if (cameraId == CAMERA_ID_LEFT) TurnSignalSide.Left else TurnSignalSide.Right
         val lowSpeed = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "testSideCamera: cameraId=$cameraId side=$side lowSpeed=$lowSpeed activeSide=${_activeTurnSignalSide.value} activeCam=${_activeTurnSignalCamera.value}"
+        )
         turnSignalJob?.cancel()
         turnSignalJob = scope.launch {
             if (_activeTurnSignalSide.value == side) {
@@ -1520,20 +1647,39 @@ object CamdCameraRepository {
 
         if (!x.isFinite() || !y.isFinite() || !w.isFinite() || !h.isFinite()) return null
 
-        val cmd = if (!presetName.isNullOrBlank()) {
+        val isNumericPreset = presetName?.toIntOrNull() != null
+        val cmd = if (!presetName.isNullOrBlank() && !isNumericPreset) {
             formatPresetCmd(presetName, x, y, w, h, shapeCircle = effectiveShapeCircle)
         } else {
             formatCmd(targetCameraId, x, y, w, h, shapeCircle = effectiveShapeCircle)
         }
 
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "openTurnSignalSideCamera: cameraId=$cameraId isLowSpeed=$isLowSpeed presetName='$presetName' targetCameraId=$targetCameraId cmd='$cmd'"
+        )
+
         val res = CamdSocketClient.sendCommandWithWakeup(context, cmd)
         val responseText = res.getOrNull().orEmpty()
+        val isSuccess = res.isSuccess && CamdSocketClient.isSuccessResponse(responseText)
+        vad.dashing.tbox.DclLogRecorder.log(
+            "CamdCameraRepository",
+            "openTurnSignalSideCamera: result success=$isSuccess resp='$responseText' err=${res.exceptionOrNull()?.message}"
+        )
         if (CamdSocketClient.isErrorResponse(responseText)) {
             Log.w(TAG, "openTurnSignalSideCamera command failed: $responseText")
             // Fallback: if preset failed with ERR unknown_preset, retry with raw camera
             if (!presetName.isNullOrBlank()) {
                 val fallbackCmd = formatCmd(cameraId, x, y, w, h, shapeCircle = effectiveShapeCircle)
-                CamdSocketClient.sendCommand(fallbackCmd)
+                vad.dashing.tbox.DclLogRecorder.log(
+                    "CamdCameraRepository",
+                    "openTurnSignalSideCamera: preset failed, retrying fallback raw cameraId=$cameraId fallbackCmd='$fallbackCmd'"
+                )
+                val fallbackRes = CamdSocketClient.sendCommand(fallbackCmd)
+                vad.dashing.tbox.DclLogRecorder.log(
+                    "CamdCameraRepository",
+                    "openTurnSignalSideCamera: fallback result resp='${fallbackRes.getOrNull()}' err=${fallbackRes.exceptionOrNull()?.message}"
+                )
                 return cameraId
             }
         }
@@ -1670,12 +1816,13 @@ object CamdCameraRepository {
         val sb = StringBuilder()
         sb.append(String.format(Locale.US, "OPEN %d %.4f %.4f %.4f %.4f", id, bounds.x, bounds.y, bounds.w, bounds.h))
 
+        val normRotation = ((rotation % 360) + 360) % 360
         val hasFlip = (flipH != 0 || flipV != 0)
         if (hasFlip) {
-            // Per spec: if flip is used, rotation token is MANDATORY
-            sb.append(String.format(Locale.US, " %d %d %d", rotation, flipH, flipV))
-        } else if (rotation != 0) {
-            sb.append(String.format(Locale.US, " %d", rotation))
+            // Per spec §3.1: if flip is used, rotation token is MANDATORY
+            sb.append(String.format(Locale.US, " %d %d %d", normRotation, flipH, flipV))
+        } else if (normRotation != 0) {
+            sb.append(String.format(Locale.US, " %d", normRotation))
         }
 
         if (crop != null) {

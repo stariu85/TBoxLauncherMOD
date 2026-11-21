@@ -90,4 +90,36 @@ class CamdWidgetCamerasSplitTest {
         val cmd = CamdCameraRepository.formatPresetCmd("my_wide_left", 0.18f, 0.05f, 0.41f, 0.88f)
         assertEquals("OPEN preset=my_wide_left 0.1800 0.0500 0.4100 0.8800", cmd)
     }
+
+    @Test
+    fun rotation_normalizesDegreesCorrectly() {
+        // 360 should normalize to 0 (and be omitted if no flip)
+        val cmd360 = CamdCameraRepository.formatCmd(CamdCameraRepository.CAMERA_ID_FRONT, 0.1f, 0.1f, 0.2f, 0.2f, rotation = 360)
+        assertEquals("OPEN 8 0.1000 0.1000 0.2000 0.2000", cmd360)
+
+        // 45 degrees (camd >= 0.6.0 arbitrary angle)
+        val cmd45 = CamdCameraRepository.formatCmd(CamdCameraRepository.CAMERA_ID_FRONT, 0.1f, 0.1f, 0.2f, 0.2f, rotation = 45)
+        assertEquals("OPEN 8 0.1000 0.1000 0.2000 0.2000 45", cmd45)
+
+        // 360 with flip should output "0 1 0"
+        val cmd360Flip = CamdCameraRepository.formatCmd(CamdCameraRepository.CAMERA_ID_FRONT, 0.1f, 0.1f, 0.2f, 0.2f, rotation = 360, flipH = 1)
+        assertEquals("OPEN 8 0.1000 0.1000 0.2000 0.2000 0 1 0", cmd360Flip)
+    }
+
+    @Test
+    fun stockAvmCameraIds_mappedCorrectly() {
+        assertEquals(CamdCameraRepository.CAMERA_ID_FRONT, CamdCameraRepository.getPhysicalCameraId(40))
+        assertEquals(CamdCameraRepository.CAMERA_ID_RIGHT, CamdCameraRepository.getPhysicalCameraId(41))
+        assertEquals(CamdCameraRepository.CAMERA_ID_REAR, CamdCameraRepository.getPhysicalCameraId(42))
+        assertEquals(CamdCameraRepository.CAMERA_ID_LEFT, CamdCameraRepository.getPhysicalCameraId(43))
+        assertEquals(CamdCameraRepository.CAMERA_ID_FRONT, CamdCameraRepository.getPhysicalCameraId(44))
+        assertEquals(CamdCameraRepository.CAMERA_ID_REAR, CamdCameraRepository.getPhysicalCameraId(45))
+
+        assertTrue(CamdCameraRepository.isStockAvmCameraId(40))
+        assertTrue(CamdCameraRepository.isStockAvmCameraId(45))
+        assertTrue(!CamdCameraRepository.isStockAvmCameraId(8))
+
+        assertTrue(CamdCameraRepository.isSurroundCamera(40))
+        assertTrue(CamdCameraRepository.isSurroundCamera(4))
+    }
 }
