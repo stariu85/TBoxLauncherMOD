@@ -473,6 +473,13 @@ internal fun forceFreeformBoundsByTaskId(
     val rect = Rect(bounds)
     setTaskWindowingModeFreeform(am, taskId)
 
+    if (LauncherAppConfigStore.experimentalHomeWindowingMode(context)) {
+        runCatching {
+            DclwmClient().setWindowingMode(taskId, WINDOWING_MODE_FREEFORM)
+            Log.w("LauncherAppLaunch", "dclwm restored task to freeform id=$taskId")
+        }.onFailure { Log.w("LauncherAppLaunch", "dclwm setWindowingMode freeform failed task=$taskId", it) }
+    }
+
     if (LauncherAppConfigStore.experimentalHideAppsOnHome(context)) {
         val dclwmResized = runCatching {
             DclwmClient().resize(taskId, rect.left, rect.top, rect.right, rect.bottom)

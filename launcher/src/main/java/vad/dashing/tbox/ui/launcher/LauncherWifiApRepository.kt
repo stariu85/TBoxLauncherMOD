@@ -116,13 +116,10 @@ internal object LauncherWifiApRepository {
 
     /** Returns true when both SSID and password were captured. */
     private fun readOnce(context: Context, allowLogcat: Boolean): Boolean {
-        var ssid = MbCanEngineFacade.canGetVehicleParamString(PROP_WIFI_SSID)?.trim().orEmpty()
-        var password = MbCanEngineFacade.canGetVehicleParamString(PROP_WIFI_PASSWORD)?.trim().orEmpty()
-        var mac = MbCanEngineFacade.canGetVehicleParamString(PROP_WIFI_MAC)?.trim().orEmpty()
-        // Probe: BT address (64) is another AIService string property — tells whether
-        // string-get works cross-process at all on this firmware.
-        val btProbe = MbCanEngineFacade.canGetVehicleParamString(64)?.trim().orEmpty()
-        if (ssid.isEmpty() && password.isEmpty() && wifiManagerFallbackUsable) {
+        var ssid = ""
+        var password = ""
+        var mac = ""
+        if (wifiManagerFallbackUsable) {
             readViaWifiManager(context)?.let { (s, p) ->
                 ssid = s
                 password = p
@@ -136,7 +133,7 @@ internal object LauncherWifiApRepository {
                 if (password.isEmpty()) password = p
             }
         }
-        Log.w(TAG, "wifi ap read ssid='$ssid' pass_len=${password.length} mac='$mac' bt64='$btProbe'")
+        Log.w(TAG, "wifi ap read ssid='$ssid' pass_len=${password.length} mac='$mac'")
         if (ssid.isEmpty() && password.isEmpty() && mac.isEmpty()) return false
         // Merge with the previous snapshot so a late-arriving field is not dropped.
         val prev = _state.value

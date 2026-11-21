@@ -278,17 +278,10 @@ object MbCanEngineFacade {
         }
     }
 
-    /** [com.mengbo.mbCan.MBCanEngine.canGetVehicleParamString] — MBVehicleProperty string ids (62/63/116...). */
-    fun canGetVehicleParamString(propertyId: Int): String? {
-        if (ensureInitialized() !is MbCanAvailability.Available) return null
-        vad.dashing.tbox.DclLogRecorder.recordCanRx()
-        return try {
-            withNativeLock {
-                (canGetVehicleParamStringMethod?.invoke(engineInstance, propertyId) as? String)
-            }
-        } catch (_: Throwable) {
-            null
-        }
+    /** [com.mengbo.mbCan.MBCanEngine.canGetVehicleParamString] — Disabled: native libmbCan.so causes SIGABRT (use of deleted local reference). */
+    fun canGetVehicleParamString(@Suppress("UNUSED_PARAMETER") propertyId: Int): String? {
+        // Disabled: libmbCan.so nativeCanVehicleGetString triggers fatal JNI error: use of deleted local reference (SIGABRT).
+        return null
     }
 
     /**
