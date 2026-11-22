@@ -150,6 +150,7 @@ class LauncherHomeActivity : ComponentActivity() {
             delay(80L)
             LauncherEdgeGestureOverlay.ensureShowing(this@LauncherHomeActivity)
             DclUiStateNotifier.notifyUiStateChanged(this@LauncherHomeActivity)
+            vad.dashing.tbox.ui.launcher.LauncherHomeSnapshotHolder.captureSnapshot(this@LauncherHomeActivity) {}
 
             // --- Stage 2: Heavy subsystems, mbCAN & caches (+400ms after Stage 1) ---
             delay(400L)
@@ -226,6 +227,7 @@ class LauncherHomeActivity : ComponentActivity() {
             }
             if (foreign == null) {
                 LauncherRightPanelOverlayWindow.ensureShowing(this)
+                vad.dashing.tbox.ui.launcher.LauncherHomeSnapshotHolder.captureSnapshot(this) {}
             }
             LauncherOverlayBar.ensureShowing(this)
             LauncherEdgeGestureOverlay.ensureShowing(this)

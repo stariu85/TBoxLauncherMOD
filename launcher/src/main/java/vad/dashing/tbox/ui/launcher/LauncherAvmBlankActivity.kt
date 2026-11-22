@@ -17,20 +17,17 @@ import android.widget.ImageView
 import vad.dashing.tbox.LauncherHomeActivityHolder
 
 /**
- * Snapshot holder capturing the full screen (including open apps) before launching [LauncherAvmBlankActivity].
- * Retains snapshot in memory for [CACHE_DURATION_MS] (10 seconds) after AVM camera closes,
- * so rapid re-activations of 360 camera reuse the cached snapshot instantly without taking a new screenshot.
+ * Snapshot holder capturing the desktop (Home screen) before launching [LauncherAvmBlankActivity].
+ * Retains snapshot in memory so activations of 360 camera reuse the cached desktop snapshot instantly.
  */
 object LauncherHomeSnapshotHolder {
     private const val TAG = "LauncherHomeSnapshot"
-    private const val CACHE_DURATION_MS = 10_000L
 
     @Volatile
     var lastSnapshot: Bitmap? = null
         private set
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var clearRunnable: Runnable? = null
 
     fun hasValidSnapshot(): Boolean {
         val bmp = lastSnapshot
@@ -38,27 +35,24 @@ object LauncherHomeSnapshotHolder {
     }
 
     fun captureSnapshot(activity: Activity?, onComplete: () -> Unit) {
-        cancelClearTimer()
-
         if (hasValidSnapshot()) {
-            Log.i(TAG, "Reusing cached screen snapshot within 10s window")
+            Log.i(TAG, "Reusing cached screen snapshot")
             mainHandler.post { onComplete() }
             return
         }
 
-        Thread {
-            val bitmap = captureViaScreencap()
-
-            if (bitmap != null) {
-                updateSnapshot(bitmap)
-                mainHandler.post { onComplete() }
-            } else {
-                Log.w(TAG, "screencap failed or returned null, falling back to PixelCopy")
-                mainHandler.post {
-                    captureViaPixelCopy(activity, onComplete)
+        val act = activity ?: LauncherHomeActivityHolder.instance
+        if (act != null && !act.isFinishing && !act.isDestroyed) {
+            captureViaPixelCopy(act, onComplete)
+        } else {
+            Thread {
+                val bitmap = captureViaScreencap()
+                if (bitmap != null) {
+                    updateSnapshot(bitmap)
                 }
-            }
-        }.start()
+                mainHandler.post { onComplete() }
+            }.start()
+        }
     }
 
     private fun captureViaScreencap(): Bitmap? {
@@ -103,18 +97,27 @@ object LauncherHomeSnapshotHolder {
                 { copyResult ->
                     if (copyResult == PixelCopy.SUCCESS) {
                         updateSnapshot(bitmap)
-                        Log.i(TAG, "Captured fallback PixelCopy snapshot ${width}x${height}")
+                        Log.i(TAG, "Captured desktop PixelCopy snapshot ${width}x${height}")
+                        onComplete()
                     } else {
-                        Log.w(TAG, "PixelCopy failed with result=$copyResult")
+                        Log.w(TAG, "PixelCopy failed with result=$copyResult, trying screencap fallback")
                         bitmap.recycle()
+                        Thread {
+                            val fb = captureViaScreencap()
+                            if (fb != null) updateSnapshot(fb)
+                            mainHandler.post { onComplete() }
+                        }.start()
                     }
-                    onComplete()
                 },
                 Handler(Looper.getMainLooper()),
             )
         }.onFailure { e ->
-            Log.e(TAG, "Failed to request PixelCopy snapshot", e)
-            onComplete()
+            Log.e(TAG, "Failed to request PixelCopy snapshot, trying screencap fallback", e)
+            Thread {
+                val fb = captureViaScreencap()
+                if (fb != null) updateSnapshot(fb)
+                mainHandler.post { onComplete() }
+            }.start()
         }
     }
 
@@ -127,26 +130,8 @@ object LauncherHomeSnapshotHolder {
         }
     }
 
-    fun onAvmHidden() {
-        mainHandler.post {
-            cancelClearTimer()
-            val runnable = Runnable {
-                Log.i(TAG, "10 seconds elapsed since AVM closed, clearing snapshot")
-                clearSnapshot()
-            }
-            clearRunnable = runnable
-            mainHandler.postDelayed(runnable, CACHE_DURATION_MS)
-        }
-    }
-
-    fun cancelClearTimer() {
-        clearRunnable?.let { mainHandler.removeCallbacks(it) }
-        clearRunnable = null
-    }
-
     @Synchronized
     fun clearSnapshot() {
-        cancelClearTimer()
         val bmp = lastSnapshot
         lastSnapshot = null
         if (bmp != null && !bmp.isRecycled) {
@@ -167,6 +152,12 @@ class LauncherAvmBlankActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!shouldBeShowing) {
+            Log.w(TAG, "LauncherAvmBlankActivity created but shouldBeShowing is false -> finishing immediately")
+            finish()
+            overridePendingTransition(0, 0)
+            return
+        }
         instance = this
         overridePendingTransition(0, 0)
 
@@ -195,6 +186,11 @@ class LauncherAvmBlankActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (!shouldBeShowing) {
+            finish()
+            overridePendingTransition(0, 0)
+            return
+        }
         overridePendingTransition(0, 0)
     }
 
@@ -207,7 +203,6 @@ class LauncherAvmBlankActivity : Activity() {
         if (instance == this) {
             instance = null
         }
-        LauncherHomeSnapshotHolder.onAvmHidden()
         super.onDestroy()
         Log.i(TAG, "LauncherAvmBlankActivity destroyed")
     }
@@ -215,6 +210,12 @@ class LauncherAvmBlankActivity : Activity() {
     override fun finish() {
         super.finish()
         overridePendingTransition(0, 0)
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        // Prevent closing via back press while AVM camera is active
     }
 
     companion object {
@@ -234,10 +235,17 @@ class LauncherAvmBlankActivity : Activity() {
         @Volatile
         private var instance: LauncherAvmBlankActivity? = null
 
-        fun isShowing(): Boolean = instance != null
+        @Volatile
+        private var shouldBeShowing: Boolean = false
+
+        fun isShowing(): Boolean = shouldBeShowing || instance != null
 
         fun show(context: Context) {
-            if (isShowing()) return
+            shouldBeShowing = true
+            val act = instance
+            if (act != null && !act.isFinishing && !act.isDestroyed) {
+                return
+            }
             val intent = Intent(context, LauncherAvmBlankActivity::class.java).apply {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -248,26 +256,25 @@ class LauncherAvmBlankActivity : Activity() {
             }
             runCatching {
                 context.startActivity(intent)
-                Log.i(TAG, "Starting LauncherAvmBlankActivity to pause foreign app render")
+                Log.i(TAG, "Starting LauncherAvmBlankActivity to cover active apps during AVM")
             }.onFailure { e ->
                 Log.e(TAG, "Failed to start LauncherAvmBlankActivity", e)
             }
         }
 
         fun hide() {
-            val act = instance ?: run {
-                LauncherHomeSnapshotHolder.onAvmHidden()
-                return
-            }
+            shouldBeShowing = false
+            val act = instance
             instance = null
-            runCatching {
-                act.finish()
-                act.overridePendingTransition(0, 0)
-                Log.i(TAG, "Hiding LauncherAvmBlankActivity")
-            }.onFailure { e ->
-                Log.e(TAG, "Failed to finish LauncherAvmBlankActivity", e)
+            if (act != null) {
+                runCatching {
+                    act.finish()
+                    act.overridePendingTransition(0, 0)
+                    Log.i(TAG, "Hiding LauncherAvmBlankActivity")
+                }.onFailure { e ->
+                    Log.e(TAG, "Failed to finish LauncherAvmBlankActivity", e)
+                }
             }
-            LauncherHomeSnapshotHolder.onAvmHidden()
         }
     }
 }
