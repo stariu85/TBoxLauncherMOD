@@ -277,10 +277,15 @@ internal fun LauncherTopBarPickerContent(
     val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
     val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
 
+    val context = LocalContext.current
+    val isCamdInstalled = remember(context) { vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context) }
+
     val availableButtons = LauncherTopBarDescriptors.ALL_BUTTONS.filter { desc ->
         desc.id.startsWith("spacer") || !activeItems.contains(desc.id)
     }
-    val availableIndicators = LauncherTopBarDescriptors.ALL_INDICATORS.filter { !activeItems.contains(it.id) }
+    val availableIndicators = LauncherTopBarDescriptors.ALL_INDICATORS.filter { desc ->
+        if (desc.id == "camd_rec" && !isCamdInstalled) false else !activeItems.contains(desc.id)
+    }
 
     Surface(
         shape = RoundedCornerShape(16.dp),

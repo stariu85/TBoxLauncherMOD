@@ -218,6 +218,7 @@ object CamdCameraRepository {
     private var currentSteerSide: TurnSignalSide? = null
     @Volatile
     private var lastAutoAvmHoldOff: Boolean? = null
+    private var avmVerificationJob: Job? = null
     private val cameraOperationMutex = Mutex()
 
     fun startSideCamerasMonitor(context: Context) {
@@ -367,27 +368,173 @@ object CamdCameraRepository {
                 check360Cameras(appCtx, inputs.speed, inputs.activeGear, inputs.pdc, inputs.isAvmActive)
                 evaluateSideCameraState(appCtx)
                 checkReverseAvmRetry(appCtx, inputs.activeGear, inputs.isAvmActive)
-                checkRecorderAutoOffSpeed(appCtx, inputs.speed)
+                checkDvrAndAvmCoordination(appCtx, inputs.speed, inputs.isAvmActive)
             }
         }
     }
 
-    private suspend fun checkRecorderAutoOffSpeed(context: Context, speed: Float?) {
-        val recorderEnabled = LauncherAppConfigStore.camdRecorderEnabled(context)
-        val autoOffEnabled = LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)
-        if (!recorderEnabled || !autoOffEnabled) return
-        if (speed == null || !speed.isFinite() || speed < 0f) return
+    internal fun resolveDvrTargetState(
+        isDvrEnabled: Boolean,
+        isAutoDvr: Boolean,
+        isAvmActive: Boolean,
+        speed: Float?,
+        activeGear: Char?,
+        autoAvmEnabled: Boolean,
+        onSpeed: Int,
+        offSpeed: Int,
+        disableStockAvm: Boolean,
+        isCurrentlyRecording: Boolean,
+    ): DvrTargetState {
+        if (!isDvrEnabled) {
+            return DvrTargetState(
+                targetRecording = false,
+                shouldDisableStockAvm = false,
+                scheduleAvmVerification = false,
+            )
+        }
 
-        val autoOffSpeed = LauncherAppConfigStore.camdRecorderAutoOffSpeed(context).toFloat()
-        if (speed >= autoOffSpeed) {
-            val s = _status.value as? CamdConnectionStatus.Connected
-            val isCurrentlyRecording = s?.recActive == true || s?.recEnabled == true
-            if (isCurrentlyRecording) {
+        if (!isAutoDvr) {
+            // Manual DVR mode: DVR is on, auto-off is disabled.
+            // Stock AVM must be automatically disabled so DVR can work.
+            return DvrTargetState(
+                targetRecording = true,
+                shouldDisableStockAvm = !disableStockAvm,
+                scheduleAvmVerification = false,
+            )
+        }
+
+        // Auto DVR mode:
+        // If AVM is active on screen, DVR must stop recording.
+        if (isAvmActive) {
+            return DvrTargetState(
+                targetRecording = false,
+                shouldDisableStockAvm = false,
+                scheduleAvmVerification = false,
+            )
+        }
+
+        // AVM is not active. Check speed / gear requirement.
+        val shouldHoldOff = if (autoAvmEnabled) {
+            resolveAutoAvmHoldOff(speed, activeGear, onSpeed, offSpeed)
+        } else {
+            disableStockAvm
+        }
+
+        return when (shouldHoldOff) {
+            false -> {
+                // Stock AVM should be on (AVM active). Stop DVR so AVM can work.
+                DvrTargetState(
+                    targetRecording = false,
+                    shouldDisableStockAvm = false,
+                    scheduleAvmVerification = isCurrentlyRecording,
+                )
+            }
+            true -> {
+                // Stock AVM is held off. DVR should record.
+                DvrTargetState(
+                    targetRecording = true,
+                    shouldDisableStockAvm = false,
+                    scheduleAvmVerification = false,
+                )
+            }
+            null -> {
+                // In hysteresis gap. Retain recording if AVM was already disabled.
+                val keepRecording = isCurrentlyRecording || disableStockAvm
+                DvrTargetState(
+                    targetRecording = keepRecording,
+                    shouldDisableStockAvm = false,
+                    scheduleAvmVerification = false,
+                )
+            }
+        }
+    }
+
+    data class DvrTargetState(
+        val targetRecording: Boolean,
+        val shouldDisableStockAvm: Boolean,
+        val scheduleAvmVerification: Boolean,
+    )
+
+    private suspend fun checkDvrAndAvmCoordination(context: Context, speed: Float?, isAvmActive: Boolean) {
+        val recorderEnabled = LauncherAppConfigStore.camdRecorderEnabled(context)
+        if (!recorderEnabled) {
+            avmVerificationJob?.cancel()
+            avmVerificationJob = null
+            return
+        }
+
+        if (!CamdSocketClient.isInstalled(context)) return
+
+        val autoDvr = LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)
+        val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
+        val autoAvmEnabled = LauncherAppConfigStore.camdAutoDisableStockAvm(context)
+        val onSpeed = LauncherAppConfigStore.camdAutoAvmOnSpeed(context)
+        val offSpeed = LauncherAppConfigStore.camdAutoAvmOffSpeed(context)
+        val activeGear = getCurrentActiveGear()
+
+        val s = _status.value as? CamdConnectionStatus.Connected
+        val isCurrentlyRecording = s?.recActive == true || s?.recEnabled == true
+
+        val target = resolveDvrTargetState(
+            isDvrEnabled = recorderEnabled,
+            isAutoDvr = autoDvr,
+            isAvmActive = isAvmActive,
+            speed = speed,
+            activeGear = activeGear,
+            autoAvmEnabled = autoAvmEnabled,
+            onSpeed = onSpeed,
+            offSpeed = offSpeed,
+            disableStockAvm = disableStockAvm,
+            isCurrentlyRecording = isCurrentlyRecording,
+        )
+
+        if (target.shouldDisableStockAvm) {
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "DVR is enabled without auto-DVR -> turning OFF stock AVM (setHoldStockAvm=true)"
+            )
+            LauncherAppConfigStore.setCamdDisableStockAvm(context, true)
+            setHoldStockAvm(context, true)
+        }
+
+        if (target.scheduleAvmVerification) {
+            scheduleAvmVerification(context)
+        } else if (target.targetRecording) {
+            avmVerificationJob?.cancel()
+            avmVerificationJob = null
+        }
+
+        if (target.targetRecording != isCurrentlyRecording) {
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "checkDvrAndAvmCoordination: targetRecording=${target.targetRecording} (was=$isCurrentlyRecording, isAvmActive=$isAvmActive, speed=$speed)"
+            )
+            setRecorderEnabled(context, target.targetRecording)
+        }
+    }
+
+    private fun scheduleAvmVerification(context: Context) {
+        if (avmVerificationJob?.isActive == true) return
+        avmVerificationJob = scope.launch {
+            delay(1500L)
+            val autoAvmEnabled = LauncherAppConfigStore.camdAutoDisableStockAvm(context)
+            val onSpeed = LauncherAppConfigStore.camdAutoAvmOnSpeed(context)
+            val offSpeed = LauncherAppConfigStore.camdAutoAvmOffSpeed(context)
+            val speed = UniversalCanRepository.carSpeedState.value
+            val activeGear = getCurrentActiveGear()
+
+            val shouldHoldOff = if (autoAvmEnabled) {
+                resolveAutoAvmHoldOff(speed, activeGear, onSpeed, offSpeed)
+            } else {
+                LauncherAppConfigStore.camdDisableStockAvm(context)
+            }
+
+            if (shouldHoldOff == false && !LauncherAvmRepository.isAvmActive.value) {
                 vad.dashing.tbox.DclLogRecorder.log(
                     "CamdCameraRepository",
-                    "Recorder auto-off triggered: speed=$speed km/h >= threshold=$autoOffSpeed km/h -> turning OFF"
+                    "Auto-DVR verification: Stock AVM did not activate after stopping DVR -> launching stock AVM"
                 )
-                setRecorderEnabled(context, false)
+                launchStockAvm(context)
             }
         }
     }
@@ -440,7 +587,7 @@ object CamdCameraRepository {
         val onSpeed = LauncherAppConfigStore.camdAutoAvmOnSpeed(context)
         val offSpeed = LauncherAppConfigStore.camdAutoAvmOffSpeed(context)
 
-        val signals = if (onSpeed == 0) {
+        val signals = if (onSpeed == 0 && !(LauncherAppConfigStore.camdRecorderEnabled(context) && LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context))) {
             emptySet()
         } else {
             setOf(MbCanSignal.CarSpeed)
@@ -489,6 +636,14 @@ object CamdCameraRepository {
     suspend fun setRecorderEnabled(context: Context, enabled: Boolean): Result<String> {
         val res = CamdSocketClient.setRecorder(context, enabled)
         LauncherAppConfigStore.setCamdRecorderEnabled(context, enabled)
+        if (enabled && !LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)) {
+            // "Если тумблер видеорегистратора включен а тумблер автоматического включения выключен-
+            // то автоматически должна выключаться штатная AVM (тк видеорегистратор не может работать когда включена AVM)"
+            if (!LauncherAppConfigStore.camdDisableStockAvm(context)) {
+                LauncherAppConfigStore.setCamdDisableStockAvm(context, true)
+                CamdSocketClient.setAvmHold(context, true)
+            }
+        }
         refreshStatus(context)
         return res
     }

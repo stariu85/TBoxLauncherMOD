@@ -44,7 +44,7 @@ internal val DEFAULT_TOP_BAR_ITEMS = listOf(
     "spacer_small_1794639591091", "engine_temp", "gearbox_temp", "voltage",
     "spacer_small_1794639626549", "vehicle_status", "maintenance"
 )
-private val DEFAULT_TOP_BAR_RIGHT_ITEMS = listOf("connectivity", "time", "date")
+internal val DEFAULT_TOP_BAR_RIGHT_ITEMS = listOf("camd_rec", "connectivity", "time", "date")
 private const val KEY_BOTTOM_BAR_HEIGHT = "bottom_bar_height_dp"
 private const val KEY_CAR_MODEL_SCALE = "car_model_scale"
 private const val KEY_CAR_MODEL_DRIVE_SCALE = "car_model_drive_scale"
@@ -362,6 +362,7 @@ private const val KEY_SWAP_TOP_BOTTOM_PANELS = "swap_top_bottom_panels"
 private const val KEY_DRIVE_MODE_BAR_VISIBLE = "drive_mode_bar_visible"
 private const val KEY_ASSIST_PANEL_VISIBLE = "assist_panel_visible"
 private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible"
+private const val KEY_CAMD_CONTROLS_PANEL_VISIBLE = "camd_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
 private const val KEY_CLASSIC_SPEED_LIMIT_VISIBLE = "classic_speed_limit_visible"
 private const val KEY_TSR_SYSTEM_ENABLED = "tsr_system_enabled"
@@ -619,6 +620,8 @@ internal object LauncherAppConfigStore {
     internal val assistPanelRevisionFlow: StateFlow<Int> = assistPanelRevision
     private val bodyControlsPanelRevision = MutableStateFlow(0)
     internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
+    private val camdControlsPanelRevision = MutableStateFlow(0)
+    internal val camdControlsPanelRevisionFlow: StateFlow<Int> = camdControlsPanelRevision
     private val carColorPanelRevision = MutableStateFlow(0)
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
     private val classicSpeedLimitRevision = MutableStateFlow(0)
@@ -762,7 +765,7 @@ internal object LauncherAppConfigStore {
         "car_color", "drive_mode_offroad", "smart_control", "lanes", "chassis", "radars", "acc_presets", "ngp_lka_ldw"
     )
     val DEFAULT_QUICK_SETTINGS_BOTTOM_PANELS = listOf(
-        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats", "camd_dvr"
+        "body_controls_seat_memory", "lights", "wipers", "body_controls_trunk", "body_controls_seats", "camd_cameras", "camd_dvr"
     )
 
     fun quickSettingsTopPanels(context: Context): List<String> {
@@ -794,7 +797,11 @@ internal object LauncherAppConfigStore {
     fun enabledAdasPanels(context: Context): Set<String> {
         val raw = prefs(context).getString(KEY_ENABLED_ADAS_PANEL_IDS, null)
         if (raw != null) {
-            return raw.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+            val list = raw.split(',').map { it.trim() }.filter { it.isNotBlank() }.toMutableSet()
+            if (vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context) && "camd_controls" !in list && !prefs(context).contains(KEY_CAMD_CONTROLS_PANEL_VISIBLE)) {
+                list.add("camd_controls")
+            }
+            return list
         }
         val defaults = ALL_ADAS_PANEL_IDS.toMutableSet()
         if (!carColorPanelVisible(context)) {
@@ -822,6 +829,7 @@ internal object LauncherAppConfigStore {
             "drive_mode" -> setDriveModeBarVisible(context, enabled)
             "body_controls" -> setBodyControlsPanelVisible(context, enabled)
             "assist" -> setAssistPanelVisible(context, enabled)
+            "camd_controls" -> setCamdControlsPanelVisible(context, enabled)
         }
 
         fun canonicalFamily(id: String): String = when (id) {
@@ -843,7 +851,15 @@ internal object LauncherAppConfigStore {
         } else {
             val quickTop = quickSettingsTopPanels(context).toMutableList()
             val quickBottom = quickSettingsBottomPanels(context).toMutableList()
-            if (panelId !in quickTop && panelId !in quickBottom) {
+            if (panelId == "camd_controls") {
+                if ("camd_cameras" !in quickTop && "camd_cameras" !in quickBottom) {
+                    quickBottom.add("camd_cameras")
+                }
+                if ("camd_dvr" !in quickTop && "camd_dvr" !in quickBottom) {
+                    quickBottom.add("camd_dvr")
+                }
+                setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
+            } else if (panelId !in quickTop && panelId !in quickBottom) {
                 quickBottom.add(panelId)
                 setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
             }
@@ -1146,7 +1162,11 @@ internal object LauncherAppConfigStore {
     fun topBarRightItems(context: Context): List<String> {
         val raw = prefs(context).getString(KEY_TOP_BAR_RIGHT_ITEMS, null) ?: return DEFAULT_TOP_BAR_RIGHT_ITEMS
         if (raw.isBlank()) return emptyList()
-        return raw.split('|').filter { it.isNotBlank() }
+        val items = raw.split('|').filter { it.isNotBlank() }
+        if (items == listOf("connectivity", "time", "date")) {
+            return DEFAULT_TOP_BAR_RIGHT_ITEMS
+        }
+        return items
     }
 
     fun setTopBarRightItems(context: Context, items: List<String>) {
@@ -2469,6 +2489,14 @@ internal object LauncherAppConfigStore {
         bodyControlsPanelRevision.value++
     }
 
+    fun camdControlsPanelVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CAMD_CONTROLS_PANEL_VISIBLE, true)
+
+    fun setCamdControlsPanelVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAMD_CONTROLS_PANEL_VISIBLE, visible).apply()
+        camdControlsPanelRevision.value++
+    }
+
     fun carColorPanelVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CAR_COLOR_PANEL_VISIBLE, true)
 
@@ -2624,7 +2652,7 @@ internal object LauncherAppConfigStore {
         if (bodyControlsPanelVisible(context) && "body_controls" !in top && "body_controls" !in mapped) {
             mapped.add("body_controls")
         }
-        if (vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context) && "camd_controls" !in top && "camd_controls" !in mapped) {
+        if (camdControlsPanelVisible(context) && vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context) && "camd_controls" !in top && "camd_controls" !in mapped) {
             mapped.add("camd_controls")
         }
         return mapped.filter { it !in top }
@@ -2647,10 +2675,12 @@ internal object LauncherAppConfigStore {
             .remove(KEY_QUICK_SETTINGS_TOP_PANELS)
             .remove(KEY_QUICK_SETTINGS_BOTTOM_PANELS)
             .remove(KEY_ENABLED_ADAS_PANEL_IDS)
+            .remove(KEY_CAMD_CONTROLS_PANEL_VISIBLE)
             .apply()
         adasPanelsRevision.value++
         quickSettingsPanelsRevision.value++
         enabledAdasPanelsRevision.value++
+        camdControlsPanelRevision.value++
     }
 
     fun driveModeGlowVisible(context: Context): Boolean =
@@ -2993,6 +3023,7 @@ internal object LauncherAppConfigStore {
         driveModeBarRevision.value++
         assistPanelRevision.value++
         bodyControlsPanelRevision.value++
+        camdControlsPanelRevision.value++
         assistPresetsTabRevision.value++
         adasPanelsRevision.value++
         driveModeGlowRevision.value++

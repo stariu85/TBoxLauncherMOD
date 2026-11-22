@@ -296,9 +296,10 @@ fun LauncherLeftPanel(
     var headlightFrame by remember { mutableStateOf<LauncherHeadlightFrame?>(null) }
     var isCameraSwitching by remember { mutableStateOf(false) }
     var is3dModelReady by remember { mutableStateOf(false) }
+    var isOverlayReady by remember { mutableStateOf(false) }
     var viewTransitionActive by remember { mutableStateOf(false) }
     var lastSettledDriveView by remember { mutableStateOf(false) }
-    val isOverlayTransitioning = !is3dModelReady || isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
+    val isOverlayTransitioning = !isOverlayReady || isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
     val carOverlayAlpha by animateFloatAsState(
         targetValue = if (isOverlayTransitioning) 0f else 1f,
         animationSpec = tween(durationMillis = 1000),
@@ -342,6 +343,11 @@ fun LauncherLeftPanel(
         .collectAsStateWithLifecycle()
     val bodyControlsPanelVisible = remember(context, bodyControlsRevision) {
         LauncherAppConfigStore.bodyControlsPanelVisible(context)
+    }
+    val camdControlsRevision by LauncherAppConfigStore.camdControlsPanelRevisionFlow
+        .collectAsStateWithLifecycle()
+    val camdControlsPanelVisible = remember(context, camdControlsRevision) {
+        LauncherAppConfigStore.camdControlsPanelVisible(context)
     }
     val carColorRevision by LauncherAppConfigStore.carColorPanelRevisionFlow
         .collectAsStateWithLifecycle()
@@ -501,6 +507,17 @@ fun LauncherLeftPanel(
         .collectAsStateWithLifecycle()
     val carModelVisible = remember(context, carModelVisibleRevision) {
         LauncherAppConfigStore.carModelVisible(context)
+    }
+
+    LaunchedEffect(is3dModelReady, carModelVisible) {
+        if (!carModelVisible) {
+            isOverlayReady = true
+        } else if (is3dModelReady) {
+            delay(3_000L)
+            isOverlayReady = true
+        } else {
+            isOverlayReady = false
+        }
     }
     var smartDriveViewActive by remember { mutableStateOf(false) }
     var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
@@ -718,6 +735,9 @@ fun LauncherLeftPanel(
                             "assist", "presets" -> assistPanelVisible
                             "body_controls" -> bodyControlsPanelVisible
                             "car_color" -> carColorPanelVisible
+                            "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> {
+                                camdControlsPanelVisible && vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context)
+                            }
                             "lanes" -> true
                             else -> true
                         }
@@ -726,7 +746,7 @@ fun LauncherLeftPanel(
             }
         }
 
-        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, navSpeedVisible, navTrafficLightVisible, enabledPanels) {
+        val activeTopPanels = remember(adasTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, navSpeedVisible, navTrafficLightVisible, camdControlsPanelVisible, enabledPanels) {
             val filtered = adasTopPanels.filter { isPanelVisible(it) }
             val deduplicated = mutableListOf<String>()
             var assistOrPresetsAdded = false
@@ -742,7 +762,7 @@ fun LauncherLeftPanel(
             }
             deduplicated
         }
-        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, navSpeedVisible, navTrafficLightVisible, enabledPanels) {
+        val activeBottomPanels = remember(adasBottomPanels, activeTopPanels, driveModeBarVisible, assistPanelVisible, bodyControlsPanelVisible, miniPlayerVisible, carColorPanelVisible, smartPanelEnabled, navSpeedVisible, navTrafficLightVisible, camdControlsPanelVisible, enabledPanels) {
             val filtered = adasBottomPanels.filter { isPanelVisible(it) && it !in activeTopPanels }.toMutableList()
             if (smartPanelEnabled && "smart_panel" !in activeTopPanels && "smart_panel" !in filtered) {
                 filtered.add(0, "smart_panel")

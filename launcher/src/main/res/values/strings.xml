@@ -516,10 +516,8 @@
     <string name="camd_recorder_title">Видеорегистратор</string>
     <string name="camd_recorder_desc">Настройки записи в программе camd</string>
     <string name="camd_open_app_button">Открыть camd</string>
-    <string name="camd_recorder_auto_off_title">Автоматическое выключение видеорегистратора по скорости</string>
-    <string name="camd_recorder_auto_off_desc">Автоматическое выключение видеорегистратора при наборе заданной скорости движения</string>
-    <string name="camd_recorder_auto_off_speed_title">Скорость выключения видеорегистратора</string>
-    <string name="camd_recorder_auto_off_speed_desc">Скорость, при превышении которой видеорегистратор будет выключен (1–30 км/ч)</string>
+    <string name="camd_recorder_auto_off_title">Автоматическое включение видеорегистратора</string>
+    <string name="camd_recorder_auto_off_desc">Запись активна, когда штатная AVM выключена (по скорости). При активации штатной AVM запись выключается.</string>
     <string name="launcher_vs_section_theme">Тема</string>
     <string name="launcher_vs_section_theme_sub">Настройки светлой и тёмной темы</string>
     <string name="launcher_wallpaper_button">Обои</string>

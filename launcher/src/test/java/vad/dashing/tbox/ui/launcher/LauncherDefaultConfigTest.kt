@@ -46,6 +46,14 @@ class LauncherDefaultConfigTest {
     }
 
     @Test
+    fun verifyDefaultTopBarRightItems() {
+        assertEquals(
+            listOf("camd_rec", "connectivity", "time", "date"),
+            DEFAULT_TOP_BAR_RIGHT_ITEMS
+        )
+    }
+
+    @Test
     fun verifyDefaultBottomSlots() {
         assertEquals(20, DEFAULT_BOTTOM_SLOTS_UNIFIED.size)
         assertEquals("all_apps", DEFAULT_BOTTOM_SLOTS_UNIFIED[1])

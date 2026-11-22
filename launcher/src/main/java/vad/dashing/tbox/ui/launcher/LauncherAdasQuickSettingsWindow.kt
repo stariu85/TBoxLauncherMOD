@@ -362,6 +362,11 @@ private fun LauncherAdasQuickSettingsContent(
 
     val activeSubPanelsRevision by LauncherAppConfigStore.activeSubPanelsRevisionFlow.collectAsStateWithLifecycle()
 
+    val camdControlsRevision by LauncherAppConfigStore.camdControlsPanelRevisionFlow.collectAsStateWithLifecycle()
+    val camdControlsPanelVisible = remember(context, camdControlsRevision) {
+        LauncherAppConfigStore.camdControlsPanelVisible(context)
+    }
+
     val primarySlots = remember(
         adasPanelVisible,
         miniPlayerVisible,
@@ -372,6 +377,7 @@ private fun LauncherAdasQuickSettingsContent(
         smartPanelEnabled,
         navSpeedVisible,
         navTrafficLightVisible,
+        camdControlsPanelVisible,
         adasTopPanels,
         adasBottomPanels,
     ) {
@@ -387,7 +393,9 @@ private fun LauncherAdasQuickSettingsContent(
                     "car_color" -> carColorPanelVisible
                     "smart_panel" -> smartPanelEnabled
                     "lanes" -> true
-                    "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> CamdSocketClient.isInstalled(context)
+                    "camd_controls", "cameras", "camd_cameras", "camd_dvr" -> {
+                        camdControlsPanelVisible && CamdSocketClient.isInstalled(context)
+                    }
                     else -> true
                 }
             }
@@ -566,8 +574,13 @@ private fun LauncherAdasQuickSettingsContent(
             "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, true)
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, true)
             "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, true)
-            "camd_controls" -> LauncherAppConfigStore.setAdasPanelEnabled(context, "camd_controls", true)
+            "camd_controls" -> {
+                LauncherAppConfigStore.setCamdControlsPanelVisible(context, true)
+                LauncherAppConfigStore.setAdasPanelEnabled(context, "camd_controls", true)
+            }
         }
+
+        LauncherAppConfigStore.setVisibleSubPanel(basePanelId, targetId)
 
         // 3. Always add to bottom ADAS panels at index 0 and persist layout
         val currentTop = LauncherAppConfigStore.adasTopPanels(context).filter { canonicalPanelId(it) != basePanelId }.toMutableList()

@@ -547,6 +547,19 @@ private fun LauncherCarFilamentContent(
         animationSpec = tween(durationMillis = 1000),
         label = "launcherCarModelAlpha",
     )
+    LaunchedEffect(modelReady) {
+        if (modelReady) {
+            // Model has started rendering. Wait for fade-in (1000ms) to complete so model is fully rendered.
+            delay(1000L)
+            overlayPublishHandler.post {
+                modelReadyCallbackRef.value(true)
+            }
+        } else {
+            overlayPublishHandler.post {
+                modelReadyCallbackRef.value(false)
+            }
+        }
+    }
 
     var lastSteeringDeg by remember(modelInstance) { mutableFloatStateOf(steeringDeg) }
     var lastRigState by remember(modelInstance) { mutableStateOf(rigState) }
@@ -1033,9 +1046,6 @@ private fun LauncherCarFilamentContent(
                             if (preparedFrames >= 3 && widthPx > 0 && heightPx > 0) {
                                 modelReady = true
                                 node.isVisible = true
-                                overlayPublishHandler.post {
-                                    modelReadyCallbackRef.value(true)
-                                }
                             }
                         } else {
                             node.isVisible = true

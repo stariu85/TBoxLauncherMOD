@@ -157,4 +157,104 @@ class CamdAutoAvmSpeedHysteresisTest {
             assertEquals("At speed $speed km/h", expectedHoldOff, currentHoldOff)
         }
     }
+
+    @Test
+    fun dvrTargetState_whenDvrDisabled_targetRecordingFalse() {
+        val state = CamdCameraRepository.resolveDvrTargetState(
+            isDvrEnabled = false,
+            isAutoDvr = true,
+            isAvmActive = false,
+            speed = 50f,
+            activeGear = 'D',
+            autoAvmEnabled = true,
+            onSpeed = 5,
+            offSpeed = 20,
+            disableStockAvm = true,
+            isCurrentlyRecording = true,
+        )
+        assertEquals(false, state.targetRecording)
+        assertEquals(false, state.shouldDisableStockAvm)
+        assertEquals(false, state.scheduleAvmVerification)
+    }
+
+    @Test
+    fun dvrTargetState_whenDvrEnabledAndAutoDvrDisabled_disablesStockAvm() {
+        // DVR enabled, auto DVR disabled: Stock AVM must be automatically disabled if not already
+        val state = CamdCameraRepository.resolveDvrTargetState(
+            isDvrEnabled = true,
+            isAutoDvr = false,
+            isAvmActive = false,
+            speed = 0f,
+            activeGear = 'D',
+            autoAvmEnabled = false,
+            onSpeed = 5,
+            offSpeed = 20,
+            disableStockAvm = false, // Stock AVM was enabled
+            isCurrentlyRecording = false,
+        )
+        assertEquals(true, state.targetRecording)
+        assertEquals(true, state.shouldDisableStockAvm)
+        assertEquals(false, state.scheduleAvmVerification)
+    }
+
+    @Test
+    fun dvrTargetState_whenAutoDvrAndAvmIsActive_stopsRecording() {
+        // When stock AVM is active on screen, DVR recording must stop
+        val state = CamdCameraRepository.resolveDvrTargetState(
+            isDvrEnabled = true,
+            isAutoDvr = true,
+            isAvmActive = true,
+            speed = 50f,
+            activeGear = 'D',
+            autoAvmEnabled = true,
+            onSpeed = 5,
+            offSpeed = 20,
+            disableStockAvm = true,
+            isCurrentlyRecording = true,
+        )
+        assertEquals(false, state.targetRecording)
+        assertEquals(false, state.shouldDisableStockAvm)
+        assertEquals(false, state.scheduleAvmVerification)
+    }
+
+    @Test
+    fun dvrTargetState_whenAutoDvrAndSpeedAboveOffSpeed_startsRecording() {
+        // Speed 25 km/h > offSpeed (20): AVM is off (holdOff=true) -> DVR records
+        val state = CamdCameraRepository.resolveDvrTargetState(
+            isDvrEnabled = true,
+            isAutoDvr = true,
+            isAvmActive = false,
+            speed = 25f,
+            activeGear = 'D',
+            autoAvmEnabled = true,
+            onSpeed = 5,
+            offSpeed = 20,
+            disableStockAvm = false,
+            isCurrentlyRecording = false,
+        )
+        assertEquals(true, state.targetRecording)
+        assertEquals(false, state.shouldDisableStockAvm)
+        assertEquals(false, state.scheduleAvmVerification)
+    }
+
+    @Test
+    fun dvrTargetState_whenAutoDvrAndSpeedBelowOnSpeed_stopsRecordingAndSchedulesVerification() {
+        // Speed 3 km/h < onSpeed (5): AVM should turn on (holdOff=false).
+        // DVR was recording -> must stop and schedule verification that AVM turns on
+        val state = CamdCameraRepository.resolveDvrTargetState(
+            isDvrEnabled = true,
+            isAutoDvr = true,
+            isAvmActive = false,
+            speed = 3f,
+            activeGear = 'D',
+            autoAvmEnabled = true,
+            onSpeed = 5,
+            offSpeed = 20,
+            disableStockAvm = false,
+            isCurrentlyRecording = true,
+        )
+        assertEquals(false, state.targetRecording)
+        assertEquals(false, state.shouldDisableStockAvm)
+        assertEquals(true, state.scheduleAvmVerification)
+    }
 }

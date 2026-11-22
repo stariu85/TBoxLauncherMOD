@@ -73,18 +73,59 @@ internal fun DraggableAdasPanel(
     )
 
     fun removePanelFromAdas() {
-        val newTop = topPanels.filter { it != panelId }
-        val newBottom = bottomPanels.filter { it != panelId }
+        fun canonicalPanelId(id: String): String = when (id) {
+            "body_controls_trunk", "body_controls_seats", "body_controls_seat_memory" -> "body_controls"
+            "drive_mode_offroad" -> "drive_mode"
+            "presets", "smart_control" -> "assist"
+            "cameras", "camd_cameras", "camd_dvr" -> "camd_controls"
+            else -> id
+        }
 
-        when (panelId) {
+        val basePanelId = canonicalPanelId(panelId)
+        val newTop = topPanels.filter { canonicalPanelId(it) != basePanelId }
+        val newBottom = bottomPanels.filter { canonicalPanelId(it) != basePanelId }
+
+        when (basePanelId) {
             "media_player" -> LauncherAppConfigStore.setMediaMiniPlayerVisible(context, false)
-            "drive_mode" -> LauncherAppConfigStore.setDriveModeBarVisible(context, false)
-            "body_controls" -> LauncherAppConfigStore.setBodyControlsPanelVisible(context, false)
+            "drive_mode" -> {
+                LauncherAppConfigStore.setDriveModeBarVisible(context, false)
+                val quickTop = LauncherAppConfigStore.quickSettingsTopPanels(context).toMutableList()
+                val quickBottom = LauncherAppConfigStore.quickSettingsBottomPanels(context).toMutableList()
+                listOf("drive_mode", "drive_mode_offroad").forEach { sub ->
+                    if (sub !in quickTop && sub !in quickBottom) {
+                        quickBottom.add(sub)
+                    }
+                }
+                LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
+            }
+            "body_controls" -> {
+                LauncherAppConfigStore.setBodyControlsPanelVisible(context, false)
+                val quickTop = LauncherAppConfigStore.quickSettingsTopPanels(context).toMutableList()
+                val quickBottom = LauncherAppConfigStore.quickSettingsBottomPanels(context).toMutableList()
+                listOf("body_controls_seat_memory", "body_controls_trunk", "body_controls_seats").forEach { sub ->
+                    if (sub !in quickTop && sub !in quickBottom) {
+                        quickBottom.add(sub)
+                    }
+                }
+                LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
+            }
             "assist" -> LauncherAppConfigStore.setAssistPanelVisible(context, false)
             "car_color" -> LauncherAppConfigStore.setCarColorPanelVisible(context, false)
             "nav_speed" -> LauncherAppConfigStore.setNavSpeedVisible(context, false)
             "nav_traffic_light" -> LauncherAppConfigStore.setNavTrafficLightVisible(context, false)
             "smart_panel" -> LauncherAppConfigStore.setSmartPanelEnabled(context, false)
+            "camd_controls" -> {
+                LauncherAppConfigStore.setCamdControlsPanelVisible(context, false)
+                val quickTop = LauncherAppConfigStore.quickSettingsTopPanels(context).toMutableList()
+                val quickBottom = LauncherAppConfigStore.quickSettingsBottomPanels(context).toMutableList()
+                if ("camd_cameras" !in quickTop && "camd_cameras" !in quickBottom) {
+                    quickBottom.add("camd_cameras")
+                }
+                if ("camd_dvr" !in quickTop && "camd_dvr" !in quickBottom) {
+                    quickBottom.add("camd_dvr")
+                }
+                LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, quickTop, quickBottom)
+            }
         }
 
         LauncherAppConfigStore.setAdasPanelsLayout(context, newTop, newBottom)

@@ -286,10 +286,8 @@
     <string name="camd_recorder_title">Dashcam (DVR)</string>
     <string name="camd_recorder_desc">Recording settings in the camd app</string>
     <string name="camd_open_app_button">Open camd</string>
-    <string name="camd_recorder_auto_off_title">Auto-off dashcam by speed</string>
-    <string name="camd_recorder_auto_off_desc">Automatically turn off dashcam recording when vehicle exceeds set speed</string>
-    <string name="camd_recorder_auto_off_speed_title">Dashcam shutoff speed</string>
-    <string name="camd_recorder_auto_off_speed_desc">Speed at or above which dashcam will be turned off (1–30 km/h)</string>
+    <string name="camd_recorder_auto_off_title">Automatic dashcam recording</string>
+    <string name="camd_recorder_auto_off_desc">Recording runs while OEM AVM is inactive (by speed). When OEM AVM activates, recording stops.</string>
     <string name="launcher_vs_section_theme">Theme</string>
     <string name="launcher_vs_section_theme_sub">Light and dark theme settings</string>
     <string name="launcher_vs_auto_theme_system">Auto theme by system</string>

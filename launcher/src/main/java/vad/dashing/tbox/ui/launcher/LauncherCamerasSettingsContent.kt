@@ -131,9 +131,6 @@ fun LauncherCamerasSettingsContent(
     val recorderAutoOffBySpeed = remember(context, camdConfigRevision) {
         LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)
     }
-    val recorderAutoOffSpeed = remember(context, camdConfigRevision) {
-        LauncherAppConfigStore.camdRecorderAutoOffSpeed(context)
-    }
 
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
 
@@ -341,53 +338,6 @@ fun LauncherCamerasSettingsContent(
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
-
-            if (recorderAutoOffBySpeed) {
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.camd_recorder_auto_off_speed_title),
-                            color = LauncherColors.TextPrimary,
-                            fontSize = 15.sp,
-                        )
-                        Text(
-                            text = "$recorderAutoOffSpeed км/ч",
-                            color = LauncherColors.AccentCyan,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.camd_recorder_auto_off_speed_desc),
-                        color = LauncherColors.TextMuted,
-                        fontSize = 12.sp,
-                    )
-                    Slider(
-                        value = recorderAutoOffSpeed.toFloat(),
-                        onValueChange = { next ->
-                            LauncherAppConfigStore.setCamdRecorderAutoOffSpeed(context, next.roundToInt())
-                        },
-                        valueRange = 1f..30f,
-                        steps = 28,
-                        colors = SliderDefaults.colors(
-                            thumbColor = LauncherColors.AccentCyan,
-                            activeTrackColor = LauncherColors.AccentCyan,
-                            inactiveTrackColor = LauncherColors.TextMuted,
-                        ),
-                    )
-                }
-            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))

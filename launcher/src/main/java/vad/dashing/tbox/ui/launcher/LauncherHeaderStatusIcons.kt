@@ -144,7 +144,7 @@ private fun isSpacerSmall(itemId: String): Boolean = itemId == "spacer_small" ||
 private fun isTimeSignalIndicator(itemId: String): Boolean = itemId in setOf("time", "date", "connectivity")
 
 private fun isStandardIndicator(itemId: String): Boolean = itemId in setOf(
-    "temp", "inside_temp", "combined_temp", "engine_temp", "gearbox_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "trip_distance", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance", "vehicle_status"
+    "temp", "inside_temp", "combined_temp", "engine_temp", "gearbox_temp", "fuel", "avg_fuel", "trip_cost", "trip_duration", "trip_distance", "air_quality", "voltage", "cpu", "ram", "gps", "maintenance", "vehicle_status", "camd_rec"
 )
 
 private enum class TopBarGroupType {
@@ -455,6 +455,13 @@ internal fun LauncherTopHeaderBar(
     val topBarRightItems = remember(context, topBarItemsRevision) {
         LauncherAppConfigStore.topBarRightItems(context)
     }
+    val isCamdInstalled = remember(context) { vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context) }
+    val effectiveTopBarItems = remember(topBarItems, isCamdInstalled) {
+        if (isCamdInstalled) topBarItems else topBarItems.filter { it != "camd_rec" }
+    }
+    val effectiveTopBarRightItems = remember(topBarRightItems, isCamdInstalled) {
+        if (isCamdInstalled) topBarRightItems else topBarRightItems.filter { it != "camd_rec" }
+    }
 
     val borderRevision by LauncherAppConfigStore.topBarIndicatorsBorderRevisionFlow
         .collectAsStateWithLifecycle()
@@ -542,7 +549,7 @@ internal fun LauncherTopHeaderBar(
         ) {
 
             if (topBarLeftIndicatorsVisible) {
-                val groups = remember(topBarItems) { groupTopBarItems(topBarItems) }
+                val groups = remember(effectiveTopBarItems) { groupTopBarItems(effectiveTopBarItems) }
                 val isDark = LauncherThemeState.darkTheme
                 val borderColor = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
 
@@ -589,7 +596,7 @@ internal fun LauncherTopHeaderBar(
                                         LauncherDraggableTopBarItem(
                                             itemId = itemId,
                                             index = originalIndex,
-                                            totalCount = topBarItems.size,
+                                            totalCount = effectiveTopBarItems.size,
                                             isRightSide = false,
                                             topBarHeightDp = topBarHeightDp,
                                             context = context,
@@ -654,7 +661,7 @@ internal fun LauncherTopHeaderBar(
                                 LauncherDraggableTopBarItem(
                                     itemId = itemId,
                                     index = originalIndex,
-                                    totalCount = topBarItems.size,
+                                    totalCount = effectiveTopBarItems.size,
                                     isRightSide = false,
                                     topBarHeightDp = topBarHeightDp,
                                     context = context,
@@ -746,7 +753,7 @@ internal fun LauncherTopHeaderBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val rightGroups = remember(topBarRightItems) { groupTopBarItems(topBarRightItems) }
+            val rightGroups = remember(effectiveTopBarRightItems) { groupTopBarItems(effectiveTopBarRightItems) }
             val isDark = LauncherThemeState.darkTheme
             val borderColor = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
 
@@ -793,7 +800,7 @@ internal fun LauncherTopHeaderBar(
                                     LauncherDraggableTopBarItem(
                                         itemId = itemId,
                                         index = originalIndex,
-                                        totalCount = topBarRightItems.size,
+                                        totalCount = effectiveTopBarRightItems.size,
                                         isRightSide = true,
                                         topBarHeightDp = topBarHeightDp,
                                         context = context,
@@ -858,7 +865,7 @@ internal fun LauncherTopHeaderBar(
                             LauncherDraggableTopBarItem(
                                 itemId = itemId,
                                 index = originalIndex,
-                                totalCount = topBarRightItems.size,
+                                totalCount = effectiveTopBarRightItems.size,
                                 isRightSide = true,
                                 topBarHeightDp = topBarHeightDp,
                                 context = context,
@@ -1981,13 +1988,6 @@ internal fun LauncherHeaderStatusIcons(
                     colorFilter = ColorFilter.tint(StatusIconTint),
                 )
             }
-        }
-        if (vad.dashing.tbox.camd.CamdSocketClient.isInstalled(context)) {
-            LauncherTopBarRecWidget(
-                indicatorIconSizeDp = indicatorIconSizeDp,
-                indicatorFontSizeSp = (indicatorIconSizeDp.value * 0.75f).sp,
-                indicatorTextStyle = cellularTextStyle,
-            )
         }
     }
 }
