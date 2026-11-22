@@ -231,11 +231,12 @@ private fun TopShadeWrapperContent(
                         offsetYAnim.snapTo(newOffset)
                     }
                 },
-                onHandleDragEnd = {
+                onHandleDragEnd = { velocityY ->
                     val currentDragUpPx = -offsetYAnim.value
-                    val thresholdPx = heightPx * 0.05f
+                    val thresholdPx = (heightPx * 0.12f).coerceAtLeast(with(density) { 60.dp.toPx() })
+                    val isFlingUp = velocityY < -600f
                     coroutineScope.launch {
-                        if (currentDragUpPx >= thresholdPx) {
+                        if (currentDragUpPx >= thresholdPx || isFlingUp) {
                             offsetYAnim.animateTo(-heightPx, animationSpec = tween(durationMillis = 220))
                             onClose()
                         } else {

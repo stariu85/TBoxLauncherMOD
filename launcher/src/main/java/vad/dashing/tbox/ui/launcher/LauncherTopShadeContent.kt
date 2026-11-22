@@ -12,6 +12,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -68,7 +70,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -368,10 +372,66 @@ private val IconMicVector: ImageVector by lazy {
 }
 
 @Composable
+private fun Modifier.shadeSwipeUpDismiss(
+    enabled: Boolean,
+    onDrag: (Float) -> Unit,
+    onDragEnd: (Float) -> Unit,
+): Modifier {
+    if (!enabled) return this
+
+    val density = LocalDensity.current
+    val triggerThresholdPx = with(density) { 36.dp.toPx() }
+
+    return this.pointerInput(enabled) {
+        val velocityTracker = VelocityTracker()
+
+        awaitEachGesture {
+            val down = awaitFirstDown(pass = PointerEventPass.Initial, requireUnconsumed = false)
+            velocityTracker.resetTracking()
+            velocityTracker.addPosition(down.uptimeMillis, down.position)
+
+            var totalDeltaY = 0f
+            var totalDeltaX = 0f
+            var isDraggingUp = false
+
+            while (true) {
+                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                if (!change.pressed) break
+
+                velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                val deltaY = change.position.y - change.previousPosition.y
+                val deltaX = change.position.x - change.previousPosition.x
+                totalDeltaY += deltaY
+                totalDeltaX += deltaX
+
+                if (!isDraggingUp) {
+                    if (totalDeltaY < -triggerThresholdPx && abs(totalDeltaY) > abs(totalDeltaX) * 1.2f) {
+                        isDraggingUp = true
+                        change.consume()
+                        onDrag(totalDeltaY)
+                    }
+                } else {
+                    change.consume()
+                    onDrag(deltaY)
+                }
+            }
+
+            if (isDraggingUp) {
+                val velocityY = velocityTracker.calculateVelocity().y
+                onDragEnd(velocityY)
+            }
+        }
+    }
+}
+
+@Composable
 internal fun LauncherTopShadeContent(
     onClose: () -> Unit,
     onHandleDrag: (Float) -> Unit = {},
-    onHandleDragEnd: () -> Unit = {},
+    onHandleDragEnd: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -423,6 +483,11 @@ internal fun LauncherTopShadeContent(
             modifier = Modifier
                 .fillMaxSize()
                 .background(shadeBgColor)
+                .shadeSwipeUpDismiss(
+                    enabled = !isEditMode && !showAddModal,
+                    onDrag = onHandleDrag,
+                    onDragEnd = onHandleDragEnd,
+                )
                 .padding(16.dp),
         ) {
             // --- TOP HEADER BAR ---
@@ -629,10 +694,10 @@ internal fun LauncherTopShadeContent(
                                 onHandleDrag(dragAmount.y)
                             },
                             onDragEnd = {
-                                onHandleDragEnd()
+                                onHandleDragEnd(0f)
                             },
                             onDragCancel = {
-                                onHandleDragEnd()
+                                onHandleDragEnd(0f)
                             },
                         )
                     },
