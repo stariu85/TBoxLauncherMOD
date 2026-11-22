@@ -234,7 +234,7 @@ fun LauncherCar3DModel(
     cameraSwitchMode: Int = CAMERA_SWITCH_MODE_DRIVE_AND_PARK,
     projectPdcRings: Boolean = false,
     projectHeadlights: Boolean = false,
-    textureSurface: Boolean = false,
+    textureSurface: Boolean = true,
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
 ) {
@@ -333,21 +333,12 @@ private fun LauncherCarFilamentModel(
     onModelReadyChanged: (Boolean) -> Unit = {},
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
-    textureSurface: Boolean = false,
+    textureSurface: Boolean = true,
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
 ) {
-    val context = LocalContext.current
-    val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
-    val cameraAnimEnabled = remember(context, cameraAnimRevision) {
-        LauncherAppConfigStore.cameraAnimationEnabled(context)
-    }
-    val contentKey = if (cameraAnimEnabled) {
-        modelRevision.hashCode()
-    } else {
-        modelRevision.hashCode() * 31 + inDriveGear.hashCode()
-    }
+    val contentKey = modelRevision.hashCode()
 
     Box(modifier = modifier) {
         key(contentKey) {
@@ -419,7 +410,7 @@ private fun LauncherCarFilamentContent(
     onModelReadyChanged: (Boolean) -> Unit = {},
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
-    textureSurface: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") textureSurface: Boolean = true,
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
@@ -750,10 +741,7 @@ private fun LauncherCarFilamentContent(
                     .graphicsLayer { alpha = modelAlpha }
                     .pointerInteropFilter { false },
                 lifecycle = customSceneLifecycleOwner.lifecycle,
-                // TextureSurface composites inline so Compose overlays (tire/door badges)
-                // draw above the model; the default SurfaceView stays for the home panel
-                // where overlays sit beside the car silhouette.
-                surfaceType = if (textureSurface) SurfaceType.TextureSurface else SurfaceType.Surface,
+                surfaceType = SurfaceType.TextureSurface,
                 engine = engine,
                 modelLoader = modelLoader,
                 cameraNode = cameraNode,
