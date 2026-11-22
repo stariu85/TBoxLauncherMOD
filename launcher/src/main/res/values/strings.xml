@@ -299,6 +299,8 @@
     <string name="launcher_nav_speed_desc">Отображать текущую скорость и знак ограничения скорости</string>
     <string name="launcher_classic_speed_limit_title">Классический виджет распознавания знаков</string>
     <string name="launcher_classic_speed_limit_desc">Отображать знак ограничения скорости отдельно в классическом виджете над 3D-моделью. Если выключено — знак отображается в совмещенном виджете скорости</string>
+    <string name="launcher_speed_limit_warning_sound_title">Звук при превышении скорости</string>
+    <string name="launcher_speed_limit_warning_sound_desc">Воспроизводить звуковое предупреждение при превышении ограничения скорости с учетом выставленной прибавки</string>
     <string name="launcher_tsr_system_title">Включение распознавания знаков TSR</string>
     <string name="launcher_tsr_system_desc">Включение или выключение обработки данных системы распознавания дорожных знаков TSR</string>
     <string name="launcher_nav_traffic_light_title">Следующий светофор</string>

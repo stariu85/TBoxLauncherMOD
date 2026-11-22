@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +37,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -1621,21 +1623,48 @@ fun LauncherSpeedLimitOverlay(
 
     val isExceeded = currentSpeedKmh > (limit + offset)
 
+    val warningSoundRevision by LauncherAppConfigStore.speedLimitWarningSoundRevisionFlow.collectAsStateWithLifecycle()
+    val warningSoundEnabled = remember(context, warningSoundRevision) {
+        LauncherAppConfigStore.speedLimitWarningSoundEnabled(context)
+    }
+
+    LaunchedEffect(Unit) {
+        SpeedWarningAudioPlayer.init(context)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            SpeedWarningAudioPlayer.stop()
+        }
+    }
+
     var isBlinkingRed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isExceeded) {
+    LaunchedEffect(isExceeded, warningSoundEnabled) {
         if (isExceeded) {
-            while (isActive) {
-                repeat(5) {
-                    isBlinkingRed = true
-                    delay(200L)
-                    isBlinkingRed = false
-                    delay(200L)
+            launch {
+                while (isActive) {
+                    repeat(5) {
+                        isBlinkingRed = true
+                        delay(200L)
+                        isBlinkingRed = false
+                        delay(200L)
+                    }
+                    delay(1000L)
                 }
-                delay(1000L)
+            }
+            if (warningSoundEnabled) {
+                launch {
+                    while (isActive) {
+                        SpeedWarningAudioPlayer.play(context)
+                        delay(4000L)
+                        delay(8000L)
+                    }
+                }
             }
         } else {
             isBlinkingRed = false
+            SpeedWarningAudioPlayer.stop()
         }
     }
 

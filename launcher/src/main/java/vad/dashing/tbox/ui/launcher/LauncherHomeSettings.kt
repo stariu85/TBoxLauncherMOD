@@ -368,6 +368,7 @@ internal fun LauncherHomeSettingsContent() {
     AdasCompassWidgetToggle()
     NavSpeedWidgetToggle()
     ClassicSpeedLimitWidgetToggle()
+    SpeedLimitWarningSoundToggle()
     TsrSystemToggle()
     NavTrafficLightWidgetToggle()
     NavTrafficLightScaleSlider()
@@ -1880,6 +1881,29 @@ private fun ClassicSpeedLimitWidgetToggle() {
 }
 
 @Composable
+private fun SpeedLimitWarningSoundToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.speedLimitWarningSoundRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) {
+        LauncherAppConfigStore.speedLimitWarningSoundEnabled(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_speed_limit_warning_sound_title),
+            active = enabled,
+            onClick = {
+                LauncherAppConfigStore.setSpeedLimitWarningSoundEnabled(context, !enabled)
+            },
+        )
+        Text(
+            text = stringResource(R.string.launcher_speed_limit_warning_sound_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
 private fun TsrSystemToggle() {
     val context = LocalContext.current
     val revision by LauncherAppConfigStore.tsrSystemRevisionFlow.collectAsStateWithLifecycle()
@@ -2296,6 +2320,8 @@ fun CruiseControlSettingsContent() {
 
         AdasWeatherSettings()
 
+        ClassicSpeedLimitWidgetToggle()
+        SpeedLimitWarningSoundToggle()
         AdasAccBySpeedLimitToggle()
         AdasAccSpeedOffsetSlider()
 

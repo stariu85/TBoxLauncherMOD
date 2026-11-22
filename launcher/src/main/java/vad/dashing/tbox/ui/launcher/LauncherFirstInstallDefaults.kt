@@ -210,6 +210,7 @@ object LauncherFirstInstallDefaults {
         putIfMissing("dock_second_row_enabled", false)
         putIfMissing("dock_columns", 20)
         putIfMissing("classic_speed_limit_visible", true)
+        putIfMissing("speed_limit_warning_sound_enabled", false)
         putIfMissing("tsr_system_enabled", true)
         putIfMissing("nav_maneuver_visible", false)
         putIfMissing("nav_street_visible", false)

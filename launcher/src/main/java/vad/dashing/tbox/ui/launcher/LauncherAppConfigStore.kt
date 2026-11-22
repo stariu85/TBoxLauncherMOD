@@ -365,6 +365,7 @@ private const val KEY_BODY_CONTROLS_PANEL_VISIBLE = "body_controls_panel_visible
 private const val KEY_CAMD_CONTROLS_PANEL_VISIBLE = "camd_controls_panel_visible"
 private const val KEY_CAR_COLOR_PANEL_VISIBLE = "car_color_panel_visible"
 private const val KEY_CLASSIC_SPEED_LIMIT_VISIBLE = "classic_speed_limit_visible"
+private const val KEY_SPEED_LIMIT_WARNING_SOUND_ENABLED = "speed_limit_warning_sound_enabled"
 private const val KEY_TSR_SYSTEM_ENABLED = "tsr_system_enabled"
 private const val KEY_NAV_MANEUVER_VISIBLE = "nav_maneuver_visible"
 private const val KEY_NAV_STREET_VISIBLE = "nav_street_visible"
@@ -626,6 +627,8 @@ internal object LauncherAppConfigStore {
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
     private val classicSpeedLimitRevision = MutableStateFlow(0)
     internal val classicSpeedLimitRevisionFlow: StateFlow<Int> = classicSpeedLimitRevision
+    private val speedLimitWarningSoundRevision = MutableStateFlow(0)
+    internal val speedLimitWarningSoundRevisionFlow: StateFlow<Int> = speedLimitWarningSoundRevision
     private val tsrSystemRevision = MutableStateFlow(0)
     internal val tsrSystemRevisionFlow: StateFlow<Int> = tsrSystemRevision
     private val navManeuverRevision = MutableStateFlow(0)
@@ -2511,6 +2514,14 @@ internal object LauncherAppConfigStore {
     fun setClassicSpeedLimitVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, visible).apply()
         classicSpeedLimitRevision.value++
+    }
+
+    fun speedLimitWarningSoundEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_SPEED_LIMIT_WARNING_SOUND_ENABLED, false)
+
+    fun setSpeedLimitWarningSoundEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_SPEED_LIMIT_WARNING_SOUND_ENABLED, enabled).apply()
+        speedLimitWarningSoundRevision.value++
     }
 
     fun tsrSystemEnabled(context: Context): Boolean =
