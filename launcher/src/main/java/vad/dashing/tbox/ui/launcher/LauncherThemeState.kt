@@ -135,6 +135,34 @@ object LauncherThemeState {
     }
 
     /**
+     * Synchronizes current launcher theme state to the head unit system.
+     * Called during Stage 2 Warmup when the system is ready to receive broadcasts.
+     * Ensures that if manual light or dark mode is selected, the system UI
+     * matches the launcher state.
+     */
+    fun syncThemeToSystem(context: Context) {
+        if (autoThemeSystemEnabled) {
+            ThemeObserver.syncFromSystem(context)
+        } else if (autoThemeSolarEnabled) {
+            val coords = resolveBestGpsCoordinates(context)
+            if (coords != null) {
+                val (lat, lon) = coords
+                val isDaytime = SolarTwilightCalculator.isDaytime(latitude = lat, longitude = lon)
+                val targetDark = !isDaytime
+                if (darkTheme != targetDark) {
+                    darkTheme = targetDark
+                    HeadUnitDayNightRepository.setSystemDark(context, darkTheme)
+                }
+            }
+        } else {
+            val systemDark = HeadUnitDayNightRepository.isSystemDark(context)
+            if (systemDark != darkTheme) {
+                HeadUnitDayNightRepository.setSystemDark(context, darkTheme)
+            }
+        }
+    }
+
+    /**
      * Updates darkTheme from launcher UI or manual user toggle.
      * Also updates head unit system theme.
      */

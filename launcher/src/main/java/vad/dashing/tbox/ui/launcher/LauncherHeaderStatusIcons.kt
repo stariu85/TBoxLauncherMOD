@@ -2281,11 +2281,10 @@ internal fun LauncherTopBarRecWidget(
     val textStyle = indicatorTextStyle?.copy(
         fontSize = indicatorFontSizeSp,
         lineHeight = indicatorFontSizeSp,
-        fontWeight = FontWeight.Bold,
     ) ?: TextStyle(
         fontSize = indicatorFontSizeSp,
         lineHeight = indicatorFontSizeSp,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.Light,
         platformStyle = PlatformTextStyle(includeFontPadding = false),
         lineHeightStyle = LineHeightStyle(
             alignment = LineHeightStyle.Alignment.Center,

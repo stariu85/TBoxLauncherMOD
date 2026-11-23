@@ -155,6 +155,7 @@ class LauncherHomeActivity : ComponentActivity() {
             // --- Stage 2: Heavy subsystems, mbCAN & caches (+400ms after Stage 1) ---
             delay(400L)
             vad.dashing.tbox.DclLogRecorder.log("WARMUP", "Stage 2 start: caches, UniversalCanRepository auto-bind")
+            LauncherThemeState.syncThemeToSystem(appCtx)
             LauncherWifiApRepository.init(appCtx)
             vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
 
