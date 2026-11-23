@@ -145,10 +145,6 @@ fun LauncherCamerasSettingsContent(
             if (s.keepAvm != disableStockAvm) {
                 LauncherAppConfigStore.setCamdDisableStockAvm(context, s.keepAvm)
             }
-            val currentRec = s.recActive || s.recEnabled
-            if (currentRec != recorderEnabled) {
-                LauncherAppConfigStore.setCamdRecorderEnabled(context, currentRec)
-            }
         }
     }
 

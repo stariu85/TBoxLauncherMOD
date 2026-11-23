@@ -209,7 +209,7 @@ object LauncherFirstInstallDefaults {
         putIfMissing("nav_text_y_ratio", 0.16f)
         putIfMissing("dock_second_row_enabled", false)
         putIfMissing("dock_columns", 20)
-        putIfMissing("classic_speed_limit_visible", true)
+        putIfMissing("classic_speed_limit_visible", false)
         putIfMissing("speed_limit_warning_sound_enabled", false)
         putIfMissing("tsr_system_enabled", true)
         putIfMissing("nav_maneuver_visible", false)
@@ -223,6 +223,17 @@ object LauncherFirstInstallDefaults {
         putIfMissing("cruise_engage_action", 0)
         putIfMissing("fuel_price_rub", 55.0f)
         putIfMissing("fuel_tank_capacity_liters", 57.0f)
+
+        // Mutual exclusivity: if both were left enabled by previous defaults,
+        // prioritize nav_speed_visible and disable classic_speed_limit_visible.
+        if (appConfig.contains("classic_speed_limit_visible") &&
+            appConfig.contains("nav_speed_visible") &&
+            appConfig.getBoolean("classic_speed_limit_visible", false) &&
+            appConfig.getBoolean("nav_speed_visible", false)
+        ) {
+            appEditor.putBoolean("classic_speed_limit_visible", false)
+            appChanged = true
+        }
 
         if (appChanged) {
             appEditor.commit()

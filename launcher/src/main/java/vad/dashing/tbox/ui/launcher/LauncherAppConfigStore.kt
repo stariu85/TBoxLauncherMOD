@@ -2509,11 +2509,18 @@ internal object LauncherAppConfigStore {
     }
 
     fun classicSpeedLimitVisible(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, true)
+        prefs(context).getBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, false)
 
     fun setClassicSpeedLimitVisible(context: Context, visible: Boolean) {
-        prefs(context).edit().putBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, visible).apply()
+        val editor = prefs(context).edit().putBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, visible)
+        if (visible) {
+            editor.putBoolean(KEY_NAV_SPEED_VISIBLE, false)
+        }
+        editor.apply()
         classicSpeedLimitRevision.value++
+        if (visible) {
+            navSpeedRevision.value++
+        }
     }
 
     fun speedLimitWarningSoundEnabled(context: Context): Boolean =
@@ -2559,8 +2566,15 @@ internal object LauncherAppConfigStore {
         prefs(context).getBoolean(KEY_NAV_SPEED_VISIBLE, true)
 
     fun setNavSpeedVisible(context: Context, visible: Boolean) {
-        prefs(context).edit().putBoolean(KEY_NAV_SPEED_VISIBLE, visible).apply()
+        val editor = prefs(context).edit().putBoolean(KEY_NAV_SPEED_VISIBLE, visible)
+        if (visible) {
+            editor.putBoolean(KEY_CLASSIC_SPEED_LIMIT_VISIBLE, false)
+        }
+        editor.apply()
         navSpeedRevision.value++
+        if (visible) {
+            classicSpeedLimitRevision.value++
+        }
     }
 
     fun navTrafficLightVisible(context: Context): Boolean =

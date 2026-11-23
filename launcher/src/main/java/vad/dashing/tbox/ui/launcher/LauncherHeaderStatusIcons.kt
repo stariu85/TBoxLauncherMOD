@@ -165,7 +165,7 @@ private suspend fun PointerInputScope.detectTopBarPickerLongPress(
     toRightSide: Boolean,
 ) {
     val cancelThresholdPx = with(density) { 30.dp.toPx() }
-    val holdDurationMs = 3000L
+    val holdDurationMs = 2000L
 
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -216,7 +216,7 @@ private suspend fun PointerInputScope.detectDraggableTopBarItem(
     onOffsetChange: (Float, Float) -> Unit,
 ) {
     val dragHoldDurationMs = 1000L
-    val pickerHoldDurationMs = 3000L
+    val pickerHoldDurationMs = 2000L
     val maxSlopBeforeHoldPx = with(density) { 10.dp.toPx() }
     val cancelPickerThresholdPx = with(density) { 30.dp.toPx() }
     val removeThresholdPx = with(density) { 20.dp.toPx() }
@@ -724,7 +724,7 @@ internal fun LauncherTopHeaderBar(
             }
         }
 
-        // 2. Middle: EMPTY SPACE (3s long press triggers addition menu)
+        // 2. Middle: EMPTY SPACE (2s long press triggers addition menu)
         Box(
             modifier = Modifier
                 .weight(1f)

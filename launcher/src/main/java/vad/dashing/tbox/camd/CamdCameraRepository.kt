@@ -509,7 +509,7 @@ object CamdCameraRepository {
                 "CamdCameraRepository",
                 "checkDvrAndAvmCoordination: targetRecording=${target.targetRecording} (was=$isCurrentlyRecording, isAvmActive=$isAvmActive, speed=$speed)"
             )
-            setRecorderEnabled(context, target.targetRecording)
+            setRecorderEnabled(context, target.targetRecording, updateUserPreference = false)
         }
     }
 
@@ -621,8 +621,6 @@ object CamdCameraRepository {
                 val hasAllFour = listOf(CAMERA_ID_LEFT, CAMERA_ID_RIGHT, CAMERA_ID_FRONT, CAMERA_ID_REAR)
                     .all { it in physicalWindows }
                 _isDesktopCamerasOpen.value = hasAllFour
-                val currentRec = s.recActive || s.recEnabled
-                LauncherAppConfigStore.setCamdRecorderEnabled(context, currentRec)
             }
         }
     }
@@ -633,9 +631,15 @@ object CamdCameraRepository {
         return res
     }
 
-    suspend fun setRecorderEnabled(context: Context, enabled: Boolean): Result<String> {
+    suspend fun setRecorderEnabled(
+        context: Context,
+        enabled: Boolean,
+        updateUserPreference: Boolean = true,
+    ): Result<String> {
         val res = CamdSocketClient.setRecorder(context, enabled)
-        LauncherAppConfigStore.setCamdRecorderEnabled(context, enabled)
+        if (updateUserPreference) {
+            LauncherAppConfigStore.setCamdRecorderEnabled(context, enabled)
+        }
         if (enabled && !LauncherAppConfigStore.camdRecorderAutoOffBySpeed(context)) {
             // "Если тумблер видеорегистратора включен а тумблер автоматического включения выключен-
             // то автоматически должна выключаться штатная AVM (тк видеорегистратор не может работать когда включена AVM)"
