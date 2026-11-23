@@ -381,6 +381,7 @@ internal fun tryLaunchIntentInBounds(
             strategy = "am.moveTaskToFront",
             success = true,
         )
+        pinFreeformBounds(appCtx, packageName, targetBounds)
         return true
     }
 
@@ -471,77 +472,107 @@ internal fun forceFreeformBoundsByTaskId(
 ) {
     val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val rect = Rect(bounds)
-    setTaskWindowingModeFreeform(am, taskId)
+    setTaskWindowingModeFreeform(am, taskId, toTop = false)
 
-    if (LauncherAppConfigStore.experimentalHomeWindowingMode(context)) {
+    val isHomeWindowingMode = LauncherAppConfigStore.experimentalHomeWindowingMode(context)
+
+    if (isHomeWindowingMode) {
         runCatching {
             DclwmClient().setWindowingMode(taskId, WINDOWING_MODE_FREEFORM)
             Log.w("LauncherAppLaunch", "dclwm restored task to freeform id=$taskId")
         }.onFailure { Log.w("LauncherAppLaunch", "dclwm setWindowingMode freeform failed task=$taskId", it) }
     }
 
-    if (LauncherAppConfigStore.experimentalHideAppsOnHome(context)) {
-        val dclwmResized = runCatching {
+    var dclwmResized = false
+    if (LauncherAppConfigStore.experimentalHideAppsOnHome(context) || isHomeWindowingMode) {
+        dclwmResized = runCatching {
             DclwmClient().resize(taskId, rect.left, rect.top, rect.right, rect.bottom)
             true
         }.getOrDefault(false)
         if (dclwmResized) {
             Log.w("LauncherAppLaunch", "dclwm resize ok task=$taskId label=$label bounds=$rect")
-            if (bringToFront) {
-                runCatching { am.moveTaskToFront(taskId, 0) }
-                    .onFailure { Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it) }
-            }
-            return
         }
     }
 
-    val resized = runCatching {
-        val method = ActivityManager::class.java.getMethod(
-            "resizeTask",
-            Int::class.javaPrimitiveType,
-            Rect::class.java,
-            Int::class.javaPrimitiveType,
+    if (!dclwmResized) {
+        val resized = runCatching {
+            val method = ActivityManager::class.java.getMethod(
+                "resizeTask",
+                Int::class.javaPrimitiveType,
+                Rect::class.java,
+                Int::class.javaPrimitiveType,
+            )
+            method.invoke(am, taskId, rect, RESIZE_MODE_SYSTEM)
+            true
+        }.recoverCatching {
+            val method = ActivityManager::class.java.getMethod(
+                "resizeTask",
+                Int::class.javaPrimitiveType,
+                Rect::class.java,
+            )
+            method.invoke(am, taskId, rect)
+            true
+        }.recoverCatching {
+            // Proven on this HU: am task resize <id> L T R B
+            val pb = ProcessBuilder(
+                "am", "task", "resize",
+                taskId.toString(),
+                rect.left.toString(),
+                rect.top.toString(),
+                rect.right.toString(),
+                rect.bottom.toString(),
+            )
+            val proc = pb.redirectErrorStream(true).start()
+            val out = proc.inputStream.bufferedReader().readText().trim()
+            val code = proc.waitFor()
+            if (code != 0) error("am task resize exit=$code out=$out")
+            true
+        }.onFailure {
+            Log.w("LauncherAppLaunch", "resizeTask failed task=$taskId label=$label", it)
+        }.getOrDefault(false)
+        Log.w(
+            "LauncherAppLaunch",
+            "resizeTask ok=$resized task=$taskId label=$label bounds=$rect",
         )
-        method.invoke(am, taskId, rect, RESIZE_MODE_SYSTEM)
-        true
-    }.recoverCatching {
-        val method = ActivityManager::class.java.getMethod(
-            "resizeTask",
-            Int::class.javaPrimitiveType,
-            Rect::class.java,
-        )
-        method.invoke(am, taskId, rect)
-        true
-    }.recoverCatching {
-        // Proven on this HU: am task resize <id> L T R B
-        val pb = ProcessBuilder(
-            "am", "task", "resize",
-            taskId.toString(),
-            rect.left.toString(),
-            rect.top.toString(),
-            rect.right.toString(),
-            rect.bottom.toString(),
-        )
-        val proc = pb.redirectErrorStream(true).start()
-        val out = proc.inputStream.bufferedReader().readText().trim()
-        val code = proc.waitFor()
-        if (code != 0) error("am task resize exit=$code out=$out")
-        true
-    }.onFailure {
-        Log.w("LauncherAppLaunch", "resizeTask failed task=$taskId label=$label", it)
-    }.getOrDefault(false)
-    Log.w(
-        "LauncherAppLaunch",
-        "resizeTask ok=$resized task=$taskId label=$label bounds=$rect",
-    )
+    }
 
     if (bringToFront) {
-        runCatching { am.moveTaskToFront(taskId, 0) }
-            .onFailure { Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it) }
+        if (isHomeWindowingMode) {
+            // Wait 80ms for WMS to update task bounds and window configuration in the background
+            // before bringing the task to front, preventing the initial fullscreen flash.
+            SystemClock.sleep(80L)
+        }
+        bringTaskToFrontInternal(am, taskId, rect)
     }
 }
 
-private fun setTaskWindowingModeFreeform(am: ActivityManager, taskId: Int) {
+private fun bringTaskToFrontInternal(am: ActivityManager, taskId: Int, bounds: Rect) {
+    runCatching {
+        val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
+        runCatching {
+            ActivityOptions::class.java.getMethod(
+                "setLaunchWindowingMode",
+                Int::class.javaPrimitiveType,
+            ).invoke(options, WINDOWING_MODE_FREEFORM)
+        }
+        val movedWithOptions = runCatching {
+            val method = ActivityManager::class.java.getMethod(
+                "moveTaskToFront",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                android.os.Bundle::class.java,
+            )
+            method.invoke(am, taskId, 0, options.toBundle())
+            true
+        }.getOrDefault(false)
+
+        if (!movedWithOptions) {
+            am.moveTaskToFront(taskId, 0)
+        }
+    }.onFailure { Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it) }
+}
+
+private fun setTaskWindowingModeFreeform(am: ActivityManager, taskId: Int, toTop: Boolean = false) {
     runCatching {
         val method = ActivityManager::class.java.getMethod(
             "setTaskWindowingMode",
@@ -549,7 +580,7 @@ private fun setTaskWindowingModeFreeform(am: ActivityManager, taskId: Int) {
             Int::class.javaPrimitiveType,
             Boolean::class.javaPrimitiveType,
         )
-        method.invoke(am, taskId, WINDOWING_MODE_FREEFORM, true)
+        method.invoke(am, taskId, WINDOWING_MODE_FREEFORM, toTop)
         return
     }
     runCatching {
@@ -562,7 +593,7 @@ private fun setTaskWindowingModeFreeform(am: ActivityManager, taskId: Int) {
             Int::class.javaPrimitiveType,
             Boolean::class.javaPrimitiveType,
         )
-        method.invoke(atm, taskId, WINDOWING_MODE_FREEFORM, true)
+        method.invoke(atm, taskId, WINDOWING_MODE_FREEFORM, toTop)
     }
 }
 
