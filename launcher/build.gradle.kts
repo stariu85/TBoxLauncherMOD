@@ -25,8 +25,8 @@ android {
         applicationId = "ras.dashing.tbox.launcher"
         minSdk = 28
         targetSdk = 36
-        versionCode = 104
-        versionName = "0.8.31"
+        versionCode = 105
+        versionName = "0.8.32"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TBOX_PROXY_VERSION", "\"${libs.versions.tboxProxy.get()}\"")
@@ -98,10 +98,6 @@ val validateLauncherCarRigAssets by tasks.registering {
             "p_door03",
             "p_door04",
             "houbeimen_copy",
-            "wheel_lungu01_L",
-            "wheel_lungu01_R",
-            "wheel_lungu02_L",
-            "wheel_lungu02_R",
         )
         val glbText = glb.asFile.readBytes().toString(Charsets.ISO_8859_1)
         val pivotText = pivots.asFile.readText()

@@ -63,8 +63,8 @@ import kotlin.math.abs
 import kotlin.math.exp
 
 // Calibrated against the GLB's authored forward axis so the nose points to screen top.
-private const val MODEL_YAW_DEG = 135f
-private const val SETTINGS_YAW_DEG = 45f
+private const val MODEL_YAW_DEG = 0f
+private const val SETTINGS_YAW_DEG = -90f
 
 object LauncherCar3DModelTrigger {
     private val _homePressedEvent = MutableStateFlow(0L)
@@ -165,6 +165,7 @@ private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
 private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val BASE_MODEL_SCALE = 0.378f
+private const val PREPARED_FRAMES_WARMUP = 15
 private const val TRANSITION_FRAME_INTERVAL_NS = 14_000_000L // 60 FPS target during transitions (1 VSYNC tick at 60Hz = 16.6ms with 14ms tolerance)
 private const val DYNAMIC_FRAME_INTERVAL_NS = 42_000_000L // 20 FPS target (3 VSYNC ticks at 60Hz = 50ms with 42ms hysteresis tolerance margin)
 private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS in statics (~1000ms)
@@ -1031,7 +1032,9 @@ private fun LauncherCarFilamentContent(
                             node.scale = Scale(renderedScale)
                             node.isVisible = false
                             preparedFrames++
-                            if (preparedFrames >= 3 && widthPx > 0 && heightPx > 0) {
+                            val materialsReady = paintMaterialsRef.value.isNotEmpty() || preparedFrames >= 30
+                            val animatorReady = animationController == null || animationController.isSettled || preparedFrames >= 20
+                            if (preparedFrames >= PREPARED_FRAMES_WARMUP && materialsReady && animatorReady && widthPx > 0 && heightPx > 0) {
                                 modelReady = true
                                 node.isVisible = true
                             }
@@ -1199,6 +1202,7 @@ private fun LauncherCarFilamentContent(
                     apply = {
                         isVisible = false
                         modelNodeRef.set(this)
+                        animationController?.resetToRestPose()
                     },
                 )
             }

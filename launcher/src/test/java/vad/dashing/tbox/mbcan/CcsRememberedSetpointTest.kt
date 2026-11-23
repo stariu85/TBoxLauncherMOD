@@ -100,12 +100,12 @@ class CcsRememberedSetpointTest {
 
     @Test
     fun shouldReconcileStableSpeed_requiresDurationAndDifference() {
-        // Less than 2 seconds -> false
+        // Less than 10 seconds -> false
         assertFalse(
             CcsRememberedSetpoint.shouldReconcileStableSpeed(
                 rememberedKmh = 90,
                 roundedSpeedKmh = 100,
-                stableForMs = 1500L,
+                stableForMs = 5000L,
                 withinOurPulse = false,
             ),
         )
@@ -115,7 +115,7 @@ class CcsRememberedSetpointTest {
             CcsRememberedSetpoint.shouldReconcileStableSpeed(
                 rememberedKmh = 90,
                 roundedSpeedKmh = 100,
-                stableForMs = 2500L,
+                stableForMs = 12000L,
                 withinOurPulse = true,
             ),
         )
@@ -125,17 +125,17 @@ class CcsRememberedSetpointTest {
             CcsRememberedSetpoint.shouldReconcileStableSpeed(
                 rememberedKmh = 90,
                 roundedSpeedKmh = 91,
-                stableForMs = 2500L,
+                stableForMs = 12000L,
                 withinOurPulse = false,
             ),
         )
 
-        // >= 2000 ms, diff >= 2, not within pulse -> true
+        // >= 10000 ms, diff >= 2, not within pulse -> true
         assertTrue(
             CcsRememberedSetpoint.shouldReconcileStableSpeed(
                 rememberedKmh = 90,
                 roundedSpeedKmh = 100,
-                stableForMs = 2500L,
+                stableForMs = 12000L,
                 withinOurPulse = false,
             ),
         )

@@ -79,12 +79,42 @@ class LauncherCarRigController private constructor(
         cameraNode: CameraNode,
         viewportWidthPx: Int,
         viewportHeightPx: Int,
-    ): Map<LauncherWheelCorner, Offset> = projectAnchors(
-        cameraNode = cameraNode,
-        viewportWidthPx = viewportWidthPx,
-        viewportHeightPx = viewportHeightPx,
-        nodeNames = WHEEL_CORNERS,
-    )
+    ): Map<LauncherWheelCorner, Offset> {
+        val nodeAnchors = projectAnchors(
+            cameraNode = cameraNode,
+            viewportWidthPx = viewportWidthPx,
+            viewportHeightPx = viewportHeightPx,
+            nodeNames = WHEEL_CORNERS,
+        )
+        if (nodeAnchors.isNotEmpty()) return nodeAnchors
+        if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return emptyMap()
+
+        val cameraPosition = cameraNode.worldPosition
+        val cameraForward = cameraNode.forwardDirection
+
+        return buildMap {
+            WHEEL_CORNERS.forEach { (corner, wheelName) ->
+                val world = getWheelWorldTransform(wheelName) ?: return@forEach
+                val wx = world[12]
+                val wy = world[13]
+                val wz = world[14]
+                val depth =
+                    (wx - cameraPosition.x) * cameraForward.x +
+                        (wy - cameraPosition.y) * cameraForward.y +
+                        (wz - cameraPosition.z) * cameraForward.z
+                if (!depth.isFinite() || depth <= cameraNode.near) return@forEach
+                val screen = cameraNode.worldToScreenPoint(Vector3(wx, wy, wz))
+                if (!screen.x.isFinite() || !screen.y.isFinite()) return@forEach
+                put(
+                    corner,
+                    Offset(
+                        screen.x.coerceIn(-viewportWidthPx * 0.5f, viewportWidthPx * 1.5f),
+                        screen.y.coerceIn(-viewportHeightPx * 0.5f, viewportHeightPx * 1.5f),
+                    ),
+                )
+            }
+        }
+    }
 
     fun projectDoorAnchors(
         cameraNode: CameraNode,
@@ -151,6 +181,24 @@ class LauncherCarRigController private constructor(
         }
     }
 
+    private fun getWheelWorldTransform(name: String): FloatArray? {
+        val node = boundNodes[name]
+        if (node != null) {
+            val world = FloatArray(16)
+            transformManager.getWorldTransform(node.instance, world)
+            return world
+        }
+        val chassisNode = boundNodes[CHASSIS] ?: return null
+        val offset = DEFAULT_WHEEL_OFFSETS[name] ?: return null
+        val chassisWorld = FloatArray(16)
+        transformManager.getWorldTransform(chassisNode.instance, chassisWorld)
+        val world = chassisWorld.clone()
+        world[12] = chassisWorld[0] * offset[0] + chassisWorld[4] * offset[1] + chassisWorld[8] * offset[2] + chassisWorld[12]
+        world[13] = chassisWorld[1] * offset[0] + chassisWorld[5] * offset[1] + chassisWorld[9] * offset[2] + chassisWorld[13]
+        world[14] = chassisWorld[2] * offset[0] + chassisWorld[6] * offset[1] + chassisWorld[10] * offset[2] + chassisWorld[14]
+        return world
+    }
+
     /**
      * Projects three ground-plane rings (0.2 / 0.37 / 0.54 m beyond the body contour)
      * as dense screen-space polylines (90 samples, each with its screen angle around
@@ -164,16 +212,10 @@ class LauncherCarRigController private constructor(
         driveBlend: Float = 0f,
     ): LauncherPdcRingFrame? {
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
-        fun wheelWorld(name: String): FloatArray? {
-            val node = boundNodes[name] ?: return null
-            val world = FloatArray(16)
-            transformManager.getWorldTransform(node.instance, world)
-            return world
-        }
-        val fl = wheelWorld(WHEEL_FL) ?: return null
-        val fr = wheelWorld(WHEEL_FR) ?: return null
-        val rl = wheelWorld(WHEEL_RL) ?: return null
-        val rr = wheelWorld(WHEEL_RR) ?: return null
+        val fl = getWheelWorldTransform(WHEEL_FL) ?: return null
+        val fr = getWheelWorldTransform(WHEEL_FR) ?: return null
+        val rl = getWheelWorldTransform(WHEEL_RL) ?: return null
+        val rr = getWheelWorldTransform(WHEEL_RR) ?: return null
 
         val frontX = (fl[12] + fr[12]) / 2f
         val frontZ = (fl[14] + fr[14]) / 2f
@@ -361,16 +403,10 @@ class LauncherCarRigController private constructor(
         driveBlend: Float = 0f,
     ): LauncherHeadlightFrame? {
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
-        fun wheelWorld(name: String): FloatArray? {
-            val node = boundNodes[name] ?: return null
-            val world = FloatArray(16)
-            transformManager.getWorldTransform(node.instance, world)
-            return world
-        }
-        val fl = wheelWorld(WHEEL_FL) ?: return null
-        val fr = wheelWorld(WHEEL_FR) ?: return null
-        val rl = wheelWorld(WHEEL_RL) ?: return null
-        val rr = wheelWorld(WHEEL_RR) ?: return null
+        val fl = getWheelWorldTransform(WHEEL_FL) ?: return null
+        val fr = getWheelWorldTransform(WHEEL_FR) ?: return null
+        val rl = getWheelWorldTransform(WHEEL_RL) ?: return null
+        val rr = getWheelWorldTransform(WHEEL_RR) ?: return null
 
         val frontX = (fl[12] + fr[12]) / 2f
         val frontZ = (fl[14] + fr[14]) / 2f
@@ -535,6 +571,7 @@ class LauncherCarRigController private constructor(
     }
 
     companion object {
+        const val CHASSIS = "chassis"
         const val DOOR_FL = "p_door01"
         const val DOOR_FR = "p_door02"
         const val DOOR_RL = "p_door03"
@@ -551,10 +588,21 @@ class LauncherCarRigController private constructor(
             DOOR_RL,
             DOOR_RR,
             TAILGATE,
+        )
+
+        val optionalNodeNames: Set<String> = linkedSetOf(
+            CHASSIS,
             WHEEL_FL,
             WHEEL_FR,
             WHEEL_RL,
             WHEEL_RR,
+        )
+
+        private val DEFAULT_WHEEL_OFFSETS: Map<String, FloatArray> = mapOf(
+            WHEEL_FL to floatArrayOf(-1.352752f, 0.366519f, 0.816806f),
+            WHEEL_FR to floatArrayOf(-1.341476f, 0.366519f, -0.816806f),
+            WHEEL_RL to floatArrayOf(1.363468f, 0.366519f, 0.816806f),
+            WHEEL_RR to floatArrayOf(1.382029f, 0.366519f, -0.816806f),
         )
 
         private val WHEEL_CORNERS = mapOf(
@@ -622,8 +670,9 @@ class LauncherCarRigController private constructor(
                 }
             }
             val tempTransform = FloatArray(16)
+            val allTrackedNodes = requiredNodeNames + optionalNodeNames
             val nodes = buildMap {
-                requiredNodeNames.forEach { name ->
+                allTrackedNodes.forEach { name ->
                     val entity = entitiesByName[name] ?: return@forEach
                     if (!manager.hasComponent(entity)) return@forEach
                     val instance = manager.getInstance(entity)

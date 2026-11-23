@@ -46,13 +46,13 @@ object CcsRememberedSetpoint {
     const val OUR_PULSE_WINDOW_MS = 2_000L
 
     /** Active ±1 without hardkey: adopt rounded speed after it holds this long. */
-    const val NUDGE_SETTLE_MS = 500L
+    const val NUDGE_SETTLE_MS = 3_000L
 
     /**
      * When vehicle speed stays within [STABLE_SPEED_BAND_KMH] of an anchor for this long
      * and differs from remembered by ≥ [RECONCILE_MIN_DELTA_KMH], adopt speed as setpoint.
      */
-    const val STABLE_RECONCILE_MS = 2_000L
+    const val STABLE_RECONCILE_MS = 10_000L
 
     /** Max |speed − stabilityAnchor| while building a stable window. */
     const val STABLE_SPEED_BAND_KMH = 1f

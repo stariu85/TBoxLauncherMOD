@@ -901,12 +901,50 @@ fun LauncherLeftPanel(
             val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow.collectAsStateWithLifecycle()
             val isReverseCamerasOpen by CamdCameraRepository.isReverseCamerasOpen.collectAsStateWithLifecycle()
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
-            val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open || settingsProgress > 0.001f
+            val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open ||
+                settingsProgress > 0.001f ||
+                LauncherVehicleSettingsOverlayWindow.isShowing() ||
+                vad.dashing.tbox.LauncherVehicleSettingsActivity.isOpen()
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
             val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
             val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
             val isParkEngageRecent = (SystemClock.uptimeMillis() - parkEngagedEvent) < 2000L
-            val showCarInComposition = carModelVisible && (cameraAnimEnabled || !carHidden || isParkEngageRecent)
+            val showCarInComposition = carModelVisible && !isVehicleSettingsOpen && (cameraAnimEnabled || !carHidden || isParkEngageRecent)
+            val showTireBadgesAdas = !tirePressureOnlyTopView || !showDriveView
+            if (!carHidden && !racing && carOverlayAlpha > 0.001f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = carOverlayAlpha },
+                ) {
+                    LauncherHeadlightOverlay(
+                        beams = headlightBeams,
+                        hma = adas.hma,
+                        isHighBeam = isHighBeamIndicated,
+                        frame = headlightFrame,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (showTireBadgesAdas) {
+                        LauncherTireBadges(
+                            state = effectiveTires,
+                            // ADAS strip shows a small pressure-only pill next to the wheel.
+                            compact = true,
+                            wheelAnchorsPx = wheelAnchors,
+                            showAll = !tirePressureOnlyLow,
+                            lowPressureThreshold = tirePressureLowThreshold,
+                            allowLowTempNotification = tireLowTempAlertEnabled,
+                            speedKmh = effectiveSpeed,
+                            steerAngleDeg = 0f,
+                            isRearView = showDriveView,
+                            inertiaEnabled = tirePressureInertiaEnabled,
+                            badgeShape = tirePressureBadgeShape,
+                            showHundredths = tirePressureShowHundredths,
+                            showTemperature = tirePressureShowTemperature,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
             if (showCarInComposition) {
                 LauncherCar3DModel(
                     rigState = rigState,
@@ -974,32 +1012,12 @@ fun LauncherLeftPanel(
                         },
                 )
             }
-            val showTireBadgesAdas = !tirePressureOnlyTopView || !showDriveView
             if (!carHidden && !racing && carOverlayAlpha > 0.001f) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { alpha = carOverlayAlpha },
                 ) {
-                    if (showTireBadgesAdas) {
-                        LauncherTireBadges(
-                            state = effectiveTires,
-                            // ADAS strip shows a small pressure-only pill next to the wheel.
-                            compact = true,
-                            wheelAnchorsPx = wheelAnchors,
-                            showAll = !tirePressureOnlyLow,
-                            lowPressureThreshold = tirePressureLowThreshold,
-                            allowLowTempNotification = tireLowTempAlertEnabled,
-                            speedKmh = effectiveSpeed,
-                            steerAngleDeg = 0f,
-                            isRearView = showDriveView,
-                            inertiaEnabled = tirePressureInertiaEnabled,
-                            badgeShape = tirePressureBadgeShape,
-                            showHundredths = tirePressureShowHundredths,
-                            showTemperature = tirePressureShowTemperature,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
                     if (!bodyRigAvailable) {
                         LauncherDoorBadges(
                             body = effectiveBody,
@@ -1022,13 +1040,6 @@ fun LauncherLeftPanel(
                         threats = adas.rearThreats,
                         rings = pdcRings,
                         driving = inDriveGear || steerPreview,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    LauncherHeadlightOverlay(
-                        beams = headlightBeams,
-                        hma = adas.hma,
-                        isHighBeam = isHighBeamIndicated,
-                        frame = headlightFrame,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

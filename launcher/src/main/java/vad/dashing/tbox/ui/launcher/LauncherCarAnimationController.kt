@@ -19,13 +19,10 @@ class LauncherCarAnimationController private constructor(
     private var settleSec = 0f
 
     fun update(state: LauncherCarRigState, dtSec: Float, modelReady: Boolean = true) {
-        // A freshly bound rig always shows every body part closed first, then animates
-        // toward the live state. Snapping to an already-open pose on bind (e.g. settings
-        // opened with the trunk open) made the model appear broken; the settle window
-        // covers model warmup + fade-in so the closed pose is actually seen first.
-        if (modelReady) {
-            settleSec += dtSec.coerceIn(0f, 0.1f)
-        }
+        // Settle timer advances each frame so the warmup window runs off-screen.
+        // settled only becomes true when modelReady is also true, keeping all doors
+        // and tailgate strictly closed (0f) until the model is warm and visible.
+        settleSec += dtSec.coerceIn(0f, 0.1f)
         val settled = modelReady && (settleSec >= SETTLE_BEFORE_OPEN_SEC)
 
         doorFl = stepDoor(doorFl, state.doorFlOpen, settled, dtSec)
@@ -45,6 +42,18 @@ class LauncherCarAnimationController private constructor(
         apply(CLIP_DOOR_RL, doorRl)
         apply(CLIP_DOOR_RR, doorRr)
         apply(CLIP_TAILGATE, tailgate)
+        apply(CLIP_HOOD, 0f)
+        animator.updateBoneMatrices()
+    }
+
+    val isSettled: Boolean
+        get() = settleSec >= SETTLE_BEFORE_OPEN_SEC
+
+    /** Zero-tick rest pose calculation for all glTF clips and skeleton bones. */
+    fun resetToRestPose() {
+        for (index in 0 until animator.animationCount) {
+            animator.applyAnimation(index, 0f)
+        }
         animator.updateBoneMatrices()
     }
 
@@ -64,6 +73,7 @@ class LauncherCarAnimationController private constructor(
         private const val CLIP_DOOR_RL = "door_rl"
         private const val CLIP_DOOR_RR = "door_rr"
         private const val CLIP_TAILGATE = "tailgate"
+        private const val CLIP_HOOD = "hood"
         private val REQUIRED_CLIPS = setOf(
             CLIP_DOOR_FL,
             CLIP_DOOR_FR,
@@ -77,15 +87,13 @@ class LauncherCarAnimationController private constructor(
             val indices = buildMap {
                 for (index in 0 until animator.animationCount) {
                     val name = animator.getAnimationName(index)
-                    if (name in REQUIRED_CLIPS) put(name, index)
+                    if (name in REQUIRED_CLIPS || name == CLIP_HOOD) put(name, index)
                 }
             }
             if (!indices.keys.containsAll(REQUIRED_CLIPS)) return null
             val controller = LauncherCarAnimationController(animator, indices)
-            indices.values.forEach { clipIndex ->
-                animator.applyAnimation(clipIndex, 0f)
-            }
-            animator.updateBoneMatrices()
+            // Zero-tick: force all animations to rest pose 0f and commit bone matrices before first render
+            controller.resetToRestPose()
             return controller
         }
     }

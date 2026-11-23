@@ -113,6 +113,13 @@ fun LauncherVehicleSettingsScreen(
     var bodyRigAvailable by remember { mutableStateOf(false) }
     var simUnlockTapCount by remember { mutableStateOf(0) }
     var simUnlocked by remember { mutableStateOf(LauncherDevVehicleState.simulateEnabled) }
+    var isModelMounted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        // Defer mounting 3D model slightly (150ms) to allow window transition and home screen unmount to complete
+        delay(150L)
+        isModelMounted = true
+    }
 
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val tiresReal by LauncherTireRepository.state.collectAsStateWithLifecycle()
@@ -388,25 +395,27 @@ fun LauncherVehicleSettingsScreen(
                 .padding(6.dp),
             contentAlignment = Alignment.Center,
         ) {
-            LauncherCar3DModel(
-                rigState = rig,
-                speedKmh = motion.speedKmh,
-                steeringDeg = steer,
-                steerPreview = motion.steerPreviewActive,
-                modelRevision = 0,
-                paintRevision = paintRevision,
-                paintId = paintId,
-                showRoad = false,
-                settingsView = true,
-                settingsProgress = 1f,
-                settingsOrbit = settingsOrbit,
-                onWheelAnchorsChanged = { wheelAnchors = it },
-                onDoorAnchorsChanged = { doorAnchors = it },
-                onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                // Inline compositing keeps the tire badges above the 3D model here.
-                textureSurface = true,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (isModelMounted) {
+                LauncherCar3DModel(
+                    rigState = rig,
+                    speedKmh = motion.speedKmh,
+                    steeringDeg = steer,
+                    steerPreview = motion.steerPreviewActive,
+                    modelRevision = 0,
+                    paintRevision = paintRevision,
+                    paintId = paintId,
+                    showRoad = false,
+                    settingsView = true,
+                    settingsProgress = 1f,
+                    settingsOrbit = settingsOrbit,
+                    onWheelAnchorsChanged = { wheelAnchors = it },
+                    onDoorAnchorsChanged = { doorAnchors = it },
+                    onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
+                    // Inline compositing keeps the tire badges above the 3D model here.
+                    textureSurface = true,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             val showBadgesInSettings = tirePressureAlwaysInSettings || effectiveTires.hasAttention(tirePressureLowThreshold, tireLowTempAlertEnabled)
             val showAllInSettings = tirePressureAlwaysInSettings || !tirePressureOnlyLow
 

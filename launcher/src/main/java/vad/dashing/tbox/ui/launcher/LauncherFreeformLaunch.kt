@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.content.Context
@@ -144,7 +145,7 @@ internal fun closeFullWidthAppsIfOpen(
     if (fastStacks.isNotEmpty()) {
         for (info in fastStacks) {
             val pkg = stackInfoTopPackage(info) ?: continue
-            if (pkg == launcherPackage) continue
+            if (pkg == launcherPackage || pkg == launchingPackage) continue
 
             val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
             if (recordedBounds != null && recordedBounds.left != 0) {
@@ -166,7 +167,7 @@ internal fun closeFullWidthAppsIfOpen(
         val stacks = runCatching { LauncherAmStackShell.listStacks() }.getOrDefault(emptyList())
         for (s in stacks) {
             val pkg = s.packageName ?: continue
-            if (pkg == launcherPackage) continue
+            if (pkg == launcherPackage || pkg == launchingPackage) continue
 
             val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
             if (recordedBounds != null && recordedBounds.left != 0) {
@@ -188,7 +189,7 @@ internal fun closeFullWidthAppsIfOpen(
     // 2. Check packages recorded in FreeformLaunchRegistry
     val tracked = FreeformLaunchRegistry.snapshot()
     for (pkg in tracked) {
-        if (pkg == launcherPackage) continue
+        if (pkg == launcherPackage || pkg == launchingPackage) continue
         val bounds = FreeformLaunchRegistry.lastBounds(pkg)
         if (bounds != null && bounds.left == 0) {
             packagesToStop += pkg
@@ -197,7 +198,7 @@ internal fun closeFullWidthAppsIfOpen(
 
     // 3. Check active app in LauncherActiveAppTracker
     val activePkg = LauncherActiveAppTracker.activeAppPackage()
-    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage) {
+    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage && activePkg != launchingPackage) {
         val bounds = FreeformLaunchRegistry.lastBounds(activePkg)
         if (bounds != null && bounds.left == 0) {
             packagesToStop += activePkg
@@ -327,7 +328,7 @@ internal fun tryLaunchIntentInBounds(
         if (categories?.isEmpty() != false) addCategory(Intent.CATEGORY_LAUNCHER)
         flags = 0
         // Reuse one freeform task so resize applies to the window the user sees.
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         if (launchAdjacent) {
             addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT)
         }
@@ -358,8 +359,32 @@ internal fun tryLaunchIntentInBounds(
 
     val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val existingTaskId = findTaskIdForPackage(am, packageName)
-    if (existingTaskId != null) {
-        forceFreeformBoundsByTaskId(context, existingTaskId, targetBounds, bringToFront = true, label = packageName)
+    val isProcessAlive = existingTaskId != null && isAppProcessAlive(am, packageName)
+    if (existingTaskId != null && !isProcessAlive) {
+        Log.w(
+            "LauncherAppLaunch",
+            "Found stale task $existingTaskId for pkg=$packageName but process is not running. Starting fresh activity.",
+        )
+    }
+    if (existingTaskId != null && isProcessAlive) {
+        val isHomeWindowingMode = LauncherAppConfigStore.experimentalHomeWindowingMode(context)
+
+        // For overlay-fullscreen: task was switched to Fullscreen (mode 1) when Home was pressed.
+        // 1. Resize bounds in background first to avoid fullscreen flash.
+        // 2. Switch windowing mode back to FREEFORM with toTop = true.
+        if (isHomeWindowingMode) {
+            runCatching {
+                val client = DclwmClient()
+                client.resize(existingTaskId, targetBounds.left, targetBounds.top, targetBounds.right, targetBounds.bottom)
+                client.setWindowingMode(existingTaskId, WINDOWING_MODE_FREEFORM)
+            }.onFailure {
+                Log.w("LauncherAppLaunch", "dclwm restore freeform failed task=$existingTaskId", it)
+            }
+            setTaskWindowingModeFreeform(am, existingTaskId, toTop = true)
+        } else {
+            forceFreeformBoundsByTaskId(context, existingTaskId, targetBounds, bringToFront = false, label = packageName)
+        }
+
         LastAppTracker.recordLaunch(context, packageName)
         LauncherActiveAppTracker.onAppLaunched(
             packageName = packageName,
@@ -370,6 +395,24 @@ internal fun tryLaunchIntentInBounds(
         )
         FreeformLaunchRegistry.record(packageName, targetBounds)
         Log.w("LauncherAppLaunch", "Reused existing task $existingTaskId for pkg=$packageName bounds=$targetBounds")
+
+        // On Android 9, am.moveTaskToFront alone fails to transfer WindowManager
+        // touch routing (InputChannel / touchableRegion) over the Home stack (which was brought
+        // to front with MOVE_TASK_WITH_HOME). An explicit startActivity is mandatory to trigger
+        // the WMS transition, transfer touch focus, and properly pause LauncherHomeActivity.
+        val launcherAct = (context as? Activity) ?: context.findLauncherActivity() ?: LauncherHomeActivityHolder.instance
+        val targetContext = launcherAct ?: context
+        val started = runCatching {
+            targetContext.startActivity(launchIntent, options.toBundle())
+            true
+        }.onFailure { err ->
+            Log.w("LauncherAppLaunch", "startActivity for reused task $existingTaskId failed", err)
+        }.getOrDefault(false)
+
+        if (!started) {
+            bringTaskToFrontInternal(am, existingTaskId, targetBounds)
+        }
+
         LauncherNavLogger.logAppLaunch(
             packageName = packageName,
             component = launchIntent.component?.flattenToString(),
@@ -378,7 +421,7 @@ internal fun tryLaunchIntentInBounds(
             mode = "REUSED_TASK",
             bounds = targetBounds,
             windowingMode = WINDOWING_MODE_FREEFORM,
-            strategy = "am.moveTaskToFront",
+            strategy = if (started) "startActivity(REUSED_TASK)" else "am.moveTaskToFront",
             success = true,
         )
         pinFreeformBounds(appCtx, packageName, targetBounds)
@@ -431,15 +474,23 @@ internal fun tryLaunchIntentInBounds(
     }.isSuccess
 }
 
+private val freeformResizeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
 @Suppress("DEPRECATION")
 private val FREEFORM_PIN_DELAYS_MS = longArrayOf(300L)
 
 /** Re-apply freeform bounds while splash/game activities try to go fullscreen. */
 private fun pinFreeformBounds(context: Context, packageName: String, bounds: Rect) {
-    val handler = Handler(Looper.getMainLooper())
     val apply = { forceFreeformBounds(context, packageName, bounds, bringToFront = false) }
     FREEFORM_PIN_DELAYS_MS.forEach { delayMs ->
-        if (delayMs <= 0L) apply() else handler.postDelayed(apply, delayMs)
+        if (delayMs <= 0L) {
+            apply()
+        } else {
+            freeformResizeScope.launch {
+                delay(delayMs)
+                apply()
+            }
+        }
     }
 }
 
@@ -470,18 +521,25 @@ internal fun forceFreeformBoundsByTaskId(
     bringToFront: Boolean = false,
     label: String = "task=$taskId",
 ) {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        freeformResizeScope.launch {
+            forceFreeformBoundsByTaskIdInternal(context, taskId, bounds, bringToFront, label)
+        }
+    } else {
+        forceFreeformBoundsByTaskIdInternal(context, taskId, bounds, bringToFront, label)
+    }
+}
+
+private fun forceFreeformBoundsByTaskIdInternal(
+    context: Context,
+    taskId: Int,
+    bounds: Rect,
+    bringToFront: Boolean = false,
+    label: String = "task=$taskId",
+) {
     val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val rect = Rect(bounds)
-    setTaskWindowingModeFreeform(am, taskId, toTop = false)
-
     val isHomeWindowingMode = LauncherAppConfigStore.experimentalHomeWindowingMode(context)
-
-    if (isHomeWindowingMode) {
-        runCatching {
-            DclwmClient().setWindowingMode(taskId, WINDOWING_MODE_FREEFORM)
-            Log.w("LauncherAppLaunch", "dclwm restored task to freeform id=$taskId")
-        }.onFailure { Log.w("LauncherAppLaunch", "dclwm setWindowingMode freeform failed task=$taskId", it) }
-    }
 
     var dclwmResized = false
     if (LauncherAppConfigStore.experimentalHideAppsOnHome(context) || isHomeWindowingMode) {
@@ -493,6 +551,15 @@ internal fun forceFreeformBoundsByTaskId(
             Log.w("LauncherAppLaunch", "dclwm resize ok task=$taskId label=$label bounds=$rect")
         }
     }
+
+    if (isHomeWindowingMode) {
+        runCatching {
+            DclwmClient().setWindowingMode(taskId, WINDOWING_MODE_FREEFORM)
+            Log.w("LauncherAppLaunch", "dclwm restored task to freeform id=$taskId")
+        }.onFailure { Log.w("LauncherAppLaunch", "dclwm setWindowingMode freeform failed task=$taskId", it) }
+    }
+
+    setTaskWindowingModeFreeform(am, taskId, toTop = bringToFront)
 
     if (!dclwmResized) {
         val resized = runCatching {
@@ -656,6 +723,18 @@ internal fun resizeRunningTaskToBounds(
 ) = forceFreeformBounds(context, packageName, bounds)
 
 @Suppress("DEPRECATION")
+internal fun isAppProcessAlive(am: ActivityManager, packageName: String): Boolean {
+    return runCatching {
+        val procs = am.runningAppProcesses ?: return false
+        procs.any { proc ->
+            proc.pkgList?.contains(packageName) == true ||
+                proc.processName == packageName ||
+                proc.processName?.startsWith("$packageName:") == true
+        }
+    }.getOrDefault(false)
+}
+
+@Suppress("DEPRECATION")
 internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int? {
     // 1. Prefer visible freeform stack via hidden getAllStackInfos (fast, in-memory, works for HOME).
     findTaskIdFromStackInfos(packageName)?.let { return it }
@@ -668,8 +747,11 @@ internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int
         }?.id
     }.getOrNull()?.let { return it }
 
-    // 3. Fallback to recent tasks
+    // 3. Fallback to recent tasks ONLY if the app process is currently alive.
+    // Tasks in recent tasks can persist long after the process is killed by the system;
+    // bringing a dead task to front fails or hangs the launcher without launching the app.
     runCatching {
+        if (!isAppProcessAlive(am, packageName)) return@runCatching null
         am.getRecentTasks(64, ActivityManager.RECENT_WITH_EXCLUDED)
             ?.firstOrNull { info ->
                 val pkg = info.baseIntent?.component?.packageName
@@ -1438,10 +1520,10 @@ private fun stackInfoTopPackage(info: Any): String? =
         (info.javaClass.getField("topActivity").get(info) as? android.content.ComponentName)?.packageName
     }.getOrNull()
 
-private fun Context.findLauncherActivity(): android.app.Activity? {
+private fun Context.findLauncherActivity(): Activity? {
     var ctx: Context? = this
     while (ctx is android.content.ContextWrapper) {
-        if (ctx is android.app.Activity) return ctx
+        if (ctx is Activity) return ctx
         ctx = ctx.baseContext
     }
     return null

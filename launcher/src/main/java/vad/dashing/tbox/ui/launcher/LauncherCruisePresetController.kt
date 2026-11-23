@@ -47,7 +47,6 @@ internal object LauncherCruisePresetController {
     private const val MAX_PULSES = 50
     private const val CONVENTIONAL_BATCH_SIZE = 10
     private const val MAX_CONVENTIONAL_TOTAL_PULSES = 60
-    private const val TARGET_TOLERANCE_CONVENTIONAL_KMH = 2
     private const val TARGET_FINE_STEP_BAND_KMH = 5
     private const val SMART_ACC_DEACTIVATE_DELAY_MS = 3000L
     private const val CCS_ENGAGE_TIMEOUT_MS = 4000L
@@ -415,9 +414,8 @@ internal object LauncherCruisePresetController {
                 var current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
                 var totalPulses = 0
                 val maxAllowedPulses = if (isConventionalCruise()) MAX_CONVENTIONAL_TOTAL_PULSES else MAX_PULSES
-                val targetToleranceKmh = if (isConventionalCruise()) TARGET_TOLERANCE_CONVENTIONAL_KMH else 0
 
-                steppingLoop@ while (abs(current - target) > targetToleranceKmh && totalPulses < maxAllowedPulses) {
+                steppingLoop@ while (current != target && totalPulses < maxAllowedPulses) {
                     val currentState = currentAccCruiseState()
                     if (currentState != AccCruiseState.Active && currentState != AccCruiseState.Override) {
                         DiagFileLog.i(TAG, "Cruise no longer active ($currentState), stopping loop")
@@ -460,7 +458,7 @@ internal object LauncherCruisePresetController {
                         current = fresh ?: (current + if (current < target) 1 else -1)
                         totalPulses++
 
-                        if (abs(current - target) <= targetToleranceKmh) {
+                        if (current == target) {
                             break@steppingLoop
                         }
                     }
@@ -471,6 +469,13 @@ internal object LauncherCruisePresetController {
                 }
 
                 DiagFileLog.i(TAG, "Stepping loop finished. Target=$target, pulses=$totalPulses, now=${currentSetSpeedKmh()}")
+
+                if (isConventionalCruise()) {
+                    val speedDelta = abs((currentSetSpeedKmh() ?: target) - vehicleSpeedKmh())
+                    // Allow 1.2s per km/h of speed delta + 5s buffer (min 8s, max 45s) for vehicle to reach target
+                    val settleMs = (speedDelta * 1200L + 5000L).coerceIn(8_000L, 45_000L)
+                    CcsRememberedSetpoint.markOurPulse(settleMs)
+                }
 
                 // Post-converge verify & catch-up (ACC only, since conventional handles fine steps in main loop)
                 if (!isConventionalCruise()) {
@@ -527,7 +532,6 @@ internal object LauncherCruisePresetController {
                 AccCruiseState.Active, AccCruiseState.Override -> {
                     DiagFileLog.i(TAG, "Single tap in Active/Override -> turn off cruise via pulse MFS_CRUISE_CONTROL (210)")
                     currentSetSpeedKmh()?.let { LauncherAppConfigStore.setLastCruiseSpeedKmh(context, it) }
-                    adjustJob?.cancel()
                     _adjustingTargetSpeed.value = null
                     LauncherAdasRepository.clearTimeGapFlash()
                     if (isConventionalCruise()) {
