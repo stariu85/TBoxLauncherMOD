@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -428,6 +429,18 @@ fun LauncherLeftPanel(
     LaunchedEffect(navBgTrafficLightPositionRevision) {
         navBgTrafficLightXRatio = LauncherAppConfigStore.navBgTrafficLightXRatio(context)
         navBgTrafficLightYRatio = LauncherAppConfigStore.navBgTrafficLightYRatio(context)
+    }
+
+    val navBgMinimapRevision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    val navBgMinimapVisible = remember(context, navBgMinimapRevision) {
+        LauncherAppConfigStore.navBgMinimapVisible(context)
+    }
+    val navBgMinimapPositionRevision by LauncherAppConfigStore.navBgMinimapPositionRevisionFlow.collectAsStateWithLifecycle()
+    var navBgMinimapXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapXRatio(context)) }
+    var navBgMinimapYRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapYRatio(context)) }
+    LaunchedEffect(navBgMinimapPositionRevision) {
+        navBgMinimapXRatio = LauncherAppConfigStore.navBgMinimapXRatio(context)
+        navBgMinimapYRatio = LauncherAppConfigStore.navBgMinimapYRatio(context)
     }
     val smartPanelRevision by LauncherAppConfigStore.smartPanelRevisionFlow
         .collectAsStateWithLifecycle()
@@ -898,13 +911,19 @@ fun LauncherLeftPanel(
                 .padding(top = 52.dp, bottom = 60.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val useNewSettingsViewRevision by LauncherAppConfigStore.useNewSettingsViewRevisionFlow.collectAsStateWithLifecycle()
+            val useNewSettingsView = remember(context, useNewSettingsViewRevision) {
+                LauncherAppConfigStore.useNewSettingsView(context)
+            }
             val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow.collectAsStateWithLifecycle()
             val isReverseCamerasOpen by CamdCameraRepository.isReverseCamerasOpen.collectAsStateWithLifecycle()
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
-            val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open ||
-                settingsProgress > 0.001f ||
-                LauncherVehicleSettingsOverlayWindow.isShowing() ||
-                vad.dashing.tbox.LauncherVehicleSettingsActivity.isOpen()
+            val isVehicleSettingsOpen = !useNewSettingsView && (
+                LauncherVehicleSettingsUiState.open ||
+                    settingsProgress > 0.001f ||
+                    LauncherVehicleSettingsOverlayWindow.isShowing() ||
+                    vad.dashing.tbox.LauncherVehicleSettingsActivity.isOpen()
+            )
             val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
             val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
             val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
@@ -1306,6 +1325,33 @@ fun LauncherLeftPanel(
                                 modifier = Modifier
                                     .offset(x = with(density) { btlLeftPx.toDp() }, y = with(density) { btlTopPx.toDp() })
                                     .zIndex(172f),
+                            )
+                        }
+
+                        // Freely Movable Background Navigation Overlay 9: Full-width Minimap Block
+                        if (navBgMinimapVisible) {
+                            val mapHeightDp = 180.dp
+                            val mapHeightPx = with(density) { mapHeightDp.toPx() }
+                            val mapCenterY = containerHeightPx * navBgMinimapYRatio
+                            val mapTopPx = (mapCenterY - mapHeightPx / 2f).coerceIn(0f, (containerHeightPx - mapHeightPx).coerceAtLeast(0f))
+
+                            LauncherNavBgMinimapOverlay(
+                                containerWidthPx = containerWidthPx.toInt(),
+                                onDrag = { delta ->
+                                    if (containerHeightPx > 0f) {
+                                        val currentY = containerHeightPx * navBgMinimapYRatio
+                                        val newY = (currentY + delta.y).coerceIn(mapHeightPx / 2f, containerHeightPx - mapHeightPx / 2f)
+                                        navBgMinimapYRatio = newY / containerHeightPx
+                                    }
+                                },
+                                onDragEnd = {
+                                    LauncherAppConfigStore.setNavBgMinimapPosition(context, 0.5f, navBgMinimapYRatio)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(mapHeightDp)
+                                    .offset(y = with(density) { mapTopPx.toDp() })
+                                    .zIndex(150f),
                             )
                         }
                     }

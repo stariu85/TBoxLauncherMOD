@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -68,18 +69,55 @@ data class YandexNavState(
     val lanesBitmaps: List<Bitmap> = emptyList(),
     val notificationTrafficLightText: String? = null,
     val notificationTrafficLightBitmap: Bitmap? = null,
+    val minimapBitmap: Bitmap? = null,
+    val minimapHasRoute: Boolean = false,
+    val minimapLastUpdateMs: Long = 0L,
+)
+
+data class MinimapFrame(
+    val bitmap: Bitmap? = null,
+    val hasRoute: Boolean = false,
+    val lastUpdateMs: Long = 0L,
 )
 
 object YandexNavRepository {
     private const val TAG = "YandexNavRepository"
     private const val TRAFFIC_LIGHT_TIMER_TIMEOUT_MS = 3_000L
+    private const val TRAFFIC_LIGHT_STALE_TIMEOUT_MS = 5_000L
+    private const val MINIMAP_STALE_TIMEOUT_MS = 3_500L
+    private const val LANES_STALE_TIMEOUT_MS = 4_000L
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var timerStaleJob: Job? = null
+    private var trafficLightStaleJob: Job? = null
+    private var minimapStaleJob: Job? = null
+    private var lanesStaleJob: Job? = null
 
     private fun cancelTimerStaleJob() {
         timerStaleJob?.cancel()
         timerStaleJob = null
+    }
+
+    private fun cancelTrafficLightStaleJob() {
+        trafficLightStaleJob?.cancel()
+        trafficLightStaleJob = null
+    }
+
+    private fun scheduleTrafficLightStaleJob() {
+        trafficLightStaleJob?.cancel()
+        trafficLightStaleJob = repositoryScope.launch {
+            delay(TRAFFIC_LIGHT_STALE_TIMEOUT_MS)
+            _state.update {
+                it.copy(
+                    trafficLightColor = null,
+                    trafficLightCountdownSeconds = null,
+                    trafficLightDistanceMeters = null,
+                    trafficLightArrow = null,
+                    trafficLightLastUpdateMs = 0L,
+                    trafficLightCountdownLastUpdateMs = 0L,
+                )
+            }
+        }
     }
 
     private fun scheduleTimerStaleJob(timestampMs: Long) {
@@ -99,8 +137,43 @@ object YandexNavRepository {
         }
     }
 
+    private fun cancelMinimapStaleJob() {
+        minimapStaleJob?.cancel()
+        minimapStaleJob = null
+    }
+
+    private fun scheduleMinimapStaleJob() {
+        minimapStaleJob?.cancel()
+        minimapStaleJob = repositoryScope.launch {
+            delay(MINIMAP_STALE_TIMEOUT_MS)
+            _minimapFrame.value = MinimapFrame()
+        }
+    }
+
+    private fun cancelLanesStaleJob() {
+        lanesStaleJob?.cancel()
+        lanesStaleJob = null
+    }
+
+    private fun scheduleLanesStaleJob() {
+        lanesStaleJob?.cancel()
+        lanesStaleJob = repositoryScope.launch {
+            delay(LANES_STALE_TIMEOUT_MS)
+            _state.update {
+                it.copy(
+                    lanesBitmap = null,
+                    lanesBitmaps = emptyList(),
+                    lanesDistance = null,
+                )
+            }
+        }
+    }
+
     private val _state = MutableStateFlow(YandexNavState())
     val state: StateFlow<YandexNavState> = _state.asStateFlow()
+
+    private val _minimapFrame = MutableStateFlow(MinimapFrame())
+    val minimapFrame: StateFlow<MinimapFrame> = _minimapFrame.asStateFlow()
 
     private var registered = false
 
@@ -212,10 +285,12 @@ object YandexNavRepository {
                         it.isNotBlank() && it != "null" && it != "off" && it != "none" && it != "0" && it != "-1"
                     }
 
-                    val isCleared = (colorRaw != null && colorClean == null) || dist == -1 || dist == 0
+                    val isCleared = (colorRaw != null && colorClean == null && secs == null) ||
+                            (colorClean == null && secs == null && arrow == null && dist == null)
 
                     if (isCleared) {
                         cancelTimerStaleJob()
+                        cancelTrafficLightStaleJob()
                         _state.update {
                             it.copy(
                                 trafficLightColor = null,
@@ -228,6 +303,7 @@ object YandexNavRepository {
                             )
                         }
                     } else if (colorClean != null || secs != null || dist != null || arrow != null) {
+                        scheduleTrafficLightStaleJob()
                         val validSecs = secs?.takeIf { it >= 0 }
                         val timerExplicitlyProvided = secs != null
                         if (validSecs != null) {
@@ -260,6 +336,141 @@ object YandexNavRepository {
                         }
                     }
                 }
+                "LANES_BITMAP" -> {
+                    @Suppress("DEPRECATION")
+                    val bitmap = intent.getParcelableExtra<Bitmap>("lanes_bitmap")
+                    if (bitmap != null) {
+                        scheduleLanesStaleJob()
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                lanesBitmap = bitmap,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
+                "LANES_BITMAP_CLEAR" -> {
+                    cancelLanesStaleJob()
+                    _state.update {
+                        it.copy(
+                            lanesBitmap = null,
+                            lanesBitmaps = emptyList(),
+                            lanesDistance = null,
+                            lastUpdateMs = now,
+                        )
+                    }
+                }
+                "LANE_DIST" -> {
+                    val dist = extractRawExtraString(intent, "dist")
+                    val metrics = extractRawExtraString(intent, "metrics") ?: ""
+                    val distText = if (dist != null) {
+                        "$dist $metrics".replace("\\s+".toRegex(), " ").trim()
+                    } else null
+                    if (distText != null) {
+                        scheduleLanesStaleJob()
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                lanesDistance = distText,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
+                "LANES", "LANE_SIGN" -> {
+                    val dist = extractRawExtraString(intent, "dist")
+                    val metrics = extractRawExtraString(intent, "metrics") ?: ""
+                    val distText = if (dist != null) {
+                        "$dist $metrics".replace("\\s+".toRegex(), " ").trim()
+                    } else null
+                    scheduleLanesStaleJob()
+                    _state.update {
+                        it.copy(
+                            isNavigating = true,
+                            lanesDistance = distText ?: it.lanesDistance,
+                            lastUpdateMs = now,
+                        )
+                    }
+                }
+                "MINIMAP" -> {
+                    val jpeg = intent.getByteArrayExtra("minimap_jpeg")
+                    val hasRoute = intent.getBooleanExtra("minimap_has_route", false)
+                    val bmp = if (jpeg != null && jpeg.isNotEmpty()) {
+                        runCatching { BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) }.getOrNull()
+                    } else null
+                    if (bmp != null) {
+                        _minimapFrame.value = MinimapFrame(
+                            bitmap = bmp,
+                            hasRoute = hasRoute,
+                            lastUpdateMs = now,
+                        )
+                        scheduleMinimapStaleJob()
+                    }
+                }
+                "NIXT" -> {
+                    val nextText = extractRawExtraString(intent, "next_text")
+                    if (!nextText.isNullOrBlank()) {
+                        val cleanDist = nextText.replace("\\s+".toRegex(), " ").trim()
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                nextText = cleanDist,
+                                maneuverDistance = cleanDist,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
+                "NEXTSTREET" -> {
+                    val street = extractRawExtraString(intent, "next_street")
+                    val validStreet = street?.takeIf { !isIgnoredStreetName(it) }
+                    if (validStreet != null) {
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                nextStreet = validStreet,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
+                "DISTANCE" -> {
+                    val remDist = extractRawExtraString(intent, "Distance_text", "distance_text", "dist")
+                    if (remDist != null) {
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                remainingDistance = remDist,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
+                "TIME" -> {
+                    val remTime = extractRawExtraString(intent, "Time_text", "time_text", "time")
+                    if (remTime != null) {
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                remainingTime = remTime,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
+                "ARRIVAL" -> {
+                    val arrTime = extractRawExtraString(intent, "Arrival_text", "arrival_text", "arrival")
+                    if (arrTime != null) {
+                        _state.update {
+                            it.copy(
+                                isNavigating = true,
+                                arrivalTime = arrTime,
+                                lastUpdateMs = now,
+                            )
+                        }
+                    }
+                }
                 "MANEUVER", "MANEUVER_UPDATE", "HUD_UPDATE", "NAVIGATION_UPDATE", "ROUTE_UPDATE", "STREET_UPDATE", "DISTANCE_UPDATE" -> {
                     val mDistance = extractRawExtraString(intent, "maneuver_distance", "maneuver_dist", "dist_to_turn", "distance_text", "dist_text", "maneuver_text", "dist_m", "dist", "distance")
                     val streetText = extractRawExtraString(intent, "street_name", "next_street", "street", "road_name", "target_street", "maneuver_street", "street_text")
@@ -283,12 +494,41 @@ object YandexNavRepository {
                 }
                 "NAVIGATION_ENDED", "NAVIGATION_STOPPED" -> {
                     cancelTimerStaleJob()
+                    cancelMinimapStaleJob()
+                    cancelLanesStaleJob()
+                    _minimapFrame.value = MinimapFrame()
                     _state.update {
                         YandexNavState(isNavigating = false)
                     }
                 }
             }
         }
+    }
+
+    fun enableMinimap(context: Context, widthPx: Int = 360, heightPx: Int = 360) {
+        val w = (widthPx / 8 * 8).coerceIn(96, 1920)
+        val h = (heightPx / 8 * 8).coerceIn(96, 1920)
+        val minimapIntent = Intent("com.yandex.MINIMAP_ENABLE").apply {
+            putExtra("minimap_width", w)
+            putExtra("minimap_height", h)
+            putExtra("minimap_zoom", 16f)
+            putExtra("minimap_roads", false)
+            putExtra("minimap_labels", false)
+            putExtra("minimap_view", 0)
+            putExtra("minimap_hide_on_route_end", false)
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        }
+        runCatching { context.sendBroadcast(minimapIntent) }
+    }
+
+    fun disableMinimap(context: Context) {
+        cancelMinimapStaleJob()
+        _minimapFrame.value = MinimapFrame()
+        val minimapIntent = Intent("com.yandex.MINIMAP_DISABLE").apply {
+            putExtra("minimap_hide_on_route_end", false)
+            addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        }
+        runCatching { context.sendBroadcast(minimapIntent) }
     }
 
     fun start(context: Context) {
@@ -322,9 +562,31 @@ object YandexNavRepository {
                 addAction("${prefix}NAVIGATION_ENDED")
                 addAction("${prefix}NAVIGATION_STOPPED")
                 addAction("${prefix}TRAFFIC_LIGHT_UPDATE")
+                addAction("${prefix}LANES")
+                addAction("${prefix}LANES_BITMAP")
+                addAction("${prefix}LANES_BITMAP_CLEAR")
+                addAction("${prefix}LANE_DIST")
+                addAction("${prefix}LANE_SIGN")
+                addAction("${prefix}MINIMAP")
+                addAction("${prefix}NIXT")
+                addAction("${prefix}NEXTSTREET")
+                addAction("${prefix}DISTANCE")
+                addAction("${prefix}TIME")
+                addAction("${prefix}ARRIVAL")
             }
             addAction(ACTION_TRAFFIC_LIGHT_UPDATE)
             addAction(ACTION_NAVIGATION_ENDED)
+            addAction("com.yandex.LANES")
+            addAction("com.yandex.LANES_BITMAP")
+            addAction("com.yandex.LANES_BITMAP_CLEAR")
+            addAction("com.yandex.LANE_DIST")
+            addAction("com.yandex.LANE_SIGN")
+            addAction("com.yandex.MINIMAP")
+            addAction("com.yandex.NIXT")
+            addAction("com.yandex.NEXTSTREET")
+            addAction("com.yandex.DISTANCE")
+            addAction("com.yandex.TIME")
+            addAction("com.yandex.ARRIVAL")
         }
 
         runCatching {

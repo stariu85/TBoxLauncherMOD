@@ -75,6 +75,8 @@ object MbCanEngineFacade {
     private var lastEngineTemp: Float? = null
     @Volatile
     private var lastBcmLightKey: Int? = null
+    @Volatile
+    private var lastBcmWiperStatus: Int? = null
 
     private fun getCachedZeroArgMethod(clazz: Class<*>, methodName: String): Method? {
         val key = clazz to methodName
@@ -562,22 +564,34 @@ object MbCanEngineFacade {
                         }.getOrNull() ?: 0
                         CanDataRepository.updateRainSensorDetected(rainVal >= 2)
 
+                        val wiperVal = runCatching {
+                            (getCachedZeroArgMethod(bcm.javaClass, "getWiperSts")?.invoke(bcm) as? Number)?.toInt()
+                        }.getOrNull() ?: runCatching {
+                            val field = bcm.javaClass.getDeclaredField("nWiperSts")
+                            field.isAccessible = true
+                            (field.get(bcm) as? Number)?.toInt()
+                        }.getOrNull()
+
+                        if (wiperVal != null && lastBcmWiperStatus != wiperVal) {
+                            lastBcmWiperStatus = wiperVal
+                            vad.dashing.tbox.ui.launcher.LauncherVehicleControlRepository.notifyBcmWiperChanged(wiperVal)
+                            MbCanRepository.scheduleBcmWiperPush(wiperVal)
+                        }
+
                         // OEM CEM A9: 2 = ON, 1 / 0 = OFF (High beam flash pulses 1 -> 2 -> 1)
                         val lowOn = low == 2
                         val highOn = high == 2
                         val hmaOn = hmaVal == 2
 
                         val key = (if (lowOn) 1 else 0) or (if (highOn) 2 else 0) or (if (hmaOn) 4 else 0)
-                        if (lastBcmLightKey == key) {
-                            return@InvocationHandler null
+                        if (lastBcmLightKey != key) {
+                            lastBcmLightKey = key
+                            MbCanRepository.scheduleBcmLightPush(
+                                lowBeam = lowOn,
+                                highBeam = highOn,
+                                hmaOn = hmaOn,
+                            )
                         }
-                        lastBcmLightKey = key
-
-                        MbCanRepository.scheduleBcmLightPush(
-                            lowBeam = lowOn,
-                            highBeam = highOn,
-                            hmaOn = hmaOn,
-                        )
                     }
                 }
                 "onVehicleConsumptionChange" -> {

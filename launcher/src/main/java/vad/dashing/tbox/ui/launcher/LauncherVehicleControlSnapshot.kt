@@ -156,6 +156,15 @@ object LauncherVehicleControlRepository {
         }
     }
 
+    fun notifyBcmWiperChanged(status: Int) {
+        _snapshot.update { cur ->
+            cur.copy(bcmWiperStatus = status)
+        }
+        if (experimentalCollectors.get() > 0) {
+            _experimentalSnapshot.value = _snapshot.value
+        }
+    }
+
     @Synchronized
     private fun ensurePollingStarted() {
         if (pollingJob?.isActive == true) return
@@ -264,6 +273,9 @@ private fun readVehicleControlSnapshot(
     val actualLowBeam = pushLowBeam ?: current.bcmLowBeam
     val actualHighBeam = pushHighBeam ?: current.bcmHighBeam
 
+    val pushWiper = vad.dashing.tbox.mbcan.UniversalCanRepository.bcmWiperStatusState.value
+    val actualWiper = pushWiper ?: current.bcmWiperStatus
+
     val pushRadar = vad.dashing.tbox.mbcan.UniversalCanRepository.parkingRadarState.value
     val radarFromPush = when (pushRadar) {
         is vad.dashing.tbox.mbcan.MbCanBinaryState.On -> true
@@ -306,6 +318,7 @@ private fun readVehicleControlSnapshot(
             headlightsSwitch = quickHeadlights,
             bcmLowBeam = actualLowBeam,
             bcmHighBeam = actualHighBeam,
+            bcmWiperStatus = actualWiper,
             hmaOn = quickHma,
             rearFogLight = quickRearFog,
         )
@@ -351,6 +364,8 @@ private fun readVehicleControlSnapshot(
         (bcmCls.getMethod("getWiperSts").invoke(bcm) as? Number)?.toInt()
     }.getOrNull() ?: current.bcmWiperStatus
 
+    val resolvedWiper = pushWiper ?: bcmWiper ?: current.bcmWiperStatus
+
     val core = current.copy(
         doorAutoLock = onOff12(get(MbCanKnownVehiclePropertyId.DOOR_AUTO_LOCK, current.doorAutoLock?.let { if (it) 2 else 1 })),
         doorIgnOffUnlock = onOff21(get(MbCanKnownVehiclePropertyId.DOOR_IGNOFF_UNLOCK, current.doorIgnOffUnlock?.let { if (it) 1 else 2 })),
@@ -365,7 +380,7 @@ private fun readVehicleControlSnapshot(
         lightControlRaw = quickLightControl,
         bcmLowBeam = resolvedLowBeam,
         bcmHighBeam = resolvedHighBeam,
-        bcmWiperStatus = bcmWiper,
+        bcmWiperStatus = resolvedWiper,
         hmaOn = quickHma,
         rearFogLight = quickRearFog,
         parkingRadar = quickParkingRadar,

@@ -439,6 +439,9 @@ object Android10VhalRepository {
     private val _bcmHighBeamState = MutableStateFlow<Boolean?>(null)
     val bcmHighBeamState: StateFlow<Boolean?> = _bcmHighBeamState.asStateFlow()
 
+    private val _bcmWiperStatusState = MutableStateFlow<Int?>(null)
+    val bcmWiperStatusState: StateFlow<Int?> = _bcmWiperStatusState.asStateFlow()
+
     fun updateLasModeRaw(raw: Int?) {
         val valid = raw?.takeIf { it in 1..3 }
         if (valid != null) {

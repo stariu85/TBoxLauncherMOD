@@ -34,12 +34,18 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -768,7 +774,7 @@ internal fun LauncherNavBgEtaOverlay(
 }
 
 /**
- * Freely movable Overlay 7: Background Lanes block (from RemoteViews / Notification).
+ * Freely movable Overlay 7: Background Lanes block (from RemoteViews / Notification / Broadcast).
  */
 @Composable
 internal fun LauncherNavBgLanesOverlay(
@@ -780,15 +786,16 @@ internal fun LauncherNavBgLanesOverlay(
     val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
     val isSimulate = LauncherDevVehicleState.simulateEnabled
 
+    val laneDistText = navState.lanesDistance ?: if (isSimulate && !navState.isNavigating) "250 м" else null
     val hasLanes = navState.lanesBitmaps.isNotEmpty() || navState.lanesBitmap != null
-    val isVisible = (navState.isNavigating && hasLanes) || isSimulate
+    val isVisible = (navState.isNavigating && (hasLanes || !laneDistText.isNullOrBlank())) ||
+            (isSimulate && (hasLanes || !laneDistText.isNullOrBlank()))
 
     if (!isVisible) return
 
     val isDark = LauncherThemeState.darkTheme
-    val bgCard = if (isDark) Color(0xDD111827) else Color(0xEEFFFFFF)
-    val borderCard = if (isDark) Color.White.copy(alpha = 0.2f) else Color(0xFF94A3B8).copy(alpha = 0.4f)
     val laneColorFilter = if (!isDark) ColorFilter.tint(Color(0xFF0F172A), BlendMode.SrcIn) else null
+    val textColor = if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151)
 
     val currentOnDrag by rememberUpdatedState(onDrag)
     val currentOnDragEnd by rememberUpdatedState(onDragEnd)
@@ -806,43 +813,163 @@ internal fun LauncherNavBgLanesOverlay(
                 )
             }
             .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
-            .clip(RoundedCornerShape(8.dp))
-            .background(bgCard)
-            .border(1.dp, borderCard, RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (navState.lanesBitmaps.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                navState.lanesBitmaps.forEach { lane ->
-                    Image(
-                        bitmap = lane.asImageBitmap(),
-                        contentDescription = null,
-                        colorFilter = laneColorFilter,
-                        modifier = Modifier.size(24.dp),
-                    )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(1.5.dp),
+        ) {
+            if (navState.lanesBitmaps.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    navState.lanesBitmaps.forEach { lane ->
+                        Image(
+                            bitmap = lane.asImageBitmap(),
+                            contentDescription = null,
+                            colorFilter = laneColorFilter,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            } else if (navState.lanesBitmap != null) {
+                Image(
+                    bitmap = navState.lanesBitmap!!.asImageBitmap(),
+                    contentDescription = null,
+                    colorFilter = laneColorFilter,
+                    modifier = Modifier.height(26.dp),
+                )
+            } else if (isSimulate && !navState.isNavigating) {
+                // Simulation fallback sample lanes ONLY when simulating without real navigation
+                val activeLaneColor = if (isDark) Color.White else Color(0xFF0F172A)
+                val inactiveLaneColor = activeLaneColor.copy(alpha = 0.35f)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("↑", color = inactiveLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("↑", color = activeLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("↗", color = inactiveLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
-        } else if (navState.lanesBitmap != null) {
-            Image(
-                bitmap = navState.lanesBitmap!!.asImageBitmap(),
-                contentDescription = null,
-                colorFilter = laneColorFilter,
-                modifier = Modifier.height(26.dp),
-            )
-        } else {
-            // Simulation fallback sample lanes
-            val activeLaneColor = if (isDark) Color.White else Color(0xFF0F172A)
-            val inactiveLaneColor = activeLaneColor.copy(alpha = 0.35f)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("↑", color = inactiveLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("↑", color = activeLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("↗", color = inactiveLaneColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            if (!laneDistText.isNullOrBlank()) {
+                Text(
+                    text = laneDistText,
+                    color = textColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
             }
         }
+    }
+}
+
+/**
+ * Freely movable Overlay 9: Full-width Rectangular Minimap Block (from com.yandex.MINIMAP).
+ * Spans full width of ADAS zone, height 180dp, with 30% transparency and edge gradients.
+ */
+@Composable
+internal fun LauncherNavBgMinimapOverlay(
+    containerWidthPx: Int = 0,
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val minimapFrame by YandexNavRepository.minimapFrame.collectAsStateWithLifecycle()
+    val isSimulate = LauncherDevVehicleState.simulateEnabled
+
+    val bmp = minimapFrame.bitmap
+    val isTransmitting = bmp != null && (isSimulate || (System.currentTimeMillis() - minimapFrame.lastUpdateMs) < 3500L)
+
+    // Keep offscreen minimap active in Yandex Navi with 5s heartbeat while widget is active
+    LaunchedEffect(containerWidthPx) {
+        val density = context.resources.displayMetrics.density
+        val rawWidth = if (containerWidthPx > 0) containerWidthPx else (180 * density).toInt()
+        val rawHeight = (180 * density).toInt()
+        val widthPx = (rawWidth / 8 * 8).coerceIn(96, 1920)
+        val heightPx = (rawHeight / 8 * 8).coerceIn(96, 1920)
+        while (isActive) {
+            YandexNavRepository.enableMinimap(context, widthPx, heightPx)
+            delay(5000L)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            YandexNavRepository.disableMinimap(context)
+        }
+    }
+
+    if (bmp == null || !isTransmitting) return
+
+    val isDark = LauncherThemeState.darkTheme
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        currentOnDrag(dragAmount)
+                    },
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragEnd() },
+                )
+            }
+            .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
+            .graphicsLayer {
+                alpha = 0.70f // 30% transparent
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                // Edge gradients fading smoothly into full transparency on all 4 sides
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        0.00f to Color.Transparent,
+                        0.08f to Color.Black,
+                        0.92f to Color.Black,
+                        1.00f to Color.Transparent,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.00f to Color.Transparent,
+                        0.14f to Color.Black,
+                        0.86f to Color.Black,
+                        1.00f to Color.Transparent,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val mapColorFilter = if (!isDark) {
+            remember {
+                ColorFilter.colorMatrix(
+                    ColorMatrix(
+                        floatArrayOf(
+                            -0.52f, -1.96f,  1.36f, 0f, 238f,
+                             0.05f, -0.29f, -0.61f, 0f, 260f,
+                            -0.51f, -1.91f,  1.33f, 0f, 244f,
+                             0.00f,  0.00f,  0.00f, 1f,   0f,
+                        ),
+                    )
+                )
+            }
+        } else null
+
+        Image(
+            bitmap = bmp.asImageBitmap(),
+            contentDescription = "Minimap",
+            colorFilter = mapColorFilter,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 

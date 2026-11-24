@@ -283,11 +283,19 @@ object MbCanRepository {
     private val _bcmHmaOnState = MutableStateFlow<Boolean?>(null)
     val bcmHmaOnState: StateFlow<Boolean?> = _bcmHmaOnState.asStateFlow()
 
+    private val _bcmWiperStatusState = MutableStateFlow<Int?>(null)
+    val bcmWiperStatusState: StateFlow<Int?> = _bcmWiperStatusState.asStateFlow()
+
     fun scheduleBcmLightPush(lowBeam: Boolean, highBeam: Boolean, hmaOn: Boolean) {
         _bcmLowBeamState.value = lowBeam
         _bcmHighBeamState.value = highBeam
         _bcmHmaOnState.value = hmaOn
         recordPushDebugEvent("telemetry/bcm_lights", "low=$lowBeam high=$highBeam hma=$hmaOn")
+    }
+
+    fun scheduleBcmWiperPush(wiperStatus: Int) {
+        _bcmWiperStatusState.value = wiperStatus
+        recordPushDebugEvent("telemetry/bcm_wiper", "wiper=$wiperStatus")
     }
 
     private val _carSettingsEpsMode = MutableStateFlow<Int?>(null)

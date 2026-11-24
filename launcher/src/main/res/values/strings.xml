@@ -20,6 +20,8 @@
     <string name="launcher_dcl_logs_started_toast">Запись логов запущена на 5 минут</string>
     <string name="launcher_dcl_logs_stopped_toast">Запись логов остановлена и сохранена</string>
     <string name="action_settings_open">Настройки</string>
+    <string name="launcher_new_settings_view_title">Новый вид настроек</string>
+    <string name="launcher_new_settings_view_desc">Отображать настройки на рабочем столе в новом модульном виде с разделами и вкладками</string>
     <string name="update_reboot_hu_title">Перезагрузить ГУ?</string>
     <string name="update_reboot_hu_body">Выполнить перезагрузку головного устройства сейчас?</string>
     <string name="update_reboot_hu_later">Позже</string>
@@ -562,8 +564,15 @@
     <string name="launcher_nav_bg_maneuver_desc">Дистанция, улица и графические стрелки предстоящих манёвров</string>
     <string name="launcher_nav_bg_eta_title">Блок времени и расстояния (ETA)</string>
     <string name="launcher_nav_bg_eta_desc">Оставшееся время, расстояние, расчётное время прибытия и шкала пробок</string>
-    <string name="launcher_nav_bg_lanes_title">Полосы движения</string>
-    <string name="launcher_nav_bg_lanes_desc">Стрелки полос движения с подсвеченной рекомендуемой полосой</string>
+    <string name="launcher_nav_bg_lanes_title">Полосы движения и дистанция</string>
+    <string name="launcher_nav_bg_lanes_desc">Полосы движения и точная дистанция до манёвра/перекрёстка</string>
+    <string name="launcher_nav_bg_minimap_title">Миникарта</string>
+    <string name="launcher_nav_bg_minimap_desc">Круглый виджет живой миникарты маршрута (диаметр 180 dp)</string>
+    <string name="launcher_monjaro_stub_install_title">Расширенная интеграция с Навигатором</string>
+    <string name="launcher_monjaro_stub_install_desc">Установите демон для расширенного вывода информации из мода Яндекс навигатора</string>
+    <string name="launcher_monjaro_stub_btn_install">Установить демон</string>
+    <string name="launcher_monjaro_stub_btn_installed">Демон установлен</string>
+    <string name="launcher_monjaro_stub_required_hint">Требуется установка демона</string>
     <string name="launcher_nav_bg_traffic_light_title">Светофор по маршруту</string>
     <string name="launcher_nav_bg_traffic_light_desc">Таймер обратного отсчёта и фаза светофора из уведомления</string>
     <string name="launcher_cruise_panel_visible_title">Панель пресетов скорости ACC</string>

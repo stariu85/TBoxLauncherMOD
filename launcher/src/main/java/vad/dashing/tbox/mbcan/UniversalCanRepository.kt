@@ -129,6 +129,16 @@ object UniversalCanRepository {
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
+    val bcmWiperStatusState: StateFlow<Int?> = mode
+        .flatMapLatest { activeMode ->
+            if (activeMode == HeadUnitCanMode.Android9MbCan) {
+                MbCanRepository.bcmWiperStatusState
+            } else {
+                Android10VhalRepository.bcmWiperStatusState
+            }
+        }
+        .stateIn(scope, SharingStarted.Eagerly, null)
+
     val hvacDefrosterState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
             if (activeMode == HeadUnitCanMode.Android9MbCan) {

@@ -28,6 +28,7 @@ private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME = "exp_hide_apps_on_home"
 private const val KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK = "exp_home_move_task_to_back"
 private const val KEY_EXPERIMENTAL_HOME_WINDOWING_MODE = "exp_home_windowing_mode"
+private const val KEY_USE_NEW_SETTINGS_VIEW = "use_new_settings_view"
 private const val KEY_BOOT_LOG_ENABLED = "boot_log_enabled"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
 private const val KEY_DISABLE_MEDIA_CARD_COVER_COLOR = "disable_media_card_cover_color"
@@ -396,6 +397,9 @@ private const val KEY_NAV_BG_LANES_Y_RATIO = "nav_bg_lanes_y_ratio"
 private const val KEY_NAV_BG_TRAFFIC_LIGHT_VISIBLE = "nav_bg_traffic_light_visible"
 private const val KEY_NAV_BG_TRAFFIC_LIGHT_X_RATIO = "nav_bg_traffic_light_x_ratio"
 private const val KEY_NAV_BG_TRAFFIC_LIGHT_Y_RATIO = "nav_bg_traffic_light_y_ratio"
+private const val KEY_NAV_BG_MINIMAP_VISIBLE = "nav_bg_minimap_visible"
+private const val KEY_NAV_BG_MINIMAP_X_RATIO = "nav_bg_minimap_x_ratio"
+private const val KEY_NAV_BG_MINIMAP_Y_RATIO = "nav_bg_minimap_y_ratio"
 private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
 private const val KEY_SMART_PANEL_ENABLED = "smart_panel_enabled"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
@@ -503,6 +507,8 @@ internal object LauncherAppConfigStore {
     internal val experimentalHomeMoveTaskToBackRevisionFlow: StateFlow<Int> = experimentalHomeMoveTaskToBackRevision
     private val experimentalHomeWindowingModeRevision = MutableStateFlow(0)
     internal val experimentalHomeWindowingModeRevisionFlow: StateFlow<Int> = experimentalHomeWindowingModeRevision
+    private val useNewSettingsViewRevision = MutableStateFlow(0)
+    internal val useNewSettingsViewRevisionFlow: StateFlow<Int> = useNewSettingsViewRevision
     private val bootLogRevision = MutableStateFlow(0)
     internal val bootLogRevisionFlow: StateFlow<Int> = bootLogRevision
     private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
@@ -675,6 +681,11 @@ internal object LauncherAppConfigStore {
     internal val navBgTrafficLightRevisionFlow: StateFlow<Int> = navBgTrafficLightRevision
     private val navBgTrafficLightPositionRevision = MutableStateFlow(0)
     internal val navBgTrafficLightPositionRevisionFlow: StateFlow<Int> = navBgTrafficLightPositionRevision
+
+    private val navBgMinimapRevision = MutableStateFlow(0)
+    internal val navBgMinimapRevisionFlow: StateFlow<Int> = navBgMinimapRevision
+    private val navBgMinimapPositionRevision = MutableStateFlow(0)
+    internal val navBgMinimapPositionRevisionFlow: StateFlow<Int> = navBgMinimapPositionRevision
     private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
     private val smartPanelRevision = MutableStateFlow(0)
@@ -1014,6 +1025,14 @@ internal object LauncherAppConfigStore {
 
     fun experimentalHideAppsOnHome(context: Context): Boolean =
         prefs(context).getBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
+
+    fun useNewSettingsView(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_USE_NEW_SETTINGS_VIEW, false)
+
+    fun setUseNewSettingsView(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_USE_NEW_SETTINGS_VIEW, enabled).apply()
+        useNewSettingsViewRevision.value++
+    }
 
     fun setExperimentalHideAppsOnHome(context: Context, enabled: Boolean) {
         val editor = prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, enabled)
@@ -1860,6 +1879,20 @@ internal object LauncherAppConfigStore {
         navBgTrafficLightPositionRevision.value++
     }
 
+    fun navBgMinimapXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_MINIMAP_X_RATIO, 0.50f).coerceIn(0f, 1f)
+
+    fun navBgMinimapYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_MINIMAP_Y_RATIO, 0.65f).coerceIn(0f, 1f)
+
+    fun setNavBgMinimapPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_MINIMAP_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_MINIMAP_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgMinimapPositionRevision.value++
+    }
+
     fun climateControlsVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CLIMATE_VISIBLE, true)
 
@@ -2623,6 +2656,14 @@ internal object LauncherAppConfigStore {
     fun setNavBgTrafficLightVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_BG_TRAFFIC_LIGHT_VISIBLE, visible).apply()
         navBgTrafficLightRevision.value++
+    }
+
+    fun navBgMinimapVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_MINIMAP_VISIBLE, false)
+
+    fun setNavBgMinimapVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_VISIBLE, visible).apply()
+        navBgMinimapRevision.value++
     }
 
 

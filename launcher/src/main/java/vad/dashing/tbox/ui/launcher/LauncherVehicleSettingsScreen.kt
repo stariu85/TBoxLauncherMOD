@@ -67,6 +67,12 @@ import vad.dashing.tbox.ui.theme.tboxCaption
 internal fun launchVehicleSettingsWindow(context: Context) {
     LauncherVehicleSettingsWindow.hide()
     LauncherVehicleSettingsActivity.finishIfOpen()
+    if (LauncherAppConfigStore.useNewSettingsView(context)) {
+        LauncherVehicleSettingsOverlayWindow.hide()
+        LauncherVehicleSettingsUiState.markOpen(context)
+        LauncherVehicleBodyRepository.ensurePolling()
+        return
+    }
     val shownAsSystemOverlay = LauncherVehicleSettingsOverlayWindow.show(context)
     // Always mark open so the home 3D SceneView is torn down — two Filament
     // views on the HU make the settings model hitch.

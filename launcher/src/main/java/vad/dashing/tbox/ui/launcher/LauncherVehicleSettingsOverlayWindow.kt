@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -59,6 +61,10 @@ internal object LauncherVehicleSettingsOverlayWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
+        if (LauncherAppConfigStore.useNewSettingsView(activity)) {
+            Log.i(TAG, "Skipping system overlay window because new settings view is enabled")
+            return false
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
             return false
@@ -108,6 +114,14 @@ internal object LauncherVehicleSettingsOverlayWindow {
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
             setContent {
+                val useNewSettingsViewRevision by LauncherAppConfigStore.useNewSettingsViewRevisionFlow.collectAsStateWithLifecycle()
+                val useNewSettingsView = androidx.compose.runtime.remember(activity, useNewSettingsViewRevision) {
+                    LauncherAppConfigStore.useNewSettingsView(activity)
+                }
+                androidx.compose.runtime.LaunchedEffect(useNewSettingsView) {
+                    if (useNewSettingsView) hide()
+                }
+
                 ProvideUiClickSounds {
                     // Standalone launcher is dark-first.
                     TboxAppTheme(theme = 2) {

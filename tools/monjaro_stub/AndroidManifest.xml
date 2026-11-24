@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="plus.monjaro"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <application
+        android:label="Monjaro Nav Stub"
+        android:hasCode="true">
+
+        <receiver
+            android:name="plus.monjaro.MonjaroNavReceiver"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="com.yandex.LANES" />
+                <action android:name="com.yandex.LANES_BITMAP" />
+                <action android:name="com.yandex.LANES_BITMAP_CLEAR" />
+                <action android:name="com.yandex.LANE_DIST" />
+                <action android:name="com.yandex.LANE_SIGN" />
+                <action android:name="com.yandex.MINIMAP" />
+                <action android:name="plus.monjaro.NAVIGATION_ENDED" />
+                <action android:name="plus.monjaro.TRAFFIC_LIGHT_UPDATE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

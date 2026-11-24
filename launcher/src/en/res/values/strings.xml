@@ -20,6 +20,8 @@
     <string name="launcher_dcl_logs_started_toast">Log recording started for 5 minutes</string>
     <string name="launcher_dcl_logs_stopped_toast">Log recording stopped and saved</string>
     <string name="action_settings_open">Settings</string>
+    <string name="launcher_new_settings_view_title">New settings view</string>
+    <string name="launcher_new_settings_view_desc">Display settings on desktop in a new modular view with sections and tabs</string>
     <string name="update_reboot_hu_title">Reboot HU?</string>
     <string name="update_reboot_hu_body">Reboot the head unit now?</string>
     <string name="update_reboot_hu_later">Later</string>
@@ -318,8 +320,15 @@
     <string name="launcher_nav_bg_maneuver_desc">Distance, street, and graphical arrow icons for upcoming maneuvers</string>
     <string name="launcher_nav_bg_eta_title">Time and distance block (ETA)</string>
     <string name="launcher_nav_bg_eta_desc">Remaining time, distance, arrival time, and traffic congestion bar</string>
-    <string name="launcher_nav_bg_lanes_title">Traffic lanes</string>
-    <string name="launcher_nav_bg_lanes_desc">Lane arrows with highlighted recommended lane</string>
+    <string name="launcher_nav_bg_lanes_title">Traffic lanes &amp; distance</string>
+    <string name="launcher_nav_bg_lanes_desc">Traffic lanes and distance to upcoming maneuver/junction</string>
+    <string name="launcher_nav_bg_minimap_title">Minimap</string>
+    <string name="launcher_nav_bg_minimap_desc">Round live route minimap widget (180 dp diameter)</string>
+    <string name="launcher_monjaro_stub_install_title">Extended Navigator Integration</string>
+    <string name="launcher_monjaro_stub_install_desc">Установите демон для расширенного вывода информации из мода Яндекс навигатора</string>
+    <string name="launcher_monjaro_stub_btn_install">Install daemon</string>
+    <string name="launcher_monjaro_stub_btn_installed">Daemon installed</string>
+    <string name="launcher_monjaro_stub_required_hint">Daemon installation required</string>
     <string name="launcher_nav_bg_traffic_light_title">Route traffic light</string>
     <string name="launcher_nav_bg_traffic_light_desc">Countdown timer and traffic light phase from notification</string>
     <string name="launcher_cruise_panel_visible_title">ACC speed presets panel</string>

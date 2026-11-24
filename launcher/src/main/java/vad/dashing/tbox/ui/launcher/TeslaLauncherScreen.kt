@@ -120,6 +120,10 @@ fun TeslaLauncherScreen(
         LauncherRightPanelOverlayWindow.updateBounds()
     }
     val settingsOpen = LauncherVehicleSettingsUiState.open
+    val useNewSettingsViewRevision by LauncherAppConfigStore.useNewSettingsViewRevisionFlow.collectAsStateWithLifecycle()
+    val useNewSettingsView = remember(context, useNewSettingsViewRevision) {
+        LauncherAppConfigStore.useNewSettingsView(context)
+    }
     val isDraggingApp = LauncherDropTargetState.draggingPackage != null
 
     val onConfigChanged: () -> Unit = { configRevision++ }
@@ -229,8 +233,8 @@ fun TeslaLauncherScreen(
                                 paintId = carPaintId,
                                 paintRevision = carPaintRevision,
                                 onCarBoundsChanged = {},
-                                colorPickerVisible = colorPickerVisible && !settingsOpen,
-                                roadVisible = !settingsOpen,
+                                colorPickerVisible = colorPickerVisible && (useNewSettingsView || !settingsOpen),
+                                roadVisible = if (useNewSettingsView) true else !settingsOpen,
                                 carHidden = false,
                                 settingsTransitionProgress = 0f,
                                 settingsUserYawDeg = 0f,
@@ -266,6 +270,17 @@ fun TeslaLauncherScreen(
                                 onConfigChanged = { rightPanelConfigRev++ },
                                 modifier = Modifier.fillMaxSize(),
                             )
+
+                            if (settingsOpen && useNewSettingsView) {
+                                LauncherNewSettingsScreen(
+                                    canViewModel = canViewModel,
+                                    tboxViewModel = tboxViewModel,
+                                    onClose = closeVehicleSettings,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .zIndex(10f),
+                                )
+                            }
                         }
                     }
                     LauncherBottomBar(
@@ -277,7 +292,7 @@ fun TeslaLauncherScreen(
                 }
             }
 
-            if (settingsOpen && !LauncherVehicleSettingsOverlayWindow.isShowing()) {
+            if (settingsOpen && !LauncherVehicleSettingsOverlayWindow.isShowing() && !useNewSettingsView) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

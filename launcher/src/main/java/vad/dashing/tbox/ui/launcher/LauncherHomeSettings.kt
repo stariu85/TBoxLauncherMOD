@@ -1,6 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.Manifest
+import kotlinx.coroutines.delay
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -275,6 +276,24 @@ internal fun LauncherExpHomeMoveTaskToBackSettings() {
 internal fun LauncherHomeSettingsContent() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    val useNewSettingsViewRevision by LauncherAppConfigStore.useNewSettingsViewRevisionFlow
+        .collectAsStateWithLifecycle()
+    val isUseNewSettingsView = remember(context, useNewSettingsViewRevision) {
+        LauncherAppConfigStore.useNewSettingsView(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_new_settings_view_title),
+        active = isUseNewSettingsView,
+        onClick = {
+            LauncherAppConfigStore.setUseNewSettingsView(context, !isUseNewSettingsView)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_new_settings_view_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
 
     val expHideAppsOnHomeRevision by LauncherAppConfigStore.experimentalHideAppsOnHomeRevisionFlow
         .collectAsStateWithLifecycle()
@@ -2803,6 +2822,16 @@ private fun AdasPanelsSelectorSection() {
 
 @Composable
 fun YandexNavSettingsContent() {
+    val context = LocalContext.current
+    var isStubInstalled by remember { mutableStateOf(MonjaroStubInstaller.checkInstalled(context)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            isStubInstalled = MonjaroStubInstaller.checkInstalled(context)
+            delay(1500)
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         NavSpeedWidgetToggle()
         NavTrafficLightWidgetToggle()
@@ -2823,10 +2852,102 @@ fun YandexNavSettingsContent() {
             modifier = Modifier.padding(bottom = 6.dp),
         )
 
+        MonjaroStubInstallSection(
+            isInstalled = isStubInstalled,
+            onInstalledChanged = { installed ->
+                isStubInstalled = installed
+                if (installed) {
+                    LauncherAppConfigStore.setNavBgLanesVisible(context, true)
+                    LauncherAppConfigStore.setNavBgMinimapVisible(context, true)
+                }
+            }
+        )
+
         NavBgManeuverWidgetToggle()
         NavBgEtaWidgetToggle()
-        NavBgLanesWidgetToggle()
+        NavBgLanesWidgetToggle(isStubInstalled)
+        NavBgMinimapWidgetToggle(isStubInstalled)
         NavBgTrafficLightWidgetToggle()
+    }
+}
+
+@Composable
+private fun MonjaroStubInstallSection(
+    isInstalled: Boolean,
+    onInstalledChanged: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    var isInstalling by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(LauncherColors.CardDark)
+            .border(
+                1.dp,
+                if (isInstalled) Color(0xFF10B981).copy(alpha = 0.5f) else LauncherColors.SettingsBorder,
+                RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                Text(
+                    text = stringResource(R.string.launcher_monjaro_stub_install_title),
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.launcher_monjaro_stub_install_desc),
+                    color = LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        when {
+                            isInstalled -> Color(0xFF10B981).copy(alpha = 0.2f)
+                            isInstalling -> LauncherColors.AccentCyan.copy(alpha = 0.3f)
+                            else -> LauncherColors.AccentCyan
+                        }
+                    )
+                    .clickable(enabled = !isInstalled && !isInstalling) {
+                        isInstalling = true
+                        MonjaroStubInstaller.install(context) { success ->
+                            isInstalling = false
+                            val installedNow = MonjaroStubInstaller.checkInstalled(context)
+                            onInstalledChanged(installedNow)
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = when {
+                        isInstalled -> "✓ " + stringResource(R.string.launcher_monjaro_stub_btn_installed)
+                        isInstalling -> "Установка..."
+                        else -> stringResource(R.string.launcher_monjaro_stub_btn_install)
+                    },
+                    color = when {
+                        isInstalled -> Color(0xFF10B981)
+                        isInstalling -> LauncherColors.TextMuted
+                        else -> Color.Black
+                    },
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
@@ -2869,19 +2990,66 @@ private fun NavBgEtaWidgetToggle() {
 }
 
 @Composable
-private fun NavBgLanesWidgetToggle() {
+private fun NavBgLanesWidgetToggle(isStubInstalled: Boolean) {
     val context = LocalContext.current
     val revision by LauncherAppConfigStore.navBgLanesRevisionFlow.collectAsStateWithLifecycle()
     val visible = remember(context, revision) { LauncherAppConfigStore.navBgLanesVisible(context) }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         LauncherSettingsToggleRow(
             label = stringResource(R.string.launcher_nav_bg_lanes_title),
-            active = visible,
-            onClick = { LauncherAppConfigStore.setNavBgLanesVisible(context, !visible) },
+            active = visible && isStubInstalled,
+            onClick = {
+                if (isStubInstalled) {
+                    LauncherAppConfigStore.setNavBgLanesVisible(context, !visible)
+                } else {
+                    MonjaroStubInstaller.install(context)
+                }
+            },
         )
         Text(
-            text = stringResource(R.string.launcher_nav_bg_lanes_desc),
-            color = LauncherColors.TextMuted,
+            text = if (!isStubInstalled) {
+                stringResource(R.string.launcher_monjaro_stub_required_hint) + " · " + stringResource(R.string.launcher_nav_bg_lanes_desc)
+            } else {
+                stringResource(R.string.launcher_nav_bg_lanes_desc)
+            },
+            color = if (!isStubInstalled) Color(0xFFF59E0B) else LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimapWidgetToggle(isStubInstalled: Boolean) {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgMinimapVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_minimap_title),
+            active = visible && isStubInstalled,
+            onClick = {
+                if (isStubInstalled) {
+                    val next = !visible
+                    LauncherAppConfigStore.setNavBgMinimapVisible(context, next)
+                    if (next) {
+                        val density = context.resources.displayMetrics.density
+                        val px = (180 * density).toInt()
+                        YandexNavRepository.enableMinimap(context, px, px)
+                    } else {
+                        YandexNavRepository.disableMinimap(context)
+                    }
+                } else {
+                    MonjaroStubInstaller.install(context)
+                }
+            },
+        )
+        Text(
+            text = if (!isStubInstalled) {
+                stringResource(R.string.launcher_monjaro_stub_required_hint) + " · " + stringResource(R.string.launcher_nav_bg_minimap_desc)
+            } else {
+                stringResource(R.string.launcher_nav_bg_minimap_desc)
+            },
+            color = if (!isStubInstalled) Color(0xFFF59E0B) else LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
     }
