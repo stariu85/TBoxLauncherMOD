@@ -469,12 +469,14 @@ private data class LeadObjectSprites(
     val truck: ImageBitmap,
     val motorcycle: ImageBitmap,
     val pedestrian: ImageBitmap,
+    val unknown: ImageBitmap,
 ) {
     fun forType(type: LauncherAdasFrontObjectType): ImageBitmap? = when (type) {
         LauncherAdasFrontObjectType.Car -> car
         LauncherAdasFrontObjectType.Truck -> truck
         LauncherAdasFrontObjectType.Motorcycle -> motorcycle
         LauncherAdasFrontObjectType.Pedestrian -> pedestrian
+        LauncherAdasFrontObjectType.Unknown -> unknown
         else -> null
     }
 }
@@ -546,6 +548,7 @@ private fun rememberLeadObjectSprites(): LeadObjectSprites {
         pedestrian = rememberRoadSprite(
             if (dark) R.drawable.ic_adas_lead_pedestrian_dark else R.drawable.ic_adas_lead_pedestrian,
         ),
+        unknown = rememberRoadSprite(R.drawable.ic_adas_lead_ufo),
     )
 }
 

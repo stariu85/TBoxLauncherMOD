@@ -46,6 +46,33 @@ internal object LauncherActiveAppTracker {
     @Volatile
     private var previousTopClass: String? = null
 
+    private val knownTaskIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    fun recordKnownTaskId(packageName: String, taskId: Int) {
+        if (packageName.isBlank() || taskId <= 0) return
+        knownTaskIds[packageName] = taskId
+    }
+
+    fun getKnownTaskId(packageName: String): Int? {
+        if (packageName.isBlank()) return null
+        if (currentAppPackage == packageName && (currentTaskId ?: -1) > 0) {
+            return currentTaskId
+        }
+        if (previousAppPackage == packageName && (previousTaskId ?: -1) > 0) {
+            return previousTaskId
+        }
+        return knownTaskIds[packageName]
+    }
+
+    fun removeKnownTaskId(packageName: String) {
+        if (packageName.isBlank()) return
+        knownTaskIds.remove(packageName)
+    }
+
+    fun clearAllKnownTaskIds() {
+        knownTaskIds.clear()
+    }
+
     fun onAppLaunched(
         packageName: String,
         taskId: Int? = null,
@@ -59,6 +86,7 @@ internal object LauncherActiveAppTracker {
         currentLaunchMode = launchMode ?: if (isFullscreen) LauncherAppLaunchMode.FULLSCREEN else LauncherAppLaunchMode.EMBEDDED
         if (taskId != null && taskId > 0) {
             currentTaskId = taskId
+            recordKnownTaskId(packageName, taskId)
         }
         if (!topActivityClass.isNullOrBlank()) {
             currentTopClass = topActivityClass
@@ -95,6 +123,7 @@ internal object LauncherActiveAppTracker {
             previousAppPackage = activePkg
             previousTaskId = currentTaskId
             previousTopClass = currentTopClass
+            currentTaskId?.let { recordKnownTaskId(activePkg, it) }
         }
         currentIsFullscreen = false
         currentLaunchMode = null
@@ -138,6 +167,9 @@ internal object LauncherActiveAppTracker {
     fun clearActiveApp(context: Context? = null) {
         val wasPkg = currentAppPackage
         Log.w(TAG, "clearActiveApp wasPkg=$wasPkg")
+        if (!wasPkg.isNullOrBlank()) {
+            removeKnownTaskId(wasPkg)
+        }
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
@@ -156,6 +188,7 @@ internal object LauncherActiveAppTracker {
         previousAppPackage = null
         previousTaskId = null
         previousTopClass = null
+        clearAllKnownTaskIds()
         YandexNavWindowTracker.onAppClosed(wasPkg)
     }
 }

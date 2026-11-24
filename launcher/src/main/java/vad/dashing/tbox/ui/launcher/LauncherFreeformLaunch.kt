@@ -55,6 +55,7 @@ internal object FreeformLaunchRegistry {
     fun remove(packageName: String) {
         packages -= packageName
         lastBounds -= packageName
+        LauncherActiveAppTracker.removeKnownTaskId(packageName)
         YandexNavWindowTracker.onFreeformRemoved(packageName)
     }
 
@@ -62,6 +63,7 @@ internal object FreeformLaunchRegistry {
         val hadYandex = packages.any { isYandexNavigationPackage(it) }
         packages.clear()
         lastBounds.clear()
+        LauncherActiveAppTracker.clearAllKnownTaskIds()
         if (hadYandex) {
             YandexNavWindowTracker.onAppClosed()
         }
@@ -359,24 +361,27 @@ internal fun tryLaunchIntentInBounds(
 
     val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val existingTaskId = findTaskIdForPackage(am, packageName)
-    val isProcessAlive = existingTaskId != null && isAppProcessAlive(am, packageName)
-    if (existingTaskId != null && !isProcessAlive) {
+    val isKnownAlive = existingTaskId != null && (
+        LauncherActiveAppTracker.getKnownTaskId(packageName) == existingTaskId ||
+            isAppProcessAlive(am, packageName)
+    )
+    if (existingTaskId != null && !isKnownAlive) {
         Log.w(
             "LauncherAppLaunch",
             "Found stale task $existingTaskId for pkg=$packageName but process is not running. Starting fresh activity.",
         )
     }
-    if (existingTaskId != null && isProcessAlive) {
+    if (existingTaskId != null && isKnownAlive) {
         val isHomeWindowingMode = LauncherAppConfigStore.experimentalHomeWindowingMode(context)
 
         // For overlay-fullscreen: task was switched to Fullscreen (mode 1) when Home was pressed.
-        // 1. Resize bounds in background first to avoid fullscreen flash.
-        // 2. Switch windowing mode back to FREEFORM with toTop = true.
+        // 1. Switch windowing mode back to FREEFORM first so it can be resized.
+        // 2. Resize bounds to target bounds before bringing to front to avoid fullscreen flash.
         if (isHomeWindowingMode) {
             runCatching {
                 val client = DclwmClient()
-                client.resize(existingTaskId, targetBounds.left, targetBounds.top, targetBounds.right, targetBounds.bottom)
                 client.setWindowingMode(existingTaskId, WINDOWING_MODE_FREEFORM)
+                client.resize(existingTaskId, targetBounds.left, targetBounds.top, targetBounds.right, targetBounds.bottom)
             }.onFailure {
                 Log.w("LauncherAppLaunch", "dclwm restore freeform failed task=$existingTaskId", it)
             }
@@ -724,6 +729,19 @@ internal fun resizeRunningTaskToBounds(
 
 @Suppress("DEPRECATION")
 internal fun isAppProcessAlive(am: ActivityManager, packageName: String): Boolean {
+    // 1. Fast in-memory check (if actively tracked/managed by launcher)
+    if (LauncherActiveAppTracker.getKnownTaskId(packageName) != null) return true
+
+    // 2. Hidden getAllStackInfos check (active AMS stacks)
+    val inStacks = runCatching {
+        activityManagerStackInfos().any { info ->
+            stackInfoTopPackage(info) == packageName ||
+                stackInfoTaskNames(info)?.any { it.startsWith("$packageName/") || it == packageName } == true
+        }
+    }.getOrDefault(false)
+    if (inStacks) return true
+
+    // 3. Fallback to runningAppProcesses
     return runCatching {
         val procs = am.runningAppProcesses ?: return false
         procs.any { proc ->
@@ -736,6 +754,9 @@ internal fun isAppProcessAlive(am: ActivityManager, packageName: String): Boolea
 
 @Suppress("DEPRECATION")
 internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int? {
+    // 0. Prefer known taskId from active app tracker (fast in-memory, avoids ANR)
+    LauncherActiveAppTracker.getKnownTaskId(packageName)?.let { return it }
+
     // 1. Prefer visible freeform stack via hidden getAllStackInfos (fast, in-memory, works for HOME).
     findTaskIdFromStackInfos(packageName)?.let { return it }
 
@@ -770,6 +791,7 @@ internal fun findTaskIdForPackage(am: ActivityManager, packageName: String): Int
             val tasks = client.list()
             for (task in tasks) {
                 if (task.packageName == packageName) {
+                    LauncherActiveAppTracker.recordKnownTaskId(packageName, task.id)
                     return task.id
                 }
             }
@@ -989,6 +1011,7 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
         runCatching {
             client.minimize(task.id)
             minimizedCount++
+            LauncherActiveAppTracker.recordKnownTaskId(task.packageName, task.id)
             if (isYandexNavigationPackage(task.packageName)) {
                 YandexNavWindowTracker.onWindowMinimized(task.packageName)
             }
@@ -1031,6 +1054,7 @@ internal fun moveForeignFreeformTasksToBackViaDclwm(
         runCatching {
             client.moveTaskToBack(task.id)
             movedCount++
+            LauncherActiveAppTracker.recordKnownTaskId(task.packageName, task.id)
             if (isYandexNavigationPackage(task.packageName)) {
                 YandexNavWindowTracker.onWindowMinimized(task.packageName)
             }
@@ -1074,6 +1098,7 @@ internal fun switchForeignFreeformTasksToFullscreenViaDclwm(
             // 1 = WINDOWING_MODE_FULLSCREEN
             client.setWindowingMode(task.id, 1)
             switchedCount++
+            LauncherActiveAppTracker.recordKnownTaskId(task.packageName, task.id)
             if (isYandexNavigationPackage(task.packageName)) {
                 YandexNavWindowTracker.onWindowMinimized(task.packageName)
             }

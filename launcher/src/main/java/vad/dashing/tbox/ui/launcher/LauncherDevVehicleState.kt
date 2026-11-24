@@ -602,4 +602,5 @@ val SIM_FRONT_OBJECT_TYPES: List<LauncherAdasFrontObjectType> = listOf(
     LauncherAdasFrontObjectType.Truck,
     LauncherAdasFrontObjectType.Motorcycle,
     LauncherAdasFrontObjectType.Pedestrian,
+    LauncherAdasFrontObjectType.Unknown,
 )
