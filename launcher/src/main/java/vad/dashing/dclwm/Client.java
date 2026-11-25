@@ -23,6 +23,14 @@ public final class Client {
         }
     }
 
+    public int version() throws Exception {
+        String response = command("VERSION").trim();
+        if (!response.startsWith("OK ")) {
+            throw new IllegalStateException(response);
+        }
+        return Integer.parseInt(response.substring(3).trim());
+    }
+
     public List<WindowTask> list() throws Exception {
         String response = command("LIST");
         String[] lines = response.split("\n");
@@ -48,6 +56,16 @@ public final class Client {
 
     public void resize(int taskId, int left, int top, int right, int bottom) throws Exception {
         ok(command("RESIZE " + taskId + " " + left + " " + top + " " + right + " " + bottom));
+    }
+
+    public void restoreFreeform(int taskId, int left, int top, int right, int bottom) throws Exception {
+        String response = command("RESTORE_FREEFORM " + taskId + " " + left + " " + top + " " + right + " " + bottom);
+        if ("ERR unknown".equals(response.trim())) {
+            setWindowingMode(taskId, 5);
+            resize(taskId, left, top, right, bottom);
+            return;
+        }
+        ok(response);
     }
 
     public void minimize(int taskId) throws Exception {
@@ -91,6 +109,8 @@ public final class Client {
         if ("PING".equals(op)) {
             client.ping();
             System.out.println("OK");
+        } else if ("VERSION".equals(op)) {
+            System.out.println("OK " + client.version());
         } else if ("LIST".equals(op)) {
             List<WindowTask> tasks = client.list();
             for (int i = 0; i < tasks.size(); i++) {
@@ -104,6 +124,14 @@ public final class Client {
             System.out.println("OK");
         } else if ("RESIZE".equals(op) && args.length == 6) {
             client.resize(
+                    Integer.parseInt(args[1]),
+                    Integer.parseInt(args[2]),
+                    Integer.parseInt(args[3]),
+                    Integer.parseInt(args[4]),
+                    Integer.parseInt(args[5]));
+            System.out.println("OK");
+        } else if ("RESTORE_FREEFORM".equals(op) && args.length == 6) {
+            client.restoreFreeform(
                     Integer.parseInt(args[1]),
                     Integer.parseInt(args[2]),
                     Integer.parseInt(args[3]),

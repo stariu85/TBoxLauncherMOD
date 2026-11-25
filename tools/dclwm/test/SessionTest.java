@@ -17,6 +17,10 @@ public final class SessionTest {
         failed += check("dismiss", dismiss());
         failed += check("launcher", launcherProtected());
         failed += check("arm", arm());
+        failed += check("arm_force_restart", armForceRestart());
+        failed += check("version", versionTest());
+        failed += check("restore_freeform", restoreFreeformTest());
+        failed += check("restore_freeform_launcher", restoreFreeformLauncherTest());
         failed += check("move_task_to_back", moveTaskToBackTest());
         failed += check("set_windowing_mode", setWindowingModeTest());
         if (failed != 0) {
@@ -125,7 +129,45 @@ public final class SessionTest {
         return script.indexOf('\r') < 0
                 && script.startsWith("#!/system/bin/sh\n")
                 && script.contains("DEX='/data/local/tmp/dclwm.dex'\n")
+                && script.contains("echo already > \"$MARK\"")
                 && script.contains("setsid /system/bin/app_process /system/bin vad.dashing.dclwm.Helper");
+    }
+
+    private static boolean armForceRestart() {
+        String script = ArmScript.text("/data/local/tmp/dclwm.dex", true);
+        return script.indexOf('\r') < 0
+                && !script.contains("echo already > \"$MARK\"")
+                && script.contains("kill \"$old\"")
+                && script.contains("kill -9 \"$old\"");
+    }
+
+    private static boolean versionTest() {
+        Fake am = new Fake();
+        String response = new Session(am).handle("VERSION", 10098, 10098);
+        return ("OK " + Protocol.VERSION + "\n").equals(response) && am.calls.isEmpty();
+    }
+
+    private static boolean restoreFreeformTest() {
+        Fake am = new Fake();
+        am.outputs.add(sample(0, 0, 1920, 1080, 0, 0, 1920, 1080));
+        am.outputs.add("");
+        am.outputs.add(sample(0, 0, 1920, 1080, 0, 0, 1920, 1080));
+        am.outputs.add("");
+        am.outputs.add("");
+        am.outputs.add(sample(80, 120, 700, 700, 80, 120, 700, 700));
+        String response = new Session(am).handle("RESTORE_FREEFORM 406 80 120 700 700", 10098, 10098);
+        return "OK\n".equals(response)
+                && am.calls.size() == 6
+                && am.calls.get(1).equals(Arrays.asList("am", "task", "set-windowing-mode", "406", "5"))
+                && am.calls.get(3).equals(Arrays.asList("am", "stack", "resize", "4", "80", "120", "700", "700"))
+                && am.calls.get(4).equals(Arrays.asList("am", "task", "resize", "406", "80", "120", "700", "700"));
+    }
+
+    private static boolean restoreFreeformLauncherTest() {
+        Fake am = new Fake();
+        am.outputs.add(sample(344, 37, 1920, 1000, 0, 0, 1920, 1080));
+        String response = new Session(am).handle("RESTORE_FREEFORM 402 80 120 700 700", 0, 10098);
+        return "ERR launcher\n".equals(response) && am.calls.size() == 1;
     }
 
     private static boolean moveTaskToBackTest() {

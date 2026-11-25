@@ -98,8 +98,15 @@ object LauncherBackupManager {
             for (file in toDelete) {
                 val baseName = file.name.removeSuffix(".json")
                 file.delete()
-                File(dir, "${baseName}_wallpaper_dark.jpg").delete()
-                File(dir, "${baseName}_wallpaper_light.jpg").delete()
+                dir.listFiles()?.forEach { candidate ->
+                    if (candidate.isFile && (
+                            candidate.name.startsWith("${baseName}_wallpaper_dark.") ||
+                                candidate.name.startsWith("${baseName}_wallpaper_light.")
+                        )
+                    ) {
+                        candidate.delete()
+                    }
+                }
             }
         }
     }
@@ -219,23 +226,27 @@ object LauncherBackupManager {
                 put("datastore", dataStoreJson)
 
                 // 3. Backup Wallpaper background files if customized by user
+                // Skip very large video files in auto-backups to avoid filling storage.
+                val maxBackupWallpaperBytes = if (isAuto) 25L * 1024L * 1024L else 50L * 1024L * 1024L
                 val wallpapersJson = JSONObject()
 
                 val darkUriStr = LauncherAppConfigStore.wallpaperDarkUri(context)
                 val darkSourceFile = findWallpaperSourceFile(context, darkUriStr, isDark = true)
-                if (darkSourceFile != null && darkSourceFile.exists() && darkSourceFile.length() > 0) {
-                    val darkTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_dark.jpg"
+                if (darkSourceFile != null && darkSourceFile.exists() && darkSourceFile.length() in 1L..maxBackupWallpaperBytes) {
+                    val darkExt = darkSourceFile.extension.lowercase().ifBlank { "jpg" }
+                    val darkTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_dark.$darkExt"
                     darkSourceFile.copyTo(File(dir, darkTargetName), overwrite = true)
-                    darkSourceFile.copyTo(File(dir, "dcl_wallpaper_dark.jpg"), overwrite = true)
+                    darkSourceFile.copyTo(File(dir, "dcl_wallpaper_dark.$darkExt"), overwrite = true)
                     wallpapersJson.put("dark", darkTargetName)
                 }
 
                 val lightUriStr = LauncherAppConfigStore.wallpaperLightUri(context)
                 val lightSourceFile = findWallpaperSourceFile(context, lightUriStr, isDark = false)
-                if (lightSourceFile != null && lightSourceFile.exists() && lightSourceFile.length() > 0) {
-                    val lightTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_light.jpg"
+                if (lightSourceFile != null && lightSourceFile.exists() && lightSourceFile.length() in 1L..maxBackupWallpaperBytes) {
+                    val lightExt = lightSourceFile.extension.lowercase().ifBlank { "jpg" }
+                    val lightTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_light.$lightExt"
                     lightSourceFile.copyTo(File(dir, lightTargetName), overwrite = true)
-                    lightSourceFile.copyTo(File(dir, "dcl_wallpaper_light.jpg"), overwrite = true)
+                    lightSourceFile.copyTo(File(dir, "dcl_wallpaper_light.$lightExt"), overwrite = true)
                     wallpapersJson.put("light", lightTargetName)
                 }
 
@@ -324,17 +335,19 @@ object LauncherBackupManager {
     }
 
     private fun findWallpaperSourceFile(context: Context, uriStr: String, isDark: Boolean): File? {
-        val fileName = if (isDark) "wallpaper_dark.jpg" else "wallpaper_light.jpg"
-        val internalFile = File(context.filesDir, "wallpapers/$fileName")
-        if (internalFile.exists() && internalFile.length() > 0) {
-            return internalFile
-        }
-
         if (uriStr.isNotBlank() && !uriStr.startsWith("content://")) {
             val f = File(uriStr)
             if (f.exists() && f.length() > 0) {
                 return f
             }
+        }
+
+        val prefix = if (isDark) "wallpaper_dark." else "wallpaper_light."
+        val internalDir = File(context.filesDir, "wallpapers")
+        val internalFile = internalDir.listFiles()
+            ?.firstOrNull { it.isFile && it.name.startsWith(prefix) && it.length() > 0L }
+        if (internalFile != null) {
+            return internalFile
         }
 
         if (uriStr.startsWith("content://")) {
@@ -363,7 +376,7 @@ object LauncherBackupManager {
         val wallpapersJson = rootJson.optJSONObject("wallpapers")
 
         // 1. Dark theme wallpaper restore
-        val darkFilename = wallpapersJson?.optString("dark")
+        val darkFilename = wallpapersJson?.optString("dark")?.takeIf { it.isNotBlank() }
         val darkCandidates = listOfNotNull(
             darkFilename?.let { File(parentDir, it) },
             darkFilename?.let { File(dclDir, it) },
@@ -372,13 +385,19 @@ object LauncherBackupManager {
         )
         val darkSource = darkCandidates.firstOrNull { it.exists() && it.length() > 0 }
         if (darkSource != null) {
-            val targetDark = File(wallpapersDir, "wallpaper_dark.jpg")
+            val darkExt = darkSource.extension.lowercase().ifBlank { "jpg" }
+            wallpapersDir.listFiles()?.forEach { existing ->
+                if (existing.isFile && existing.name.startsWith("wallpaper_dark.")) {
+                    runCatching { existing.delete() }
+                }
+            }
+            val targetDark = File(wallpapersDir, "wallpaper_dark.$darkExt")
             darkSource.copyTo(targetDark, overwrite = true)
             LauncherAppConfigStore.setWallpaperDarkUri(context, targetDark.absolutePath)
         }
 
         // 2. Light theme wallpaper restore
-        val lightFilename = wallpapersJson?.optString("light")
+        val lightFilename = wallpapersJson?.optString("light")?.takeIf { it.isNotBlank() }
         val lightCandidates = listOfNotNull(
             lightFilename?.let { File(parentDir, it) },
             lightFilename?.let { File(dclDir, it) },
@@ -387,7 +406,13 @@ object LauncherBackupManager {
         )
         val lightSource = lightCandidates.firstOrNull { it.exists() && it.length() > 0 }
         if (lightSource != null) {
-            val targetLight = File(wallpapersDir, "wallpaper_light.jpg")
+            val lightExt = lightSource.extension.lowercase().ifBlank { "jpg" }
+            wallpapersDir.listFiles()?.forEach { existing ->
+                if (existing.isFile && existing.name.startsWith("wallpaper_light.")) {
+                    runCatching { existing.delete() }
+                }
+            }
+            val targetLight = File(wallpapersDir, "wallpaper_light.$lightExt")
             lightSource.copyTo(targetLight, overwrite = true)
             LauncherAppConfigStore.setWallpaperLightUri(context, targetLight.absolutePath)
         }
@@ -571,7 +596,8 @@ object LauncherBackupManager {
                 "home_grid_columns", "home_grid_rows", "home_grid_row_spacing", "top_bar_height_dp",
                 "bottom_bar_height_dp", "floating_home_size_dp", "sidebar_width_dp", "camera_switch_mode",
                 "avm_camera_action", "pdc_visual_mode", "edge_gestures_width_dp", "adas_distance_text_size",
-                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode", "dock_columns" -> PrefType.INT
+                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode", "dock_columns",
+                "nav_bg_minimap_transparency", "nav_bg_minimap_height_dp" -> PrefType.INT
 
                 "cruise_increase_interval", "cruise_decrease_interval" -> PrefType.LONG
 

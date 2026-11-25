@@ -2,6 +2,7 @@ package vad.dashing.dclwm;
 
 /** Shared names for the window helper and the launcher that talks to it. */
 public final class Protocol {
+    public static final int VERSION = 2;
     public static final String SOCKET = "dclwm";
     public static final String LAUNCHER_PACKAGE = "ras.dashing.tbox.launcher";
     /** Off-screen stack rect. A 1x1 resize stays visible: this firmware clamps it to 88 px. */

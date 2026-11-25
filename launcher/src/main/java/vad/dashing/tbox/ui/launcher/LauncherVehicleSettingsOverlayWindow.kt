@@ -53,6 +53,9 @@ internal object LauncherVehicleSettingsOverlayWindow {
     private var lifecycleOwner: MyLifecycleOwner? = null
     private var windowManager: WindowManager? = null
 
+    private val _isShowingFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isShowingFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isShowingFlow
+
     fun isShowing(): Boolean = composeView != null
 
     /** Returns true when the settings were shown as a system overlay window. */
@@ -163,6 +166,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
             windowManager = wm
             wm.addView(view, params)
             composeView = view
+            _isShowingFlow.value = true
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
             LauncherEdgeGestureOverlay.bringToFront()
@@ -170,6 +174,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
             true
         }.onFailure {
             Log.e(TAG, "Unable to add vehicle settings overlay", it)
+            _isShowingFlow.value = false
             lifecycleOwner = null
             windowManager = null
             owner.setCurrentState(Lifecycle.State.DESTROYED)
@@ -180,6 +185,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
     fun hide() {
         val view = composeView ?: return
         composeView = null
+        _isShowingFlow.value = false
         LauncherVehicleSettingsUiState.markClosed()
         LauncherOverlayElevator.setHoldSource("vehicle_settings", false)
         runCatching { windowManager?.removeViewImmediate(view) }

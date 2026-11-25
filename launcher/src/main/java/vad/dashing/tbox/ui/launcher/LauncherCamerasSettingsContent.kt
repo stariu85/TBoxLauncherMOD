@@ -1,15 +1,23 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Slider
@@ -38,6 +46,7 @@ import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.camd.CamdCameraRepository
 import vad.dashing.tbox.camd.CamdConnectionStatus
+import vad.dashing.tbox.camd.CamdPreset
 import vad.dashing.tbox.camd.CamdSocketClient
 import vad.dashing.tbox.mbcan.TurnSignalSide
 
@@ -659,43 +668,28 @@ fun LauncherCamerasSettingsContent(
 
             // Option 2.3: Preset selection for Left Camera & Right Camera (all broadcast presets)
             val connectedStatus = status as? CamdConnectionStatus.Connected
+            val availablePresets = connectedStatus?.presets.orEmpty()
             val defaultPresetLabel = stringResource(R.string.camd_preset_default)
 
-            val allPresets = (listOf("") + (connectedStatus?.presets?.map { it.name } ?: emptyList()) + listOfNotNull(leftPreset.ifBlank { null }, rightPreset.ifBlank { null })).distinct()
-            if (allPresets.size > 1) {
-                val formatPresetLabel: (String) -> String = { presetName ->
-                    if (presetName.isBlank() || presetName !in allPresets) {
-                        defaultPresetLabel
-                    } else {
-                        val p = connectedStatus?.presets?.firstOrNull { it.name == presetName }
-                        if (p != null) {
-                            "${p.name} (#${p.cameraId})"
-                        } else {
-                            presetName
-                        }
-                    }
-                }
+            CamdPresetSelectorRow(
+                label = stringResource(R.string.camd_turn_signal_preset_left_title),
+                currentPreset = leftPreset,
+                availablePresets = availablePresets,
+                defaultPresetLabel = defaultPresetLabel,
+                onSelectPreset = { preset ->
+                    LauncherAppConfigStore.setCamdTurnSignalLeftPreset(context, preset)
+                },
+            )
 
-                LauncherSettingsValueRow(
-                    label = stringResource(R.string.camd_turn_signal_preset_left_title),
-                    value = formatPresetLabel(leftPreset),
-                    onClick = {
-                        val currentIdx = allPresets.indexOf(leftPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allPresets.size
-                        LauncherAppConfigStore.setCamdTurnSignalLeftPreset(context, allPresets[nextIdx])
-                    },
-                )
-
-                LauncherSettingsValueRow(
-                    label = stringResource(R.string.camd_turn_signal_preset_right_title),
-                    value = formatPresetLabel(rightPreset),
-                    onClick = {
-                        val currentIdx = allPresets.indexOf(rightPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allPresets.size
-                        LauncherAppConfigStore.setCamdTurnSignalRightPreset(context, allPresets[nextIdx])
-                    },
-                )
-            }
+            CamdPresetSelectorRow(
+                label = stringResource(R.string.camd_turn_signal_preset_right_title),
+                currentPreset = rightPreset,
+                availablePresets = availablePresets,
+                defaultPresetLabel = defaultPresetLabel,
+                onSelectPreset = { preset ->
+                    LauncherAppConfigStore.setCamdTurnSignalRightPreset(context, preset)
+                },
+            )
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -906,43 +900,28 @@ fun LauncherCamerasSettingsContent(
 
             // Sub-option 3.4: Preset selection for Left and Right low-speed cameras
             val connectedStatus = status as? CamdConnectionStatus.Connected
+            val availablePresets = connectedStatus?.presets.orEmpty()
             val defaultPresetLabel = stringResource(R.string.camd_preset_default)
-            val allLowSpeedPresets = (listOf("") + (connectedStatus?.presets?.map { it.name } ?: emptyList()) + listOfNotNull(lowSpeedLeftPreset.ifBlank { null }, lowSpeedRightPreset.ifBlank { null })).distinct()
 
-            if (allLowSpeedPresets.size > 1) {
-                val formatLowSpeedPresetLabel: (String) -> String = { presetName ->
-                    if (presetName.isBlank() || presetName !in allLowSpeedPresets) {
-                        defaultPresetLabel
-                    } else {
-                        val p = connectedStatus?.presets?.firstOrNull { it.name == presetName }
-                        if (p != null) {
-                            "${p.name} (#${p.cameraId})"
-                        } else {
-                            presetName
-                        }
-                    }
-                }
+            CamdPresetSelectorRow(
+                label = stringResource(R.string.camd_low_speed_preset_left_title),
+                currentPreset = lowSpeedLeftPreset,
+                availablePresets = availablePresets,
+                defaultPresetLabel = defaultPresetLabel,
+                onSelectPreset = { preset ->
+                    LauncherAppConfigStore.setCamdLowSpeedLeftPreset(context, preset)
+                },
+            )
 
-                LauncherSettingsValueRow(
-                    label = stringResource(R.string.camd_low_speed_preset_left_title),
-                    value = formatLowSpeedPresetLabel(lowSpeedLeftPreset),
-                    onClick = {
-                        val currentIdx = allLowSpeedPresets.indexOf(lowSpeedLeftPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allLowSpeedPresets.size
-                        LauncherAppConfigStore.setCamdLowSpeedLeftPreset(context, allLowSpeedPresets[nextIdx])
-                    },
-                )
-
-                LauncherSettingsValueRow(
-                    label = stringResource(R.string.camd_low_speed_preset_right_title),
-                    value = formatLowSpeedPresetLabel(lowSpeedRightPreset),
-                    onClick = {
-                        val currentIdx = allLowSpeedPresets.indexOf(lowSpeedRightPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allLowSpeedPresets.size
-                        LauncherAppConfigStore.setCamdLowSpeedRightPreset(context, allLowSpeedPresets[nextIdx])
-                    },
-                )
-            }
+            CamdPresetSelectorRow(
+                label = stringResource(R.string.camd_low_speed_preset_right_title),
+                currentPreset = lowSpeedRightPreset,
+                availablePresets = availablePresets,
+                defaultPresetLabel = defaultPresetLabel,
+                onSelectPreset = { preset ->
+                    LauncherAppConfigStore.setCamdLowSpeedRightPreset(context, preset)
+                },
+            )
         }
 
         if (isInstalled) {
@@ -956,28 +935,8 @@ fun LauncherCamerasSettingsContent(
             Spacer(modifier = Modifier.height(4.dp))
 
             val connectedStatus = status as? CamdConnectionStatus.Connected
+            val availablePresets = connectedStatus?.presets.orEmpty()
             val defaultPresetLabel = stringResource(R.string.camd_preset_default)
-
-            val allWidgetPresets = (listOf("") + (connectedStatus?.presets?.map { it.name } ?: emptyList()) +
-                listOfNotNull(
-                    widgetLrLeftPreset.ifBlank { null },
-                    widgetLrRightPreset.ifBlank { null },
-                    widgetUdTopPreset.ifBlank { null },
-                    widgetUdBottomPreset.ifBlank { null }
-                )).distinct()
-
-            val formatWidgetPresetLabel: (String) -> String = { presetName ->
-                if (presetName.isBlank() || presetName !in allWidgetPresets) {
-                    defaultPresetLabel
-                } else {
-                    val p = connectedStatus?.presets?.firstOrNull { it.name == presetName }
-                    if (p != null) {
-                        "${p.name} (#${p.cameraId})"
-                    } else {
-                        presetName
-                    }
-                }
-            }
 
             Column(
                 modifier = Modifier
@@ -995,23 +954,23 @@ fun LauncherCamerasSettingsContent(
                     fontWeight = FontWeight.SemiBold,
                 )
 
-                LauncherSettingsValueRow(
+                CamdPresetSelectorRow(
                     label = stringResource(R.string.camd_widget_lr_left_preset_title),
-                    value = formatWidgetPresetLabel(widgetLrLeftPreset),
-                    onClick = {
-                        val currentIdx = allWidgetPresets.indexOf(widgetLrLeftPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
-                        LauncherAppConfigStore.setCamdWidgetLrLeftPreset(context, allWidgetPresets[nextIdx])
+                    currentPreset = widgetLrLeftPreset,
+                    availablePresets = availablePresets,
+                    defaultPresetLabel = defaultPresetLabel,
+                    onSelectPreset = { preset ->
+                        LauncherAppConfigStore.setCamdWidgetLrLeftPreset(context, preset)
                     },
                 )
 
-                LauncherSettingsValueRow(
+                CamdPresetSelectorRow(
                     label = stringResource(R.string.camd_widget_lr_right_preset_title),
-                    value = formatWidgetPresetLabel(widgetLrRightPreset),
-                    onClick = {
-                        val currentIdx = allWidgetPresets.indexOf(widgetLrRightPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
-                        LauncherAppConfigStore.setCamdWidgetLrRightPreset(context, allWidgetPresets[nextIdx])
+                    currentPreset = widgetLrRightPreset,
+                    availablePresets = availablePresets,
+                    defaultPresetLabel = defaultPresetLabel,
+                    onSelectPreset = { preset ->
+                        LauncherAppConfigStore.setCamdWidgetLrRightPreset(context, preset)
                     },
                 )
 
@@ -1025,23 +984,23 @@ fun LauncherCamerasSettingsContent(
                     fontWeight = FontWeight.SemiBold,
                 )
 
-                LauncherSettingsValueRow(
+                CamdPresetSelectorRow(
                     label = stringResource(R.string.camd_widget_ud_top_preset_title),
-                    value = formatWidgetPresetLabel(widgetUdTopPreset),
-                    onClick = {
-                        val currentIdx = allWidgetPresets.indexOf(widgetUdTopPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
-                        LauncherAppConfigStore.setCamdWidgetUdTopPreset(context, allWidgetPresets[nextIdx])
+                    currentPreset = widgetUdTopPreset,
+                    availablePresets = availablePresets,
+                    defaultPresetLabel = defaultPresetLabel,
+                    onSelectPreset = { preset ->
+                        LauncherAppConfigStore.setCamdWidgetUdTopPreset(context, preset)
                     },
                 )
 
-                LauncherSettingsValueRow(
+                CamdPresetSelectorRow(
                     label = stringResource(R.string.camd_widget_ud_bottom_preset_title),
-                    value = formatWidgetPresetLabel(widgetUdBottomPreset),
-                    onClick = {
-                        val currentIdx = allWidgetPresets.indexOf(widgetUdBottomPreset).takeIf { it >= 0 } ?: 0
-                        val nextIdx = (currentIdx + 1) % allWidgetPresets.size
-                        LauncherAppConfigStore.setCamdWidgetUdBottomPreset(context, allWidgetPresets[nextIdx])
+                    currentPreset = widgetUdBottomPreset,
+                    availablePresets = availablePresets,
+                    defaultPresetLabel = defaultPresetLabel,
+                    onSelectPreset = { preset ->
+                        LauncherAppConfigStore.setCamdWidgetUdBottomPreset(context, preset)
                     },
                 )
 
@@ -1130,6 +1089,106 @@ fun LauncherCamerasSettingsContent(
                     text = stringResource(R.string.camd_test_side_right_btn),
                     fontSize = 13.sp,
                     color = if (isRightActive) Color(0xFF10B981) else if (isInstalled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        val resetPresetsToastText = stringResource(R.string.camd_reset_presets_default_toast)
+        OutlinedButton(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            onClick = {
+                LauncherAppConfigStore.resetCamdCameraPresetsToDefaults(context)
+                Toast.makeText(context, resetPresetsToastText, Toast.LENGTH_SHORT).show()
+            },
+            enabled = isInstalled,
+        ) {
+            Text(
+                text = stringResource(R.string.camd_reset_presets_default_btn),
+                fontSize = 13.sp,
+                color = if (isInstalled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CamdPresetSelectorRow(
+    label: String,
+    currentPreset: String,
+    availablePresets: List<CamdPreset>,
+    defaultPresetLabel: String,
+    onSelectPreset: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val options = remember(availablePresets, currentPreset, defaultPresetLabel) {
+        buildList {
+            add("" to defaultPresetLabel)
+            val seen = HashSet<String>()
+            seen.add("")
+            availablePresets.forEach { preset ->
+                if (seen.add(preset.name)) {
+                    add(preset.name to "${preset.name} (#${preset.cameraId})")
+                }
+            }
+            if (currentPreset.isNotBlank() && seen.add(currentPreset)) {
+                add(currentPreset to currentPreset)
+            }
+        }
+    }
+
+    val currentLabel = remember(currentPreset, options, defaultPresetLabel) {
+        options.firstOrNull { it.first == currentPreset }?.second ?: defaultPresetLabel
+    }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        LauncherSettingsValueRow(
+            label = label,
+            value = currentLabel,
+            onClick = { expanded = true },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .background(LauncherColors.CardDark)
+                .heightIn(max = 380.dp),
+        ) {
+            options.forEach { (presetKey, presetLabel) ->
+                val isSelected = presetKey == currentPreset
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = presetLabel,
+                            color = if (isSelected) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    trailingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = LauncherColors.AccentCyan,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    modifier = if (isSelected) {
+                        Modifier.background(LauncherColors.AccentCyan.copy(alpha = 0.14f))
+                    } else {
+                        Modifier
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelectPreset(presetKey)
+                    },
                 )
             }
         }

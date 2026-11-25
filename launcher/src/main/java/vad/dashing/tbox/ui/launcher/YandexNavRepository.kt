@@ -72,6 +72,11 @@ data class YandexNavState(
     val minimapBitmap: Bitmap? = null,
     val minimapHasRoute: Boolean = false,
     val minimapLastUpdateMs: Long = 0L,
+    val broadcastManeuverBitmap: Bitmap? = null,
+    val broadcastManeuverDistance: String? = null,
+    val remainingDistanceMeters: Float? = null,
+    val routeInitialDistanceMeters: Float? = null,
+    val routeProgressRatio: Float? = null,
 )
 
 data class MinimapFrame(
@@ -84,13 +89,12 @@ object YandexNavRepository {
     private const val TAG = "YandexNavRepository"
     private const val TRAFFIC_LIGHT_TIMER_TIMEOUT_MS = 3_000L
     private const val TRAFFIC_LIGHT_STALE_TIMEOUT_MS = 5_000L
-    private const val MINIMAP_STALE_TIMEOUT_MS = 3_500L
     private const val LANES_STALE_TIMEOUT_MS = 4_000L
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var timerStaleJob: Job? = null
     private var trafficLightStaleJob: Job? = null
-    private var minimapStaleJob: Job? = null
+    private var minimapWindowStateJob: Job? = null
     private var lanesStaleJob: Job? = null
 
     private fun cancelTimerStaleJob() {
@@ -137,19 +141,6 @@ object YandexNavRepository {
         }
     }
 
-    private fun cancelMinimapStaleJob() {
-        minimapStaleJob?.cancel()
-        minimapStaleJob = null
-    }
-
-    private fun scheduleMinimapStaleJob() {
-        minimapStaleJob?.cancel()
-        minimapStaleJob = repositoryScope.launch {
-            delay(MINIMAP_STALE_TIMEOUT_MS)
-            _minimapFrame.value = MinimapFrame()
-        }
-    }
-
     private fun cancelLanesStaleJob() {
         lanesStaleJob?.cancel()
         lanesStaleJob = null
@@ -191,9 +182,15 @@ object YandexNavRepository {
             val now = System.currentTimeMillis()
             val normAction = action.substringAfterLast('.').uppercase()
 
-            if (extras != null) {
+            // Only run generic heuristic extra scanning on general navigation/maneuver broadcasts.
+            // Specific broadcasts (TRAFFIC_LIGHT_UPDATE, LANE_DIST, LANES, DISTANCE, MINIMAP, etc.)
+            // carry their own "dist" / "tl_dist_m" / "lanes_bitmap" extras that must NOT overwrite
+            // maneuverDistance or broadcastManeuverDistance!
+            val isGenericNavAction = normAction !in SPECIFIC_NON_MANEUVER_ACTIONS
+            if (extras != null && isGenericNavAction) {
                 var bitmap: Bitmap? = null
                 var mDistance: String? = null
+                var mMetrics: String? = null
                 var streetText: String? = null
                 var remDist: String? = null
                 var remTime: String? = null
@@ -206,14 +203,19 @@ object YandexNavRepository {
                     Log.d(TAG, "   [$action] Extra: $k = $valStr (${value.javaClass.simpleName})")
 
                     if (value is Bitmap) {
-                        if (k.contains("maneuver") || k.contains("icon") || bitmap == null) {
-                            bitmap = value
+                        val kLowerBmp = k.lowercase()
+                        if (!kLowerBmp.contains("lane") && !kLowerBmp.contains("minimap")) {
+                            if (kLowerBmp.contains("maneuver") || kLowerBmp.contains("icon") || kLowerBmp.contains("arrow") || kLowerBmp.contains("turn") || bitmap == null) {
+                                bitmap = value
+                            }
                         }
                         continue
                     }
 
                     val kLower = k.lowercase()
-                    if (kLower == "maneuver_distance" || kLower == "maneuver_dist" || kLower == "dist_to_turn" || kLower == "dist_m" || kLower == "distance_text") {
+                    if (kLower == "metrics" || kLower == "unit" || kLower == "units" || kLower == "maneuver_metrics") {
+                        mMetrics = valStr
+                    } else if (kLower == "maneuver_distance" || kLower == "maneuver_dist" || kLower == "dist_to_turn" || kLower == "dist_m" || kLower == "distance_text") {
                         mDistance = valStr
                     } else if (kLower == "street_name" || kLower == "next_street" || kLower == "street" || kLower == "road_name" || kLower == "target_street") {
                         if (!isIgnoredStreetName(valStr)) streetText = valStr
@@ -225,21 +227,27 @@ object YandexNavRepository {
                         arrTime = valStr
                     } else if (kLower.contains("street") || kLower.contains("road")) {
                         if (!isIgnoredStreetName(valStr)) streetText = valStr
-                    } else if (kLower.contains("dist")) {
-                        if (mDistance == null) mDistance = valStr else if (remDist == null && valStr != mDistance) remDist = valStr
-                    } else if (kLower.contains("time")) {
+                    } else if (kLower.contains("dist") && !kLower.contains("tl_") && !kLower.contains("lane") && !kLower.contains("rem") && !kLower.contains("total") && !kLower.contains("route")) {
+                        if (mDistance == null) mDistance = valStr
+                    } else if (kLower.contains("time") && !kLower.contains("tl_")) {
                         if (remTime == null) remTime = valStr
                     }
                 }
 
                 if (bitmap != null || mDistance != null || streetText != null || remDist != null || remTime != null || arrTime != null) {
+                    val cleanDist = formatBroadcastDistance(mDistance, mMetrics)
+                    val cleanRemDist = formatBroadcastDistance(remDist, null)
+                    val remMeters = parseDistanceToMeters(remDist, null)
                     _state.update {
-                        it.copy(
+                        val updatedProgress = updateRouteProgress(it, remMeters)
+                        updatedProgress.copy(
                             isNavigating = true,
                             maneuverBitmap = bitmap ?: it.maneuverBitmap,
-                            maneuverDistance = mDistance?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.maneuverDistance,
+                            broadcastManeuverBitmap = bitmap ?: it.broadcastManeuverBitmap,
+                            maneuverDistance = cleanDist ?: it.maneuverDistance,
+                            broadcastManeuverDistance = cleanDist ?: it.broadcastManeuverDistance,
                             nextStreet = streetText?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.nextStreet,
-                            remainingDistance = remDist?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.remainingDistance,
+                            remainingDistance = cleanRemDist ?: it.remainingDistance,
                             remainingTime = remTime?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.remainingTime,
                             arrivalTime = arrTime?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.arrivalTime,
                             lastUpdateMs = now,
@@ -363,10 +371,8 @@ object YandexNavRepository {
                 }
                 "LANE_DIST" -> {
                     val dist = extractRawExtraString(intent, "dist")
-                    val metrics = extractRawExtraString(intent, "metrics") ?: ""
-                    val distText = if (dist != null) {
-                        "$dist $metrics".replace("\\s+".toRegex(), " ").trim()
-                    } else null
+                    val metrics = extractRawExtraString(intent, "metrics")
+                    val distText = formatBroadcastDistance(dist, metrics)
                     if (distText != null) {
                         scheduleLanesStaleJob()
                         _state.update {
@@ -380,10 +386,8 @@ object YandexNavRepository {
                 }
                 "LANES", "LANE_SIGN" -> {
                     val dist = extractRawExtraString(intent, "dist")
-                    val metrics = extractRawExtraString(intent, "metrics") ?: ""
-                    val distText = if (dist != null) {
-                        "$dist $metrics".replace("\\s+".toRegex(), " ").trim()
-                    } else null
+                    val metrics = extractRawExtraString(intent, "metrics")
+                    val distText = formatBroadcastDistance(dist, metrics)
                     scheduleLanesStaleJob()
                     _state.update {
                         it.copy(
@@ -405,18 +409,19 @@ object YandexNavRepository {
                             hasRoute = hasRoute,
                             lastUpdateMs = now,
                         )
-                        scheduleMinimapStaleJob()
                     }
                 }
-                "NIXT" -> {
-                    val nextText = extractRawExtraString(intent, "next_text")
-                    if (!nextText.isNullOrBlank()) {
-                        val cleanDist = nextText.replace("\\s+".toRegex(), " ").trim()
+                "NIXT", "NEXT" -> {
+                    val nextText = extractRawExtraString(intent, "next_text", "maneuver_distance", "dist_text", "dist")
+                    val metrics = extractRawExtraString(intent, "metrics", "unit", "units")
+                    val cleanDist = formatBroadcastDistance(nextText, metrics)
+                    if (!cleanDist.isNullOrBlank()) {
                         _state.update {
                             it.copy(
                                 isNavigating = true,
                                 nextText = cleanDist,
                                 maneuverDistance = cleanDist,
+                                broadcastManeuverDistance = cleanDist,
                                 lastUpdateMs = now,
                             )
                         }
@@ -437,11 +442,15 @@ object YandexNavRepository {
                 }
                 "DISTANCE" -> {
                     val remDist = extractRawExtraString(intent, "Distance_text", "distance_text", "dist")
-                    if (remDist != null) {
+                    val metrics = extractRawExtraString(intent, "metrics", "unit", "units")
+                    val cleanRemDist = formatBroadcastDistance(remDist, metrics)
+                    val remMeters = parseDistanceToMeters(remDist, metrics)
+                    if (cleanRemDist != null) {
                         _state.update {
-                            it.copy(
+                            val updatedProgress = updateRouteProgress(it, remMeters)
+                            updatedProgress.copy(
                                 isNavigating = true,
-                                remainingDistance = remDist,
+                                remainingDistance = cleanRemDist,
                                 lastUpdateMs = now,
                             )
                         }
@@ -471,32 +480,52 @@ object YandexNavRepository {
                         }
                     }
                 }
-                "MANEUVER", "MANEUVER_UPDATE", "HUD_UPDATE", "NAVIGATION_UPDATE", "ROUTE_UPDATE", "STREET_UPDATE", "DISTANCE_UPDATE" -> {
-                    val mDistance = extractRawExtraString(intent, "maneuver_distance", "maneuver_dist", "dist_to_turn", "distance_text", "dist_text", "maneuver_text", "dist_m", "dist", "distance")
+                "MANEUVER", "MANEUVER_UPDATE", "MANEUVER_BITMAP", "HUD_UPDATE", "NAVIGATION_UPDATE", "ROUTE_UPDATE", "STREET_UPDATE", "DISTANCE_UPDATE" -> {
+                    @Suppress("DEPRECATION")
+                    val maneuverBmp = intent.getParcelableExtra<Bitmap>("maneuver_bitmap")
+                        ?: intent.getParcelableExtra<Bitmap>("maneuver_icon")
+                        ?: intent.getParcelableExtra<Bitmap>("icon")
+                        ?: intent.getParcelableExtra<Bitmap>("bitmap")
+                    val mDistance = extractRawExtraString(intent, "maneuver_distance", "maneuver_dist", "dist_to_turn", "distance_text", "dist_text", "maneuver_text", "next_text", "dist_m", "dist", "distance")
+                    val mMetrics = extractRawExtraString(intent, "metrics", "unit", "units", "maneuver_metrics")
                     val streetText = extractRawExtraString(intent, "street_name", "next_street", "street", "road_name", "target_street", "maneuver_street", "street_text")
                     val remDist = extractRawExtraString(intent, "remaining_distance", "rem_dist", "route_distance", "total_distance", "dist_to_dest")
                     val remTime = extractRawExtraString(intent, "remaining_time", "rem_time", "route_time", "time_to_target", "time_left")
                     val arrTime = extractRawExtraString(intent, "arrival_time", "eta", "arrival", "eta_text")
 
                     val validStreet = streetText?.takeIf { !isIgnoredStreetName(it) }
+                    val cleanDist = formatBroadcastDistance(mDistance, mMetrics)
+                    val cleanRemDist = formatBroadcastDistance(remDist, null)
+                    val remMeters = parseDistanceToMeters(remDist, null)
 
                     _state.update {
-                        it.copy(
+                        val updatedProgress = updateRouteProgress(it, remMeters)
+                        updatedProgress.copy(
                             isNavigating = true,
-                            maneuverDistance = mDistance?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.maneuverDistance,
+                            maneuverBitmap = maneuverBmp ?: it.maneuverBitmap,
+                            broadcastManeuverBitmap = maneuverBmp ?: it.broadcastManeuverBitmap,
+                            maneuverDistance = cleanDist ?: it.maneuverDistance,
+                            broadcastManeuverDistance = cleanDist ?: it.broadcastManeuverDistance,
                             nextStreet = validStreet?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.nextStreet,
-                            remainingDistance = remDist?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.remainingDistance,
+                            remainingDistance = cleanRemDist ?: it.remainingDistance,
                             remainingTime = remTime?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.remainingTime,
                             arrivalTime = arrTime?.takeIf { s -> s.isNotBlank() && s != "null" } ?: it.arrivalTime,
                             lastUpdateMs = now,
                         )
                     }
                 }
+                "MANEUVER_CLEAR", "MANEUVER_BITMAP_CLEAR" -> {
+                    _state.update {
+                        it.copy(
+                            broadcastManeuverBitmap = null,
+                            broadcastManeuverDistance = null,
+                            lastUpdateMs = now,
+                        )
+                    }
+                }
                 "NAVIGATION_ENDED", "NAVIGATION_STOPPED" -> {
                     cancelTimerStaleJob()
-                    cancelMinimapStaleJob()
                     cancelLanesStaleJob()
-                    _minimapFrame.value = MinimapFrame()
                     _state.update {
                         YandexNavState(isNavigating = false)
                     }
@@ -505,16 +534,35 @@ object YandexNavRepository {
         }
     }
 
-    fun enableMinimap(context: Context, widthPx: Int = 360, heightPx: Int = 360) {
+    fun resolveMinimapZoomForSpeed(speedKmh: Float, autoZoomEnabled: Boolean): Float {
+        if (!autoZoomEnabled) return 16f
+        return when {
+            speedKmh < 20f -> 17.0f
+            speedKmh < 50f -> 16.5f
+            speedKmh < 80f -> 16.0f
+            speedKmh < 110f -> 15.2f
+            else -> 14.5f
+        }
+    }
+
+    fun enableMinimap(
+        context: Context,
+        widthPx: Int = 360,
+        heightPx: Int = 360,
+        zoom: Float = 16f,
+        viewMode: Int = 0,
+    ) {
         val w = (widthPx / 8 * 8).coerceIn(96, 1920)
         val h = (heightPx / 8 * 8).coerceIn(96, 1920)
+        val z = zoom.coerceIn(10f, 19f)
         val minimapIntent = Intent("com.yandex.MINIMAP_ENABLE").apply {
             putExtra("minimap_width", w)
             putExtra("minimap_height", h)
-            putExtra("minimap_zoom", 16f)
+            putExtra("minimap_zoom", z)
             putExtra("minimap_roads", false)
             putExtra("minimap_labels", false)
-            putExtra("minimap_view", 0)
+            putExtra("minimap_view", viewMode)
+            putExtra("minimap_3d", viewMode != 0)
             putExtra("minimap_hide_on_route_end", false)
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         }
@@ -522,7 +570,6 @@ object YandexNavRepository {
     }
 
     fun disableMinimap(context: Context) {
-        cancelMinimapStaleJob()
         _minimapFrame.value = MinimapFrame()
         val minimapIntent = Intent("com.yandex.MINIMAP_DISABLE").apply {
             putExtra("minimap_hide_on_route_end", false)
@@ -553,6 +600,9 @@ object YandexNavRepository {
                 addAction("${prefix}action.SPEED_LIMIT")
                 addAction("${prefix}MANEUVER")
                 addAction("${prefix}MANEUVER_UPDATE")
+                addAction("${prefix}MANEUVER_BITMAP")
+                addAction("${prefix}MANEUVER_CLEAR")
+                addAction("${prefix}MANEUVER_BITMAP_CLEAR")
                 addAction("${prefix}HUD_UPDATE")
                 addAction("${prefix}NAVIGATION_UPDATE")
                 addAction("${prefix}NAVIGATION_STARTED")
@@ -569,6 +619,7 @@ object YandexNavRepository {
                 addAction("${prefix}LANE_SIGN")
                 addAction("${prefix}MINIMAP")
                 addAction("${prefix}NIXT")
+                addAction("${prefix}NEXT")
                 addAction("${prefix}NEXTSTREET")
                 addAction("${prefix}DISTANCE")
                 addAction("${prefix}TIME")
@@ -583,6 +634,7 @@ object YandexNavRepository {
             addAction("com.yandex.LANE_SIGN")
             addAction("com.yandex.MINIMAP")
             addAction("com.yandex.NIXT")
+            addAction("com.yandex.NEXT")
             addAction("com.yandex.NEXTSTREET")
             addAction("com.yandex.DISTANCE")
             addAction("com.yandex.TIME")
@@ -602,11 +654,53 @@ object YandexNavRepository {
             Log.e(TAG, "Failed to register YandexNavRepository broadcast receiver", it)
         }
         YandexNavWindowTracker.start(appContext)
+        minimapWindowStateJob?.cancel()
+        minimapWindowStateJob = repositoryScope.launch {
+            var wasOpen = false
+            YandexNavWindowTracker.isWindowOpen.collect { isOpen ->
+                if (!isOpen) {
+                    _minimapFrame.value = MinimapFrame()
+                    if (wasOpen) {
+                        cancelTimerStaleJob()
+                        cancelLanesStaleJob()
+                        _state.update { cur ->
+                            val hasNotificationData = cur.maneuverPrimaryIcon != null ||
+                                cur.maneuverDistance != null ||
+                                cur.remainingDistance != null ||
+                                cur.remainingTime != null ||
+                                cur.arrivalTime != null ||
+                                cur.notificationTrafficLightText != null ||
+                                cur.notificationTrafficLightBitmap != null
+                            cur.copy(
+                                isNavigating = if (hasNotificationData) cur.isNavigating else false,
+                                speedLimit = null,
+                                trafficLightColor = null,
+                                trafficLightCountdownSeconds = null,
+                                trafficLightDistanceMeters = null,
+                                trafficLightArrow = null,
+                                trafficLightLastUpdateMs = 0L,
+                                trafficLightCountdownLastUpdateMs = 0L,
+                                broadcastManeuverBitmap = null,
+                                broadcastManeuverDistance = null,
+                                nextText = null,
+                                lanesBitmap = null,
+                                lanesBitmaps = emptyList(),
+                                lanesDistance = null,
+                            )
+                        }
+                    }
+                }
+                wasOpen = isOpen
+            }
+        }
     }
 
     fun stop(context: Context) {
         if (!registered) return
         cancelTimerStaleJob()
+        minimapWindowStateJob?.cancel()
+        minimapWindowStateJob = null
+        _minimapFrame.value = MinimapFrame()
         YandexNavWindowTracker.stop()
         runCatching {
             context.applicationContext.unregisterReceiver(receiver)
@@ -653,6 +747,203 @@ object YandexNavRepository {
             if (str.isNotEmpty()) return str
         }
         return null
+    }
+
+    private val SPECIFIC_NON_MANEUVER_ACTIONS = setOf(
+        "SPEEDLIMIT",
+        "SPEED_LIMIT",
+        "SPEED_LIMIT_UPDATE",
+        "SPEEDLIMIT_UPDATE",
+        "TRAFFIC_LIGHT_UPDATE",
+        "LANES_BITMAP",
+        "LANES_BITMAP_CLEAR",
+        "LANE_DIST",
+        "LANES",
+        "LANE_SIGN",
+        "MINIMAP",
+        "NIXT",
+        "NEXT",
+        "NEXTSTREET",
+        "DISTANCE",
+        "TIME",
+        "ARRIVAL",
+        "NAVIGATION_ENDED",
+        "NAVIGATION_STOPPED",
+        "MANEUVER_CLEAR",
+        "MANEUVER_BITMAP_CLEAR",
+    )
+
+    /**
+     * Normalizes raw distance strings from Yandex Navigator broadcasts.
+     * Handles raw float/double strings (e.g. "249.84375" or "1250.4567" meters) and rounds them
+     * cleanly into human-readable compact distance labels ("250 м", "1.3 км").
+     */
+    @VisibleForTesting
+    internal fun formatBroadcastDistance(rawDist: String?, rawMetrics: String? = null): String? {
+        val cleaned = rawDist?.replace("\\s+".toRegex(), " ")?.trim()
+            ?.takeIf { it.isNotBlank() && it != "null" && it != "-1" }
+            ?: return null
+        val unitClean = rawMetrics?.trim()?.takeIf { it.isNotBlank() && it != "null" }
+
+        // Split leading number and optional inline unit (e.g. "249.84375 м" or "249.84375")
+        val match = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$").find(cleaned)
+        if (match != null) {
+            val numStr = match.groupValues[1].replace(',', '.')
+            val inlineUnit = match.groupValues[2].trim()
+            val effectiveUnit = inlineUnit.ifEmpty { unitClean ?: "" }
+            val value = numStr.toDoubleOrNull()
+            if (value != null && value >= 0.0) {
+                val isKmUnit = effectiveUnit.lowercase().let {
+                    it == "км" || it == "км." || it == "km" || it.startsWith("километр")
+                }
+                return if (isKmUnit) {
+                    val roundedTenths = kotlin.math.round(value * 10.0) / 10.0
+                    val numFormatted = if (roundedTenths % 1.0 == 0.0) {
+                        roundedTenths.toInt().toString()
+                    } else {
+                        String.format(Locale.US, "%.1f", roundedTenths)
+                    }
+                    "$numFormatted ${effectiveUnit.ifEmpty { "км" }}"
+                } else if (effectiveUnit.isEmpty() && value >= 1000.0) {
+                    // Raw meters without unit >= 1000 -> format as km
+                    val km = kotlin.math.round((value / 1000.0) * 10.0) / 10.0
+                    val numFormatted = if (km % 1.0 == 0.0) {
+                        km.toInt().toString()
+                    } else {
+                        String.format(Locale.US, "%.1f", km)
+                    }
+                    "$numFormatted км"
+                } else {
+                    val meters = kotlin.math.round(value).toInt()
+                    val unitLabel = effectiveUnit.ifEmpty { "м" }
+                    "$meters $unitLabel"
+                }
+            }
+        }
+
+        return if (unitClean != null && !cleaned.endsWith(unitClean, ignoreCase = true)) {
+            "$cleaned $unitClean"
+        } else {
+            cleaned
+        }
+    }
+
+    /**
+     * Parses a distance string (e.g. "8.4 км", "250 м", "12450.5") into meters.
+     */
+    @VisibleForTesting
+    internal fun parseDistanceToMeters(rawDist: String?, rawMetrics: String? = null): Float? {
+        val cleaned = rawDist?.replace("\\s+".toRegex(), " ")?.trim()
+            ?.takeIf { it.isNotBlank() && it != "null" && it != "-1" }
+            ?: return null
+        val unitClean = rawMetrics?.trim()?.takeIf { it.isNotBlank() && it != "null" }
+        val match = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$").find(cleaned) ?: return null
+        val numStr = match.groupValues[1].replace(',', '.')
+        val inlineUnit = match.groupValues[2].trim()
+        val effectiveUnit = inlineUnit.ifEmpty { unitClean ?: "" }.lowercase()
+        val value = numStr.toFloatOrNull() ?: return null
+        if (value < 0f) return null
+        val isKm = effectiveUnit == "км" || effectiveUnit == "км." || effectiveUnit == "km" || effectiveUnit.startsWith("километр")
+        return if (isKm) value * 1000f else value
+    }
+
+    /**
+     * Scans Yandex's notification traffic progress bar (`etaProgressImage` / `etaProgressContainer`)
+     * to detect the current vehicle marker or passed-gray vs upcoming-colored transition X ratio (`0..1`).
+     */
+    @VisibleForTesting
+    internal fun detectProgressRatioFromEtaBitmap(bmp: Bitmap?): Float? {
+        if (bmp == null || bmp.isRecycled) return null
+        val w = bmp.width
+        val h = bmp.height
+        if (w < 20 || h < 2) return null
+
+        return runCatching {
+            val midY = h / 2
+            var lastGrayCol = -1
+            var firstColoredCol = -1
+            var brightestMarkerCol = -1
+            var maxMarkerScore = 0
+
+            for (x in 0 until w) {
+                // Check for a cursor/arrow marker protruding above or below the bar centerline, or bright white pin
+                for (y in 0 until h) {
+                    val px = bmp.getPixel(x, y)
+                    val a = px ushr 24
+                    if (a < 128) continue
+                    val r = (px ushr 16) and 0xFF
+                    val g = (px ushr 8) and 0xFF
+                    val b = px and 0xFF
+                    val luma = (54 * r + 183 * g + 19 * b) ushr 8
+                    val distFromCenter = kotlin.math.abs(y - midY)
+                    if (distFromCenter >= h / 3 && luma > 210) {
+                        val score = luma + distFromCenter * 15
+                        if (score > maxMarkerScore) {
+                            maxMarkerScore = score
+                            brightestMarkerCol = x
+                        }
+                    }
+                }
+
+                // Along the centerline, Yandex draws passed route as desaturated gray and upcoming route as colored (green/yellow/red)
+                val midPx = bmp.getPixel(x, midY)
+                val a = midPx ushr 24
+                if (a >= 100) {
+                    val r = (midPx ushr 16) and 0xFF
+                    val g = (midPx ushr 8) and 0xFF
+                    val b = midPx and 0xFF
+                    val maxC = maxOf(r, g, b)
+                    val minC = minOf(r, g, b)
+                    val chroma = maxC - minC
+                    if (chroma >= 45) {
+                        if (firstColoredCol == -1) firstColoredCol = x
+                    } else if (firstColoredCol == -1) {
+                        lastGrayCol = x
+                    }
+                }
+            }
+
+            when {
+                brightestMarkerCol in 1 until (w - 1) -> (brightestMarkerCol.toFloat() / (w - 1).toFloat()).coerceIn(0f, 1f)
+                firstColoredCol > 1 && lastGrayCol >= 0 -> (firstColoredCol.toFloat() / (w - 1).toFloat()).coerceIn(0f, 1f)
+                else -> null
+            }
+        }.getOrNull()
+    }
+
+    private fun updateRouteProgress(
+        current: YandexNavState,
+        newRemainingMeters: Float?,
+        bitmapDetectedRatio: Float? = null,
+    ): YandexNavState {
+        if (newRemainingMeters == null && bitmapDetectedRatio == null) return current
+        val rem = newRemainingMeters ?: current.remainingDistanceMeters
+        val prevInit = current.routeInitialDistanceMeters
+        // If no initial distance yet, or user started a new/longer route (remaining grew by > 300m), reset initial distance
+        val initMeters = when {
+            rem == null -> prevInit
+            prevInit == null || prevInit < 50f -> rem.coerceAtLeast(50f)
+            rem > prevInit + 300f -> rem
+            else -> prevInit
+        }
+        val distanceRatio = if (rem != null && initMeters != null && initMeters > 0f) {
+            (1f - (rem / initMeters)).coerceIn(0f, 1f)
+        } else {
+            null
+        }
+        // Prefer distance-based progress when initial > current (smooth real-time movement as remaining distance drops),
+        // or fall back to bitmap-detected transition when joining mid-route
+        val effectiveRatio = when {
+            distanceRatio != null && distanceRatio > 0.005f -> distanceRatio
+            bitmapDetectedRatio != null -> bitmapDetectedRatio
+            distanceRatio != null -> distanceRatio
+            else -> current.routeProgressRatio
+        }
+        return current.copy(
+            remainingDistanceMeters = rem,
+            routeInitialDistanceMeters = initMeters,
+            routeProgressRatio = effectiveRatio,
+        )
     }
 
     private fun extractSpeedLimit(intent: Intent, vararg keys: String): String? {
@@ -912,7 +1203,10 @@ object YandexNavRepository {
         }
 
         _state.update {
-            it.copy(
+            val remMeters = parseDistanceToMeters(remDist, null)
+            val bmpRatio = detectProgressRatioFromEtaBitmap(rvData?.etaProgressBitmap)
+            val updatedProgress = updateRouteProgress(it, remMeters, bmpRatio)
+            updatedProgress.copy(
                 isNavigating = true,
                 maneuverBitmap = rvData?.primaryIcon ?: iconBitmap ?: it.maneuverBitmap,
                 maneuverPrimaryIcon = rvData?.primaryIcon ?: it.maneuverPrimaryIcon,

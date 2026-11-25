@@ -136,6 +136,13 @@ object LauncherCar3DModelTrigger {
         _settingsOrbitEvent.value = SystemClock.uptimeMillis()
     }
 
+    private val _windowReturnedEvent = MutableStateFlow(0L)
+    val windowReturnedEvent: StateFlow<Long> = _windowReturnedEvent.asStateFlow()
+
+    fun notifyWindowReturned() {
+        _windowReturnedEvent.value = SystemClock.uptimeMillis()
+    }
+
     private val _startupTopViewDone = MutableStateFlow(false)
     val startupTopViewDone: StateFlow<Boolean> = _startupTopViewDone.asStateFlow()
 
@@ -500,6 +507,9 @@ private fun LauncherCarFilamentContent(
     val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(
         minActiveState = Lifecycle.State.CREATED,
     )
+    val windowReturnedEvent by LauncherCar3DModelTrigger.windowReturnedEvent.collectAsStateWithLifecycle(
+        minActiveState = Lifecycle.State.CREATED,
+    )
     val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
         LauncherAppConfigStore.cameraAnimationEnabled(context)
@@ -627,6 +637,7 @@ private fun LauncherCarFilamentContent(
         settingsOrbitEvent,
         parkEngagedEvent,
         startupTopViewDone,
+        windowReturnedEvent,
     ) {
         val nowMs = SystemClock.uptimeMillis()
         val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
@@ -640,7 +651,7 @@ private fun LauncherCarFilamentContent(
             customSceneLifecycleOwner.pauseScene()
         } else {
             // Resume scene immediately when exiting camera/settings, when triggers fire,
-            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged/Orbit/Park is pressed/triggered
+            // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged/Orbit/Park/WindowReturned is triggered
             customSceneLifecycleOwner.resumeScene()
             if (isParkEngageRecent && (isAvmActive || carHidden)) {
                 // Keep rendering active for 2 seconds when shifted to P (even while cameras/overlays are still active), then pause
@@ -669,10 +680,20 @@ private fun LauncherCarFilamentContent(
         if (lowPowerPreview) {
             return@DisposableEffect onDispose { overlayPublishHandler.removeCallbacksAndMessages(null) }
         }
+        var wasHostPaused = false
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> LauncherCarSurfaceRecovery.onHomePaused()
-                Lifecycle.Event.ON_RESUME -> LauncherCarSurfaceRecovery.onHomeResumed()
+                Lifecycle.Event.ON_PAUSE -> {
+                    wasHostPaused = true
+                    LauncherCarSurfaceRecovery.onHomePaused()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    LauncherCarSurfaceRecovery.onHomeResumed()
+                    if (wasHostPaused) {
+                        wasHostPaused = false
+                        LauncherCar3DModelTrigger.notifyWindowReturned()
+                    }
+                }
                 else -> Unit
             }
         }
@@ -819,6 +840,8 @@ private fun LauncherCarFilamentContent(
                         val isOrbitRecentFrame = (nowMs - settingsOrbitEventMs) < 2000L
                         val parkEngagedEventMs = LauncherCar3DModelTrigger.parkEngagedEvent.value
                         val isParkEngageRecentFrame = (nowMs - parkEngagedEventMs) < 2000L
+                        val windowReturnedEventMs = LauncherCar3DModelTrigger.windowReturnedEvent.value
+                        val isWindowReturnedRecentFrame = (nowMs - windowReturnedEventMs) < 2000L
                         val isActionRecent = (nowMs - homeEventMs) < 2000L ||
                             (nowMs - backEventMs) < 2000L ||
                             (nowMs - prevAppEventMs) < 2000L ||
@@ -828,7 +851,8 @@ private fun LauncherCarFilamentContent(
                             isTopShadeClosedRecent ||
                             isPaintChangeRecent ||
                             isOrbitRecentFrame ||
-                            isParkEngageRecentFrame
+                            isParkEngageRecentFrame ||
+                            isWindowReturnedRecentFrame
 
                         val isStartupRecent = (nowMs - startupUptimeMs) < 5000L
 

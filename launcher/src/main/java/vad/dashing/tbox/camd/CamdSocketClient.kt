@@ -37,6 +37,27 @@ sealed class CamdConnectionStatus {
         val recSegSeconds: Int? = null,
     ) : CamdConnectionStatus()
     data class NoConnection(val errorMessage: String) : CamdConnectionStatus()
+
+    fun resolveRecIndicatorState(): CamdRecIndicatorState {
+        val connected = this as? Connected ?: return CamdRecIndicatorState.OFF
+        return when {
+            connected.recActive -> CamdRecIndicatorState.ACTIVE
+            connected.recEnabled -> CamdRecIndicatorState.STANDBY
+            else -> CamdRecIndicatorState.OFF
+        }
+    }
+}
+
+/**
+ * Three-state visual representation for the DVR REC indicator:
+ * - [ACTIVE]: recording is actively writing (`rec_active=1`) -> red
+ * - [STANDBY]: recorder master switch is enabled, but not actively recording (`rec_enabled=1`, `rec_active=0`) -> blue
+ * - [OFF]: recorder is disabled or disconnected -> idle/muted
+ */
+enum class CamdRecIndicatorState {
+    OFF,
+    STANDBY,
+    ACTIVE,
 }
 
 /**
@@ -120,6 +141,7 @@ object CamdSocketClient {
         line: String,
         connectTimeoutMs: Int = 1500,
         readTimeoutMs: Int = 20_000,
+        logToRecorder: Boolean = true,
     ): Result<String> = withContext(Dispatchers.IO) {
         val result = runCatching {
             Socket().use { socket ->
@@ -130,16 +152,20 @@ object CamdSocketClient {
                     flush()
                 }
                 val response = socket.getInputStream().bufferedReader(Charsets.UTF_8).readLine().orEmpty()
-                Log.d(TAG, "Camd cmd='$line' -> resp='$response'")
+                if (logToRecorder) {
+                    Log.d(TAG, "Camd cmd='$line' -> resp='$response'")
+                }
                 response
             }
         }
-        val response = result.getOrNull()
-        if (result.isSuccess && response != null) {
-            vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "cmd='$line' -> resp='$response'")
-        } else {
-            val err = result.exceptionOrNull()?.message ?: "unknown"
-            vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "cmd='$line' -> FAILED: $err")
+        if (logToRecorder) {
+            val response = result.getOrNull()
+            if (result.isSuccess && response != null) {
+                vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "cmd='$line' -> resp='$response'")
+            } else {
+                val err = result.exceptionOrNull()?.message ?: "unknown"
+                vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "cmd='$line' -> FAILED: $err")
+            }
         }
         result
     }
@@ -255,17 +281,31 @@ object CamdSocketClient {
      * Checks connection status without waking up the service on STATUS (per spec: STATUS doesn't wake).
      * If connected, also fetches available presets.
      */
-    suspend fun checkStatus(context: Context): CamdConnectionStatus = withContext(Dispatchers.IO) {
+    suspend fun checkStatus(
+        context: Context,
+        fetchPresets: Boolean = true,
+        existingPresets: List<CamdPreset> = emptyList(),
+        logToRecorder: Boolean = true,
+    ): CamdConnectionStatus = withContext(Dispatchers.IO) {
         if (!isInstalled(context)) {
             return@withContext CamdConnectionStatus.NotInstalled
         }
 
-        val result = sendCommand("STATUS", connectTimeoutMs = 1200, readTimeoutMs = 2000)
+        val result = sendCommand(
+            line = "STATUS",
+            connectTimeoutMs = 1200,
+            readTimeoutMs = 2000,
+            logToRecorder = logToRecorder,
+        )
         val status = result.fold(
             onSuccess = { response ->
                 if (response.startsWith("OK")) {
                     val st = parseStatusResponse(response)
-                    val presets = getPresets().getOrDefault(emptyList())
+                    val presets = if (fetchPresets) {
+                        getPresets().getOrDefault(existingPresets)
+                    } else {
+                        existingPresets
+                    }
                     st.copy(presets = presets)
                 } else {
                     CamdConnectionStatus.NoConnection("Ответ службы: $response")
@@ -275,21 +315,23 @@ object CamdSocketClient {
                 CamdConnectionStatus.NoConnection(error.message ?: "Порт $PORT недоступен")
             }
         )
-        when (status) {
-            is CamdConnectionStatus.Connected -> {
-                val recInfo = if (status.recActive || status.recEnabled) {
-                    " rec(enabled=${status.recEnabled}, active=${status.recActive}, sos=${status.recSos}, seg=${status.recSegSeconds}s)"
-                } else ""
-                vad.dashing.tbox.DclLogRecorder.log(
-                    "CamdSocketClient",
-                    "checkStatus: Connected openWindows=${status.openWindows} avm=${status.avmState} keepAvm=${status.keepAvm}$recInfo presets=${status.presets.map { "${it.name}(#${it.cameraId})" }}"
-                )
-            }
-            is CamdConnectionStatus.NoConnection -> {
-                vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "checkStatus: NoConnection err='${status.errorMessage}'")
-            }
-            is CamdConnectionStatus.NotInstalled -> {
-                vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "checkStatus: NotInstalled")
+        if (logToRecorder) {
+            when (status) {
+                is CamdConnectionStatus.Connected -> {
+                    val recInfo = if (status.recActive || status.recEnabled) {
+                        " rec(enabled=${status.recEnabled}, active=${status.recActive}, sos=${status.recSos}, seg=${status.recSegSeconds}s)"
+                    } else ""
+                    vad.dashing.tbox.DclLogRecorder.log(
+                        "CamdSocketClient",
+                        "checkStatus: Connected openWindows=${status.openWindows} avm=${status.avmState} keepAvm=${status.keepAvm}$recInfo presets=${status.presets.map { "${it.name}(#${it.cameraId})" }}"
+                    )
+                }
+                is CamdConnectionStatus.NoConnection -> {
+                    vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "checkStatus: NoConnection err='${status.errorMessage}'")
+                }
+                is CamdConnectionStatus.NotInstalled -> {
+                    vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "checkStatus: NotInstalled")
+                }
             }
         }
         status

@@ -203,9 +203,12 @@ object CamdCameraRepository {
     private var reverseCamerasJob: Job? = null
     const val STEER_OFF_HOLD_MS = 3000L
     const val PDC_OFF_DELAY_MS = 3000L
+    private const val STATUS_POLL_INTERVAL_MS = 2500L
+    private const val STATUS_POLL_NOT_INSTALLED_INTERVAL_MS = 10_000L
 
     private var autoAvmJob: Job? = null
     private var sideCamerasMonitorJob: Job? = null
+    private var statusPollingJob: Job? = null
     private var steerOffJob: Job? = null
     private var pdcOffJob: Job? = null
     @Volatile
@@ -220,12 +223,14 @@ object CamdCameraRepository {
     private var lastAutoAvmHoldOff: Boolean? = null
     private var avmVerificationJob: Job? = null
     private val cameraOperationMutex = Mutex()
+    private val statusRefreshMutex = Mutex()
 
     fun startSideCamerasMonitor(context: Context) {
         val appCtx = context.applicationContext
         appContext = appCtx
         LauncherAvmRepository.startObserving(appCtx)
         startAutoAvmMonitor(appCtx)
+        startStatusPolling(appCtx)
         if (sideCamerasMonitorJob?.isActive == true) return
 
         sideCamerasMonitorJob = scope.launch {
@@ -611,17 +616,79 @@ object CamdCameraRepository {
         }
     }
 
-    fun refreshStatus(context: Context) {
+    /**
+     * Periodically polls `camd` via `STATUS` so external changes (e.g. toggling DVR recording
+     * directly inside `vad.dashing.camd` or from another client) are reflected in DCL UI.
+     */
+    fun startStatusPolling(context: Context) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        if (statusPollingJob?.isActive == true) return
+
+        statusPollingJob = scope.launch {
+            while (isActive) {
+                if (!CamdSocketClient.isInstalled(appCtx)) {
+                    applyStatusUpdate(CamdConnectionStatus.NotInstalled, forceLog = false)
+                    delay(STATUS_POLL_NOT_INSTALLED_INTERVAL_MS)
+                    continue
+                }
+                refreshStatusInternal(
+                    context = appCtx,
+                    fetchPresets = _status.value !is CamdConnectionStatus.Connected,
+                    forceLog = false,
+                )
+                delay(STATUS_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    fun refreshStatus(
+        context: Context,
+        fetchPresets: Boolean = true,
+        forceLog: Boolean = true,
+    ) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
         scope.launch {
-            val s = CamdSocketClient.checkStatus(context)
+            refreshStatusInternal(
+                context = appCtx,
+                fetchPresets = fetchPresets,
+                forceLog = forceLog,
+            )
+        }
+    }
+
+    private suspend fun refreshStatusInternal(
+        context: Context,
+        fetchPresets: Boolean,
+        forceLog: Boolean,
+    ) {
+        statusRefreshMutex.withLock {
+            val prevConnected = _status.value as? CamdConnectionStatus.Connected
+            val existingPresets = prevConnected?.presets.orEmpty()
+            val s = CamdSocketClient.checkStatus(
+                context = context,
+                fetchPresets = fetchPresets,
+                existingPresets = existingPresets,
+                logToRecorder = forceLog,
+            )
+            applyStatusUpdate(s, forceLog = forceLog)
+        }
+    }
+
+    private fun applyStatusUpdate(s: CamdConnectionStatus, forceLog: Boolean) {
+        val prev = _status.value
+        if (s != prev) {
             _status.value = s
             vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "refreshStatus: status=$s")
-            if (s is CamdConnectionStatus.Connected) {
-                val physicalWindows = s.openWindows.map { getPhysicalCameraId(it) }
-                val hasAllFour = listOf(CAMERA_ID_LEFT, CAMERA_ID_RIGHT, CAMERA_ID_FRONT, CAMERA_ID_REAR)
-                    .all { it in physicalWindows }
-                _isDesktopCamerasOpen.value = hasAllFour
-            }
+        } else if (forceLog) {
+            vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "refreshStatus: status=$s")
+        }
+        if (s is CamdConnectionStatus.Connected) {
+            val physicalWindows = s.openWindows.map { getPhysicalCameraId(it) }
+            val hasAllFour = listOf(CAMERA_ID_LEFT, CAMERA_ID_RIGHT, CAMERA_ID_FRONT, CAMERA_ID_REAR)
+                .all { it in physicalWindows }
+            _isDesktopCamerasOpen.value = hasAllFour
         }
     }
 

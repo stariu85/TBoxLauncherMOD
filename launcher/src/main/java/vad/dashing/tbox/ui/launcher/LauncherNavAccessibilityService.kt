@@ -55,6 +55,9 @@ class LauncherNavAccessibilityService : AccessibilityService() {
         fun isConnected(): Boolean = instance != null
     }
 
+    @Volatile
+    private var lastWindowPackage: String? = null
+
     override fun onServiceConnected() {
         instance = this
         super.onServiceConnected()
@@ -62,11 +65,13 @@ class LauncherNavAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         instance = null
+        lastWindowPackage = null
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         instance = null
+        lastWindowPackage = null
         super.onDestroy()
     }
 
@@ -75,6 +80,12 @@ class LauncherNavAccessibilityService : AccessibilityService() {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString().orEmpty()
         if (pkg.isNotEmpty()) {
+            val ownPackage = applicationContext.packageName
+            val previousPkg = lastWindowPackage
+            lastWindowPackage = pkg
+            if (pkg == ownPackage && previousPkg != null && previousPkg != ownPackage) {
+                LauncherCar3DModelTrigger.notifyWindowReturned()
+            }
             LauncherCarSurfaceRecovery.onWindowPackage(pkg)
             YandexNavWindowTracker.onWindowStateChanged(pkg, applicationContext)
         }

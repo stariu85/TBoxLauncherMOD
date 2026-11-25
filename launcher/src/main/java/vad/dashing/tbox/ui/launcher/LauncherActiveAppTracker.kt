@@ -2,6 +2,9 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.api.DclUiStateNotifier
 
 private const val TAG = "ActiveAppTracker"
@@ -46,6 +49,12 @@ internal object LauncherActiveAppTracker {
     @Volatile
     private var previousTopClass: String? = null
 
+    private val _activeAppPackageFlow = MutableStateFlow<String?>(null)
+    val activeAppPackageFlow: StateFlow<String?> = _activeAppPackageFlow.asStateFlow()
+
+    private val _isFullscreenFlow = MutableStateFlow(false)
+    val isFullscreenFlow: StateFlow<Boolean> = _isFullscreenFlow.asStateFlow()
+
     private val knownTaskIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     fun recordKnownTaskId(packageName: String, taskId: Int) {
@@ -83,6 +92,8 @@ internal object LauncherActiveAppTracker {
         if (packageName.isBlank() || (packageName in ignoredLauncherPackages)) return
         currentAppPackage = packageName
         currentIsFullscreen = isFullscreen
+        _activeAppPackageFlow.value = packageName
+        _isFullscreenFlow.value = isFullscreen
         currentLaunchMode = launchMode ?: if (isFullscreen) LauncherAppLaunchMode.FULLSCREEN else LauncherAppLaunchMode.EMBEDDED
         if (taskId != null && taskId > 0) {
             currentTaskId = taskId
@@ -130,6 +141,8 @@ internal object LauncherActiveAppTracker {
         currentAppPackage = null
         currentTaskId = null
         currentTopClass = null
+        _activeAppPackageFlow.value = null
+        _isFullscreenFlow.value = false
         YandexNavWindowTracker.onHomePressed()
         Log.w(TAG, "onHomePressed activePkg=$activePkg previousPkg=$previousAppPackage")
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
@@ -175,6 +188,8 @@ internal object LauncherActiveAppTracker {
         currentTopClass = null
         currentIsFullscreen = false
         currentLaunchMode = null
+        _activeAppPackageFlow.value = null
+        _isFullscreenFlow.value = false
         YandexNavWindowTracker.onAppClosed(wasPkg)
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
     }
@@ -185,6 +200,8 @@ internal object LauncherActiveAppTracker {
         currentTaskId = null
         currentTopClass = null
         currentIsFullscreen = false
+        _activeAppPackageFlow.value = null
+        _isFullscreenFlow.value = false
         previousAppPackage = null
         previousTaskId = null
         previousTopClass = null

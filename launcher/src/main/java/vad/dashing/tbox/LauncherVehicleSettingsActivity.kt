@@ -30,6 +30,7 @@ class LauncherVehicleSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         instanceRef = WeakReference(this)
+        _isOpenFlow.value = true
         LauncherVehicleBodyRepository.ensurePolling()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -58,12 +59,18 @@ class LauncherVehicleSettingsActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (instanceRef?.get() === this) instanceRef = null
+        if (instanceRef?.get() === this) {
+            instanceRef = null
+            _isOpenFlow.value = false
+        }
         super.onDestroy()
     }
 
     companion object {
         private var instanceRef: WeakReference<LauncherVehicleSettingsActivity>? = null
+
+        private val _isOpenFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val isOpenFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isOpenFlow
 
         fun finishIfOpen() {
             instanceRef?.get()?.finish()

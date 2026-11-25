@@ -49,6 +49,9 @@ internal object LauncherAboutOverlayWindow {
     private var lifecycleOwner: MyLifecycleOwner? = null
     private var windowManager: WindowManager? = null
 
+    private val _isShowingFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isShowingFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _isShowingFlow
+
     fun isShowing(): Boolean = composeView != null
 
     /** Returns true when the About console was shown as a system overlay window. */
@@ -151,6 +154,7 @@ internal object LauncherAboutOverlayWindow {
             windowManager = wm
             wm.addView(view, params)
             composeView = view
+            _isShowingFlow.value = true
             view.requestFocus()
             LauncherOverlayBar.bringToFront()
             LauncherEdgeGestureOverlay.bringToFront()
@@ -158,6 +162,7 @@ internal object LauncherAboutOverlayWindow {
             true
         }.onFailure {
             Log.e(TAG, "Unable to add about overlay", it)
+            _isShowingFlow.value = false
             lifecycleOwner = null
             windowManager = null
             owner.setCurrentState(Lifecycle.State.DESTROYED)
@@ -168,6 +173,7 @@ internal object LauncherAboutOverlayWindow {
     fun hide() {
         val view = composeView ?: return
         composeView = null
+        _isShowingFlow.value = false
         runCatching { windowManager?.removeViewImmediate(view) }
             .onFailure { Log.w(TAG, "Unable to remove about overlay", it) }
         windowManager = null

@@ -379,13 +379,17 @@ internal fun tryLaunchIntentInBounds(
         // 2. Resize bounds to target bounds before bringing to front to avoid fullscreen flash.
         if (isHomeWindowingMode) {
             runCatching {
-                val client = DclwmClient()
-                client.setWindowingMode(existingTaskId, WINDOWING_MODE_FREEFORM)
-                client.resize(existingTaskId, targetBounds.left, targetBounds.top, targetBounds.right, targetBounds.bottom)
+                DclwmClient().restoreFreeform(
+                    existingTaskId,
+                    targetBounds.left,
+                    targetBounds.top,
+                    targetBounds.right,
+                    targetBounds.bottom,
+                )
             }.onFailure {
                 Log.w("LauncherAppLaunch", "dclwm restore freeform failed task=$existingTaskId", it)
+                setTaskWindowingModeFreeform(am, existingTaskId, toTop = false)
             }
-            setTaskWindowingModeFreeform(am, existingTaskId, toTop = true)
         } else {
             forceFreeformBoundsByTaskId(context, existingTaskId, targetBounds, bringToFront = false, label = packageName)
         }
@@ -547,7 +551,17 @@ private fun forceFreeformBoundsByTaskIdInternal(
     val isHomeWindowingMode = LauncherAppConfigStore.experimentalHomeWindowingMode(context)
 
     var dclwmResized = false
-    if (LauncherAppConfigStore.experimentalHideAppsOnHome(context) || isHomeWindowingMode) {
+    if (isHomeWindowingMode) {
+        dclwmResized = runCatching {
+            DclwmClient().restoreFreeform(taskId, rect.left, rect.top, rect.right, rect.bottom)
+            true
+        }.onFailure {
+            Log.w("LauncherAppLaunch", "dclwm restoreFreeform failed task=$taskId", it)
+        }.getOrDefault(false)
+        if (dclwmResized) {
+            Log.w("LauncherAppLaunch", "dclwm restoreFreeform ok task=$taskId label=$label bounds=$rect")
+        }
+    } else if (LauncherAppConfigStore.experimentalHideAppsOnHome(context)) {
         dclwmResized = runCatching {
             DclwmClient().resize(taskId, rect.left, rect.top, rect.right, rect.bottom)
             true
@@ -557,14 +571,11 @@ private fun forceFreeformBoundsByTaskIdInternal(
         }
     }
 
-    if (isHomeWindowingMode) {
-        runCatching {
-            DclwmClient().setWindowingMode(taskId, WINDOWING_MODE_FREEFORM)
-            Log.w("LauncherAppLaunch", "dclwm restored task to freeform id=$taskId")
-        }.onFailure { Log.w("LauncherAppLaunch", "dclwm setWindowingMode freeform failed task=$taskId", it) }
+    if (!dclwmResized) {
+        setTaskWindowingModeFreeform(am, taskId, toTop = bringToFront)
+    } else if (bringToFront && !isHomeWindowingMode) {
+        setTaskWindowingModeFreeform(am, taskId, toTop = true)
     }
-
-    setTaskWindowingModeFreeform(am, taskId, toTop = bringToFront)
 
     if (!dclwmResized) {
         val resized = runCatching {

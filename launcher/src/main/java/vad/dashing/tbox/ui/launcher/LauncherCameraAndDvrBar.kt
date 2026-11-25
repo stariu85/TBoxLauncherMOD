@@ -153,9 +153,13 @@ fun LauncherCamdDvrPage(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    androidx.compose.runtime.LaunchedEffect(context) {
+        CamdCameraRepository.startStatusPolling(context)
+    }
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
     val connected = status as? CamdConnectionStatus.Connected
-    val isRecording = connected?.recActive == true || connected?.recEnabled == true
+    val recState = status.resolveRecIndicatorState()
+    val isRecorderOn = recState != vad.dashing.tbox.camd.CamdRecIndicatorState.OFF
     val isSosOngoing = connected?.recSos == true
 
     var localSosSaving by remember { mutableStateOf(false) }
@@ -169,14 +173,29 @@ fun LauncherCamdDvrPage(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Button 1: REC
+        val recAccentColor = when (recState) {
+            vad.dashing.tbox.camd.CamdRecIndicatorState.ACTIVE -> Color(0xFFEF4444)
+            vad.dashing.tbox.camd.CamdRecIndicatorState.STANDBY -> LauncherColors.AccentBlue
+            vad.dashing.tbox.camd.CamdRecIndicatorState.OFF -> Color.Transparent
+        }
         val recBgColor by animateColorAsState(
-            targetValue = if (isRecording) Color(0xFFEF4444).copy(alpha = 0.22f) else LauncherColors.LeftPanelCard,
+            targetValue = if (isRecorderOn) recAccentColor.copy(alpha = 0.22f) else LauncherColors.LeftPanelCard,
             label = "rec_bg",
         )
         val recBorderColor by animateColorAsState(
-            targetValue = if (isRecording) Color(0xFFEF4444) else Color.Transparent,
+            targetValue = recAccentColor,
             label = "rec_border",
         )
+        val recIconRes = when (recState) {
+            vad.dashing.tbox.camd.CamdRecIndicatorState.ACTIVE -> R.drawable.ic_camd_rec_active
+            vad.dashing.tbox.camd.CamdRecIndicatorState.STANDBY -> R.drawable.ic_camd_rec_standby
+            vad.dashing.tbox.camd.CamdRecIndicatorState.OFF -> R.drawable.ic_camd_rec_idle
+        }
+        val recTextColor = when (recState) {
+            vad.dashing.tbox.camd.CamdRecIndicatorState.ACTIVE -> Color(0xFFEF4444)
+            vad.dashing.tbox.camd.CamdRecIndicatorState.STANDBY -> LauncherColors.AccentBlue
+            vad.dashing.tbox.camd.CamdRecIndicatorState.OFF -> LauncherColors.LeftTextPrimary
+        }
 
         Box(
             modifier = Modifier
@@ -185,7 +204,7 @@ fun LauncherCamdDvrPage(
                 .clip(RoundedCornerShape(12.dp))
                 .background(recBgColor)
                 .border(
-                    width = if (isRecording) 1.5.dp else 0.dp,
+                    width = if (isRecorderOn) 1.5.dp else 0.dp,
                     color = recBorderColor,
                     shape = RoundedCornerShape(12.dp),
                 )
@@ -194,7 +213,7 @@ fun LauncherCamdDvrPage(
                     indication = null,
                     onClick = {
                         scope.launch {
-                            CamdCameraRepository.setRecorderEnabled(context, !isRecording)
+                            CamdCameraRepository.setRecorderEnabled(context, !isRecorderOn)
                         }
                     },
                 ),
@@ -205,16 +224,14 @@ fun LauncherCamdDvrPage(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Image(
-                    painter = painterResource(
-                        if (isRecording) R.drawable.ic_camd_rec_active else R.drawable.ic_camd_rec_idle,
-                    ),
+                    painter = painterResource(recIconRes),
                     contentDescription = "REC",
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "REC",
-                    color = if (isRecording) Color(0xFFEF4444) else LauncherColors.LeftTextPrimary,
+                    color = recTextColor,
                     fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
                 )

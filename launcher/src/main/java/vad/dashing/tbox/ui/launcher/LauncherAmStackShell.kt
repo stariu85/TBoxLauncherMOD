@@ -67,6 +67,7 @@ internal object LauncherAmStackShell {
             }
             val boundsMatch = Regex("""bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)""").find(line)
                 ?: Regex("""mBounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)""").find(line)
+                ?: Regex("""bounds=\[(\d+),\s*(\d+)]\[(\d+),\s*(\d+)]""").find(line)
             if (boundsMatch != null) {
                 val l = boundsMatch.groupValues[1].toInt()
                 val t = boundsMatch.groupValues[2].toInt()

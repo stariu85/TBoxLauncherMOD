@@ -151,7 +151,10 @@ object LauncherThemeState {
                 val targetDark = !isDaytime
                 if (darkTheme != targetDark) {
                     darkTheme = targetDark
+                    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        .edit().putBoolean(KEY_DARK, targetDark).apply()
                     HeadUnitDayNightRepository.setSystemDark(context, darkTheme)
+                    LauncherHomeSnapshotHolder.onThemeChanged(targetDark)
                 }
             }
         } else {
@@ -172,6 +175,7 @@ object LauncherThemeState {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_DARK, enabled).apply()
         HeadUnitDayNightRepository.setSystemDark(context, enabled)
+        LauncherHomeSnapshotHolder.onThemeChanged(enabled)
         refocusYandexAppIfActive(context)
     }
 
@@ -188,6 +192,7 @@ object LauncherThemeState {
             context,
             if (enabled) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO,
         )
+        LauncherHomeSnapshotHolder.onThemeChanged(enabled)
         refocusYandexAppIfActive(context)
     }
 

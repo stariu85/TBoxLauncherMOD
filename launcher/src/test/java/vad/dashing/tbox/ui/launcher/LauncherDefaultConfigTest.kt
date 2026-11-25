@@ -114,4 +114,16 @@ class LauncherDefaultConfigTest {
             LauncherHomeStore.DEFAULT_HOME_ITEMS_RAW
         )
     }
+
+    @Test
+    fun verifyDefaultCamdCameraPresets() {
+        assertEquals("dcl_left_blind_zone", DEFAULT_CAMD_TURN_SIGNAL_LEFT_PRESET)
+        assertEquals("dcl_right_blind_zone", DEFAULT_CAMD_TURN_SIGNAL_RIGHT_PRESET)
+        assertEquals("", DEFAULT_CAMD_LOW_SPEED_LEFT_PRESET)
+        assertEquals("", DEFAULT_CAMD_LOW_SPEED_RIGHT_PRESET)
+        assertEquals("dcl_left_side", DEFAULT_CAMD_WIDGET_LR_LEFT_PRESET)
+        assertEquals("dcl_right_side", DEFAULT_CAMD_WIDGET_LR_RIGHT_PRESET)
+        assertEquals("dcl_front", DEFAULT_CAMD_WIDGET_UD_TOP_PRESET)
+        assertEquals("dcl_rear", DEFAULT_CAMD_WIDGET_UD_BOTTOM_PRESET)
+    }
 }

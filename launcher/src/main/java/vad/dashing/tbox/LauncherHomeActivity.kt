@@ -62,6 +62,7 @@ class LauncherHomeActivity : ComponentActivity() {
     private lateinit var appDataManager: AppDataManager
     private var firstDrawComplete = false
     private var stagedWarmupStarted = false
+    private var wasWindowFocused = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -204,6 +205,7 @@ class LauncherHomeActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        LauncherHomeActivityHolder.isStarted = true
         vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStart topTasks=${getTopTasksInfo(this)}")
     }
 
@@ -228,16 +230,18 @@ class LauncherHomeActivity : ComponentActivity() {
             }
             if (foreign == null) {
                 LauncherRightPanelOverlayWindow.ensureShowing(this)
-                vad.dashing.tbox.ui.launcher.LauncherHomeSnapshotHolder.captureSnapshot(this) {}
+                vad.dashing.tbox.ui.launcher.LauncherHomeSnapshotHolder.onHomeResumed(this)
             }
             LauncherOverlayBar.ensureShowing(this)
             LauncherEdgeGestureOverlay.ensureShowing(this)
             DclUiStateNotifier.notifyUiStateChanged(this)
+            vad.dashing.tbox.camd.CamdCameraRepository.refreshStatus(this, fetchPresets = true, forceLog = false)
         }
     }
 
     override fun onPause() {
         LauncherHomeActivityHolder.isResumed = false
+        LauncherHomeActivityHolder.isWindowFocused = false
         DclLogRecorder.detachWindow(window)
         val topTasks = getTopTasksInfo(this)
         vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onPause isFinishing=$isFinishing topTasks=$topTasks")
@@ -245,6 +249,7 @@ class LauncherHomeActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        LauncherHomeActivityHolder.isStarted = false
         val topTasks = getTopTasksInfo(this)
         vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStop isFinishing=$isFinishing topTasks=$topTasks")
         super.onStop()
@@ -262,6 +267,12 @@ class LauncherHomeActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        LauncherHomeActivityHolder.isWindowFocused = hasFocus
+        if (hasFocus && !wasWindowFocused && firstDrawComplete) {
+            vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.notifyWindowReturned()
+            vad.dashing.tbox.camd.CamdCameraRepository.refreshStatus(this, fetchPresets = true, forceLog = false)
+        }
+        wasWindowFocused = hasFocus
         val tasks = getTopTasksInfo(this)
         vad.dashing.tbox.DclLogRecorder.logUiFocus(hasFocus, "topTasks=$tasks")
         Log.i(TAG, "onWindowFocusChanged hasFocus=$hasFocus topTasks=$tasks")
@@ -304,6 +315,8 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onDestroy() {
         vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onDestroy isFinishing=$isFinishing topTasks=${getTopTasksInfo(this)}")
         LauncherHomeActivityHolder.isFirstDrawComplete = false
+        LauncherHomeActivityHolder.isStarted = false
+        LauncherHomeActivityHolder.isWindowFocused = false
         LauncherRightPanelOverlayWindow.destroy()
         LauncherAppDrawerWindow.hide()
         LauncherAppPickerOverlayWindow.hide()

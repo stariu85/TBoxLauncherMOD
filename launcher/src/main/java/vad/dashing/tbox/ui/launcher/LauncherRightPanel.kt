@@ -223,9 +223,6 @@ fun LauncherRightPanel(
     val wallpaperScaleMode = remember(context, wallpaperRevision) {
         LauncherAppConfigStore.wallpaperScaleMode(context)
     }
-    val wallpaperBitmap = remember(context, activeWallpaperUri, isDarkTheme) {
-        loadWallpaperImageBitmap(context, activeWallpaperUri, isDarkTheme)
-    }
 
     val anyLocalDialog = addMenuVisible || appPickerVisible || splitCreateVisible || showHiddenDialogVisible ||
         vehicleStatusDialogVisible || wallpaperDialogVisible || tbmAutomationPickerVisible || tbmIconPickerVisible ||
@@ -668,19 +665,12 @@ fun LauncherRightPanel(
                 )
             },
     ) {
-        if (wallpaperBitmap != null) {
-            val contentScale = when (wallpaperScaleMode) {
-                WallpaperScaleMode.FILL_HEIGHT -> ContentScale.FillHeight
-                WallpaperScaleMode.FILL_WIDTH -> ContentScale.FillWidth
-                WallpaperScaleMode.FILL_BOUNDS -> ContentScale.FillBounds
-            }
-            Image(
-                bitmap = wallpaperBitmap,
-                contentDescription = null,
-                contentScale = contentScale,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        LauncherDesktopWallpaperLayer(
+            activeWallpaperUri = activeWallpaperUri,
+            isDarkTheme = isDarkTheme,
+            scaleMode = wallpaperScaleMode,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         activeDraggingEntry?.let { entry ->
             val density = LocalDensity.current
@@ -1649,11 +1639,6 @@ fun LauncherRightPanel(
                 onDismissRequest = { LauncherVehicleStatusDialogState.hide() },
             )
         }
-
-        LauncherWallpaperDialog(
-            visible = wallpaperDialogVisible,
-            onDismissRequest = { wallpaperDialogVisible = false },
-        )
     }
 }
 

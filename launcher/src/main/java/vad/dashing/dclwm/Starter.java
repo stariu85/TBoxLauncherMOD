@@ -2,9 +2,12 @@ package vad.dashing.dclwm;
 
 import android.content.Context;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.Arrays;
 
 /**
  * Starts the helper from the launcher process. Call {@link #ensure(Context)}
@@ -26,6 +29,14 @@ public final class Starter {
         }
     }
 
+    public static boolean isCurrentVersionRunning() {
+        try {
+            return new Client().version() == Protocol.VERSION;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     public static boolean isStorageMounted() {
         return android.os.Environment.MEDIA_MOUNTED.equals(
                 android.os.Environment.getExternalStorageState());
@@ -34,10 +45,15 @@ public final class Starter {
     public static void ensure(Context context) throws Exception {
         vad.dashing.tbox.DclLogRecorder.tryFlushMemoryBuffer(context);
 
-        if (isRunning()) {
-            android.util.Log.i("dclwm", "dclwm is already running, skipping Starter.ensure");
-            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm is already running, skipping Starter.ensure");
+        if (isCurrentVersionRunning()) {
+            android.util.Log.i("dclwm", "dclwm v" + Protocol.VERSION + " is already running, skipping Starter.ensure");
+            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm v" + Protocol.VERSION + " is already running, skipping Starter.ensure");
             return;
+        }
+        boolean upgradeRunning = isRunning();
+        if (upgradeRunning) {
+            android.util.Log.i("dclwm", "dclwm is running an outdated version, restarting to v" + Protocol.VERSION);
+            vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm is running an outdated version, restarting to v" + Protocol.VERSION);
         }
 
         // Guard: Wait for external storage (sdcard) to be mounted before attempting autorun
@@ -59,7 +75,7 @@ public final class Starter {
             vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Starting dclwm: copying dex and writing autorun.sh");
             File dex = new File(context.getFilesDir(), Protocol.DEX_ASSET);
             copyAsset(context, dex);
-            String script = ArmScript.text(dex.getAbsolutePath());
+            String script = ArmScript.text(dex.getAbsolutePath(), upgradeRunning);
             File autorun = new File(Protocol.AUTORUN);
             writeLf(autorun, script);
             exec("chmod", "777", autorun.getAbsolutePath());
@@ -88,23 +104,49 @@ public final class Starter {
     }
 
     private static void copyAsset(Context context, File dest) throws Exception {
-        if (dest.exists() && dest.length() > 0) {
-            return;
-        }
+        byte[] assetBytes;
         InputStream in = context.getAssets().open(Protocol.DEX_ASSET);
-        FileOutputStream out = null;
         try {
-            out = new FileOutputStream(dest);
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             byte[] buf = new byte[4096];
             int n;
             while ((n = in.read(buf)) >= 0) {
-                out.write(buf, 0, n);
+                buffer.write(buf, 0, n);
             }
+            assetBytes = buffer.toByteArray();
         } finally {
             in.close();
-            if (out != null) {
-                out.close();
+        }
+        if (dest.exists() && dest.length() == assetBytes.length) {
+            byte[] existing = readBytes(dest);
+            if (existing != null && Arrays.equals(existing, assetBytes)) {
+                return;
             }
+        }
+        FileOutputStream out = new FileOutputStream(dest);
+        try {
+            out.write(assetBytes);
+        } finally {
+            out.close();
+        }
+    }
+
+    private static byte[] readBytes(File file) {
+        try {
+            FileInputStream in = new FileInputStream(file);
+            try {
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream((int) file.length());
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) >= 0) {
+                    buffer.write(buf, 0, n);
+                }
+                return buffer.toByteArray();
+            } finally {
+                in.close();
+            }
+        } catch (Exception ignored) {
+            return null;
         }
     }
 

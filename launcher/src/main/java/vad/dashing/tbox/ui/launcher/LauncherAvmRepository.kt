@@ -143,6 +143,7 @@ object LauncherAvmRepository {
                     if (LauncherAvmBlankActivity.isShowing()) {
                         LauncherAvmBlankActivity.hide()
                     }
+                    LauncherHomeSnapshotHolder.onAvmClosed()
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val restoreTarget = targetBeforeAvm
                     targetBeforeAvm = null

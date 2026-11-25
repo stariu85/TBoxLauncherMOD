@@ -2833,20 +2833,40 @@ fun YandexNavSettingsContent() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        NavSpeedWidgetToggle()
-        NavTrafficLightWidgetToggle()
-        NavTrafficLightScaleSlider()
+        // General settings
+        NavHideWidgetsOnScreenToggle()
 
+        // Section 1: Notification-based widgets (Official + MOD)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = stringResource(R.string.launcher_yandex_nav_bg_section_title),
+            text = stringResource(R.string.launcher_yandex_nav_official_section_title),
             color = LauncherColors.TextPrimary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
         )
         Text(
-            text = stringResource(R.string.launcher_yandex_nav_bg_section_desc),
+            text = stringResource(R.string.launcher_yandex_nav_official_section_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+
+        NavBgManeuverWidgetToggle()
+        NavBgEtaWidgetToggle()
+        NavBgTrafficLightWidgetToggle()
+
+        // Section 2: Broadcast-based widgets (MOD only)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.launcher_yandex_nav_mod_section_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+        )
+        Text(
+            text = stringResource(R.string.launcher_yandex_nav_mod_section_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
             modifier = Modifier.padding(bottom = 6.dp),
@@ -2863,11 +2883,18 @@ fun YandexNavSettingsContent() {
             }
         )
 
-        NavBgManeuverWidgetToggle()
-        NavBgEtaWidgetToggle()
+        NavSpeedWidgetToggle()
+        NavTrafficLightWidgetToggle()
+        NavTrafficLightScaleSlider()
+        NavBgNextTurnWidgetToggle()
+        NavBgLanesOrTurnWidgetToggle(isStubInstalled)
+        NavBgLanesOrTurnScaleSlider()
         NavBgLanesWidgetToggle(isStubInstalled)
         NavBgMinimapWidgetToggle(isStubInstalled)
-        NavBgTrafficLightWidgetToggle()
+        NavBgMinimapTransparencySlider()
+        NavBgMinimapHeightSlider()
+        NavBgMinimap3dToggle()
+        NavBgMinimapAutoZoomToggle()
     }
 }
 
@@ -3033,8 +3060,19 @@ private fun NavBgMinimapWidgetToggle(isStubInstalled: Boolean) {
                     LauncherAppConfigStore.setNavBgMinimapVisible(context, next)
                     if (next) {
                         val density = context.resources.displayMetrics.density
-                        val px = (180 * density).toInt()
-                        YandexNavRepository.enableMinimap(context, px, px)
+                        val widthPx = (180 * density).toInt()
+                        val heightPx = (LauncherAppConfigStore.navBgMinimapHeightDp(context) * density).toInt()
+                        val is3d = LauncherAppConfigStore.navBgMinimap3dEnabled(context)
+                        val autoZoom = LauncherAppConfigStore.navBgMinimapAutoZoomEnabled(context)
+                        val speed = vad.dashing.tbox.CanDataRepository.carSpeed.value ?: 0f
+                        val zoom = YandexNavRepository.resolveMinimapZoomForSpeed(speed, autoZoom)
+                        YandexNavRepository.enableMinimap(
+                            context = context,
+                            widthPx = widthPx,
+                            heightPx = heightPx,
+                            zoom = zoom,
+                            viewMode = if (is3d) 1 else 0,
+                        )
                     } else {
                         YandexNavRepository.disableMinimap(context)
                     }
@@ -3050,6 +3088,262 @@ private fun NavBgMinimapWidgetToggle(isStubInstalled: Boolean) {
                 stringResource(R.string.launcher_nav_bg_minimap_desc)
             },
             color = if (!isStubInstalled) Color(0xFFF59E0B) else LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimapTransparencySlider() {
+    val context = LocalContext.current
+    var transparency by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapTransparency(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_nav_bg_minimap_transparency_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${transparency.roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_transparency_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = transparency,
+            onValueChange = { next ->
+                val snapped = next.roundToInt().coerceIn(
+                    NAV_BG_MINIMAP_TRANSPARENCY_MIN,
+                    NAV_BG_MINIMAP_TRANSPARENCY_MAX,
+                )
+                transparency = snapped.toFloat()
+                LauncherAppConfigStore.setNavBgMinimapTransparency(context, snapped)
+            },
+            valueRange = NAV_BG_MINIMAP_TRANSPARENCY_MIN.toFloat()..
+                NAV_BG_MINIMAP_TRANSPARENCY_MAX.toFloat(),
+            steps = NAV_BG_MINIMAP_TRANSPARENCY_MAX - NAV_BG_MINIMAP_TRANSPARENCY_MIN - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimapHeightSlider() {
+    val context = LocalContext.current
+    var heightDp by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapHeightDp(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_nav_bg_minimap_height_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${heightDp.roundToInt()} dp",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_height_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = heightDp,
+            onValueChange = { next ->
+                val snapped = NAV_BG_MINIMAP_HEIGHT_MIN_DP +
+                    ((next - NAV_BG_MINIMAP_HEIGHT_MIN_DP) / NAV_BG_MINIMAP_HEIGHT_STEP_DP).roundToInt() *
+                    NAV_BG_MINIMAP_HEIGHT_STEP_DP
+                heightDp = snapped.toFloat()
+                LauncherAppConfigStore.setNavBgMinimapHeightDp(context, snapped)
+            },
+            valueRange = NAV_BG_MINIMAP_HEIGHT_MIN_DP.toFloat()..NAV_BG_MINIMAP_HEIGHT_MAX_DP.toFloat(),
+            steps = (NAV_BG_MINIMAP_HEIGHT_MAX_DP - NAV_BG_MINIMAP_HEIGHT_MIN_DP) /
+                NAV_BG_MINIMAP_HEIGHT_STEP_DP - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimap3dToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) { LauncherAppConfigStore.navBgMinimap3dEnabled(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_minimap_3d_title),
+            active = enabled,
+            onClick = { LauncherAppConfigStore.setNavBgMinimap3dEnabled(context, !enabled) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_3d_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimapAutoZoomToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) { LauncherAppConfigStore.navBgMinimapAutoZoomEnabled(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_minimap_auto_zoom_title),
+            active = enabled,
+            onClick = { LauncherAppConfigStore.setNavBgMinimapAutoZoomEnabled(context, !enabled) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_auto_zoom_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgNextTurnWidgetToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgNextTurnRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgNextTurnVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_next_turn_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavBgNextTurnVisible(context, !visible) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_next_turn_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgLanesOrTurnWidgetToggle(isStubInstalled: Boolean) {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgLanesOrTurnRevisionFlow.collectAsStateWithLifecycle()
+    val visible = remember(context, revision) { LauncherAppConfigStore.navBgLanesOrTurnVisible(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_lanes_or_turn_title),
+            active = visible,
+            onClick = { LauncherAppConfigStore.setNavBgLanesOrTurnVisible(context, !visible) },
+        )
+        Text(
+            text = if (!isStubInstalled) {
+                stringResource(R.string.launcher_monjaro_stub_required_hint) + " · " + stringResource(R.string.launcher_nav_bg_lanes_or_turn_desc)
+            } else {
+                stringResource(R.string.launcher_nav_bg_lanes_or_turn_desc)
+            },
+            color = if (!isStubInstalled) Color(0xFFF59E0B) else LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgLanesOrTurnScaleSlider() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgLanesOrTurnRevisionFlow.collectAsStateWithLifecycle()
+    var scalePercent by remember(context, revision) {
+        mutableFloatStateOf(LauncherAppConfigStore.navBgLanesOrTurnScalePercent(context).toFloat())
+    }
+    val displayPercent = scalePercent.roundToInt()
+    val valueText = if (displayPercent > 0) "+$displayPercent%" else "$displayPercent%"
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_nav_bg_lanes_or_turn_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = valueText,
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_lanes_or_turn_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scalePercent,
+            onValueChange = { next ->
+                val clamped = next.roundToInt().coerceIn(
+                    NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT,
+                    NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT,
+                )
+                val snapped = NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT +
+                    ((clamped - NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT + NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT / 2) /
+                        NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT) * NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT
+                scalePercent = snapped.toFloat()
+                LauncherAppConfigStore.setNavBgLanesOrTurnScalePercent(context, snapped)
+            },
+            valueRange = NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT.toFloat()..
+                NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT.toFloat(),
+            steps = (NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT - NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT) /
+                NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun NavHideWidgetsOnScreenToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navHideWidgetsOnScreenRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) { LauncherAppConfigStore.navHideWidgetsOnScreen(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_hide_widgets_on_screen_title),
+            active = enabled,
+            onClick = { LauncherAppConfigStore.setNavHideWidgetsOnScreen(context, !enabled) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_hide_widgets_on_screen_desc),
+            color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
     }

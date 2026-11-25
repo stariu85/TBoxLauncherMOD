@@ -6,6 +6,10 @@ public final class ArmScript {
     }
 
     public static String text(String dexPath) {
+        return text(dexPath, false);
+    }
+
+    public static String text(String dexPath, boolean forceRestart) {
         String qdex = "'" + dexPath.replace("'", "'\\''") + "'";
         return "#!/system/bin/sh\n"
                 + "DEX=" + qdex + "\n"
@@ -15,11 +19,15 @@ public final class ArmScript {
                 + "if [ -f \"$PID\" ]; then\n"
                 + "  old=`cat \"$PID\"`\n"
                 + "  if kill -0 \"$old\" 2>/dev/null && grep -q \"vad.dashing.dclwm.Helper\" \"/proc/$old/cmdline\" 2>/dev/null; then\n"
-                + "    echo already > \"$MARK\"\n"
-                + "    chmod 666 \"$MARK\"\n"
-                + "    rm -f \"$0\" " + Protocol.AUTORUN_FLAG + "\n"
-                + "    setprop " + Protocol.AUTORUN_PROP + " ''\n"
-                + "    exit 0\n"
+                + (forceRestart
+                    ? "    kill \"$old\" 2>/dev/null || true\n"
+                      + "    sleep 0.2\n"
+                      + "    kill -9 \"$old\" 2>/dev/null || true\n"
+                    : "    echo already > \"$MARK\"\n"
+                      + "    chmod 666 \"$MARK\"\n"
+                      + "    rm -f \"$0\" " + Protocol.AUTORUN_FLAG + "\n"
+                      + "    setprop " + Protocol.AUTORUN_PROP + " ''\n"
+                      + "    exit 0\n")
                 + "  fi\n"
                 + "  rm -f \"$PID\"\n"
                 + "fi\n"

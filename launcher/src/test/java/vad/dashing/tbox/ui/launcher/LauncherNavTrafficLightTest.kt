@@ -80,4 +80,30 @@ class LauncherNavTrafficLightTest {
         assertEquals(0L, defaultState.trafficLightCountdownLastUpdateMs)
         assertNull(defaultState.trafficLightColor)
     }
+
+    @Test
+    fun formatBroadcastDistance_roundsRawFloatsAndAppendsUnits() {
+        assertEquals("250 м", YandexNavRepository.formatBroadcastDistance("249.84375"))
+        assertEquals("250 м", YandexNavRepository.formatBroadcastDistance("249.84375", "м"))
+        assertEquals("1.3 км", YandexNavRepository.formatBroadcastDistance("1260.48291"))
+        assertEquals("8.4 км", YandexNavRepository.formatBroadcastDistance("8.412345", "км"))
+        assertEquals("150 м", YandexNavRepository.formatBroadcastDistance("150 м"))
+        assertNull(YandexNavRepository.formatBroadcastDistance(null))
+        assertNull(YandexNavRepository.formatBroadcastDistance("-1"))
+    }
+
+    @Test
+    fun parseDistanceToMeters_convertsMetersAndKilometers() {
+        assertEquals(250f, YandexNavRepository.parseDistanceToMeters("250 м") ?: 0f, 0.1f)
+        assertEquals(8400f, YandexNavRepository.parseDistanceToMeters("8,4 км") ?: 0f, 1f)
+        assertEquals(1250.5f, YandexNavRepository.parseDistanceToMeters("1250.5", "м") ?: 0f, 0.1f)
+        assertNull(YandexNavRepository.parseDistanceToMeters(null))
+    }
+
+    @Test
+    fun splitDistanceNumberAndUnit_separatesNumberAndUnit() {
+        assertEquals("200" to "м", splitDistanceNumberAndUnit("200 м"))
+        assertEquals("1.3" to "км", splitDistanceNumberAndUnit("1.3 км"))
+        assertEquals("450" to "", splitDistanceNumberAndUnit("450"))
+    }
 }

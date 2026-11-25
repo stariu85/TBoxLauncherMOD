@@ -2274,9 +2274,23 @@ internal fun LauncherTopBarRecWidget(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    LaunchedEffect(context) {
+        vad.dashing.tbox.camd.CamdCameraRepository.startStatusPolling(context)
+    }
     val status by vad.dashing.tbox.camd.CamdCameraRepository.status.collectAsStateWithLifecycle()
-    val connected = status as? vad.dashing.tbox.camd.CamdConnectionStatus.Connected
-    val isRecording = connected?.recActive == true || connected?.recEnabled == true
+    val recState = status.resolveRecIndicatorState()
+    val isRecorderOn = recState != vad.dashing.tbox.camd.CamdRecIndicatorState.OFF
+
+    val iconRes = when (recState) {
+        vad.dashing.tbox.camd.CamdRecIndicatorState.ACTIVE -> R.drawable.ic_camd_rec_active
+        vad.dashing.tbox.camd.CamdRecIndicatorState.STANDBY -> R.drawable.ic_camd_rec_standby
+        vad.dashing.tbox.camd.CamdRecIndicatorState.OFF -> R.drawable.ic_camd_rec_idle
+    }
+    val labelColor = when (recState) {
+        vad.dashing.tbox.camd.CamdRecIndicatorState.ACTIVE -> Color(0xFFEF4444)
+        vad.dashing.tbox.camd.CamdRecIndicatorState.STANDBY -> LauncherColors.AccentBlue
+        vad.dashing.tbox.camd.CamdRecIndicatorState.OFF -> LauncherColors.TextMuted
+    }
 
     val textStyle = indicatorTextStyle?.copy(
         fontSize = indicatorFontSizeSp,
@@ -2298,7 +2312,7 @@ internal fun LauncherTopBarRecWidget(
             indication = null,
             onClick = {
                 scope.launch {
-                    vad.dashing.tbox.camd.CamdCameraRepository.setRecorderEnabled(context, !isRecording)
+                    vad.dashing.tbox.camd.CamdCameraRepository.setRecorderEnabled(context, !isRecorderOn)
                 }
             },
         ),
@@ -2306,15 +2320,13 @@ internal fun LauncherTopBarRecWidget(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
-            painter = painterResource(
-                if (isRecording) R.drawable.ic_camd_rec_active else R.drawable.ic_camd_rec_idle,
-            ),
+            painter = painterResource(iconRes),
             contentDescription = "Rec",
             modifier = Modifier.size(indicatorIconSizeDp),
         )
         Text(
             text = "Rec",
-            color = if (isRecording) Color(0xFFEF4444) else LauncherColors.TextMuted,
+            color = labelColor,
             style = textStyle,
         )
     }

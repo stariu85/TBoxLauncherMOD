@@ -50,7 +50,7 @@ public final class ProcessAm implements Am {
                 if (System.currentTimeMillis() >= deadline) {
                     return false;
                 }
-                Thread.sleep(40);
+                Thread.sleep(10);
             }
         }
     }

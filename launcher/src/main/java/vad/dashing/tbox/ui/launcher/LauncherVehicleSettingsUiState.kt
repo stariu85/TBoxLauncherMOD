@@ -27,5 +27,6 @@ internal object LauncherVehicleSettingsUiState {
         open = false
         revealProgress = 0f
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
+        LauncherHomeSnapshotHolder.onDesktopOverlaysClosed()
     }
 }

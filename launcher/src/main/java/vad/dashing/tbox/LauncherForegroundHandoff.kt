@@ -23,6 +23,14 @@ object LauncherHomeActivityHolder {
             isResumedFlow.value = value
         }
 
+    val isStartedFlow = MutableStateFlow(false)
+
+    var isStarted: Boolean
+        get() = isStartedFlow.value
+        set(value) {
+            isStartedFlow.value = value
+        }
+
     val firstDrawFlow = MutableStateFlow(false)
 
     var isFirstDrawComplete: Boolean
@@ -30,11 +38,24 @@ object LauncherHomeActivityHolder {
         set(value) {
             firstDrawFlow.value = value
         }
+
+    val windowFocusedFlow = MutableStateFlow(false)
+
+    var isWindowFocused: Boolean
+        get() = windowFocusedFlow.value
+        set(value) {
+            windowFocusedFlow.value = value
+        }
 }
 
 object LauncherWindowState {
-    @Volatile
-    var hiddenForExternalApp: Boolean = false
+    val hiddenForExternalAppFlow = MutableStateFlow(false)
+
+    var hiddenForExternalApp: Boolean
+        get() = hiddenForExternalAppFlow.value
+        set(value) {
+            hiddenForExternalAppFlow.value = value
+        }
 }
 
 object LauncherForegroundHandoff {

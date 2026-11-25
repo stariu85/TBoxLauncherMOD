@@ -88,6 +88,15 @@ private const val KEY_CAMD_WIDGET_LR_RIGHT_PRESET = "camd_widget_lr_right_preset
 private const val KEY_CAMD_WIDGET_UD_TOP_PRESET = "camd_widget_ud_top_preset"
 private const val KEY_CAMD_WIDGET_UD_BOTTOM_PRESET = "camd_widget_ud_bottom_preset"
 
+const val DEFAULT_CAMD_TURN_SIGNAL_LEFT_PRESET = "dcl_left_blind_zone"
+const val DEFAULT_CAMD_TURN_SIGNAL_RIGHT_PRESET = "dcl_right_blind_zone"
+const val DEFAULT_CAMD_LOW_SPEED_LEFT_PRESET = ""
+const val DEFAULT_CAMD_LOW_SPEED_RIGHT_PRESET = ""
+const val DEFAULT_CAMD_WIDGET_LR_LEFT_PRESET = "dcl_left_side"
+const val DEFAULT_CAMD_WIDGET_LR_RIGHT_PRESET = "dcl_right_side"
+const val DEFAULT_CAMD_WIDGET_UD_TOP_PRESET = "dcl_front"
+const val DEFAULT_CAMD_WIDGET_UD_BOTTOM_PRESET = "dcl_rear"
+
 private const val KEY_CAMD_RECORDER_ENABLED = "camd_recorder_enabled"
 private const val KEY_CAMD_RECORDER_AUTO_OFF_BY_SPEED = "camd_recorder_auto_off_by_speed"
 private const val KEY_CAMD_RECORDER_AUTO_OFF_SPEED = "camd_recorder_auto_off_speed"
@@ -293,6 +302,17 @@ internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
 internal const val MEDIA_CARD_HEIGHT_SCALE_DEFAULT = 1.00f
 internal const val MEDIA_CARD_HEIGHT_SCALE_MIN = 0.50f
 internal const val MEDIA_CARD_HEIGHT_SCALE_MAX = 1.00f
+internal const val NAV_BG_MINIMAP_TRANSPARENCY_DEFAULT = 30
+internal const val NAV_BG_MINIMAP_TRANSPARENCY_MIN = 0
+internal const val NAV_BG_MINIMAP_TRANSPARENCY_MAX = 100
+internal const val NAV_BG_MINIMAP_HEIGHT_DEFAULT_DP = 180
+internal const val NAV_BG_MINIMAP_HEIGHT_MIN_DP = 150
+internal const val NAV_BG_MINIMAP_HEIGHT_MAX_DP = 600
+internal const val NAV_BG_MINIMAP_HEIGHT_STEP_DP = 5
+internal const val NAV_BG_LANES_OR_TURN_SCALE_DEFAULT_PERCENT = 0
+internal const val NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT = -50
+internal const val NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT = 100
+internal const val NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT = 5
 internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
 internal const val DOCK_ICON_SCALE_MIN = 1.00f
 internal const val DOCK_ICON_SCALE_MAX = 2.00f
@@ -400,6 +420,18 @@ private const val KEY_NAV_BG_TRAFFIC_LIGHT_Y_RATIO = "nav_bg_traffic_light_y_rat
 private const val KEY_NAV_BG_MINIMAP_VISIBLE = "nav_bg_minimap_visible"
 private const val KEY_NAV_BG_MINIMAP_X_RATIO = "nav_bg_minimap_x_ratio"
 private const val KEY_NAV_BG_MINIMAP_Y_RATIO = "nav_bg_minimap_y_ratio"
+private const val KEY_NAV_BG_MINIMAP_TRANSPARENCY = "nav_bg_minimap_transparency"
+private const val KEY_NAV_BG_MINIMAP_HEIGHT_DP = "nav_bg_minimap_height_dp"
+private const val KEY_NAV_BG_MINIMAP_3D_ENABLED = "nav_bg_minimap_3d_enabled"
+private const val KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED = "nav_bg_minimap_auto_zoom_enabled"
+private const val KEY_NAV_BG_NEXT_TURN_VISIBLE = "nav_bg_next_turn_visible"
+private const val KEY_NAV_BG_NEXT_TURN_X_RATIO = "nav_bg_next_turn_x_ratio"
+private const val KEY_NAV_BG_NEXT_TURN_Y_RATIO = "nav_bg_next_turn_y_ratio"
+private const val KEY_NAV_BG_LANES_OR_TURN_VISIBLE = "nav_bg_lanes_or_turn_visible"
+private const val KEY_NAV_BG_LANES_OR_TURN_X_RATIO = "nav_bg_lanes_or_turn_x_ratio"
+private const val KEY_NAV_BG_LANES_OR_TURN_Y_RATIO = "nav_bg_lanes_or_turn_y_ratio"
+private const val KEY_NAV_BG_LANES_OR_TURN_SCALE_PERCENT = "nav_bg_lanes_or_turn_scale_percent"
+private const val KEY_NAV_HIDE_WIDGETS_ON_SCREEN = "nav_hide_widgets_on_screen"
 private const val KEY_ACC_PRESETS_IN_QUICK_SETTINGS_VISIBLE = "acc_presets_in_quick_settings_visible"
 private const val KEY_SMART_PANEL_ENABLED = "smart_panel_enabled"
 private const val KEY_ADAS_TOP_PANELS = "adas_top_panels"
@@ -686,6 +718,19 @@ internal object LauncherAppConfigStore {
     internal val navBgMinimapRevisionFlow: StateFlow<Int> = navBgMinimapRevision
     private val navBgMinimapPositionRevision = MutableStateFlow(0)
     internal val navBgMinimapPositionRevisionFlow: StateFlow<Int> = navBgMinimapPositionRevision
+
+    private val navBgNextTurnRevision = MutableStateFlow(0)
+    internal val navBgNextTurnRevisionFlow: StateFlow<Int> = navBgNextTurnRevision
+    private val navBgNextTurnPositionRevision = MutableStateFlow(0)
+    internal val navBgNextTurnPositionRevisionFlow: StateFlow<Int> = navBgNextTurnPositionRevision
+
+    private val navBgLanesOrTurnRevision = MutableStateFlow(0)
+    internal val navBgLanesOrTurnRevisionFlow: StateFlow<Int> = navBgLanesOrTurnRevision
+    private val navBgLanesOrTurnPositionRevision = MutableStateFlow(0)
+    internal val navBgLanesOrTurnPositionRevisionFlow: StateFlow<Int> = navBgLanesOrTurnPositionRevision
+
+    private val navHideWidgetsOnScreenRevision = MutableStateFlow(0)
+    internal val navHideWidgetsOnScreenRevisionFlow: StateFlow<Int> = navHideWidgetsOnScreenRevision
     private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
     private val smartPanelRevision = MutableStateFlow(0)
@@ -1893,6 +1938,102 @@ internal object LauncherAppConfigStore {
         navBgMinimapPositionRevision.value++
     }
 
+    fun navBgMinimapTransparency(context: Context): Int =
+        prefs(context).getInt(KEY_NAV_BG_MINIMAP_TRANSPARENCY, NAV_BG_MINIMAP_TRANSPARENCY_DEFAULT)
+            .coerceIn(NAV_BG_MINIMAP_TRANSPARENCY_MIN, NAV_BG_MINIMAP_TRANSPARENCY_MAX)
+
+    fun setNavBgMinimapTransparency(context: Context, transparencyPercent: Int) {
+        val next = transparencyPercent.coerceIn(
+            NAV_BG_MINIMAP_TRANSPARENCY_MIN,
+            NAV_BG_MINIMAP_TRANSPARENCY_MAX,
+        )
+        prefs(context).edit().putInt(KEY_NAV_BG_MINIMAP_TRANSPARENCY, next).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgMinimapHeightDp(context: Context): Int {
+        val heightDp = prefs(context)
+            .getInt(KEY_NAV_BG_MINIMAP_HEIGHT_DP, NAV_BG_MINIMAP_HEIGHT_DEFAULT_DP)
+            .coerceIn(NAV_BG_MINIMAP_HEIGHT_MIN_DP, NAV_BG_MINIMAP_HEIGHT_MAX_DP)
+        return NAV_BG_MINIMAP_HEIGHT_MIN_DP +
+            ((heightDp - NAV_BG_MINIMAP_HEIGHT_MIN_DP + NAV_BG_MINIMAP_HEIGHT_STEP_DP / 2) /
+                NAV_BG_MINIMAP_HEIGHT_STEP_DP) * NAV_BG_MINIMAP_HEIGHT_STEP_DP
+    }
+
+    fun setNavBgMinimapHeightDp(context: Context, heightDp: Int) {
+        val clamped = heightDp.coerceIn(NAV_BG_MINIMAP_HEIGHT_MIN_DP, NAV_BG_MINIMAP_HEIGHT_MAX_DP)
+        val next = NAV_BG_MINIMAP_HEIGHT_MIN_DP +
+            ((clamped - NAV_BG_MINIMAP_HEIGHT_MIN_DP + NAV_BG_MINIMAP_HEIGHT_STEP_DP / 2) /
+                NAV_BG_MINIMAP_HEIGHT_STEP_DP) * NAV_BG_MINIMAP_HEIGHT_STEP_DP
+        prefs(context).edit().putInt(KEY_NAV_BG_MINIMAP_HEIGHT_DP, next).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgMinimap3dEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_MINIMAP_3D_ENABLED, false)
+
+    fun setNavBgMinimap3dEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_3D_ENABLED, enabled).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgMinimapAutoZoomEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED, false)
+
+    fun setNavBgMinimapAutoZoomEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED, enabled).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgNextTurnXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_NEXT_TURN_X_RATIO, 0.25f).coerceIn(0f, 1f)
+
+    fun navBgNextTurnYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_NEXT_TURN_Y_RATIO, 0.28f).coerceIn(0f, 1f)
+
+    fun setNavBgNextTurnPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_NEXT_TURN_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_NEXT_TURN_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgNextTurnPositionRevision.value++
+    }
+
+    fun navBgLanesOrTurnXRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_LANES_OR_TURN_X_RATIO, 0.50f).coerceIn(0f, 1f)
+
+    fun navBgLanesOrTurnYRatio(context: Context): Float =
+        prefs(context).getFloat(KEY_NAV_BG_LANES_OR_TURN_Y_RATIO, 0.22f).coerceIn(0f, 1f)
+
+    fun setNavBgLanesOrTurnPosition(context: Context, xRatio: Float, yRatio: Float) {
+        prefs(context).edit()
+            .putFloat(KEY_NAV_BG_LANES_OR_TURN_X_RATIO, xRatio.coerceIn(0f, 1f))
+            .putFloat(KEY_NAV_BG_LANES_OR_TURN_Y_RATIO, yRatio.coerceIn(0f, 1f))
+            .apply()
+        navBgLanesOrTurnPositionRevision.value++
+    }
+
+    fun navBgLanesOrTurnScalePercent(context: Context): Int =
+        prefs(context).getInt(
+            KEY_NAV_BG_LANES_OR_TURN_SCALE_PERCENT,
+            NAV_BG_LANES_OR_TURN_SCALE_DEFAULT_PERCENT,
+        ).coerceIn(NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT, NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT)
+
+    fun navBgLanesOrTurnScale(context: Context): Float =
+        1f + navBgLanesOrTurnScalePercent(context) / 100f
+
+    fun setNavBgLanesOrTurnScalePercent(context: Context, percent: Int) {
+        val clamped = percent.coerceIn(
+            NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT,
+            NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT,
+        )
+        val snapped = NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT +
+            ((clamped - NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT + NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT / 2) /
+                NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT) * NAV_BG_LANES_OR_TURN_SCALE_STEP_PERCENT
+        prefs(context).edit().putInt(KEY_NAV_BG_LANES_OR_TURN_SCALE_PERCENT, snapped).apply()
+        navBgLanesOrTurnRevision.value++
+    }
+
     fun climateControlsVisible(context: Context): Boolean =
         prefs(context).getBoolean(KEY_CLIMATE_VISIBLE, true)
 
@@ -2248,7 +2389,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdTurnSignalLeftPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_TURN_SIGNAL_LEFT_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_TURN_SIGNAL_LEFT_PRESET, DEFAULT_CAMD_TURN_SIGNAL_LEFT_PRESET)
+            ?: DEFAULT_CAMD_TURN_SIGNAL_LEFT_PRESET
 
     fun setCamdTurnSignalLeftPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_TURN_SIGNAL_LEFT_PRESET, preset).apply()
@@ -2256,7 +2398,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdTurnSignalRightPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, DEFAULT_CAMD_TURN_SIGNAL_RIGHT_PRESET)
+            ?: DEFAULT_CAMD_TURN_SIGNAL_RIGHT_PRESET
 
     fun setCamdTurnSignalRightPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, preset).apply()
@@ -2304,7 +2447,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdLowSpeedLeftPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_LOW_SPEED_LEFT_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_LOW_SPEED_LEFT_PRESET, DEFAULT_CAMD_LOW_SPEED_LEFT_PRESET)
+            ?: DEFAULT_CAMD_LOW_SPEED_LEFT_PRESET
 
     fun setCamdLowSpeedLeftPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_LOW_SPEED_LEFT_PRESET, preset).apply()
@@ -2312,7 +2456,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdLowSpeedRightPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_LOW_SPEED_RIGHT_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_LOW_SPEED_RIGHT_PRESET, DEFAULT_CAMD_LOW_SPEED_RIGHT_PRESET)
+            ?: DEFAULT_CAMD_LOW_SPEED_RIGHT_PRESET
 
     fun setCamdLowSpeedRightPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_LOW_SPEED_RIGHT_PRESET, preset).apply()
@@ -2365,7 +2510,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdWidgetLrLeftPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_WIDGET_LR_LEFT_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_WIDGET_LR_LEFT_PRESET, DEFAULT_CAMD_WIDGET_LR_LEFT_PRESET)
+            ?: DEFAULT_CAMD_WIDGET_LR_LEFT_PRESET
 
     fun setCamdWidgetLrLeftPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_WIDGET_LR_LEFT_PRESET, preset).apply()
@@ -2373,7 +2519,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdWidgetLrRightPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_WIDGET_LR_RIGHT_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_WIDGET_LR_RIGHT_PRESET, DEFAULT_CAMD_WIDGET_LR_RIGHT_PRESET)
+            ?: DEFAULT_CAMD_WIDGET_LR_RIGHT_PRESET
 
     fun setCamdWidgetLrRightPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_WIDGET_LR_RIGHT_PRESET, preset).apply()
@@ -2381,7 +2528,8 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdWidgetUdTopPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_WIDGET_UD_TOP_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_WIDGET_UD_TOP_PRESET, DEFAULT_CAMD_WIDGET_UD_TOP_PRESET)
+            ?: DEFAULT_CAMD_WIDGET_UD_TOP_PRESET
 
     fun setCamdWidgetUdTopPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_WIDGET_UD_TOP_PRESET, preset).apply()
@@ -2389,10 +2537,25 @@ internal object LauncherAppConfigStore {
     }
 
     fun camdWidgetUdBottomPreset(context: Context): String =
-        prefs(context).getString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, "").orEmpty()
+        prefs(context).getString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, DEFAULT_CAMD_WIDGET_UD_BOTTOM_PRESET)
+            ?: DEFAULT_CAMD_WIDGET_UD_BOTTOM_PRESET
 
     fun setCamdWidgetUdBottomPreset(context: Context, preset: String) {
         prefs(context).edit().putString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, preset).apply()
+        camdConfigRevision.value++
+    }
+
+    fun resetCamdCameraPresetsToDefaults(context: Context) {
+        prefs(context).edit()
+            .putString(KEY_CAMD_TURN_SIGNAL_LEFT_PRESET, DEFAULT_CAMD_TURN_SIGNAL_LEFT_PRESET)
+            .putString(KEY_CAMD_TURN_SIGNAL_RIGHT_PRESET, DEFAULT_CAMD_TURN_SIGNAL_RIGHT_PRESET)
+            .putString(KEY_CAMD_LOW_SPEED_LEFT_PRESET, DEFAULT_CAMD_LOW_SPEED_LEFT_PRESET)
+            .putString(KEY_CAMD_LOW_SPEED_RIGHT_PRESET, DEFAULT_CAMD_LOW_SPEED_RIGHT_PRESET)
+            .putString(KEY_CAMD_WIDGET_LR_LEFT_PRESET, DEFAULT_CAMD_WIDGET_LR_LEFT_PRESET)
+            .putString(KEY_CAMD_WIDGET_LR_RIGHT_PRESET, DEFAULT_CAMD_WIDGET_LR_RIGHT_PRESET)
+            .putString(KEY_CAMD_WIDGET_UD_TOP_PRESET, DEFAULT_CAMD_WIDGET_UD_TOP_PRESET)
+            .putString(KEY_CAMD_WIDGET_UD_BOTTOM_PRESET, DEFAULT_CAMD_WIDGET_UD_BOTTOM_PRESET)
+            .apply()
         camdConfigRevision.value++
     }
 
@@ -2664,6 +2827,30 @@ internal object LauncherAppConfigStore {
     fun setNavBgMinimapVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_VISIBLE, visible).apply()
         navBgMinimapRevision.value++
+    }
+
+    fun navBgNextTurnVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_NEXT_TURN_VISIBLE, false)
+
+    fun setNavBgNextTurnVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_NEXT_TURN_VISIBLE, visible).apply()
+        navBgNextTurnRevision.value++
+    }
+
+    fun navBgLanesOrTurnVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_LANES_OR_TURN_VISIBLE, false)
+
+    fun setNavBgLanesOrTurnVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_LANES_OR_TURN_VISIBLE, visible).apply()
+        navBgLanesOrTurnRevision.value++
+    }
+
+    fun navHideWidgetsOnScreen(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_HIDE_WIDGETS_ON_SCREEN, false)
+
+    fun setNavHideWidgetsOnScreen(context: Context, hide: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_HIDE_WIDGETS_ON_SCREEN, hide).apply()
+        navHideWidgetsOnScreenRevision.value++
     }
 
 
@@ -3100,6 +3287,9 @@ internal object LauncherAppConfigStore {
         gridRowSpacingRevision.value++
         homeIconScaleRevision.value++
         edgeGesturesRevision.value++
+        navBgNextTurnRevision.value++
+        navBgLanesOrTurnRevision.value++
+        navHideWidgetsOnScreenRevision.value++
     }
 
     private fun decodeSlots(raw: String?, count: Int): List<String> {

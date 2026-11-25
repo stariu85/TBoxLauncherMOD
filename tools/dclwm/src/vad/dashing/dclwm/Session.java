@@ -1,5 +1,7 @@
 package vad.dashing.dclwm;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,11 +32,22 @@ public final class Session {
             if ("PING".equals(op) && parts.length == 1) {
                 return "OK\n";
             }
+            if ("VERSION".equals(op) && parts.length == 1) {
+                return "OK " + Protocol.VERSION + "\n";
+            }
             if ("LIST".equals(op) && parts.length == 1) {
                 return list();
             }
             if ("RESIZE".equals(op) && parts.length == 6) {
                 return resize(
+                        parseId(parts[1]),
+                        parseCoord(parts[2]),
+                        parseCoord(parts[3]),
+                        parseCoord(parts[4]),
+                        parseCoord(parts[5]));
+            }
+            if ("RESTORE_FREEFORM".equals(op) && parts.length == 6) {
+                return restoreFreeform(
                         parseId(parts[1]),
                         parseCoord(parts[2]),
                         parseCoord(parts[3]),
@@ -115,9 +128,32 @@ public final class Session {
             return rejected;
         }
         moveStack(task.stackId, left, top, right, bottom);
-        am.run("am", "task", "resize", Integer.toString(taskId),
-                Integer.toString(left), Integer.toString(top),
-                Integer.toString(right), Integer.toString(bottom));
+        applyResizeTask(taskId, left, top, right, bottom);
+        WindowTask after = StackListParser.find(read(), taskId);
+        if (after == null
+                || after.left != left || after.top != top
+                || after.right != right || after.bottom != bottom) {
+            return "ERR am bounds\n";
+        }
+        return "OK\n";
+    }
+
+    private String restoreFreeform(int taskId, int left, int top, int right, int bottom) throws AmFailure {
+        if (left >= right || top >= bottom) {
+            return "ERR bad_args\n";
+        }
+        WindowTask task = StackListParser.find(read(), taskId);
+        String rejected = reject(task);
+        if (rejected != null) {
+            return rejected;
+        }
+        if (!applyTaskWindowingMode(taskId, 5, false)) {
+            return "ERR failed\n";
+        }
+        WindowTask updated = StackListParser.find(read(), taskId);
+        int targetStackId = updated != null ? updated.stackId : task.stackId;
+        moveStack(targetStackId, left, top, right, bottom);
+        applyResizeTask(taskId, left, top, right, bottom);
         WindowTask after = StackListParser.find(read(), taskId);
         if (after == null
                 || after.left != left || after.top != top
@@ -166,10 +202,9 @@ public final class Session {
         }
         boolean done = false;
         try {
-            Class<?> amClass = Class.forName("android.app.ActivityManager");
-            Object iam = amClass.getMethod("getService").invoke(null);
+            Object iam = getService("android.app.ActivityManager");
             if (iam != null) {
-                for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
+                for (Method m : iam.getClass().getMethods()) {
                     if ("moveTaskToBack".equals(m.getName())) {
                         Class<?>[] p = m.getParameterTypes();
                         if (p.length == 1 && p[0] == int.class) {
@@ -182,7 +217,7 @@ public final class Session {
             }
         } catch (Throwable ignored) {
         }
-        if (task != null) {
+        if (!done && task != null) {
             try {
                 am.run("am", "stack", "movetask", Integer.toString(taskId), Integer.toString(task.stackId), "false");
                 done = true;
@@ -194,21 +229,15 @@ public final class Session {
 
     private String moveForeignTasksToBack() throws AmFailure {
         List<WindowTask> tasks = read();
-        Class<?> amClass = null;
-        Object iam = null;
-        java.lang.reflect.Method moveMethod = null;
-        try {
-            amClass = Class.forName("android.app.ActivityManager");
-            iam = amClass.getMethod("getService").invoke(null);
-            if (iam != null) {
-                for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
-                    if ("moveTaskToBack".equals(m.getName()) && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class) {
-                        moveMethod = m;
-                        break;
-                    }
+        Object iam = getService("android.app.ActivityManager");
+        Method moveMethod = null;
+        if (iam != null) {
+            for (Method m : iam.getClass().getMethods()) {
+                if ("moveTaskToBack".equals(m.getName()) && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class) {
+                    moveMethod = m;
+                    break;
                 }
             }
-        } catch (Throwable ignored) {
         }
 
         for (int i = 0; i < tasks.size(); i++) {
@@ -217,15 +246,19 @@ public final class Session {
                 continue;
             }
             if ("freeform".equalsIgnoreCase(t.mode) || t.stackId != 0) {
+                boolean moved = false;
                 if (moveMethod != null && iam != null) {
                     try {
                         moveMethod.invoke(iam, t.id);
+                        moved = true;
                     } catch (Throwable ignored) {
                     }
                 }
-                try {
-                    am.run("am", "stack", "movetask", Integer.toString(t.id), Integer.toString(t.stackId), "false");
-                } catch (Throwable ignored) {
+                if (!moved) {
+                    try {
+                        am.run("am", "stack", "movetask", Integer.toString(t.id), Integer.toString(t.stackId), "false");
+                    } catch (Throwable ignored) {
+                    }
                 }
             }
         }
@@ -257,57 +290,46 @@ public final class Session {
     }
 
     private boolean applyTaskWindowingMode(int taskId, int windowingMode, boolean toTop) {
-        boolean invoked = false;
         // 1. Try ActivityTaskManager (Android 10+)
-        try {
-            Class<?> atmClass = Class.forName("android.app.ActivityTaskManager");
-            Object iatm = atmClass.getMethod("getService").invoke(null);
-            if (iatm != null) {
-                for (java.lang.reflect.Method m : iatm.getClass().getMethods()) {
-                    if ("setTaskWindowingMode".equals(m.getName())) {
-                        Class<?>[] p = m.getParameterTypes();
-                        if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
-                            m.invoke(iatm, taskId, windowingMode, toTop);
-                            invoked = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
+        if (invokeSetTaskWindowingMode("android.app.ActivityTaskManager", taskId, windowingMode, toTop)) {
+            return true;
         }
         // 2. Try ActivityManager (Android 9 Pie)
-        if (!invoked) {
-            try {
-                Class<?> amClass = Class.forName("android.app.ActivityManager");
-                Object iam = amClass.getMethod("getService").invoke(null);
-                if (iam != null) {
-                    for (java.lang.reflect.Method m : iam.getClass().getMethods()) {
-                        if ("setTaskWindowingMode".equals(m.getName())) {
-                            Class<?>[] p = m.getParameterTypes();
-                            if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
-                                m.invoke(iam, taskId, windowingMode, toTop);
-                                invoked = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
+        if (invokeSetTaskWindowingMode("android.app.ActivityManager", taskId, windowingMode, toTop)) {
+            return true;
         }
         // 3. Fallback to CLI
         try {
             am.run("am", "task", "set-windowing-mode", Integer.toString(taskId), Integer.toString(windowingMode));
-            invoked = true;
+            return true;
         } catch (Throwable ignored) {
         }
         try {
             am.run("cmd", "activity", "task", "set-windowing-mode", Integer.toString(taskId), Integer.toString(windowingMode));
-            invoked = true;
+            return true;
         } catch (Throwable ignored) {
         }
-        return invoked;
+        return false;
+    }
+
+    private static boolean invokeSetTaskWindowingMode(String serviceClass, int taskId, int windowingMode, boolean toTop) {
+        try {
+            Object svc = getService(serviceClass);
+            if (svc == null) {
+                return false;
+            }
+            for (Method m : svc.getClass().getMethods()) {
+                if ("setTaskWindowingMode".equals(m.getName())) {
+                    Class<?>[] p = m.getParameterTypes();
+                    if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
+                        m.invoke(svc, taskId, windowingMode, toTop);
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     /** @return an ERR line, or null when the task may be moved */
@@ -322,12 +344,246 @@ public final class Session {
     }
 
     private void moveStack(int stackId, int left, int top, int right, int bottom) throws AmFailure {
+        if (invokeResizeStack("android.app.ActivityTaskManager", stackId, left, top, right, bottom)
+                || invokeResizeStack("android.app.ActivityManager", stackId, left, top, right, bottom)) {
+            return;
+        }
         am.run("am", "stack", "resize", Integer.toString(stackId),
                 Integer.toString(left), Integer.toString(top),
                 Integer.toString(right), Integer.toString(bottom));
     }
 
+    private void applyResizeTask(int taskId, int left, int top, int right, int bottom) throws AmFailure {
+        if (invokeResizeTask("android.app.ActivityTaskManager", taskId, left, top, right, bottom)
+                || invokeResizeTask("android.app.ActivityManager", taskId, left, top, right, bottom)) {
+            return;
+        }
+        am.run("am", "task", "resize", Integer.toString(taskId),
+                Integer.toString(left), Integer.toString(top),
+                Integer.toString(right), Integer.toString(bottom));
+    }
+
+    private static boolean invokeResizeStack(String serviceClass, int stackId, int left, int top, int right, int bottom) {
+        try {
+            Object svc = getService(serviceClass);
+            if (svc == null) {
+                return false;
+            }
+            Object rect = newRect(left, top, right, bottom);
+            Class<?> rectClass = rect.getClass();
+            for (Method m : svc.getClass().getMethods()) {
+                if (!"resizeStack".equals(m.getName())) {
+                    continue;
+                }
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 6 && p[0] == int.class && p[1] == rectClass
+                        && p[2] == boolean.class && p[3] == boolean.class && p[4] == boolean.class && p[5] == int.class) {
+                    m.invoke(svc, stackId, rect, false, true, false, -1);
+                    return true;
+                }
+                if (p.length == 3 && p[0] == int.class && p[1] == rectClass && p[2] == boolean.class) {
+                    m.invoke(svc, stackId, rect, false);
+                    return true;
+                }
+                if (p.length == 2 && p[0] == int.class && p[1] == rectClass) {
+                    m.invoke(svc, stackId, rect);
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private static boolean invokeResizeTask(String serviceClass, int taskId, int left, int top, int right, int bottom) {
+        try {
+            Object svc = getService(serviceClass);
+            if (svc == null) {
+                return false;
+            }
+            Object rect = newRect(left, top, right, bottom);
+            Class<?> rectClass = rect.getClass();
+            for (Method m : svc.getClass().getMethods()) {
+                if (!"resizeTask".equals(m.getName())) {
+                    continue;
+                }
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 3 && p[0] == int.class && p[1] == rectClass && p[2] == int.class) {
+                    m.invoke(svc, taskId, rect, 0);
+                    return true;
+                }
+                if (p.length == 2 && p[0] == int.class && p[1] == rectClass) {
+                    m.invoke(svc, taskId, rect);
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
     private List<WindowTask> read() throws AmFailure {
+        List<WindowTask> binderTasks = readViaBinder();
+        if (binderTasks != null) {
+            return binderTasks;
+        }
         return StackListParser.parse(am.run("am", "stack", "list"));
+    }
+
+    private static List<WindowTask> readViaBinder() {
+        List<?> infos = fetchAllStackInfos("android.app.ActivityTaskManager");
+        if (infos == null) {
+            infos = fetchAllStackInfos("android.app.ActivityManager");
+        }
+        if (infos == null || infos.isEmpty()) {
+            return null;
+        }
+        try {
+            List<WindowTask> tasks = new ArrayList<WindowTask>();
+            for (int i = 0; i < infos.size(); i++) {
+                Object info = infos.get(i);
+                if (info == null) {
+                    continue;
+                }
+                Class<?> infoClass = info.getClass();
+                int stackId = infoClass.getField("stackId").getInt(info);
+                Object stackBoundsObj = infoClass.getField("bounds").get(info);
+                int[] sb = stackBoundsObj != null ? readRect(stackBoundsObj) : new int[]{0, 0, 0, 0};
+                int[] taskIds = (int[]) infoClass.getField("taskIds").get(info);
+                if (taskIds == null || taskIds.length == 0) {
+                    continue;
+                }
+                String[] taskNames = (String[]) infoClass.getField("taskNames").get(info);
+                Object[] taskBounds = null;
+                try {
+                    taskBounds = (Object[]) infoClass.getField("taskBounds").get(info);
+                } catch (Throwable ignored) {
+                }
+                boolean visible = false;
+                try {
+                    visible = infoClass.getField("visible").getBoolean(info);
+                } catch (Throwable ignored) {
+                }
+                Object topActivity = null;
+                try {
+                    topActivity = infoClass.getField("topActivity").get(info);
+                } catch (Throwable ignored) {
+                }
+                String mode = readWindowingMode(infoClass, info);
+
+                for (int j = 0; j < taskIds.length; j++) {
+                    int tid = taskIds[j];
+                    String rawName = (taskNames != null && j < taskNames.length) ? taskNames[j] : null;
+                    String pkg = "unknown";
+                    String act = "unknown";
+                    if (rawName != null && !rawName.isEmpty()) {
+                        int slash = rawName.indexOf('/');
+                        if (slash > 0) {
+                            pkg = rawName.substring(0, slash);
+                            act = slash + 1 < rawName.length() ? rawName.substring(slash + 1) : "unknown";
+                        } else {
+                            pkg = rawName;
+                        }
+                    } else if (topActivity != null) {
+                        pkg = String.valueOf(topActivity.getClass().getMethod("getPackageName").invoke(topActivity));
+                        act = String.valueOf(topActivity.getClass().getMethod("getClassName").invoke(topActivity));
+                    }
+                    int[] tb = (taskBounds != null && j < taskBounds.length && taskBounds[j] != null)
+                            ? readRect(taskBounds[j])
+                            : sb;
+                    tasks.add(new WindowTask(
+                            tid,
+                            stackId,
+                            pkg,
+                            act,
+                            mode,
+                            tb[0], tb[1], tb[2], tb[3],
+                            sb[0], sb[1], sb[2], sb[3],
+                            visible));
+                }
+            }
+            return tasks;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static List<?> fetchAllStackInfos(String serviceClass) {
+        try {
+            Object svc = getService(serviceClass);
+            if (svc == null) {
+                return null;
+            }
+            Method m = svc.getClass().getMethod("getAllStackInfos");
+            Object result = m.invoke(svc);
+            if (result instanceof List) {
+                return (List<?>) result;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static String readWindowingMode(Class<?> infoClass, Object info) {
+        try {
+            Object config = infoClass.getField("configuration").get(info);
+            if (config == null) {
+                return "unknown";
+            }
+            Object winConfig = config.getClass().getField("windowConfiguration").get(config);
+            if (winConfig == null) {
+                return "unknown";
+            }
+            int wm = ((Integer) winConfig.getClass().getMethod("getWindowingMode").invoke(winConfig)).intValue();
+            return windowingModeName(wm);
+        } catch (Throwable ignored) {
+            return "unknown";
+        }
+    }
+
+    private static String windowingModeName(int wm) {
+        switch (wm) {
+            case 0:
+                return "undefined";
+            case 1:
+                return "fullscreen";
+            case 2:
+                return "pinned";
+            case 3:
+                return "split-screen-primary";
+            case 4:
+                return "split-screen-secondary";
+            case 5:
+                return "freeform";
+            case 11:
+                return "extend";
+            default:
+                return "mode_" + wm;
+        }
+    }
+
+    private static Object getService(String serviceClass) {
+        try {
+            Class<?> cls = Class.forName(serviceClass);
+            return cls.getMethod("getService").invoke(null);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static Object newRect(int left, int top, int right, int bottom) throws Exception {
+        Class<?> rectClass = Class.forName("android.graphics.Rect");
+        return rectClass.getConstructor(int.class, int.class, int.class, int.class)
+                .newInstance(left, top, right, bottom);
+    }
+
+    private static int[] readRect(Object rect) throws Exception {
+        Class<?> rc = rect.getClass();
+        return new int[]{
+                rc.getField("left").getInt(rect),
+                rc.getField("top").getInt(rect),
+                rc.getField("right").getInt(rect),
+                rc.getField("bottom").getInt(rect)
+        };
     }
 }
