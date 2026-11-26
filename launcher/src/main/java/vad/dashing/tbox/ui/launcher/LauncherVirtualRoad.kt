@@ -107,6 +107,7 @@ private data class Raindrop(
 )
 
 private const val DASH_SPACING = 72f
+internal const val VIRTUAL_ROAD_FRAME_INTERVAL_NS = 32_000_000L // ~30 FPS cap on 60 Hz display
 private val ROAD_DASH_SIDES = floatArrayOf(-1f, 1f, -3f, 3f)
 private val ROAD_DASH_WEIGHTS = floatArrayOf(1f, 1f, 0.55f, 0.55f)
 
@@ -393,68 +394,6 @@ fun LauncherVirtualRoad(
 
     val weatherActive = effectiveIsSnow || effectiveIsRain
     val weatherPhaseState = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(weatherActive, canAnimate) {
-        if (!weatherActive || !canAnimate) return@LaunchedEffect
-        var lastWeatherFrameNs = 0L
-        while (isActive) {
-            withFrameNanos { frameNs ->
-                if (lastWeatherFrameNs == 0L) {
-                    lastWeatherFrameNs = frameNs
-                    return@withFrameNanos
-                }
-                val deltaNs = frameNs - lastWeatherFrameNs
-                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.05f)
-                lastWeatherFrameNs = frameNs
-
-                val spd = currentSpeedKmh
-                val steer = currentSteerDeg
-
-                if (currentEffectiveIsSnow) {
-                    val speedMultiplier = when {
-                        spd <= 0f -> 0.15f
-                        spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
-                        spd <= 150f -> 1.0f + ((spd - 100f) / 50f) * 0.5f
-                        else -> 1.5f
-                    }
-                    // Turning left (steer < 0) -> drift right (steerDrift > 0)
-                    val steerDrift = (-steer * 0.0006f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
-
-                    snowflakes.forEach { flake ->
-                        flake.y += flake.speed * speedMultiplier * dtSec
-                        flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
-                        if (flake.y > 0.5f) {
-                            flake.y = 0f
-                            flake.x = kotlin.random.Random.nextFloat()
-                        }
-                        if (flake.x < 0f) flake.x += 1f
-                        if (flake.x > 1f) flake.x -= 1f
-                    }
-                }
-
-                if (currentEffectiveIsRain) {
-                    val speedMultiplier = when {
-                        spd <= 0f -> 0.45f
-                        spd <= 100f -> 0.45f + (spd / 100f) * 0.95f
-                        else -> 1.4f + ((spd - 100f) / 100f) * 0.6f
-                    }
-                    val steerDrift = (-steer * 0.0010f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
-
-                    raindrops.forEach { drop ->
-                        drop.y += drop.speed * speedMultiplier * dtSec
-                        drop.x += steerDrift * dtSec
-                        if (drop.y > 0.55f) {
-                            drop.y = 0f
-                            drop.x = kotlin.random.Random.nextFloat()
-                        }
-                        if (drop.x < 0f) drop.x += 1f
-                        if (drop.x > 1f) drop.x -= 1f
-                    }
-                }
-
-                weatherPhaseState.floatValue += dtSec
-            }
-        }
-    }
 
     val driveTarget = when {
         inDriveGear -> 1f
@@ -469,30 +408,81 @@ fun LauncherVirtualRoad(
 
     val roadPhaseState = remember { mutableFloatStateOf(0f) }
     val currentDriveBlend by rememberUpdatedState(driveBlend)
-    val lastRoadFrameNs = remember { LongArray(1) }
-
     val isRoadAnimating = currentSpeedKmh > 0.5f && currentDriveBlend > 0.02f
+    val currentWeatherActive by rememberUpdatedState(weatherActive)
+    val currentRoadAnimating by rememberUpdatedState(isRoadAnimating)
+    val isVirtualRoadTicking = weatherActive || isRoadAnimating
 
-    LaunchedEffect(isRoadAnimating, canAnimate) {
-        if (!isRoadAnimating || !canAnimate) {
-            lastRoadFrameNs[0] = 0L
-            return@LaunchedEffect
-        }
+    LaunchedEffect(isVirtualRoadTicking, canAnimate) {
+        if (!isVirtualRoadTicking || !canAnimate) return@LaunchedEffect
+        var lastTickFrameNs = 0L
         while (isActive) {
             withFrameNanos { frameNs ->
-                val prevNs = lastRoadFrameNs[0]
-                if (prevNs == 0L) {
-                    lastRoadFrameNs[0] = frameNs
+                if (lastTickFrameNs == 0L) {
+                    lastTickFrameNs = frameNs
                     return@withFrameNanos
                 }
-
-                val deltaNs = frameNs - prevNs
-                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.05f)
-                lastRoadFrameNs[0] = frameNs
+                val deltaNs = frameNs - lastTickFrameNs
+                if (deltaNs < VIRTUAL_ROAD_FRAME_INTERVAL_NS) {
+                    return@withFrameNanos
+                }
+                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.1f)
+                lastTickFrameNs = frameNs
 
                 val spd = currentSpeedKmh
-                val current = roadPhaseState.floatValue
-                roadPhaseState.floatValue = (current + spd * 1.8f * dtSec) % DASH_SPACING
+
+                if (currentWeatherActive) {
+                    val steer = currentSteerDeg
+
+                    if (currentEffectiveIsSnow) {
+                        val speedMultiplier = when {
+                            spd <= 0f -> 0.15f
+                            spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
+                            spd <= 150f -> 1.0f + ((spd - 100f) / 50f) * 0.5f
+                            else -> 1.5f
+                        }
+                        // Turning left (steer < 0) -> drift right (steerDrift > 0)
+                        val steerDrift = (-steer * 0.0006f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
+
+                        snowflakes.forEach { flake ->
+                            flake.y += flake.speed * speedMultiplier * dtSec
+                            flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
+                            if (flake.y > 0.5f) {
+                                flake.y = 0f
+                                flake.x = kotlin.random.Random.nextFloat()
+                            }
+                            if (flake.x < 0f) flake.x += 1f
+                            if (flake.x > 1f) flake.x -= 1f
+                        }
+                    }
+
+                    if (currentEffectiveIsRain) {
+                        val speedMultiplier = when {
+                            spd <= 0f -> 0.45f
+                            spd <= 100f -> 0.45f + (spd / 100f) * 0.95f
+                            else -> 1.4f + ((spd - 100f) / 100f) * 0.6f
+                        }
+                        val steerDrift = (-steer * 0.0010f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
+
+                        raindrops.forEach { drop ->
+                            drop.y += drop.speed * speedMultiplier * dtSec
+                            drop.x += steerDrift * dtSec
+                            if (drop.y > 0.55f) {
+                                drop.y = 0f
+                                drop.x = kotlin.random.Random.nextFloat()
+                            }
+                            if (drop.x < 0f) drop.x += 1f
+                            if (drop.x > 1f) drop.x -= 1f
+                        }
+                    }
+
+                    weatherPhaseState.floatValue += dtSec
+                }
+
+                if (currentRoadAnimating) {
+                    val current = roadPhaseState.floatValue
+                    roadPhaseState.floatValue = (current + spd * 1.8f * dtSec) % DASH_SPACING
+                }
             }
         }
     }

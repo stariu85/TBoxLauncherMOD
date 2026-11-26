@@ -14,6 +14,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -35,11 +36,15 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import vad.dashing.tbox.ShellExecutor
+import vad.dashing.tbox.mbcan.UniversalCanRepository
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.roundToInt
 
 /**
  * Live navigation & traffic light state:
@@ -87,6 +92,7 @@ data class MinimapFrame(
     val bitmap: Bitmap? = null,
     val hasRoute: Boolean = false,
     val lastUpdateMs: Long = 0L,
+    val frameSeq: Long = 0L,
 )
 
 object YandexNavRepository {
@@ -95,11 +101,131 @@ object YandexNavRepository {
     private const val TRAFFIC_LIGHT_STALE_TIMEOUT_MS = 5_000L
     private const val LANES_STALE_TIMEOUT_MS = 4_000L
 
+    internal const val MINIMAP_MOVING_DECODE_INTERVAL_MS = 67L // ~15 FPS while moving
+    internal const val MINIMAP_STATIONARY_DECODE_INTERVAL_MS = 333L // ~3 FPS when stationary (< 3 km/h)
+    internal const val MINIMAP_STATIONARY_SPEED_THRESHOLD_KMH = 3.0f
+    private const val MINIMAP_BITMAP_POOL_SIZE = 3
+
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @OptIn(ExperimentalCoroutinesApi::class)
     private val minimapDecodeDispatcher = Dispatchers.IO.limitedParallelism(1)
     private val pendingMinimapJpeg = AtomicReference<Triple<ByteArray, Boolean, Long>?>(null)
     private val minimapDecodeScheduled = AtomicBoolean(false)
+    private val minimapFrameSeq = AtomicLong(0L)
+    private val minimapPoolLock = Any()
+    private val minimapBitmapPool = arrayOfNulls<Bitmap>(MINIMAP_BITMAP_POOL_SIZE)
+    private var minimapBitmapPoolIndex = 0
+    @Volatile private var lastMinimapDecodeElapsedMs: Long = 0L
+
+    @VisibleForTesting
+    internal var elapsedRealtimeProvider: () -> Long = { SystemClock.elapsedRealtime() }
+
+    @VisibleForTesting
+    internal var vehicleSpeedProvider: () -> Float = { resolveCurrentVehicleSpeedKmh() }
+
+    internal fun resolveMinimapDecodeIntervalMs(speedKmh: Float): Long {
+        val safeSpeed = if (speedKmh.isFinite() && speedKmh > 0f) speedKmh else 0f
+        return if (safeSpeed < MINIMAP_STATIONARY_SPEED_THRESHOLD_KMH) {
+            MINIMAP_STATIONARY_DECODE_INTERVAL_MS
+        } else {
+            MINIMAP_MOVING_DECODE_INTERVAL_MS
+        }
+    }
+
+    internal fun scaleMinimapDimensionPx(rawPx: Int, resolutionPercent: Int): Int {
+        val clampedPercent = resolutionPercent.coerceIn(
+            NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT,
+            NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT,
+        )
+        val scaled = (rawPx * clampedPercent / 100f).roundToInt()
+        return (scaled / 8 * 8).coerceIn(96, 1920)
+    }
+
+    private fun resolveCurrentVehicleSpeedKmh(): Float {
+        if (LauncherDevVehicleState.simulateEnabled) {
+            return sanitizeLauncherVehicleSpeed(LauncherDevVehicleState.speedKmh)
+        }
+        val candidate = UniversalCanRepository.carSpeedState.value?.takeIf { it >= 0f }
+            ?: CanDataRepository.carSpeedAccurate.value?.takeIf { it >= 0f }
+            ?: CanDataRepository.carSpeed.value
+            ?: 0f
+        return sanitizeLauncherVehicleSpeed(candidate)
+    }
+
+    private fun clearMinimapDecodeState() {
+        pendingMinimapJpeg.set(null)
+        lastMinimapDecodeElapsedMs = 0L
+        synchronized(minimapPoolLock) {
+            for (i in minimapBitmapPool.indices) {
+                minimapBitmapPool[i] = null
+            }
+            minimapBitmapPoolIndex = 0
+        }
+    }
+
+    private fun decodeMinimapWithPool(bytes: ByteArray): Bitmap? {
+        val boundsOpts = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        val boundsOk = runCatching {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+        }.isSuccess
+        val outW = boundsOpts.outWidth
+        val outH = boundsOpts.outHeight
+        if (!boundsOk || outW <= 0 || outH <= 0) {
+            return runCatching {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }.getOrNull()
+        }
+
+        val slotIndex: Int
+        val candidate: Bitmap?
+        synchronized(minimapPoolLock) {
+            slotIndex = minimapBitmapPoolIndex
+            minimapBitmapPoolIndex = (minimapBitmapPoolIndex + 1) % MINIMAP_BITMAP_POOL_SIZE
+            candidate = minimapBitmapPool[slotIndex]
+        }
+
+        val currentDisplayed = _minimapFrame.value.bitmap
+        val canReuse = candidate != null &&
+            !candidate.isRecycled &&
+            candidate.isMutable &&
+            candidate.config == Bitmap.Config.ARGB_8888 &&
+            candidate.width == outW &&
+            candidate.height == outH &&
+            candidate !== currentDisplayed
+
+        val decodeOpts = BitmapFactory.Options().apply {
+            inMutable = true
+            inSampleSize = 1
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            if (canReuse) {
+                inBitmap = candidate
+            }
+        }
+
+        val decoded = try {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
+        } catch (_: IllegalArgumentException) {
+            val fallbackOpts = BitmapFactory.Options().apply {
+                inMutable = true
+                inSampleSize = 1
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            runCatching {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, fallbackOpts)
+            }.getOrNull()
+        } catch (_: Throwable) {
+            null
+        }
+
+        if (decoded != null) {
+            synchronized(minimapPoolLock) {
+                minimapBitmapPool[slotIndex] = decoded
+            }
+        }
+        return decoded
+    }
 
     private val jobLock = Any()
     @Volatile private var timerStaleJob: Job? = null
@@ -192,17 +318,27 @@ object YandexNavRepository {
         repositoryScope.launch(minimapDecodeDispatcher) {
             try {
                 while (true) {
+                    if (pendingMinimapJpeg.get() == null) break
+                    val minIntervalMs = resolveMinimapDecodeIntervalMs(vehicleSpeedProvider())
+                    val lastDecodeMs = lastMinimapDecodeElapsedMs
+                    if (lastDecodeMs > 0L) {
+                        val elapsedMs = elapsedRealtimeProvider() - lastDecodeMs
+                        if (elapsedMs in 0L until minIntervalMs) {
+                            delay(minIntervalMs - elapsedMs)
+                        }
+                    }
                     val item = pendingMinimapJpeg.getAndSet(null) ?: break
                     val (bytes, routeFlag, ts) = item
-                    val bmp = runCatching {
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    }.getOrNull()
+                    val bmp = decodeMinimapWithPool(bytes)
+                    lastMinimapDecodeElapsedMs = elapsedRealtimeProvider()
                     if (bmp != null) {
                         _minimapFrame.value = MinimapFrame(
                             bitmap = bmp,
                             hasRoute = routeFlag,
                             lastUpdateMs = ts,
+                            frameSeq = minimapFrameSeq.incrementAndGet(),
                         )
+                        _hasMinimapBitmap.value = true
                     }
                 }
             } finally {
@@ -219,6 +355,15 @@ object YandexNavRepository {
 
     private val _minimapFrame = MutableStateFlow(MinimapFrame())
     val minimapFrame: StateFlow<MinimapFrame> = _minimapFrame.asStateFlow()
+
+    private val _hasMinimapBitmap = MutableStateFlow(false)
+    val hasMinimapBitmap: StateFlow<Boolean> = _hasMinimapBitmap.asStateFlow()
+
+    private fun clearMinimapFrame() {
+        clearMinimapDecodeState()
+        _minimapFrame.value = MinimapFrame()
+        _hasMinimapBitmap.value = false
+    }
 
     private var registered = false
 
@@ -621,7 +766,7 @@ object YandexNavRepository {
     }
 
     fun disableMinimap(context: Context) {
-        _minimapFrame.value = MinimapFrame()
+        clearMinimapFrame()
         val minimapIntent = Intent("com.yandex.MINIMAP_DISABLE").apply {
             putExtra("minimap_hide_on_route_end", false)
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
@@ -697,7 +842,7 @@ object YandexNavRepository {
                 var wasOpen = false
                 YandexNavWindowTracker.isWindowOpen.collect { isOpen ->
                     if (!isOpen) {
-                        _minimapFrame.value = MinimapFrame()
+                        clearMinimapFrame()
                         if (wasOpen) {
                             cancelTimerStaleJob()
                             cancelTrafficLightStaleJob()
@@ -743,8 +888,7 @@ object YandexNavRepository {
             minimapWindowStateJob?.cancel()
             minimapWindowStateJob = null
         }
-        pendingMinimapJpeg.set(null)
-        _minimapFrame.value = MinimapFrame()
+        clearMinimapFrame()
         YandexNavWindowTracker.stop()
         if (!registered) return
         runCatching {
@@ -763,6 +907,9 @@ object YandexNavRepository {
         cancelTimerStaleJob()
         cancelTrafficLightStaleJob()
         cancelLanesStaleJob()
+        clearMinimapFrame()
+        elapsedRealtimeProvider = { SystemClock.elapsedRealtime() }
+        vehicleSpeedProvider = { resolveCurrentVehicleSpeedKmh() }
         _state.value = YandexNavState()
     }
 

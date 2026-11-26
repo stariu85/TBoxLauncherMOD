@@ -71,6 +71,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
@@ -420,6 +421,22 @@ fun LauncherLeftPanel(
     val navBgMinimapRevision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
     val navBgMinimapVisible = remember(context, navBgMinimapRevision) {
         LauncherAppConfigStore.navBgMinimapVisible(context)
+    }
+    val navBgMinimapHeightDp = remember(context, navBgMinimapRevision) {
+        LauncherAppConfigStore.navBgMinimapHeightDp(context)
+    }
+    val navBgMinimapTransparency = remember(context, navBgMinimapRevision) {
+        LauncherAppConfigStore.navBgMinimapTransparency(context)
+    }
+    val navBgMinimapResolutionPercent = remember(context, navBgMinimapRevision) {
+        LauncherAppConfigStore.navBgMinimapResolutionPercent(context)
+    }
+    val navBgMinimapFilterQuality = remember(context, navBgMinimapRevision) {
+        if (LauncherAppConfigStore.navBgMinimapFilterQuality(context) == NAV_BG_MINIMAP_FILTER_QUALITY_LOW) {
+            FilterQuality.Low
+        } else {
+            FilterQuality.High
+        }
     }
     val navBgMinimap3dEnabled = remember(context, navBgMinimapRevision) {
         LauncherAppConfigStore.navBgMinimap3dEnabled(context)
@@ -1013,10 +1030,12 @@ fun LauncherLeftPanel(
             }
             // Freely Movable Background Navigation Overlay 9: Full-width Minimap Block
             if (!racing && showDriveView && navBgMinimapVisible && !hideYandexWidgets) {
+                val currentEffectiveSpeed by rememberUpdatedState(effectiveSpeed)
+                val minimapSpeedProvider = remember { { currentEffectiveSpeed } }
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val containerWidthPx = with(density) { maxWidth.toPx() }
                     val containerHeightPx = with(density) { maxHeight.toPx() }
-                    val mapHeightDp = LauncherAppConfigStore.navBgMinimapHeightDp(context).dp
+                    val mapHeightDp = navBgMinimapHeightDp.dp
                     val mapHeightPx = with(density) { mapHeightDp.toPx() }
                     val mapCenterY = containerHeightPx * navBgMinimapYRatio
                     val mapTopPx = (mapCenterY - mapHeightPx / 2f).coerceIn(0f, (containerHeightPx - mapHeightPx).coerceAtLeast(0f))
@@ -1024,10 +1043,12 @@ fun LauncherLeftPanel(
                     LauncherNavBgMinimapOverlay(
                         containerWidthPx = containerWidthPx.toInt(),
                         heightPx = mapHeightPx.toInt(),
-                        transparencyPercent = LauncherAppConfigStore.navBgMinimapTransparency(context),
+                        transparencyPercent = navBgMinimapTransparency,
+                        resolutionPercent = navBgMinimapResolutionPercent,
+                        filterQuality = navBgMinimapFilterQuality,
                         is3dEnabled = navBgMinimap3dEnabled,
                         isAutoZoomEnabled = navBgMinimapAutoZoomEnabled,
-                        speedKmh = effectiveSpeed,
+                        speedProvider = minimapSpeedProvider,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(mapHeightDp)
@@ -1396,7 +1417,7 @@ fun LauncherLeftPanel(
                         }
 
                         if (navBgMinimapVisible && !hideYandexWidgets) {
-                            val mapHeightDp = LauncherAppConfigStore.navBgMinimapHeightDp(context).dp
+                            val mapHeightDp = navBgMinimapHeightDp.dp
                             val mapHeightPx = with(density) { mapHeightDp.toPx() }
                             val mapCenterY = containerHeightPx * navBgMinimapYRatio
                             val mapTopPx = (mapCenterY - mapHeightPx / 2f).coerceIn(0f, (containerHeightPx - mapHeightPx).coerceAtLeast(0f))

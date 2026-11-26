@@ -27,21 +27,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -891,59 +895,76 @@ internal fun LauncherNavBgMinimapOverlay(
     containerWidthPx: Int = 0,
     heightPx: Int = 0,
     transparencyPercent: Int = NAV_BG_MINIMAP_TRANSPARENCY_DEFAULT,
+    resolutionPercent: Int = NAV_BG_MINIMAP_RESOLUTION_DEFAULT_PERCENT,
+    filterQuality: FilterQuality = FilterQuality.High,
     is3dEnabled: Boolean = false,
     isAutoZoomEnabled: Boolean = false,
-    speedKmh: Float = 0f,
+    speedProvider: () -> Float = { 0f },
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val minimapFrame by YandexNavRepository.minimapFrame.collectAsStateWithLifecycle()
     val isYandexOpen by YandexNavWindowTracker.isWindowOpen.collectAsStateWithLifecycle()
-    val bmp = minimapFrame.bitmap
     if (!isYandexOpen) return
 
+    val currentSpeedProvider by rememberUpdatedState(speedProvider)
     var appliedZoom by remember(isAutoZoomEnabled) {
-        mutableStateOf(YandexNavRepository.resolveMinimapZoomForSpeed(speedKmh, isAutoZoomEnabled))
+        mutableFloatStateOf(
+            YandexNavRepository.resolveMinimapZoomForSpeed(
+                currentSpeedProvider(),
+                isAutoZoomEnabled,
+            ),
+        )
     }
-    LaunchedEffect(speedKmh, isAutoZoomEnabled) {
-        val desired = YandexNavRepository.resolveMinimapZoomForSpeed(speedKmh, isAutoZoomEnabled)
+    LaunchedEffect(isAutoZoomEnabled) {
         if (!isAutoZoomEnabled) {
-            appliedZoom = desired
+            appliedZoom = YandexNavRepository.resolveMinimapZoomForSpeed(0f, false)
             return@LaunchedEffect
         }
-        if (desired == appliedZoom) return@LaunchedEffect
-        // Apply 3 km/h hysteresis around thresholds (20/50/80/110 km/h) + 1.5s debounce
-        val withinHysteresis = when {
-            appliedZoom == 17.0f && desired == 16.5f -> speedKmh < 23f
-            appliedZoom == 16.5f && desired == 17.0f -> speedKmh > 17f
-            appliedZoom == 16.5f && desired == 16.0f -> speedKmh < 53f
-            appliedZoom == 16.0f && desired == 16.5f -> speedKmh > 47f
-            appliedZoom == 16.0f && desired == 15.2f -> speedKmh < 83f
-            appliedZoom == 15.2f && desired == 16.0f -> speedKmh > 77f
-            appliedZoom == 15.2f && desired == 14.5f -> speedKmh < 113f
-            appliedZoom == 14.5f && desired == 15.2f -> speedKmh > 107f
-            else -> false
+        snapshotFlow {
+            val spd = currentSpeedProvider()
+            val desired = YandexNavRepository.resolveMinimapZoomForSpeed(spd, true)
+            val current = appliedZoom
+            if (desired == current) {
+                current
+            } else {
+                // Apply 3 km/h hysteresis around thresholds (20/50/80/110 km/h)
+                val withinHysteresis = when {
+                    current == 17.0f && desired == 16.5f -> spd < 23f
+                    current == 16.5f && desired == 17.0f -> spd > 17f
+                    current == 16.5f && desired == 16.0f -> spd < 53f
+                    current == 16.0f && desired == 16.5f -> spd > 47f
+                    current == 16.0f && desired == 15.2f -> spd < 83f
+                    current == 15.2f && desired == 16.0f -> spd > 77f
+                    current == 15.2f && desired == 14.5f -> spd < 113f
+                    current == 14.5f && desired == 15.2f -> spd > 107f
+                    else -> false
+                }
+                if (withinHysteresis) current else desired
+            }
         }
-        if (withinHysteresis) return@LaunchedEffect
-        delay(1_500L)
-        appliedZoom = desired
+            .distinctUntilChanged()
+            .collectLatest { targetZoom ->
+                if (targetZoom != appliedZoom) {
+                    delay(1_500L)
+                    appliedZoom = targetZoom
+                }
+            }
     }
     val viewMode = if (is3dEnabled) 1 else 0
-    val lightBuffer = remember { MinimapLightThemeBuffer() }
 
     // Keep offscreen minimap active in Yandex Navi with 5s heartbeat while widget is active,
-    // and immediately push updated zoom / 3D view mode when changed.
-    LaunchedEffect(containerWidthPx, heightPx, appliedZoom, viewMode) {
+    // and immediately push updated resolution / zoom / 3D view mode when changed.
+    LaunchedEffect(containerWidthPx, heightPx, resolutionPercent, appliedZoom, viewMode) {
         val density = context.resources.displayMetrics.density
         val rawWidth = if (containerWidthPx > 0) containerWidthPx else (180 * density).toInt()
         val rawHeight = if (heightPx > 0) heightPx else (NAV_BG_MINIMAP_HEIGHT_DEFAULT_DP * density).toInt()
-        val widthPx = (rawWidth / 8 * 8).coerceIn(96, 1920)
-        val heightPx = (rawHeight / 8 * 8).coerceIn(96, 1920)
+        val widthPx = YandexNavRepository.scaleMinimapDimensionPx(rawWidth, resolutionPercent)
+        val heightPxScaled = YandexNavRepository.scaleMinimapDimensionPx(rawHeight, resolutionPercent)
         while (isActive) {
             YandexNavRepository.enableMinimap(
                 context = context,
                 widthPx = widthPx,
-                heightPx = heightPx,
+                heightPx = heightPxScaled,
                 zoom = appliedZoom,
                 viewMode = viewMode,
             )
@@ -953,29 +974,51 @@ internal fun LauncherNavBgMinimapOverlay(
 
     DisposableEffect(Unit) {
         onDispose {
-            lightBuffer.release()
             YandexNavRepository.disableMinimap(context)
         }
     }
 
-    if (bmp == null) return
+    LauncherNavBgMinimapFrameContent(
+        transparencyPercent = transparencyPercent,
+        is3dEnabled = is3dEnabled,
+        filterQuality = filterQuality,
+        modifier = modifier,
+    )
+}
 
+@Composable
+private fun LauncherNavBgMinimapFrameContent(
+    transparencyPercent: Int,
+    is3dEnabled: Boolean,
+    filterQuality: FilterQuality,
+    modifier: Modifier = Modifier,
+) {
+    val minimapFrame by YandexNavRepository.minimapFrame.collectAsStateWithLifecycle()
+    val lightBuffer = remember { MinimapLightThemeBuffer() }
+    DisposableEffect(Unit) {
+        onDispose {
+            lightBuffer.release()
+        }
+    }
+
+    val bmp = minimapFrame.bitmap ?: return
+    val frameSeq = minimapFrame.frameSeq
     val isDarkTheme = LauncherThemeState.darkTheme
-    var lightFrame by remember { mutableStateOf<Pair<android.graphics.Bitmap, ImageBitmap>?>(null) }
+    var lightFrame by remember { mutableStateOf<Pair<Long, ImageBitmap>?>(null) }
 
-    LaunchedEffect(bmp, isDarkTheme) {
-        if (!isDarkTheme && lightFrame?.first !== bmp) {
+    LaunchedEffect(bmp, frameSeq, isDarkTheme) {
+        if (!isDarkTheme && lightFrame?.first != frameSeq) {
             val converted = withContext(Dispatchers.Default) {
                 lightBuffer.convert(bmp)
             }
             if (converted != null) {
-                lightFrame = bmp to converted
+                lightFrame = frameSeq to converted
             }
         }
     }
 
     val displayBitmap: ImageBitmap = if (isDarkTheme) {
-        remember(bmp) { bmp.asImageBitmap() }
+        remember(bmp, frameSeq) { bmp.asImageBitmap() }
     } else {
         lightFrame?.second ?: return
     }
@@ -992,27 +1035,31 @@ internal fun LauncherNavBgMinimapOverlay(
                 }
                 compositingStrategy = CompositingStrategy.Offscreen
             }
-            .drawWithContent {
-                drawContent()
-                // Edge gradients fading smoothly into full transparency on all 4 sides
-                drawRect(
-                    brush = Brush.horizontalGradient(
-                        0.00f to Color.Transparent,
-                        0.08f to Color.Black,
-                        0.92f to Color.Black,
-                        1.00f to Color.Transparent,
-                    ),
-                    blendMode = BlendMode.DstIn,
+            .drawWithCache {
+                val horizontalFade = Brush.horizontalGradient(
+                    0.00f to Color.Transparent,
+                    0.08f to Color.Black,
+                    0.92f to Color.Black,
+                    1.00f to Color.Transparent,
                 )
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        0.00f to Color.Transparent,
-                        0.14f to Color.Black,
-                        0.86f to Color.Black,
-                        1.00f to Color.Transparent,
-                    ),
-                    blendMode = BlendMode.DstIn,
+                val verticalFade = Brush.verticalGradient(
+                    0.00f to Color.Transparent,
+                    0.14f to Color.Black,
+                    0.86f to Color.Black,
+                    1.00f to Color.Transparent,
                 )
+                onDrawWithContent {
+                    drawContent()
+                    // Edge gradients fading smoothly into full transparency on all 4 sides
+                    drawRect(
+                        brush = horizontalFade,
+                        blendMode = BlendMode.DstIn,
+                    )
+                    drawRect(
+                        brush = verticalFade,
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -1020,7 +1067,7 @@ internal fun LauncherNavBgMinimapOverlay(
             bitmap = displayBitmap,
             contentDescription = "Minimap",
             contentScale = ContentScale.Crop,
-            filterQuality = FilterQuality.High,
+            filterQuality = filterQuality,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -1033,9 +1080,9 @@ internal fun LauncherNavBgMinimapInteractionOverlay(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val minimapFrame by YandexNavRepository.minimapFrame.collectAsStateWithLifecycle()
+    val hasMinimapBitmap by YandexNavRepository.hasMinimapBitmap.collectAsStateWithLifecycle()
     val isYandexOpen by YandexNavWindowTracker.isWindowOpen.collectAsStateWithLifecycle()
-    if (!shouldShowNavMinimap(isYandexOpen, minimapFrame.bitmap != null)) return
+    if (!shouldShowNavMinimap(isYandexOpen, hasMinimapBitmap)) return
 
     val currentOnDrag by rememberUpdatedState(onDrag)
     val currentOnDragEnd by rememberUpdatedState(onDragEnd)

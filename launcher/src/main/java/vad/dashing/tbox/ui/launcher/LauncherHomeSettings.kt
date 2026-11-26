@@ -2905,6 +2905,8 @@ fun YandexNavSettingsContent() {
         NavBgMinimapWidgetToggle(isStubInstalled)
         NavBgMinimapTransparencySlider()
         NavBgMinimapHeightSlider()
+        NavBgMinimapResolutionSlider()
+        NavBgMinimapFilterQualitySelector()
         NavBgMinimap3dToggle()
         NavBgMinimapAutoZoomToggle()
     }
@@ -3072,8 +3074,15 @@ private fun NavBgMinimapWidgetToggle(isStubInstalled: Boolean) {
                     LauncherAppConfigStore.setNavBgMinimapVisible(context, next)
                     if (next) {
                         val density = context.resources.displayMetrics.density
-                        val widthPx = (180 * density).toInt()
-                        val heightPx = (LauncherAppConfigStore.navBgMinimapHeightDp(context) * density).toInt()
+                        val resolutionPercent = LauncherAppConfigStore.navBgMinimapResolutionPercent(context)
+                        val widthPx = YandexNavRepository.scaleMinimapDimensionPx(
+                            (180 * density).toInt(),
+                            resolutionPercent,
+                        )
+                        val heightPx = YandexNavRepository.scaleMinimapDimensionPx(
+                            (LauncherAppConfigStore.navBgMinimapHeightDp(context) * density).toInt(),
+                            resolutionPercent,
+                        )
                         val is3d = LauncherAppConfigStore.navBgMinimap3dEnabled(context)
                         val autoZoom = LauncherAppConfigStore.navBgMinimapAutoZoomEnabled(context)
                         val speed = vad.dashing.tbox.CanDataRepository.carSpeed.value ?: 0f
@@ -3211,6 +3220,116 @@ private fun NavBgMinimapHeightSlider() {
                 inactiveTrackColor = LauncherColors.TextMuted,
             ),
         )
+    }
+}
+
+@Composable
+private fun NavBgMinimapResolutionSlider() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    var resolutionPercent by remember(context, revision) {
+        mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapResolutionPercent(context).toFloat())
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_nav_bg_minimap_resolution_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${resolutionPercent.roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_resolution_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = resolutionPercent,
+            onValueChange = { next ->
+                val snapped = (
+                    NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT +
+                        ((next - NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT) /
+                            NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT).roundToInt() *
+                        NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT
+                    ).coerceIn(
+                    NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT,
+                    NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT,
+                )
+                resolutionPercent = snapped.toFloat()
+            },
+            onValueChangeFinished = {
+                LauncherAppConfigStore.setNavBgMinimapResolutionPercent(
+                    context,
+                    resolutionPercent.roundToInt(),
+                )
+            },
+            valueRange = NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT.toFloat()..
+                NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT.toFloat(),
+            steps = (NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT - NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT) /
+                NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT - 1,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimapFilterQualitySelector() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    val quality = remember(context, revision) {
+        LauncherAppConfigStore.navBgMinimapFilterQuality(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_filter_quality_title),
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_filter_quality_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_nav_bg_minimap_filter_quality_low),
+                selected = quality == NAV_BG_MINIMAP_FILTER_QUALITY_LOW,
+                onClick = {
+                    LauncherAppConfigStore.setNavBgMinimapFilterQuality(
+                        context,
+                        NAV_BG_MINIMAP_FILTER_QUALITY_LOW,
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            )
+            LauncherSettingsOptionButton(
+                text = stringResource(R.string.launcher_nav_bg_minimap_filter_quality_high),
+                selected = quality == NAV_BG_MINIMAP_FILTER_QUALITY_HIGH,
+                onClick = {
+                    LauncherAppConfigStore.setNavBgMinimapFilterQuality(
+                        context,
+                        NAV_BG_MINIMAP_FILTER_QUALITY_HIGH,
+                    )
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 

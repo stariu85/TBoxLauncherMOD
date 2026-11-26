@@ -590,6 +590,12 @@
     <string name="launcher_nav_bg_minimap_transparency_desc">0% — полностью непрозрачная, 100% — полностью прозрачная</string>
     <string name="launcher_nav_bg_minimap_height_title">Высота миникарты</string>
     <string name="launcher_nav_bg_minimap_height_desc">От 150 до 600 dp с шагом 5 dp</string>
+    <string name="launcher_nav_bg_minimap_resolution_title">Разрешение миникарты</string>
+    <string name="launcher_nav_bg_minimap_resolution_desc">От 50% до 100% — снижение разрешения уменьшает нагрузку на CPU и GPU</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_title">Качество фильтрации миникарты</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_desc">Low снижает нагрузку на GPU, High делает сглаживание чётче</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_low">Низкое (Low)</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_high">Высокое (High)</string>
     <string name="launcher_nav_bg_minimap_3d_title">3D-вид миникарты</string>
     <string name="launcher_nav_bg_minimap_3d_desc">Перспективный 3D-наклон миникарты по направлению движения вместо плоского 2D-вида</string>
     <string name="launcher_nav_bg_minimap_auto_zoom_title">Автозум миникарты от скорости</string>

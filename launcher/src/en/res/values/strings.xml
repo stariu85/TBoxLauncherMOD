@@ -346,6 +346,12 @@
     <string name="launcher_nav_bg_minimap_transparency_desc">0% is fully opaque, 100% is fully transparent</string>
     <string name="launcher_nav_bg_minimap_height_title">Minimap height</string>
     <string name="launcher_nav_bg_minimap_height_desc">From 150 to 600 dp in 5 dp increments</string>
+    <string name="launcher_nav_bg_minimap_resolution_title">Minimap resolution</string>
+    <string name="launcher_nav_bg_minimap_resolution_desc">From 50% to 100% — lower resolution reduces CPU and GPU load</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_title">Minimap filter quality</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_desc">Low reduces GPU load, High provides sharper filtering</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_low">Low</string>
+    <string name="launcher_nav_bg_minimap_filter_quality_high">High</string>
     <string name="launcher_nav_bg_minimap_3d_title">Minimap 3D view</string>
     <string name="launcher_nav_bg_minimap_3d_desc">Perspective 3D tilt along the driving direction instead of flat 2D view</string>
     <string name="launcher_nav_bg_minimap_auto_zoom_title">Minimap auto-zoom by speed</string>

@@ -672,7 +672,8 @@ object LauncherBackupManager {
                 "bottom_bar_height_dp", "floating_home_size_dp", "sidebar_width_dp", "camera_switch_mode",
                 "avm_camera_action", "pdc_visual_mode", "edge_gestures_width_dp", "adas_distance_text_size",
                 "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode", "dock_columns",
-                "nav_bg_minimap_transparency", "nav_bg_minimap_height_dp" -> PrefType.INT
+                "nav_bg_minimap_transparency", "nav_bg_minimap_height_dp",
+                "nav_bg_minimap_resolution_percent", "nav_bg_minimap_filter_quality" -> PrefType.INT
 
                 "cruise_increase_interval", "cruise_decrease_interval" -> PrefType.LONG
 

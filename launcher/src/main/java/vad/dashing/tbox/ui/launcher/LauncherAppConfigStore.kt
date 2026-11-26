@@ -310,6 +310,13 @@ internal const val NAV_BG_MINIMAP_HEIGHT_DEFAULT_DP = 180
 internal const val NAV_BG_MINIMAP_HEIGHT_MIN_DP = 150
 internal const val NAV_BG_MINIMAP_HEIGHT_MAX_DP = 600
 internal const val NAV_BG_MINIMAP_HEIGHT_STEP_DP = 5
+internal const val NAV_BG_MINIMAP_RESOLUTION_DEFAULT_PERCENT = 100
+internal const val NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT = 50
+internal const val NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT = 100
+internal const val NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT = 5
+internal const val NAV_BG_MINIMAP_FILTER_QUALITY_LOW = 0
+internal const val NAV_BG_MINIMAP_FILTER_QUALITY_HIGH = 1
+internal const val NAV_BG_MINIMAP_FILTER_QUALITY_DEFAULT = NAV_BG_MINIMAP_FILTER_QUALITY_HIGH
 internal const val NAV_BG_LANES_OR_TURN_SCALE_DEFAULT_PERCENT = 0
 internal const val NAV_BG_LANES_OR_TURN_SCALE_MIN_PERCENT = -50
 internal const val NAV_BG_LANES_OR_TURN_SCALE_MAX_PERCENT = 100
@@ -425,6 +432,8 @@ private const val KEY_NAV_BG_MINIMAP_TRANSPARENCY = "nav_bg_minimap_transparency
 private const val KEY_NAV_BG_MINIMAP_HEIGHT_DP = "nav_bg_minimap_height_dp"
 private const val KEY_NAV_BG_MINIMAP_3D_ENABLED = "nav_bg_minimap_3d_enabled"
 private const val KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED = "nav_bg_minimap_auto_zoom_enabled"
+private const val KEY_NAV_BG_MINIMAP_RESOLUTION_PERCENT = "nav_bg_minimap_resolution_percent"
+private const val KEY_NAV_BG_MINIMAP_FILTER_QUALITY = "nav_bg_minimap_filter_quality"
 private const val KEY_NAV_BG_NEXT_TURN_VISIBLE = "nav_bg_next_turn_visible"
 private const val KEY_NAV_BG_NEXT_TURN_X_RATIO = "nav_bg_next_turn_x_ratio"
 private const val KEY_NAV_BG_NEXT_TURN_Y_RATIO = "nav_bg_next_turn_y_ratio"
@@ -1995,6 +2004,49 @@ internal object LauncherAppConfigStore {
 
     fun setNavBgMinimapAutoZoomEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED, enabled).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgMinimapResolutionPercent(context: Context): Int {
+        val raw = prefs(context)
+            .getInt(KEY_NAV_BG_MINIMAP_RESOLUTION_PERCENT, NAV_BG_MINIMAP_RESOLUTION_DEFAULT_PERCENT)
+            .coerceIn(NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT, NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT)
+        return NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT +
+            ((raw - NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT + NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT / 2) /
+                NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT) * NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT
+    }
+
+    fun setNavBgMinimapResolutionPercent(context: Context, percent: Int) {
+        val clamped = percent.coerceIn(
+            NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT,
+            NAV_BG_MINIMAP_RESOLUTION_MAX_PERCENT,
+        )
+        val snapped = NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT +
+            ((clamped - NAV_BG_MINIMAP_RESOLUTION_MIN_PERCENT + NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT / 2) /
+                NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT) * NAV_BG_MINIMAP_RESOLUTION_STEP_PERCENT
+        prefs(context).edit().putInt(KEY_NAV_BG_MINIMAP_RESOLUTION_PERCENT, snapped).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgMinimapFilterQuality(context: Context): Int {
+        val raw = prefs(context).getInt(
+            KEY_NAV_BG_MINIMAP_FILTER_QUALITY,
+            NAV_BG_MINIMAP_FILTER_QUALITY_DEFAULT,
+        )
+        return if (raw == NAV_BG_MINIMAP_FILTER_QUALITY_LOW) {
+            NAV_BG_MINIMAP_FILTER_QUALITY_LOW
+        } else {
+            NAV_BG_MINIMAP_FILTER_QUALITY_HIGH
+        }
+    }
+
+    fun setNavBgMinimapFilterQuality(context: Context, quality: Int) {
+        val normalized = if (quality == NAV_BG_MINIMAP_FILTER_QUALITY_LOW) {
+            NAV_BG_MINIMAP_FILTER_QUALITY_LOW
+        } else {
+            NAV_BG_MINIMAP_FILTER_QUALITY_HIGH
+        }
+        prefs(context).edit().putInt(KEY_NAV_BG_MINIMAP_FILTER_QUALITY, normalized).apply()
         navBgMinimapRevision.value++
     }
 
