@@ -13,6 +13,16 @@ class MediaControlNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "MediaControlNotificationListenerService CONNECTED")
+        runCatching {
+            activeNotifications?.forEach { sbn ->
+                if (sbn != null) {
+                    runCatching { YandexNavRepository.onNotificationPosted(this, sbn) }
+                }
+            }
+        }
+        runCatching {
+            SharedMediaControlService.refreshActiveSessions(this)
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

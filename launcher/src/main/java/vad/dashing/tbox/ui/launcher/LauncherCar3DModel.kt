@@ -18,9 +18,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -204,6 +203,38 @@ private fun multiplyQuaternions(q1: Quaternion, q2: Quaternion): Quaternion {
         z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
         w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z,
     )
+}
+
+/**
+ * Plain non-Compose holder for 60 FPS [SceneView] `onFrame` loop state.
+ * Mutating fields here does NOT invalidate Compose snapshot state.
+ */
+private class FrameLoopState(
+    initialTransition: Float,
+    initialSteeringDeg: Float,
+    initialRigState: LauncherCarRigState,
+) {
+    var wasCameraSwitching: Boolean = false
+    var isRollingPtoD: Boolean = false
+    @Volatile
+    var lastFrameNs: Long = 0L
+    @Volatile
+    var lastResumedElapsedMs: Long = SystemClock.elapsedRealtime()
+    var lastAnchorPublishNs: Long = 0L
+    var lastXCheckNs: Long = 0L
+    var dclLastLogNs: Long = 0L
+    var dclLastPosX: Float = 0f
+    var dclLastCamX: Float = 0f
+    var lastDynamicNs: Long = 0L
+    var firstRenderTimeMs: Long = 0L
+    var currentDriveBlend: Float = 0f
+    var lastTargetDriveBlend: Float = 0f
+    var lastFrameTransition: Float = initialTransition
+    var wasHoldingStartupTopView: Boolean = true
+    var preparedFrames: Int = 0
+    var renderedScale: Float = BASE_MODEL_SCALE
+    var lastSteeringDeg: Float = initialSteeringDeg
+    var lastRigState: LauncherCarRigState = initialRigState
 }
 
 /** Offline Filament 3D car (Dashing 720) with pivot rig, paint colors and drive camera. */
@@ -452,10 +483,18 @@ private fun LauncherCarFilamentContent(
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val cameraNode = rememberCameraNode(engine)
-    val modelInstance = remember(modelLoader) {
+    val modelBuffer by produceState<java.nio.ByteBuffer?>(
+        initialValue = LauncherCarModelCache.getCachedBufferOrNull(),
+        context,
+    ) {
+        if (value == null) {
+            value = runCatching { LauncherCarModelCache.awaitBuffer(context) }.getOrNull()
+        }
+    }
+    val modelInstance = remember(modelLoader, modelBuffer) {
+        val buf = modelBuffer ?: return@remember null
         runCatching {
-            val buffer = LauncherCarModelCache.getBuffer(context)
-            modelLoader.createModelInstance(buffer)
+            modelLoader.createModelInstance(buf.duplicate())
         }.getOrNull() ?: modelLoader.createModelInstance(LAUNCHER_CAR_MODEL_ASSET)
     }
     val currentTransition = settingsProgress.coerceIn(0f, 1f)
@@ -463,6 +502,10 @@ private fun LauncherCarFilamentContent(
     val rigStateRef = rememberUpdatedState(
         rigState.copy(speedKmh = speedKmh, steeringDeg = steeringDeg),
     )
+    val steeringDegRef = rememberUpdatedState(steeringDeg)
+    val customModelScaleRef = rememberUpdatedState(customModelScale)
+    val customModelDriveScaleRef = rememberUpdatedState(customModelDriveScale)
+    val currentTransitionRef = rememberUpdatedState(currentTransition)
     val settingsUserYawRef = rememberUpdatedState(settingsUserYawDeg)
     val settingsUserScaleRef = rememberUpdatedState(settingsUserScale)
     val settingsOrbitRef = rememberUpdatedState(settingsOrbit)
@@ -484,15 +527,15 @@ private fun LauncherCarFilamentContent(
     }
     val backflipAnimationEnabledRef = rememberUpdatedState(backflipAnimationEnabled)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
-    var wasCameraSwitching by remember(modelInstance) { mutableStateOf(false) }
-    var isRollingPtoD by remember(modelInstance) { mutableStateOf(false) }
-    var lastFrameNs by remember { mutableLongStateOf(0L) }
-    var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
-    var lastXCheckNs by remember(modelInstance) { mutableLongStateOf(0L) }
-    var dclLastLogNs by remember(modelInstance) { mutableLongStateOf(0L) }
-    var dclLastPosX by remember(modelInstance) { mutableFloatStateOf(0f) }
-    var dclLastCamX by remember(modelInstance) { mutableFloatStateOf(0f) }
-    var lastDynamicNs by remember(modelInstance) { mutableLongStateOf(0L) }
+    val frameState = remember(modelInstance) {
+        FrameLoopState(
+            initialTransition = settingsProgress.coerceIn(0f, 1f),
+            initialSteeringDeg = steeringDeg,
+            initialRigState = rigState,
+        )
+    }
+    var isDriveLayout by remember(modelInstance) { mutableStateOf(false) }
+    var isCameraSwitchingState by remember(modelInstance) { mutableStateOf(false) }
     val inDriveGearRef = rememberUpdatedState(inDriveGear || steerPreview)
     val topShadeOpen by LauncherCar3DModelTrigger.topShadeOpen.collectAsStateWithLifecycle()
     val topShadeClosedEvent by LauncherCar3DModelTrigger.topShadeClosedEvent.collectAsStateWithLifecycle()
@@ -517,32 +560,25 @@ private fun LauncherCarFilamentContent(
     val cameraAnimEnabledRef = rememberUpdatedState(cameraAnimEnabled)
     val startupTopViewDone by LauncherCar3DModelTrigger.startupTopViewDone.collectAsStateWithLifecycle()
     val isStartupTopViewActive = cameraAnimEnabled && !startupTopViewDone
-    var firstRenderTimeMs by remember(modelInstance) { mutableLongStateOf(0L) }
-    var currentDriveBlend by remember(modelInstance) {
-        mutableFloatStateOf(0f)
-    }
-    var lastTargetDriveBlend by remember(modelInstance) {
-        mutableFloatStateOf(0f)
-    }
-    var lastFrameTransition by remember(modelInstance) {
-        mutableFloatStateOf(settingsProgress.coerceIn(0f, 1f))
-    }
-    var wasHoldingStartupTopView by remember(modelInstance) {
-        mutableStateOf(true)
-    }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val customSceneLifecycleOwner = remember(modelInstance, lifecycleOwner) {
         AdasSceneLifecycleOwner(lifecycleOwner.lifecycle)
     }
-    DisposableEffect(customSceneLifecycleOwner) {
+    DisposableEffect(customSceneLifecycleOwner, frameState) {
+        val sceneResumeObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                frameState.lastFrameNs = 0L
+                frameState.lastResumedElapsedMs = SystemClock.elapsedRealtime()
+            }
+        }
+        customSceneLifecycleOwner.lifecycle.addObserver(sceneResumeObserver)
         onDispose {
+            customSceneLifecycleOwner.lifecycle.removeObserver(sceneResumeObserver)
             customSceneLifecycleOwner.destroy()
         }
     }
 
-    var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
-    var renderedScale by remember(modelInstance) { mutableFloatStateOf(BASE_MODEL_SCALE) }
     var modelReady by remember(modelInstance) { mutableStateOf(false) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
@@ -562,9 +598,6 @@ private fun LauncherCarFilamentContent(
             }
         }
     }
-
-    var lastSteeringDeg by remember(modelInstance) { mutableFloatStateOf(steeringDeg) }
-    var lastRigState by remember(modelInstance) { mutableStateOf(rigState) }
 
     val modelNodeRef = remember(modelInstance) {
         AtomicReference<ModelNode?>(null)
@@ -601,14 +634,15 @@ private fun LauncherCarFilamentContent(
     LaunchedEffect(transition) {
         lastComposeTransition = transition
     }
-    val cameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f || isTransitionChanging
+    val cameraSwitching = isCameraSwitchingState ||
+        abs(frameState.currentDriveBlend - targetDriveBlend) > 0.001f ||
+        isTransitionChanging
 
     val startupUptimeMs = remember { SystemClock.uptimeMillis() }
     var initialStartupDone by remember { mutableStateOf(false) }
 
     // Trigger 3: User orbit interaction
-    val isOrbitRecent = (SystemClock.uptimeMillis() - settingsOrbitEvent) < 2000L
-    val orbitInteracting = (settingsOrbit?.interacting == true) || isOrbitRecent
+    val orbitInteracting = settingsOrbit?.interacting == true
 
     // Trigger 4: Initializing / loading
     val isInitializing = !modelReady
@@ -623,6 +657,7 @@ private fun LauncherCarFilamentContent(
 
     LaunchedEffect(
         isTriggerActive,
+        targetDriveBlend,
         isAvmActive,
         carHidden,
         topShadeOpen,
@@ -640,9 +675,9 @@ private fun LauncherCarFilamentContent(
         windowReturnedEvent,
     ) {
         val nowMs = SystemClock.uptimeMillis()
-        val isPaintChangeRecent = (nowMs - paintChangedEvent) < 2000L
-        val isOrbitRecentNow = (nowMs - settingsOrbitEvent) < 2000L
-        val isParkEngageRecent = (nowMs - parkEngagedEvent) < 2000L
+        val isPaintChangeRecent = paintChangedEvent > 0L && (nowMs - paintChangedEvent) < 2_000L
+        val isOrbitRecentNow = settingsOrbitEvent > 0L && (nowMs - settingsOrbitEvent) < 2_000L
+        val isParkEngageRecent = parkEngagedEvent > 0L && (nowMs - parkEngagedEvent) < 2_000L
 
         val shouldPause = topShadeOpen ||
             ((isAvmActive || carHidden) && !isPaintChangeRecent && !isParkEngageRecent)
@@ -653,23 +688,28 @@ private fun LauncherCarFilamentContent(
             // Resume scene immediately when exiting camera/settings, when triggers fire,
             // or when Home/Back/PreviousApp/QuickSettingsClosed/TopShadeClosed/PaintChanged/Orbit/Park/WindowReturned is triggered
             customSceneLifecycleOwner.resumeScene()
-            if (isParkEngageRecent && (isAvmActive || carHidden)) {
-                // Keep rendering active for 2 seconds when shifted to P (even while cameras/overlays are still active), then pause
-                val elapsed = SystemClock.uptimeMillis() - parkEngagedEvent
-                val remaining = (2_000L - elapsed).coerceAtLeast(0L)
-                delay(remaining)
+            if ((isParkEngageRecent || isPaintChangeRecent) && (isAvmActive || carHidden)) {
+                // Keep rendering active for the remaining 2s window when shifted to P or paint changed, then pause
+                val parkRem = if (isParkEngageRecent) (2_000L - (nowMs - parkEngagedEvent)).coerceAtLeast(0L) else 0L
+                val paintRem = if (isPaintChangeRecent) (2_000L - (nowMs - paintChangedEvent)).coerceAtLeast(0L) else 0L
+                val remaining = maxOf(parkRem, paintRem)
+                if (remaining > 0L) delay(remaining)
                 customSceneLifecycleOwner.pauseScene()
-            } else if (!isTriggerActive && !isPaintChangeRecent && !isOrbitRecentNow) {
+            } else if (!isTriggerActive) {
                 // At system startup, keep rendering active for 5 seconds before freezing.
-                // For subsequent events (e.g. camera/settings exit, action completion, Home/Back press), keep active for 2 seconds.
-                val waitMs = if (!initialStartupDone) {
-                    val elapsed = SystemClock.uptimeMillis() - startupUptimeMs
-                    val remaining = (5_000L - elapsed).coerceAtLeast(0L)
-                    maxOf(remaining, 5_000L)
+                // For subsequent events (e.g. camera/settings exit, paint/orbit change, Home/Back press), keep active for 2 seconds.
+                val baseWaitMs = if (!initialStartupDone) {
+                    val elapsed = nowMs - startupUptimeMs
+                    (5_000L - elapsed).coerceAtLeast(0L)
                 } else {
                     2_000L
                 }
-                delay(waitMs)
+                val paintRem = if (isPaintChangeRecent) (2_000L - (nowMs - paintChangedEvent)).coerceAtLeast(0L) else 0L
+                val orbitRem = if (isOrbitRecentNow) (2_000L - (nowMs - settingsOrbitEvent)).coerceAtLeast(0L) else 0L
+                val waitMs = maxOf(baseWaitMs, paintRem, orbitRem)
+                if (waitMs > 0L) {
+                    delay(waitMs)
+                }
                 initialStartupDone = true
                 customSceneLifecycleOwner.pauseScene()
             }
@@ -705,25 +745,25 @@ private fun LauncherCarFilamentContent(
     }
 
     if (!lowPowerPreview) {
-    LaunchedEffect(modelInstance != null) {
-        if (modelInstance == null) return@LaunchedEffect
-        lastFrameNs = 0L
-        val modelLoadedAt = SystemClock.elapsedRealtime()
-        while (isActive) {
-            delay(1_000L)
-            val resumed = customSceneLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-            if (!resumed) continue
-            if (LauncherCarSurfaceRecovery.isCovered()) continue
-            val last = lastFrameNs
-            if (last == 0L) {
-                if (SystemClock.elapsedRealtime() - modelLoadedAt > 10_000L) {
-                    LauncherCarSurfaceRecovery.onFramesStalled(neverStarted = true)
+        LaunchedEffect(modelInstance != null) {
+            if (modelInstance == null) return@LaunchedEffect
+            frameState.lastFrameNs = 0L
+            frameState.lastResumedElapsedMs = SystemClock.elapsedRealtime()
+            while (isActive) {
+                delay(1_000L)
+                val resumed = customSceneLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                if (!resumed) continue
+                if (LauncherCarSurfaceRecovery.isCovered()) continue
+                val last = frameState.lastFrameNs
+                if (last == 0L) {
+                    if (SystemClock.elapsedRealtime() - frameState.lastResumedElapsedMs > 10_000L) {
+                        LauncherCarSurfaceRecovery.onFramesStalled(neverStarted = true)
+                    }
+                } else if (System.nanoTime() - last > 3_000_000_000L) {
+                    LauncherCarSurfaceRecovery.onFramesStalled()
                 }
-            } else if (System.nanoTime() - last > 3_000_000_000L) {
-                LauncherCarSurfaceRecovery.onFramesStalled()
             }
         }
-    }
     }
 
     LaunchedEffect(rigController, animationController) {
@@ -779,19 +819,19 @@ private fun LauncherCarFilamentContent(
                         val topShadeClosedEventMs = LauncherCar3DModelTrigger.topShadeClosedEvent.value
                         val isTopShadeClosedRecent = (nowMs - topShadeClosedEventMs) < 2000L
 
-                        if (lastDynamicNs == 0L) {
-                            lastDynamicNs = frameNs
+                        if (frameState.lastDynamicNs == 0L) {
+                            frameState.lastDynamicNs = frameNs
                         }
 
                         val currentRigState = rigStateRef.value
-                        val currentSteering = steeringDeg
+                        val currentSteering = steeringDegRef.value
                         val orbit = settingsOrbitRef.value
                         val rawTransition = settingsProgressRef.value.coerceIn(0f, 1f)
                         val transition = if (rawTransition < 0.001f) 0f else rawTransition
 
                         val isHoldingStartupTopView = cameraAnimEnabledRef.value && !LauncherCar3DModelTrigger.startupTopViewDone.value
-                        val exitedStartupTopView = wasHoldingStartupTopView && !isHoldingStartupTopView
-                        wasHoldingStartupTopView = isHoldingStartupTopView
+                        val exitedStartupTopView = frameState.wasHoldingStartupTopView && !isHoldingStartupTopView
+                        frameState.wasHoldingStartupTopView = isHoldingStartupTopView
 
                         val targetDriveBlend = if (transition > 0.02f || isHoldingStartupTopView) {
                             0f
@@ -802,27 +842,29 @@ private fun LauncherCarFilamentContent(
                         }
 
                         // Trigger 1: Opening or closing any door, sunroof, or tailgate/trunk
-                        val bodyStateChanged = (currentRigState.doorFlOpen != lastRigState.doorFlOpen) ||
-                            (currentRigState.doorFrOpen != lastRigState.doorFrOpen) ||
-                            (currentRigState.doorRlOpen != lastRigState.doorRlOpen) ||
-                            (currentRigState.doorRrOpen != lastRigState.doorRrOpen) ||
-                            (currentRigState.tailgateOpen != lastRigState.tailgateOpen) ||
-                            (currentRigState.sunroofOpen != lastRigState.sunroofOpen)
+                        val prevRig = frameState.lastRigState
+                        val bodyStateChanged = (currentRigState.doorFlOpen != prevRig.doorFlOpen) ||
+                            (currentRigState.doorFrOpen != prevRig.doorFrOpen) ||
+                            (currentRigState.doorRlOpen != prevRig.doorRlOpen) ||
+                            (currentRigState.doorRrOpen != prevRig.doorRrOpen) ||
+                            (currentRigState.tailgateOpen != prevRig.tailgateOpen) ||
+                            (currentRigState.sunroofOpen != prevRig.sunroofOpen)
 
                         // Trigger 2: Camera view switching or settings transition/orbiting
                         val isOrbitActive = (orbit?.interacting == true) ||
                             (orbit != null && abs(orbit.yawVelocityDegPerSec) > 0.1f)
-                        val transitionMoving = abs(transition - lastFrameTransition) > 0.001f
-                        val isCameraSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
+                        val transitionMoving = abs(transition - frameState.lastFrameTransition) > 0.001f
+                        val isCameraSwitching = abs(frameState.currentDriveBlend - targetDriveBlend) > 0.001f ||
                             transitionMoving ||
                             isOrbitActive ||
-                            isRollingPtoD
-                        lastFrameTransition = transition
+                            frameState.isRollingPtoD
+                        frameState.lastFrameTransition = transition
 
-                        val transitionJustStarted = !wasCameraSwitching && isCameraSwitching
+                        val transitionJustStarted = !frameState.wasCameraSwitching && isCameraSwitching
                         if (transitionJustStarted) {
-                            wasCameraSwitching = true
+                            frameState.wasCameraSwitching = true
                             overlayPublishHandler.post {
+                                isCameraSwitchingState = true
                                 cameraSwitchingCallbackRef.value(true)
                             }
                         }
@@ -856,16 +898,16 @@ private fun LauncherCarFilamentContent(
 
                         val isStartupRecent = (nowMs - startupUptimeMs) < 5000L
 
-                        val wasDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
+                        val wasDynamic = (frameNs - frameState.lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
 
                         if (bodyStateChanged || isCameraSwitching || isInitializing || isActionRecent || isStartupRecent || isHoldingStartupTopView) {
-                            lastDynamicNs = frameNs
+                            frameState.lastDynamicNs = frameNs
                         }
 
-                        val isDynamic = (frameNs - lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
+                        val isDynamic = (frameNs - frameState.lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
 
                         if (!wasDynamic && isDynamic) {
-                            lastFrameNs = 0L
+                            frameState.lastFrameNs = 0L
                         }
 
                         val requiredIntervalNs = when {
@@ -874,67 +916,72 @@ private fun LauncherCarFilamentContent(
                             else -> STATIC_FRAME_INTERVAL_NS
                         }
 
-                        if (lastFrameNs != 0L && frameNs - lastFrameNs < requiredIntervalNs) {
+                        if (frameState.lastFrameNs != 0L && frameNs - frameState.lastFrameNs < requiredIntervalNs) {
                             return@runCatching
                         }
 
-                        val dt = if (lastFrameNs == 0L) {
+                        val dt = if (frameState.lastFrameNs == 0L) {
                             0.033f
                         } else {
-                            ((frameNs - lastFrameNs) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                            ((frameNs - frameState.lastFrameNs) / 1_000_000_000f).coerceIn(0f, 0.05f)
                         }
 
                         if (!cameraAnimEnabledRef.value) {
-                            if (targetDriveBlend != lastTargetDriveBlend) {
-                                lastTargetDriveBlend = targetDriveBlend
-                                currentDriveBlend = targetDriveBlend
+                            if (targetDriveBlend != frameState.lastTargetDriveBlend) {
+                                frameState.lastTargetDriveBlend = targetDriveBlend
+                                frameState.currentDriveBlend = targetDriveBlend
                                 modelReady = false
-                                preparedFrames = 0
+                                frameState.preparedFrames = 0
                             }
-                            if (preparedFrames <= 1) {
-                                currentDriveBlend = targetDriveBlend
+                            if (frameState.preparedFrames <= 1) {
+                                frameState.currentDriveBlend = targetDriveBlend
                             }
                         } else {
                             if (backflipAnimationEnabledRef.value &&
                                 !exitedStartupTopView &&
                                 !isHoldingStartupTopView &&
-                                lastTargetDriveBlend == 0f &&
+                                frameState.lastTargetDriveBlend == 0f &&
                                 targetDriveBlend == 1f &&
                                 transition <= 0.02f
                             ) {
-                                isRollingPtoD = true
+                                frameState.isRollingPtoD = true
                             }
-                            lastTargetDriveBlend = targetDriveBlend
-                            if (currentDriveBlend < targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
-                            } else if (currentDriveBlend > targetDriveBlend) {
-                                currentDriveBlend = (currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
+                            frameState.lastTargetDriveBlend = targetDriveBlend
+                            if (frameState.currentDriveBlend < targetDriveBlend) {
+                                frameState.currentDriveBlend = (frameState.currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
+                            } else if (frameState.currentDriveBlend > targetDriveBlend) {
+                                frameState.currentDriveBlend = (frameState.currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
                             }
-                            if (abs(currentDriveBlend - targetDriveBlend) < 0.001f) {
-                                currentDriveBlend = targetDriveBlend
-                                isRollingPtoD = false
+                            if (abs(frameState.currentDriveBlend - targetDriveBlend) < 0.001f) {
+                                frameState.currentDriveBlend = targetDriveBlend
+                                frameState.isRollingPtoD = false
                             }
                         }
                         if (targetDriveBlend != 1f || transition > 0.02f) {
-                            isRollingPtoD = false
+                            frameState.isRollingPtoD = false
                         }
 
-                        lastSteeringDeg = currentSteering
-                        lastRigState = currentRigState
+                        val nextDriveLayout = frameState.currentDriveBlend >= 0.5f
+                        if (isDriveLayout != nextDriveLayout) {
+                            isDriveLayout = nextDriveLayout
+                        }
+
+                        frameState.lastSteeringDeg = currentSteering
+                        frameState.lastRigState = currentRigState
                         val node = modelNodeRef.get() ?: return@runCatching
-                        lastFrameNs = frameNs
+                        frameState.lastFrameNs = frameNs
                         if (!lowPowerPreview) {
                             LauncherCarSurfaceRecovery.onFrameObserved()
                         }
 
                         val driveBlend = if (cameraAnimEnabledRef.value) {
-                            FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
+                            FastOutSlowInEasing.transform(frameState.currentDriveBlend.coerceIn(0f, 1f))
                         } else {
-                            currentDriveBlend.coerceIn(0f, 1f)
+                            frameState.currentDriveBlend.coerceIn(0f, 1f)
                         }
-                        val safeCustomDriveScale = customModelDriveScale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
+                        val safeCustomDriveScale = customModelDriveScaleRef.value.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
                         val driveScale = lerp(1f, 1.21f * safeCustomDriveScale, driveBlend)
-                        val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+                        val safeCustomScale = customModelScaleRef.value.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
 
                         val topCamPos = Float3(
                             TOP_CAMERA_POS.x,
@@ -975,7 +1022,7 @@ private fun LauncherCarFilamentContent(
                         )
 
                         val qBase = quaternionFromAxisAngle(Float3(0f, 1f, 0f), modelYaw)
-                        if (isRollingPtoD) {
+                        if (frameState.isRollingPtoD) {
                             val rollAngle = driveBlend * 360f
                             val qRoll = quaternionFromAxisAngle(Float3(0f, 0f, -1f), rollAngle)
                             node.quaternion = multiplyQuaternions(qRoll, qBase)
@@ -992,8 +1039,8 @@ private fun LauncherCarFilamentContent(
                         )
 
                         // Centering watchdog: runs once per second (1_000_000_000 ns) when settings are closed
-                        if (frameNs - lastXCheckNs >= 1_000_000_000L) {
-                            lastXCheckNs = frameNs
+                        if (frameNs - frameState.lastXCheckNs >= 1_000_000_000L) {
+                            frameState.lastXCheckNs = frameNs
                             if (transition < 0.001f) {
                                 val expectedX = lerp(HOME_MODEL_X, targetDriveModelX, driveBlend)
                                 var watchdogReset = false
@@ -1016,7 +1063,7 @@ private fun LauncherCarFilamentContent(
                                         modelY = node.position.y,
                                         modelZ = node.position.z,
                                         modelYaw = modelYaw,
-                                        modelScale = renderedScale,
+                                        modelScale = frameState.renderedScale,
                                         cameraX = cameraNode.worldPosition.x,
                                         cameraY = cameraNode.worldPosition.y,
                                         cameraZ = cameraNode.worldPosition.z,
@@ -1052,33 +1099,33 @@ private fun LauncherCarFilamentContent(
                         )
                         val targetScale = baseScale * pinchScale
                         if (!modelReady) {
-                            renderedScale = targetScale
-                            node.scale = Scale(renderedScale)
+                            frameState.renderedScale = targetScale
+                            node.scale = Scale(frameState.renderedScale)
                             node.isVisible = false
-                            preparedFrames++
-                            val materialsReady = paintMaterialsRef.value.isNotEmpty() || preparedFrames >= 30
-                            val animatorReady = animationController == null || animationController.isSettled || preparedFrames >= 20
-                            if (preparedFrames >= PREPARED_FRAMES_WARMUP && materialsReady && animatorReady && widthPx > 0 && heightPx > 0) {
+                            frameState.preparedFrames++
+                            val materialsReady = paintMaterialsRef.value.isNotEmpty() || frameState.preparedFrames >= 30
+                            val animatorReady = animationController == null || animationController.isSettled || frameState.preparedFrames >= 20
+                            if (frameState.preparedFrames >= PREPARED_FRAMES_WARMUP && materialsReady && animatorReady && widthPx > 0 && heightPx > 0) {
                                 modelReady = true
                                 node.isVisible = true
                             }
                         } else {
                             node.isVisible = true
-                            if (abs(targetScale - renderedScale) < 0.0015f) {
-                                renderedScale = targetScale
+                            if (abs(targetScale - frameState.renderedScale) < 0.0015f) {
+                                frameState.renderedScale = targetScale
                             } else {
                                 val scaleResponse = 1f - exp(-dt * 12f)
-                                renderedScale += (targetScale - renderedScale) * scaleResponse
+                                frameState.renderedScale += (targetScale - frameState.renderedScale) * scaleResponse
                             }
-                            node.scale = Scale(renderedScale)
+                            node.scale = Scale(frameState.renderedScale)
                         }
 
                         if (modelReady && widthPx > 0 && heightPx > 0) {
-                            if (firstRenderTimeMs == 0L) {
-                                firstRenderTimeMs = nowMs
+                            if (frameState.firstRenderTimeMs == 0L) {
+                                frameState.firstRenderTimeMs = nowMs
                                 DclLogRecorder.log("ModelRender", "First 3D model frame rendered in top view at nowMs=$nowMs")
                             } else if (!LauncherCar3DModelTrigger.startupTopViewDone.value) {
-                                if (!cameraAnimEnabledRef.value || nowMs - firstRenderTimeMs >= 2000L) {
+                                if (!cameraAnimEnabledRef.value || nowMs - frameState.firstRenderTimeMs >= 2000L) {
                                     DclLogRecorder.log("ModelRender", "Startup top view hold 2000ms completed, transitioning view")
                                     LauncherCar3DModelTrigger.notifyStartupTopViewDone()
                                 }
@@ -1086,12 +1133,12 @@ private fun LauncherCarFilamentContent(
                         }
 
                         if (DclLogRecorder.isLoggingActive()) {
-                            val posChanged = abs(node.position.x - dclLastPosX) > 0.0001f || abs(cameraNode.worldPosition.x - dclLastCamX) > 0.0001f
-                            val timeElapsed = (frameNs - dclLastLogNs) >= 250_000_000L
+                            val posChanged = abs(node.position.x - frameState.dclLastPosX) > 0.0001f || abs(cameraNode.worldPosition.x - frameState.dclLastCamX) > 0.0001f
+                            val timeElapsed = (frameNs - frameState.dclLastLogNs) >= 250_000_000L
                             if (posChanged || timeElapsed) {
-                                dclLastLogNs = frameNs
-                                dclLastPosX = node.position.x
-                                dclLastCamX = cameraNode.worldPosition.x
+                                frameState.dclLastLogNs = frameNs
+                                frameState.dclLastPosX = node.position.x
+                                frameState.dclLastCamX = cameraNode.worldPosition.x
                                 DclLogRecorder.logModelRender(
                                     transition = transition,
                                     driveBlend = driveBlend,
@@ -1099,7 +1146,7 @@ private fun LauncherCarFilamentContent(
                                     modelY = node.position.y,
                                     modelZ = node.position.z,
                                     modelYaw = modelYaw,
-                                    modelScale = renderedScale,
+                                    modelScale = frameState.renderedScale,
                                     cameraX = cameraNode.worldPosition.x,
                                     cameraY = cameraNode.worldPosition.y,
                                     cameraZ = cameraNode.worldPosition.z,
@@ -1118,22 +1165,23 @@ private fun LauncherCarFilamentContent(
                         }
 
                         animationController?.update(rigStateRef.value, dt, modelReady = modelReady)
-                        val isStillSwitching = abs(currentDriveBlend - targetDriveBlend) > 0.001f ||
+                        val isStillSwitching = abs(frameState.currentDriveBlend - targetDriveBlend) > 0.001f ||
                             transitionMoving ||
                             isOrbitActive ||
-                            isRollingPtoD
-                        val transitionJustFinished = wasCameraSwitching && !isStillSwitching
-                        wasCameraSwitching = isStillSwitching
+                            frameState.isRollingPtoD
+                        val transitionJustFinished = frameState.wasCameraSwitching && !isStillSwitching
+                        frameState.wasCameraSwitching = isStillSwitching
 
                         if (transitionJustFinished) {
                             overlayPublishHandler.post {
+                                isCameraSwitchingState = false
                                 cameraSwitchingCallbackRef.value(false)
                             }
                         }
 
                         val publishNs = 1_000_000_000L // 1 second interval
-                        if (!isStillSwitching && (transitionJustFinished || lastAnchorPublishNs == 0L || frameNs - lastAnchorPublishNs >= publishNs)) {
-                            lastAnchorPublishNs = frameNs
+                        if (!isStillSwitching && (transitionJustFinished || frameState.lastAnchorPublishNs == 0L || frameNs - frameState.lastAnchorPublishNs >= publishNs)) {
+                            frameState.lastAnchorPublishNs = frameNs
                             val wheels = runCatching {
                                 rigController?.projectWheelAnchors(
                                     cameraNode = cameraNode,
@@ -1160,7 +1208,7 @@ private fun LauncherCarFilamentContent(
                             } else {
                                 null
                             }
-                            val headlights = if (projectHeadlightsRef.value && currentTransition < 0.5f) {
+                            val headlights = if (projectHeadlightsRef.value && currentTransitionRef.value < 0.5f) {
                                 runCatching {
                                     rigController?.projectHeadlightBeams(
                                         cameraNode = cameraNode,
@@ -1186,9 +1234,9 @@ private fun LauncherCarFilamentContent(
                 val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
                 val safeCustomDriveScale = customModelDriveScale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
                 val initialDriveBlend = if (cameraAnimEnabled) {
-                    FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
+                    FastOutSlowInEasing.transform(frameState.currentDriveBlend.coerceIn(0f, 1f))
                 } else {
-                    currentDriveBlend.coerceIn(0f, 1f)
+                    frameState.currentDriveBlend.coerceIn(0f, 1f)
                 }
                 val initialDriveScale = lerp(1f, 1.21f * safeCustomDriveScale, initialDriveBlend)
                 val initialHomeScale = BASE_MODEL_SCALE * initialDriveScale
@@ -1232,11 +1280,7 @@ private fun LauncherCarFilamentContent(
             }
         }
         if (onClick != null || onLongClick != null || onDoubleClick != null) {
-            val tapDriveBlend = if (cameraAnimEnabled) {
-                FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
-            } else {
-                currentDriveBlend.coerceIn(0f, 1f)
-            }
+            val tapDriveBlend = if (isDriveLayout) 1f else 0f
             val tapWidth = lerp(180.dp, 170.dp, tapDriveBlend)
             val tapHeight = lerp(180.dp, 210.dp, tapDriveBlend)
             val tapOffsetY = lerp((-35).dp, 115.dp, tapDriveBlend)
@@ -1252,12 +1296,7 @@ private fun LauncherCarFilamentContent(
             )
         }
         if (onTrunkClick != null || onTrunkLongClick != null) {
-            val tapDriveBlend = if (cameraAnimEnabled) {
-                FastOutSlowInEasing.transform(currentDriveBlend.coerceIn(0f, 1f))
-            } else {
-                currentDriveBlend.coerceIn(0f, 1f)
-            }
-            if (tapDriveBlend < 0.5f) {
+            if (!isDriveLayout) {
                 val trunkWidth = 160.dp
                 val trunkHeight = 90.dp
                 val trunkOffsetY = 95.dp

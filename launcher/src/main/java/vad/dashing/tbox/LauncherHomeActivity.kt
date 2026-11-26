@@ -161,7 +161,7 @@ class LauncherHomeActivity : ComponentActivity() {
             vad.dashing.tbox.ui.launcher.LauncherAvmRepository.startObserving(appCtx)
 
             // Start CAN auto-bind now that desktop and UI thread are completely unblocked
-            UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, this)
+            UniversalCanRepository.triggerStartupCanAutoBind(settingsManager, UniversalCanRepository.appScope)
 
             // Start USB Mount watcher and dclwm watcher in Stage 2 (check storage every 1s until ready, before full boot ends)
             vad.dashing.tbox.usbmount.UsbMountManager.startStage2Watcher(appCtx)
@@ -206,7 +206,9 @@ class LauncherHomeActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         LauncherHomeActivityHolder.isStarted = true
-        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStart topTasks=${getTopTasksInfo(this)}")
+        if (DclLogRecorder.isLoggingActive()) {
+            DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStart topTasks=${getTopTasksInfo(this)}")
+        }
     }
 
     override fun onResume() {
@@ -243,15 +245,19 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherHomeActivityHolder.isResumed = false
         LauncherHomeActivityHolder.isWindowFocused = false
         DclLogRecorder.detachWindow(window)
-        val topTasks = getTopTasksInfo(this)
-        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onPause isFinishing=$isFinishing topTasks=$topTasks")
+        if (DclLogRecorder.isLoggingActive()) {
+            val topTasks = getTopTasksInfo(this)
+            DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onPause isFinishing=$isFinishing topTasks=$topTasks")
+        }
         super.onPause()
     }
 
     override fun onStop() {
         LauncherHomeActivityHolder.isStarted = false
-        val topTasks = getTopTasksInfo(this)
-        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStop isFinishing=$isFinishing topTasks=$topTasks")
+        if (DclLogRecorder.isLoggingActive()) {
+            val topTasks = getTopTasksInfo(this)
+            DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onStop isFinishing=$isFinishing topTasks=$topTasks")
+        }
         super.onStop()
     }
 
@@ -273,9 +279,13 @@ class LauncherHomeActivity : ComponentActivity() {
             vad.dashing.tbox.camd.CamdCameraRepository.refreshStatus(this, fetchPresets = true, forceLog = false)
         }
         wasWindowFocused = hasFocus
-        val tasks = getTopTasksInfo(this)
-        vad.dashing.tbox.DclLogRecorder.logUiFocus(hasFocus, "topTasks=$tasks")
-        Log.i(TAG, "onWindowFocusChanged hasFocus=$hasFocus topTasks=$tasks")
+        if (DclLogRecorder.isLoggingActive()) {
+            val tasks = getTopTasksInfo(this)
+            DclLogRecorder.logUiFocus(hasFocus, "topTasks=$tasks")
+            Log.i(TAG, "onWindowFocusChanged hasFocus=$hasFocus topTasks=$tasks")
+        } else {
+            Log.i(TAG, "onWindowFocusChanged hasFocus=$hasFocus")
+        }
     }
 
     override fun onTrimMemory(level: Int) {
@@ -287,10 +297,10 @@ class LauncherHomeActivity : ComponentActivity() {
     @Deprecated("Deprecated in Java")
     @Suppress("MissingSuperCall", "DEPRECATION", "OVERRIDE_DEPRECATION", "GestureBackNavigation")
     override fun onBackPressed() {
-        vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.notifyBackPressed()
         if (onBackPressedDispatcher.hasEnabledCallbacks()) {
             onBackPressedDispatcher.onBackPressed()
         } else {
+            vad.dashing.tbox.ui.launcher.LauncherCar3DModelTrigger.notifyBackPressed()
             vad.dashing.tbox.ui.launcher.goLauncherBack(this, source = "activity_on_back_pressed")
         }
     }
@@ -313,7 +323,9 @@ class LauncherHomeActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        vad.dashing.tbox.DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onDestroy isFinishing=$isFinishing topTasks=${getTopTasksInfo(this)}")
+        if (DclLogRecorder.isLoggingActive()) {
+            DclLogRecorder.log("UI_LIFECYCLE", "LauncherHomeActivity onDestroy isFinishing=$isFinishing topTasks=${getTopTasksInfo(this)}")
+        }
         LauncherHomeActivityHolder.isFirstDrawComplete = false
         LauncherHomeActivityHolder.isStarted = false
         LauncherHomeActivityHolder.isWindowFocused = false
@@ -325,6 +337,7 @@ class LauncherHomeActivity : ComponentActivity() {
         LauncherAboutOverlayWindow.hide()
         PassengerSeatOverlayWindow.hide()
         LauncherOverlayBar.hide()
+        LauncherEdgeGestureOverlay.hide()
         runCatching { vad.dashing.tbox.camd.CamdCameraRepository.closeAllIfOpen(this) }
         runCatching { minimizeForeignFreeformTasks(this) }
         LauncherOverlayElevator.reset()

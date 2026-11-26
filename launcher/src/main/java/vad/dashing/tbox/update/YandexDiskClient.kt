@@ -12,9 +12,10 @@ import kotlinx.coroutines.job
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import vad.dashing.tbox.SharedHttpClient
 
 class YandexDiskClient(
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    private val client: OkHttpClient = SharedHttpClient.client.newBuilder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .followRedirects(true)
@@ -167,7 +168,8 @@ class YandexDiskClient(
 
     private fun getMailRuWeblinkViewBaseUrl(weblink: String): String {
         mailRuWeblinkViewBaseUrl?.let { return it }
-        val apiUrl = "https://cloud.mail.ru/api/v2/dispatcher?weblink=$weblink"
+        val encodedWeblink = URLEncoder.encode(weblink, Charsets.UTF_8.name())
+        val apiUrl = "https://cloud.mail.ru/api/v2/dispatcher?weblink=$encodedWeblink"
         val request = Request.Builder()
             .url(apiUrl)
             .header("User-Agent", USER_AGENT)
@@ -201,7 +203,8 @@ class YandexDiskClient(
     private fun fetchMailRuResourceSize(sourceUrl: String, path: String): Long {
         val weblink = parseMailRuWeblink(sourceUrl)
         val cleanPath = path.trim('/')
-        val apiUrl = "https://cloud.mail.ru/api/v2/folder?weblink=$weblink"
+        val encodedWeblink = URLEncoder.encode(weblink, Charsets.UTF_8.name())
+        val apiUrl = "https://cloud.mail.ru/api/v2/folder?weblink=$encodedWeblink"
         val request = Request.Builder()
             .url(apiUrl)
             .header("User-Agent", USER_AGENT)
@@ -227,11 +230,42 @@ class YandexDiskClient(
             }
         }
         val href = resolveMailRuDownloadHref(sourceUrl, path)
-        val downloadReq = createGetRequest(href)
+        // Prefer HEAD first so we don't transfer an unread body.
+        val headReq = Request.Builder()
+            .url(href)
+            .header("User-Agent", USER_AGENT)
+            .head()
+            .build()
+        val headSize = runCatching {
+            client.newCall(headReq).execute().use { response ->
+                if (response.isSuccessful) {
+                    response.header("Content-Length")?.toLongOrNull() ?: -1L
+                } else {
+                    -1L
+                }
+            }
+        }.getOrDefault(-1L)
+        if (headSize > 0L) return headSize
+
+        // Fallback to a single-byte Range GET to inspect Content-Range / Content-Length.
+        val rangeReq = Request.Builder()
+            .url(href)
+            .header("User-Agent", USER_AGENT)
+            .header("Range", "bytes=0-0")
+            .get()
+            .build()
         return runCatching {
-            client.newCall(downloadReq).execute().use { response ->
-                val size = response.body?.contentLength() ?: -1L
-                if (size > 0L) size else -1L
+            client.newCall(rangeReq).execute().use { response ->
+                val contentRange = response.header("Content-Range")
+                val totalFromRange = contentRange
+                    ?.substringAfter('/', missingDelimiterValue = "")
+                    ?.trim()
+                    ?.toLongOrNull()
+                if (totalFromRange != null && totalFromRange > 0L) {
+                    totalFromRange
+                } else {
+                    response.body?.contentLength()?.takeIf { it > 0L } ?: -1L
+                }
             }
         }.getOrDefault(-1L).takeIf { it > 0L } ?: throw IOException("Could not determine file size from Mail.ru Cloud")
     }

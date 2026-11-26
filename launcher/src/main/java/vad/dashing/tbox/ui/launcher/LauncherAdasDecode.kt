@@ -235,7 +235,7 @@ internal fun decodeSlaSpeedLimitKmh(raw: Byte): Int? {
 
 /**
  * Camera TSR speed-limit value from [MBCanTrafficSignRecognition].
- * Prefer literal km/h when in range; fall back to SLA coding; convert mph when unit=1.
+ * Prefer SLA coding (codes 2..33 -> 5..160 km/h); fall back to literal km/h (>33); convert mph when unit=1.
  */
 internal fun decodeTsrSign(
     valueRaw: Byte,
@@ -248,15 +248,15 @@ internal fun decodeTsrSign(
     val value = byteToUnsigned(valueRaw)
     if (value == 0) return LauncherAdasTsrSign()
     val unit = byteToUnsigned(unitRaw)
-    val literal = value.takeIf { it in 5..160 }
     val coded = decodeSlaSpeedLimitKmh(valueRaw)
-    var kmh = literal ?: coded ?: return LauncherAdasTsrSign()
+    val literal = value.takeIf { it in 5..160 }
+    var kmh = coded ?: literal ?: return LauncherAdasTsrSign()
     if (unit == 1) {
         // mph → km/h
         kmh = (kmh * 1.60934f).toInt().coerceIn(5, 160)
     }
-    // Drop very low-confidence noise when OEM reports confidence.
-    if (confidence in 0.01f..0.15f) {
+    // Drop very low-confidence noise when OEM reports confidence (> 0f).
+    if (confidence > 0f && confidence <= 0.15f) {
         return LauncherAdasTsrSign()
     }
     return LauncherAdasTsrSign(
@@ -515,7 +515,7 @@ data class LauncherPdcZones(
 
         fun levelFor(distanceCm: Int): LauncherPdcLevel = when {
             // 150 cm and 0 both mean "free space" in practice (0 = no reading, <10 = transient/invalid).
-            distanceCm !in PDC_MIN_CM..PDC_MAX_CM -> LauncherPdcLevel.None
+            distanceCm !in PDC_MIN_CM until PDC_MAX_CM -> LauncherPdcLevel.None
             distanceCm <= PDC_NEAR_CM -> LauncherPdcLevel.Near
             distanceCm <= PDC_MID_CM -> LauncherPdcLevel.Mid
             else -> LauncherPdcLevel.Far

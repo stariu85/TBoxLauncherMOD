@@ -124,6 +124,13 @@ object YandexNavWindowTracker {
     private const val TAG = "YandexNavWindowTracker"
     private const val POLL_INTERVAL_MS = 2_000L
     private const val EXPLICIT_TRANSITION_GRACE_MS = 1_200L
+    private const val ACCESSIBILITY_REFRESH_DEBOUNCE_MS = 120L
+
+    @VisibleForTesting
+    internal var elapsedRealtimeProvider: () -> Long = {
+        runCatching { android.os.SystemClock.elapsedRealtime() }
+            .getOrElse { System.nanoTime() / 1_000_000L }
+    }
 
     private val _isWindowOpen = MutableStateFlow(false)
     val isWindowOpen: StateFlow<Boolean> = _isWindowOpen.asStateFlow()
@@ -131,13 +138,15 @@ object YandexNavWindowTracker {
     private val _isWindowOnScreen = MutableStateFlow(false)
     val isWindowOnScreen: StateFlow<Boolean> = _isWindowOnScreen.asStateFlow()
 
-    private val trackerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var pollJob: Job? = null
-    private var refreshJob: Job? = null
-    private var appContext: Context? = null
+    private val trackerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var pollJob: Job? = null
+    @Volatile private var refreshJob: Job? = null
+    @Volatile private var appContext: Context? = null
 
     @Volatile
     private var suppressPollerUntilMs: Long = 0L
+
+    private fun nowElapsedMs(): Long = elapsedRealtimeProvider()
 
     fun start(context: Context) {
         val app = context.applicationContext
@@ -146,7 +155,7 @@ object YandexNavWindowTracker {
             pollJob = trackerScope.launch {
                 while (isActive) {
                     delay(POLL_INTERVAL_MS)
-                    if (System.currentTimeMillis() < suppressPollerUntilMs) continue
+                    if (nowElapsedMs() < suppressPollerUntilMs) continue
                     runCatching {
                         val status = checkWindowStatus(app)
                         applyStatus(status, source = "poller")
@@ -173,7 +182,7 @@ object YandexNavWindowTracker {
         if (packageName.isNullOrBlank()) return
         if (isYandexNavigationPackage(packageName)) {
             logD(TAG, "onAppLaunched: Yandex nav opened on screen: $packageName")
-            suppressPollerUntilMs = System.currentTimeMillis() + EXPLICIT_TRANSITION_GRACE_MS
+            suppressPollerUntilMs = nowElapsedMs() + EXPLICIT_TRANSITION_GRACE_MS
             _isWindowOpen.value = true
             _isWindowOnScreen.value = true
         } else if (!isSystemOrLauncherPackage(packageName)) {
@@ -189,7 +198,7 @@ object YandexNavWindowTracker {
 
     fun onHomePressed() {
         logD(TAG, "onHomePressed: home pressed; off-screen/background Yandex stays open, no longer on screen")
-        suppressPollerUntilMs = System.currentTimeMillis() + EXPLICIT_TRANSITION_GRACE_MS
+        suppressPollerUntilMs = nowElapsedMs() + EXPLICIT_TRANSITION_GRACE_MS
         _isWindowOnScreen.value = false
         // Off-screen window is NOT considered closed per requirement ("не считай окно закрытым если оно за границей экрана").
     }
@@ -197,7 +206,7 @@ object YandexNavWindowTracker {
     fun onAppClosed(packageName: String? = null) {
         if (packageName == null || isYandexNavigationPackage(packageName)) {
             logD(TAG, "onAppClosed: $packageName")
-            suppressPollerUntilMs = System.currentTimeMillis() + EXPLICIT_TRANSITION_GRACE_MS
+            suppressPollerUntilMs = nowElapsedMs() + EXPLICIT_TRANSITION_GRACE_MS
             _isWindowOpen.value = false
             _isWindowOnScreen.value = false
         }
@@ -206,7 +215,7 @@ object YandexNavWindowTracker {
     fun onWindowMinimized(packageName: String? = null) {
         if (packageName == null || isYandexNavigationPackage(packageName)) {
             logD(TAG, "onWindowMinimized: $packageName (parked off-screen/background, still open, not on screen)")
-            suppressPollerUntilMs = System.currentTimeMillis() + EXPLICIT_TRANSITION_GRACE_MS
+            suppressPollerUntilMs = nowElapsedMs() + EXPLICIT_TRANSITION_GRACE_MS
             _isWindowOnScreen.value = false
         }
         // Off-screen window is NOT considered closed per requirement ("не считай окно закрытым если оно за границей экрана").
@@ -215,7 +224,7 @@ object YandexNavWindowTracker {
     fun onFreeformRemoved(packageName: String) {
         if (isYandexNavigationPackage(packageName)) {
             logD(TAG, "onFreeformRemoved: $packageName")
-            suppressPollerUntilMs = System.currentTimeMillis() + EXPLICIT_TRANSITION_GRACE_MS
+            suppressPollerUntilMs = nowElapsedMs() + EXPLICIT_TRANSITION_GRACE_MS
             _isWindowOpen.value = false
             _isWindowOnScreen.value = false
         }
@@ -226,7 +235,7 @@ object YandexNavWindowTracker {
         val app = context.applicationContext
         appContext = app
         if (isYandexNavigationPackage(packageName)) {
-            suppressPollerUntilMs = System.currentTimeMillis() + EXPLICIT_TRANSITION_GRACE_MS
+            suppressPollerUntilMs = nowElapsedMs() + EXPLICIT_TRANSITION_GRACE_MS
             _isWindowOpen.value = true
             _isWindowOnScreen.value = true
         } else if (isLauncherPackage(packageName, app.packageName)) {
@@ -241,12 +250,14 @@ object YandexNavWindowTracker {
     private fun scheduleAsyncRefresh(app: Context, followUpDelayMs: Long = 0L) {
         refreshJob?.cancel()
         refreshJob = trackerScope.launch {
+            // Coalesce bursty accessibility window-state events before querying WM/shell.
+            delay(ACCESSIBILITY_REFRESH_DEBOUNCE_MS)
             runCatching {
                 applyStatus(checkWindowStatus(app), source = "refresh")
             }
             if (followUpDelayMs > 0L) {
                 delay(followUpDelayMs)
-                if (System.currentTimeMillis() >= suppressPollerUntilMs) {
+                if (nowElapsedMs() >= suppressPollerUntilMs) {
                     runCatching {
                         applyStatus(checkWindowStatus(app), source = "refresh-followup")
                     }
@@ -303,14 +314,15 @@ object YandexNavWindowTracker {
             val stacks = LauncherAmStackShell.listStacks()
             if (stacks.isNotEmpty()) {
                 val isOpen = stacks.any { isYandexNavigationPackage(it.packageName) }
+                val (screenW, screenH) = currentScreenDimensions()
                 val rects = stacks.map { s ->
                     val b = s.bounds
                     TrackedWindowRect(
                         packageName = s.packageName,
                         left = b?.left ?: 0,
                         top = b?.top ?: 0,
-                        right = b?.right ?: if (s.visible) 1920 else 0,
-                        bottom = b?.bottom ?: if (s.visible) 1080 else 0,
+                        right = b?.right ?: if (s.visible) screenW else 0,
+                        bottom = b?.bottom ?: if (s.visible) screenH else 0,
                         visible = s.visible,
                         isLauncher = isLauncherPackage(s.packageName, ownPkg),
                     )
@@ -408,6 +420,13 @@ object YandexNavWindowTracker {
     }
 }
 
+internal fun currentScreenDimensions(): Pair<Int, Int> {
+    val sb = runCatching { LauncherEmbeddedBoundsState.screenBounds }.getOrNull()
+    val w = sb?.width()?.takeIf { it > 0 } ?: 1920
+    val h = sb?.height()?.takeIf { it > 0 } ?: 1080
+    return w to h
+}
+
 /**
  * Checks whether a window task's bounds are within the visible screen area.
  * Returns false if the window is parked off-screen (e.g. left >= 2000, top >= 2000).
@@ -422,8 +441,9 @@ internal fun isWindowBoundsOnScreen(
     if (!visible) return false
     // dclwm parks off-screen windows at (2000, 2000 - 2200, 2200)
     if (left >= DclwmProtocol.OFF_LEFT || top >= DclwmProtocol.OFF_TOP) return false
+    val (screenW, screenH) = currentScreenDimensions()
     // Also if window is placed completely beyond screen edges
-    if (left >= 1920 || top >= 1080) return false
+    if (left >= screenW || top >= screenH) return false
     // Standard screen sanity
     if (right <= 0 || bottom <= 0) return false
     if (right <= left || bottom <= top) return false

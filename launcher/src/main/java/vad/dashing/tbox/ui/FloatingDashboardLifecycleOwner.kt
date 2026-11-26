@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui
 
+import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.savedstate.SavedStateRegistry
@@ -11,6 +12,9 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 
 internal class MyLifecycleOwner : SavedStateRegistryOwner, ViewModelStoreOwner {
+    companion object {
+        private const val TAG = "MyLifecycleOwner"
+    }
     private lateinit var mLifecycleRegistry: LifecycleRegistry
     private lateinit var mSavedStateRegistryController: SavedStateRegistryController
     private lateinit var mViewModelStore: ViewModelStore
@@ -55,14 +59,24 @@ internal class MyLifecycleOwner : SavedStateRegistryOwner, ViewModelStoreOwner {
 
     fun setCurrentState(state: Lifecycle.State) {
         try {
+            if (mLifecycleRegistry.currentState == Lifecycle.State.DESTROYED) return
             mLifecycleRegistry.currentState = state
         } catch (e: IllegalStateException) {
-            // Игнорируем ошибки при переходе состояний
+            Log.w(TAG, "Lifecycle state transition to $state failed: ${e.message}")
         }
     }
 
     // Важно: очищать ViewModelStore при уничтожении
     fun clear() {
         mViewModelStore.clear()
+    }
+
+    /**
+     * Safely transitions lifecycle to DESTROYED (so Compose WindowRecomposer cancels cleanly)
+     * and clears ViewModelStore.
+     */
+    fun destroyAndClear() {
+        setCurrentState(Lifecycle.State.DESTROYED)
+        clear()
     }
 }

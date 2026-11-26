@@ -459,6 +459,9 @@ private class LiveVideoWallpaperController(
         }
     }
 
+    @Volatile
+    private var pendingReleaseFuture: java.util.concurrent.Future<*>? = null
+
     private fun startPlayer() {
         val st = surfaceTexture ?: return
         val file = File(filePath)
@@ -468,6 +471,12 @@ private class LiveVideoWallpaperController(
         }
 
         releasePlayer(savePosition = false)
+        // Briefly await pending async MediaPlayer release so hardware MediaCodec slots
+        // are freed before instantiating a new decoder on constrained Android 9 head units.
+        pendingReleaseFuture?.let { future ->
+            runCatching { future.get(250L, java.util.concurrent.TimeUnit.MILLISECONDS) }
+            pendingReleaseFuture = null
+        }
 
         val surface = Surface(st)
         val mp = MediaPlayer()
@@ -582,7 +591,7 @@ private class LiveVideoWallpaperController(
             runCatching { mp.setSurface(null) }
             runCatching { surface?.release() }
 
-            videoReleaseExecutor.execute {
+            pendingReleaseFuture = videoReleaseExecutor.submit {
                 runCatching { mp.reset() }
                 runCatching { mp.release() }
             }
@@ -695,17 +704,30 @@ internal fun LauncherDesktopWallpaperLayer(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val mediaType = remember(activeWallpaperUri) {
-        detectWallpaperMediaTypeFromPath(activeWallpaperUri)
+    val mediaType by produceState(
+        initialValue = WallpaperMediaType.STATIC_IMAGE,
+        key1 = activeWallpaperUri,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            detectWallpaperMediaTypeFromPath(activeWallpaperUri)
+        }
     }
 
     if (mediaType == WallpaperMediaType.STATIC_IMAGE) {
-        val staticBitmap = remember(context, activeWallpaperUri, isDarkTheme) {
-            loadWallpaperImageBitmap(context, activeWallpaperUri, isDarkTheme)
+        val staticBitmap by produceState<ImageBitmap?>(
+            initialValue = null,
+            key1 = context,
+            key2 = activeWallpaperUri,
+            key3 = isDarkTheme,
+        ) {
+            value = withContext(Dispatchers.IO) {
+                loadWallpaperImageBitmap(context, activeWallpaperUri, isDarkTheme)
+            }
         }
-        if (staticBitmap != null) {
+        val bmp = staticBitmap
+        if (bmp != null) {
             Image(
-                bitmap = staticBitmap,
+                bitmap = bmp,
                 contentDescription = null,
                 contentScale = scaleMode.toComposeContentScale(),
                 modifier = modifier,
@@ -833,20 +855,25 @@ private fun LiveVideoWallpaperLayer(
         }
     }
 
-    val fallbackBitmap = remember(context, isDarkTheme, playbackFailed, posterBitmap) {
-        if (posterBitmap == null) {
-            loadWallpaperImageBitmap(context, "", isDarkTheme)
+    val fallbackBitmap by produceState<ImageBitmap?>(
+        initialValue = null,
+        key1 = context,
+        key2 = isDarkTheme,
+        key3 = posterBitmap == null,
+    ) {
+        value = if (posterBitmap == null) {
+            withContext(Dispatchers.IO) { loadWallpaperImageBitmap(context, "", isDarkTheme) }
         } else {
             null
         }
     }
 
-    var controller by remember { mutableStateOf<LiveVideoWallpaperController?>(null) }
+    val controllerHolder = remember { arrayOfNulls<LiveVideoWallpaperController>(1) }
 
     DisposableEffect(Unit) {
         onDispose {
-            controller?.destroy()
-            controller = null
+            controllerHolder[0]?.destroy()
+            controllerHolder[0] = null
         }
     }
 
@@ -864,6 +891,7 @@ private fun LiveVideoWallpaperLayer(
         if (!playbackFailed) {
             AndroidView(
                 factory = { ctx ->
+                    controllerHolder[0]?.destroy()
                     TextureView(ctx).apply {
                         isOpaque = false
                         val ctrl = LiveVideoWallpaperController(
@@ -874,12 +902,16 @@ private fun LiveVideoWallpaperLayer(
                                 playbackFailed = true
                             },
                         )
-                        controller = ctrl
+                        controllerHolder[0] = ctrl
                         ctrl.update(filePath, scaleMode, paused)
                     }
                 },
                 update = {
-                    controller?.update(filePath, scaleMode, paused)
+                    controllerHolder[0]?.update(filePath, scaleMode, paused)
+                },
+                onRelease = {
+                    controllerHolder[0]?.destroy()
+                    controllerHolder[0] = null
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -922,12 +954,13 @@ private fun AnimatedImageWallpaperLayer(
 
     val drawable = decodedDrawable
     if (drawable == null) {
-        val fallback = remember(context, isDarkTheme) {
-            loadWallpaperImageBitmap(context, "", isDarkTheme)
+        val fallback by produceState<ImageBitmap?>(initialValue = null, key1 = context, key2 = isDarkTheme) {
+            value = withContext(Dispatchers.IO) { loadWallpaperImageBitmap(context, "", isDarkTheme) }
         }
-        if (fallback != null) {
+        val fb = fallback
+        if (fb != null) {
             Image(
-                bitmap = fallback,
+                bitmap = fb,
                 contentDescription = null,
                 contentScale = scaleMode.toComposeContentScale(),
                 modifier = modifier,

@@ -23,11 +23,13 @@ import kotlinx.coroutines.withContext
 import android.view.WindowManager
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LastAppTracker
+import vad.dashing.tbox.ShellExecutor
 import vad.dashing.dclwm.Client as DclwmClient
 import vad.dashing.dclwm.Protocol as DclwmProtocol
 import vad.dashing.dclwm.Starter as DclwmStarter
+import java.lang.reflect.Field
 import java.lang.reflect.Method
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "LauncherFreeform"
 private const val WINDOWING_MODE_FREEFORM = 5
@@ -80,7 +82,8 @@ internal fun isFreeformEnabled(context: Context): Boolean {
 private const val POLICY_CONTROL_IMMERSIVE = "immersive.full=*"
 
 internal fun ensureFreeformImmersivePolicy(context: Context) {
-    val cr = context.contentResolver
+    val appCtx = context.applicationContext
+    val cr = appCtx.contentResolver
     val current = runCatching { Settings.Global.getString(cr, "policy_control") }.getOrNull()
     if (current == POLICY_CONTROL_IMMERSIVE) return
     val viaSettings = runCatching {
@@ -88,12 +91,20 @@ internal fun ensureFreeformImmersivePolicy(context: Context) {
         Settings.Global.getString(cr, "policy_control") == POLICY_CONTROL_IMMERSIVE
     }.getOrDefault(false)
     if (!viaSettings) {
-        runCatching {
-            val proc = ProcessBuilder(
-                "settings", "put", "global", "policy_control", POLICY_CONTROL_IMMERSIVE,
-            ).redirectErrorStream(true).start()
-            proc.waitFor()
+        val runShell: () -> Unit = {
+            ShellExecutor.exec(
+                listOf("settings", "put", "global", "policy_control", POLICY_CONTROL_IMMERSIVE),
+                timeoutMs = 2_000L,
+            )
+            val after = runCatching { Settings.Global.getString(cr, "policy_control") }.getOrNull()
+            Log.w("LauncherAppLaunch", "policy_control want=$POLICY_CONTROL_IMMERSIVE now=$after")
         }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            freeformResizeScope.launch { runShell() }
+        } else {
+            runShell()
+        }
+        return
     }
     val after = runCatching { Settings.Global.getString(cr, "policy_control") }.getOrNull()
     Log.w("LauncherAppLaunch", "policy_control want=$POLICY_CONTROL_IMMERSIVE now=$after")
@@ -131,6 +142,7 @@ internal fun closeFullWidthAppsIfOpen(
     context: Context,
     launchingPackage: String,
     targetBounds: Rect,
+    excludePackages: Set<String> = emptySet(),
 ) {
     // Only close full-width/fullscreen apps if the new target launch is NOT full-width (EMBEDDED or SPLIT, left != 0).
     // If launching a new FULL_WIDTH app (left == 0), do NOT close previous full-width apps —
@@ -147,7 +159,7 @@ internal fun closeFullWidthAppsIfOpen(
     if (fastStacks.isNotEmpty()) {
         for (info in fastStacks) {
             val pkg = stackInfoTopPackage(info) ?: continue
-            if (pkg == launcherPackage || pkg == launchingPackage) continue
+            if (pkg == launcherPackage || pkg == launchingPackage || pkg in excludePackages) continue
 
             val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
             if (recordedBounds != null && recordedBounds.left != 0) {
@@ -165,11 +177,11 @@ internal fun closeFullWidthAppsIfOpen(
                 packagesToStop += pkg
             }
         }
-    } else {
+    } else if (Looper.myLooper() != Looper.getMainLooper()) {
         val stacks = runCatching { LauncherAmStackShell.listStacks() }.getOrDefault(emptyList())
         for (s in stacks) {
             val pkg = s.packageName ?: continue
-            if (pkg == launcherPackage || pkg == launchingPackage) continue
+            if (pkg == launcherPackage || pkg == launchingPackage || pkg in excludePackages) continue
 
             val recordedBounds = FreeformLaunchRegistry.lastBounds(pkg)
             if (recordedBounds != null && recordedBounds.left != 0) {
@@ -191,7 +203,7 @@ internal fun closeFullWidthAppsIfOpen(
     // 2. Check packages recorded in FreeformLaunchRegistry
     val tracked = FreeformLaunchRegistry.snapshot()
     for (pkg in tracked) {
-        if (pkg == launcherPackage || pkg == launchingPackage) continue
+        if (pkg == launcherPackage || pkg == launchingPackage || pkg in excludePackages) continue
         val bounds = FreeformLaunchRegistry.lastBounds(pkg)
         if (bounds != null && bounds.left == 0) {
             packagesToStop += pkg
@@ -200,7 +212,7 @@ internal fun closeFullWidthAppsIfOpen(
 
     // 3. Check active app in LauncherActiveAppTracker
     val activePkg = LauncherActiveAppTracker.activeAppPackage()
-    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage && activePkg != launchingPackage) {
+    if (!activePkg.isNullOrBlank() && activePkg != launcherPackage && activePkg != launchingPackage && activePkg !in excludePackages) {
         val bounds = FreeformLaunchRegistry.lastBounds(activePkg)
         if (bounds != null && bounds.left == 0) {
             packagesToStop += activePkg
@@ -213,11 +225,6 @@ internal fun closeFullWidthAppsIfOpen(
         TAG,
         "closeFullWidthAppsIfOpen: closing full-width/fullscreen stackIds=$stacksToRemove packages=$packagesToStop launchingPkg=$launchingPackage targetLeft=${targetBounds.left}",
     )
-
-    // Primary shell cleanup: remove wide/fullscreen stacks via `am stack remove <stackId>`
-    for (stackId in stacksToRemove) {
-        LauncherAmStackShell.removeStack(stackId)
-    }
 
     val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     for (pkg in packagesToStop) {
@@ -232,16 +239,25 @@ internal fun closeFullWidthAppsIfOpen(
         }
     }
 
-    // Secondary shell cleanup for any remaining stacks for packagesToStop
-    runCatching {
-        for (s in LauncherAmStackShell.listStacks()) {
-            val pkg = s.packageName ?: continue
-            if (pkg == launcherPackage) continue
-            if (pkg in packagesToStop) {
-                LauncherAmStackShell.removeStack(s.stackId)
-                FreeformLaunchRegistry.remove(pkg)
+    val shellCleanup: () -> Unit = {
+        for (stackId in stacksToRemove) {
+            LauncherAmStackShell.removeStack(stackId)
+        }
+        runCatching {
+            for (s in LauncherAmStackShell.listStacks()) {
+                val pkg = s.packageName ?: continue
+                if (pkg == launcherPackage || pkg in excludePackages) continue
+                if (pkg in packagesToStop) {
+                    LauncherAmStackShell.removeStack(s.stackId)
+                    FreeformLaunchRegistry.remove(pkg)
+                }
             }
         }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        freeformResizeScope.launch { shellCleanup() }
+    } else {
+        shellCleanup()
     }
 }
 
@@ -262,17 +278,24 @@ internal fun removeAppTaskWindow(context: Context, packageName: String) {
         Log.w(TAG, "removeAppTaskWindow: taskId not found for pkg=$packageName")
     }
 
-    runCatching {
-        for (s in LauncherAmStackShell.listStacks()) {
-            if (s.packageName == packageName && s.packageName != myPkg) {
-                LauncherAmStackShell.removeStack(s.stackId)
-            }
-        }
-    }
-
     FreeformLaunchRegistry.remove(packageName)
     if (packageName == LauncherActiveAppTracker.activeAppPackage()) {
         LauncherActiveAppTracker.clearActiveApp()
+    }
+
+    val shellRemove: () -> Unit = {
+        runCatching {
+            for (s in LauncherAmStackShell.listStacks()) {
+                if (s.packageName == packageName && s.packageName != myPkg) {
+                    LauncherAmStackShell.removeStack(s.stackId)
+                }
+            }
+        }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        freeformResizeScope.launch { shellRemove() }
+    } else {
+        shellRemove()
     }
 }
 
@@ -282,24 +305,24 @@ internal fun closeAppPackage(context: Context, packageName: String) {
     if (!isPackageSafeToStop(appCtx, packageName)) return
 
     Log.w(TAG, "closeAppPackage: force-stopping package=$packageName")
-    runCatching {
-        val pb = ProcessBuilder("am", "force-stop", packageName)
-        val proc = pb.start()
-        proc.waitFor(300L, TimeUnit.MILLISECONDS)
-        Log.w(TAG, "closeAppPackage: am force-stop $packageName completed")
-    }.onFailure { err ->
-        Log.w(TAG, "closeAppPackage: am force-stop $packageName failed: ${err.message}")
-    }
-
-    val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-    val taskId = findTaskIdForPackage(am, packageName)
-    if (taskId != null) {
-        removeTaskId(am, taskId)
-    }
-
     FreeformLaunchRegistry.remove(packageName)
     if (packageName == LauncherActiveAppTracker.activeAppPackage()) {
         LauncherActiveAppTracker.clearActiveApp()
+    }
+
+    val doClose: () -> Unit = {
+        val res = ShellExecutor.exec(listOf("am", "force-stop", packageName), timeoutMs = 2_000L)
+        Log.w(TAG, "closeAppPackage: am force-stop $packageName ok=${res.isSuccess} exit=${res.exitCode}")
+        val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val taskId = findTaskIdForPackage(am, packageName)
+        if (taskId != null) {
+            removeTaskId(am, taskId)
+        }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        freeformResizeScope.launch { doClose() }
+    } else {
+        doClose()
     }
 }
 
@@ -309,10 +332,19 @@ internal fun tryLaunchIntentInBounds(
     intent: Intent,
     bounds: Rect,
     launchAdjacent: Boolean = false,
+    excludePackages: Set<String> = emptySet(),
 ): Boolean {
+    if (!launchAdjacent) {
+        cancelPendingSplitRightLaunch()
+    }
     markPackageLaunching(packageName)
     cancelPendingMinimizeTasks()
-    closeFullWidthAppsIfOpen(context, launchingPackage = packageName, targetBounds = bounds)
+    closeFullWidthAppsIfOpen(
+        context = context,
+        launchingPackage = packageName,
+        targetBounds = bounds,
+        excludePackages = excludePackages,
+    )
     val home = LauncherHomeActivityHolder.instance
     if (home != null) {
         val applyNotFocusable = Runnable {
@@ -336,15 +368,7 @@ internal fun tryLaunchIntentInBounds(
         }
     }
     val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-    runCatching {
-        val method = ActivityOptions::class.java.getMethod(
-            "setLaunchWindowingMode",
-            Int::class.javaPrimitiveType,
-        )
-        method.invoke(options, WINDOWING_MODE_FREEFORM)
-    }.onFailure {
-        Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
-    }
+    applyFreeformLaunchWindowingMode(options)
     val activity = context.findLauncherActivity()
     val appCtx = context.applicationContext
     val targetBounds = Rect(bounds)
@@ -375,24 +399,11 @@ internal fun tryLaunchIntentInBounds(
         val isHomeWindowingMode = LauncherAppConfigStore.experimentalHomeWindowingMode(context)
 
         // For overlay-fullscreen: task was switched to Fullscreen (mode 1) when Home was pressed.
-        // 1. Switch windowing mode back to FREEFORM first so it can be resized.
-        // 2. Resize bounds to target bounds before bringing to front to avoid fullscreen flash.
+        // Switch back to freeform and dispatch DclwmClient resize off the Main thread to avoid UI stalls.
         if (isHomeWindowingMode) {
-            runCatching {
-                DclwmClient().restoreFreeform(
-                    existingTaskId,
-                    targetBounds.left,
-                    targetBounds.top,
-                    targetBounds.right,
-                    targetBounds.bottom,
-                )
-            }.onFailure {
-                Log.w("LauncherAppLaunch", "dclwm restore freeform failed task=$existingTaskId", it)
-                setTaskWindowingModeFreeform(am, existingTaskId, toTop = false)
-            }
-        } else {
-            forceFreeformBoundsByTaskId(context, existingTaskId, targetBounds, bringToFront = false, label = packageName)
+            setTaskWindowingModeFreeform(am, existingTaskId, toTop = false)
         }
+        forceFreeformBoundsByTaskId(context, existingTaskId, targetBounds, bringToFront = false, label = packageName)
 
         LastAppTracker.recordLaunch(context, packageName)
         LauncherActiveAppTracker.onAppLaunched(
@@ -579,36 +590,27 @@ private fun forceFreeformBoundsByTaskIdInternal(
 
     if (!dclwmResized) {
         val resized = runCatching {
-            val method = ActivityManager::class.java.getMethod(
-                "resizeTask",
-                Int::class.javaPrimitiveType,
-                Rect::class.java,
-                Int::class.javaPrimitiveType,
-            )
+            val method = cachedResizeTask3Method ?: error("resizeTask(int,Rect,int) unavailable")
             method.invoke(am, taskId, rect, RESIZE_MODE_SYSTEM)
             true
         }.recoverCatching {
-            val method = ActivityManager::class.java.getMethod(
-                "resizeTask",
-                Int::class.javaPrimitiveType,
-                Rect::class.java,
-            )
+            val method = cachedResizeTask2Method ?: error("resizeTask(int,Rect) unavailable")
             method.invoke(am, taskId, rect)
             true
         }.recoverCatching {
             // Proven on this HU: am task resize <id> L T R B
-            val pb = ProcessBuilder(
-                "am", "task", "resize",
-                taskId.toString(),
-                rect.left.toString(),
-                rect.top.toString(),
-                rect.right.toString(),
-                rect.bottom.toString(),
+            val res = ShellExecutor.exec(
+                listOf(
+                    "am", "task", "resize",
+                    taskId.toString(),
+                    rect.left.toString(),
+                    rect.top.toString(),
+                    rect.right.toString(),
+                    rect.bottom.toString(),
+                ),
+                timeoutMs = 2_000L,
             )
-            val proc = pb.redirectErrorStream(true).start()
-            val out = proc.inputStream.bufferedReader().readText().trim()
-            val code = proc.waitFor()
-            if (code != 0) error("am task resize exit=$code out=$out")
+            if (!res.isSuccess) error("am task resize exit=${res.exitCode} timedOut=${res.timedOut} out=${res.output.trim()}")
             true
         }.onFailure {
             Log.w("LauncherAppLaunch", "resizeTask failed task=$taskId label=$label", it)
@@ -632,19 +634,9 @@ private fun forceFreeformBoundsByTaskIdInternal(
 private fun bringTaskToFrontInternal(am: ActivityManager, taskId: Int, bounds: Rect) {
     runCatching {
         val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-        runCatching {
-            ActivityOptions::class.java.getMethod(
-                "setLaunchWindowingMode",
-                Int::class.javaPrimitiveType,
-            ).invoke(options, WINDOWING_MODE_FREEFORM)
-        }
+        applyFreeformLaunchWindowingMode(options)
         val movedWithOptions = runCatching {
-            val method = ActivityManager::class.java.getMethod(
-                "moveTaskToFront",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                android.os.Bundle::class.java,
-            )
+            val method = cachedMoveTaskToFrontBundleMethod ?: return@runCatching false
             method.invoke(am, taskId, 0, options.toBundle())
             true
         }.getOrDefault(false)
@@ -656,26 +648,15 @@ private fun bringTaskToFrontInternal(am: ActivityManager, taskId: Int, bounds: R
 }
 
 private fun setTaskWindowingModeFreeform(am: ActivityManager, taskId: Int, toTop: Boolean = false) {
-    runCatching {
-        val method = ActivityManager::class.java.getMethod(
-            "setTaskWindowingMode",
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-            Boolean::class.javaPrimitiveType,
-        )
+    val amDone = runCatching {
+        val method = cachedAmSetTaskWindowingModeMethod ?: return@runCatching false
         method.invoke(am, taskId, WINDOWING_MODE_FREEFORM, toTop)
-        return
-    }
+        true
+    }.getOrDefault(false)
+    if (amDone) return
     runCatching {
-        val atmClass = Class.forName("android.app.ActivityTaskManager")
-        val getInstance = atmClass.getMethod("getInstance")
-        val atm = getInstance.invoke(null)
-        val method = atmClass.getMethod(
-            "setTaskWindowingMode",
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType,
-            Boolean::class.javaPrimitiveType,
-        )
+        val atm = cachedAtmInstance ?: return
+        val method = cachedAtmSetTaskWindowingModeMethod ?: return
         method.invoke(atm, taskId, WINDOWING_MODE_FREEFORM, toTop)
     }
 }
@@ -697,15 +678,7 @@ internal fun launchOwnActivityInFreeformBounds(
             Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
     }
     val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-    runCatching {
-        val method = ActivityOptions::class.java.getMethod(
-            "setLaunchWindowingMode",
-            Int::class.javaPrimitiveType,
-        )
-        method.invoke(options, WINDOWING_MODE_FREEFORM)
-    }.onFailure {
-        Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
-    }
+    applyFreeformLaunchWindowingMode(options)
     val activity = context.findLauncherActivity()
     val appCtx = context.applicationContext
     val targetBounds = Rect(bounds)
@@ -891,7 +864,7 @@ private fun isPackageSafeToStop(context: Context, pkg: String): Boolean {
     return true
 }
 
-private var dclwmWatcherJob: Job? = null
+@Volatile private var dclwmWatcherJob: Job? = null
 private val dclwmWatcherScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private const val MAX_DCLWM_ATTEMPTS = 15
 
@@ -963,8 +936,9 @@ internal fun stopDclwmStorageWatcherIfUnused(context: Context) {
     }
 }
 
-private var activeMinimizeJob: Job? = null
+@Volatile private var activeMinimizeJob: Job? = null
 private val minimizeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+private val dismissScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 @Volatile
 private var launchingPackage: String? = null
@@ -998,6 +972,7 @@ internal fun cancelPendingMinimizeTasks() {
 internal fun minimizeForeignFreeformTasksViaDclwm(
     context: Context,
     source: String = "unknown",
+    isActiveCheck: () -> Boolean = { true },
 ): Boolean {
     val client = DclwmClient()
     val tasks = runCatching {
@@ -1011,7 +986,7 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
     val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
     var minimizedCount = 0
     for (task in tasks) {
-        if (Thread.currentThread().isInterrupted) return false
+        if (!isActiveCheck()) return false
         if (task.packageName == launcherPackage) continue
         if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
         if (isPackageCurrentlyLaunching(task.packageName)) {
@@ -1042,6 +1017,7 @@ internal fun minimizeForeignFreeformTasksViaDclwm(
 internal fun moveForeignFreeformTasksToBackViaDclwm(
     context: Context,
     source: String = "unknown",
+    isActiveCheck: () -> Boolean = { true },
 ): Boolean {
     val client = DclwmClient()
     val tasks = runCatching {
@@ -1055,7 +1031,7 @@ internal fun moveForeignFreeformTasksToBackViaDclwm(
     val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
     var movedCount = 0
     for (task in tasks) {
-        if (Thread.currentThread().isInterrupted) return false
+        if (!isActiveCheck()) return false
         if (task.packageName == launcherPackage) continue
         if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
         if (isPackageCurrentlyLaunching(task.packageName)) {
@@ -1085,6 +1061,7 @@ internal fun moveForeignFreeformTasksToBackViaDclwm(
 internal fun switchForeignFreeformTasksToFullscreenViaDclwm(
     context: Context,
     source: String = "unknown",
+    isActiveCheck: () -> Boolean = { true },
 ): Boolean {
     val client = DclwmClient()
     val tasks = runCatching {
@@ -1098,7 +1075,7 @@ internal fun switchForeignFreeformTasksToFullscreenViaDclwm(
     val launcherPackage = DclwmProtocol.LAUNCHER_PACKAGE
     var switchedCount = 0
     for (task in tasks) {
-        if (Thread.currentThread().isInterrupted) return false
+        if (!isActiveCheck()) return false
         if (task.packageName == launcherPackage) continue
         if (task.packageName in SYSTEM_PROTECTED_PACKAGES) continue
         if (isPackageCurrentlyLaunching(task.packageName)) {
@@ -1132,6 +1109,7 @@ internal fun minimizeForeignFreeformTasks(
     onComplete: () -> Unit = {},
     source: String = "unknown",
 ) {
+    cancelPendingSplitRightLaunch()
     val appCtx = context.applicationContext
     val launcherPackage = appCtx.packageName
     val tracked = FreeformLaunchRegistry.snapshot()
@@ -1140,10 +1118,11 @@ internal fun minimizeForeignFreeformTasks(
     activeMinimizeJob?.cancel()
     activeMinimizeJob = minimizeScope.launch {
         if (!isActive) return@launch
+        val activeCheck: () -> Boolean = { isActive }
         runCatching {
             if (LauncherAppConfigStore.experimentalHomeWindowingMode(appCtx)) {
                 val dclwmOk = runCatching {
-                    switchForeignFreeformTasksToFullscreenViaDclwm(appCtx, source)
+                    switchForeignFreeformTasksToFullscreenViaDclwm(appCtx, source, activeCheck)
                 }.getOrDefault(false)
 
                 if (!isActive) return@launch
@@ -1163,7 +1142,7 @@ internal fun minimizeForeignFreeformTasks(
                 Log.w("LauncherAppLaunch", "dclwm setWindowingMode failed or returned false, falling back to legacy cleanup")
             } else if (LauncherAppConfigStore.experimentalHomeMoveTaskToBack(appCtx)) {
                 val dclwmOk = runCatching {
-                    moveForeignFreeformTasksToBackViaDclwm(appCtx, source)
+                    moveForeignFreeformTasksToBackViaDclwm(appCtx, source, activeCheck)
                 }.getOrDefault(false)
 
                 if (!isActive) return@launch
@@ -1183,7 +1162,7 @@ internal fun minimizeForeignFreeformTasks(
                 Log.w("LauncherAppLaunch", "dclwm moveTaskToBack failed or returned false, falling back to legacy cleanup")
             } else if (LauncherAppConfigStore.experimentalHideAppsOnHome(appCtx)) {
                 val dclwmOk = runCatching {
-                    minimizeForeignFreeformTasksViaDclwm(appCtx, source)
+                    minimizeForeignFreeformTasksViaDclwm(appCtx, source, activeCheck)
                 }.getOrDefault(false)
 
                 if (!isActive) return@launch
@@ -1305,6 +1284,7 @@ internal fun dismissForeignFreeformTasks(
     onComplete: () -> Unit = {},
     source: String = "unknown",
 ) {
+    cancelPendingSplitRightLaunch()
     val appCtx = context.applicationContext
     val launcherPackage = appCtx.packageName
     val tracked = FreeformLaunchRegistry.snapshot()
@@ -1315,7 +1295,7 @@ internal fun dismissForeignFreeformTasks(
     // Show desktop overlay immediately on click
     LauncherRightPanelOverlayWindow.show(context)
 
-    CoroutineScope(Dispatchers.IO).launch {
+    dismissScope.launch {
         runCatching {
             val am = appCtx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val packagesToStop = mutableSetOf<String>()
@@ -1349,18 +1329,10 @@ internal fun dismissForeignFreeformTasks(
                     continue
                 }
 
-                // Force-stop the package via shell `am force-stop`
-                var forceStopOk = false
-                runCatching {
-                    val pb = ProcessBuilder("am", "force-stop", pkg)
-                    val proc = pb.start()
-                    val exit = proc.waitFor()
-                    forceStopOk = exit == 0
-                    Log.w("LauncherAppLaunch", "am force-stop $pkg completed exit=$exit")
-                }.onFailure { err ->
-                    Log.w("LauncherAppLaunch", "am force-stop $pkg failed: ${err.message}")
-                    LauncherNavLogger.logNavError("CLOSE_APPS", source, "am force-stop failed for pkg=$pkg", err)
-                }
+                // Force-stop the package via bounded ShellExecutor
+                val res = ShellExecutor.exec(listOf("am", "force-stop", pkg), timeoutMs = 2_000L)
+                val forceStopOk = res.isSuccess
+                Log.w("LauncherAppLaunch", "am force-stop $pkg completed ok=$forceStopOk exit=${res.exitCode} timedOut=${res.timedOut}")
 
                 val taskId = findTaskIdForPackage(am, pkg)
                 var removedTaskOk = false
@@ -1417,17 +1389,112 @@ private fun stackInfoLooksFreeform(info: Any): Boolean {
     return w in 200..1930 && h in 200..1050
 }
 
-private fun stackInfoBounds(info: Any): Rect? {
+// --- Cached Reflection Objects for ActivityManager, ActivityOptions & StackInfo ---
+
+private val REFLECT_MISSING = Any()
+private val reflectedFieldCache = ConcurrentHashMap<Pair<Class<*>, String>, Any>()
+private val reflectedZeroArgMethodCache = ConcurrentHashMap<Pair<Class<*>, String>, Any>()
+
+private fun cachedField(clazz: Class<*>, name: String): Field? {
+    val cached = reflectedFieldCache.getOrPut(clazz to name) {
+        runCatching { clazz.getField(name) }.getOrNull() ?: REFLECT_MISSING
+    }
+    return cached as? Field
+}
+
+private fun cachedZeroArgMethod(clazz: Class<*>, name: String): Method? {
+    val cached = reflectedZeroArgMethodCache.getOrPut(clazz to name) {
+        runCatching { clazz.getMethod(name) }.getOrNull()
+            ?: clazz.methods.firstOrNull { it.name == name && it.parameterTypes.isEmpty() }
+            ?: REFLECT_MISSING
+    }
+    return cached as? Method
+}
+
+private val cachedSetLaunchWindowingModeMethod: Method? by lazy {
     runCatching {
-        val field = info.javaClass.getField("bounds")
-        return field.get(info) as? Rect
+        ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+    }.getOrNull()
+}
+
+private fun applyFreeformLaunchWindowingMode(options: ActivityOptions) {
+    runCatching {
+        cachedSetLaunchWindowingModeMethod?.invoke(options, WINDOWING_MODE_FREEFORM)
+    }.onFailure {
+        Log.w(TAG, "setLaunchWindowingMode unavailable: ${it.message}")
+    }
+}
+
+private val cachedResizeTask3Method: Method? by lazy {
+    runCatching {
+        ActivityManager::class.java.getMethod(
+            "resizeTask",
+            Int::class.javaPrimitiveType,
+            Rect::class.java,
+            Int::class.javaPrimitiveType,
+        )
+    }.getOrNull()
+}
+
+private val cachedResizeTask2Method: Method? by lazy {
+    runCatching {
+        ActivityManager::class.java.getMethod(
+            "resizeTask",
+            Int::class.javaPrimitiveType,
+            Rect::class.java,
+        )
+    }.getOrNull()
+}
+
+private val cachedMoveTaskToFrontBundleMethod: Method? by lazy {
+    runCatching {
+        ActivityManager::class.java.getMethod(
+            "moveTaskToFront",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            android.os.Bundle::class.java,
+        )
+    }.getOrNull()
+}
+
+private val cachedAmSetTaskWindowingModeMethod: Method? by lazy {
+    runCatching {
+        ActivityManager::class.java.getMethod(
+            "setTaskWindowingMode",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType,
+        )
+    }.getOrNull()
+}
+
+private val cachedAtmClass: Class<*>? by lazy {
+    runCatching { Class.forName("android.app.ActivityTaskManager") }.getOrNull()
+}
+
+private val cachedAtmInstance: Any? by lazy {
+    runCatching { cachedAtmClass?.getMethod("getInstance")?.invoke(null) }.getOrNull()
+}
+
+private val cachedAtmSetTaskWindowingModeMethod: Method? by lazy {
+    runCatching {
+        cachedAtmClass?.getMethod(
+            "setTaskWindowingMode",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType,
+        )
+    }.getOrNull()
+}
+
+private fun stackInfoBounds(info: Any): Rect? {
+    cachedField(info.javaClass, "bounds")?.let { field ->
+        runCatching { return field.get(info) as? Rect }
     }
     runCatching {
-        val cfg = info.javaClass.getField("configuration").get(info) ?: return null
-        val winConfig = cfg.javaClass.getField("windowConfiguration").get(cfg) ?: return null
-        val method = winConfig.javaClass.methods.firstOrNull {
-            it.name == "getBounds" && it.parameterTypes.isEmpty()
-        } ?: return null
+        val cfg = cachedField(info.javaClass, "configuration")?.get(info) ?: return null
+        val winConfig = cachedField(cfg.javaClass, "windowConfiguration")?.get(cfg) ?: return null
+        val method = cachedZeroArgMethod(winConfig.javaClass, "getBounds") ?: return null
         return method.invoke(winConfig) as? Rect
     }
     return null
@@ -1448,8 +1515,6 @@ private fun isTaskInFreeformMode(taskId: Int): Boolean {
     }
     return false
 }
-
-// --- Cached Reflection Objects for ActivityManager & ActivityManagerService ---
 
 private val cachedActivityManagerService: Any? by lazy {
     runCatching {
@@ -1516,44 +1581,41 @@ private fun activityManagerStackInfos(): List<Any> {
 }
 
 private fun stackInfoStackId(info: Any): Int? =
-    runCatching { info.javaClass.getField("stackId").getInt(info) }.getOrNull()
+    runCatching { cachedField(info.javaClass, "stackId")?.getInt(info) }.getOrNull()
 
 private fun stackInfoVisible(info: Any): Boolean =
-    runCatching { info.javaClass.getField("visible").getBoolean(info) }.getOrDefault(false)
+    runCatching { cachedField(info.javaClass, "visible")?.getBoolean(info) ?: false }.getOrDefault(false)
 
 private fun stackInfoPosition(info: Any): Int =
-    runCatching { info.javaClass.getField("position").getInt(info) }.getOrDefault(0)
+    runCatching { cachedField(info.javaClass, "position")?.getInt(info) ?: 0 }.getOrDefault(0)
 
 private fun stackInfoWindowingMode(info: Any): Int {
-    runCatching { return info.javaClass.getField("windowingMode").getInt(info) }
-    runCatching {
-        val m = info.javaClass.methods.firstOrNull {
-            it.name == "getWindowingMode" && it.parameterTypes.isEmpty()
-        }
-        if (m != null) return m.invoke(info) as Int
+    cachedField(info.javaClass, "windowingMode")?.let { f ->
+        runCatching { return f.getInt(info) }
+    }
+    cachedZeroArgMethod(info.javaClass, "getWindowingMode")?.let { m ->
+        runCatching { return m.invoke(info) as Int }
     }
     runCatching {
-        val cfg = info.javaClass.getField("configuration").get(info) ?: return 0
-        val winConfig = cfg.javaClass.getField("windowConfiguration").get(cfg) ?: return 0
-        val m = winConfig.javaClass.methods.firstOrNull {
-            it.name == "getWindowingMode" && it.parameterTypes.isEmpty()
-        } ?: return 0
+        val cfg = cachedField(info.javaClass, "configuration")?.get(info) ?: return 0
+        val winConfig = cachedField(cfg.javaClass, "windowConfiguration")?.get(cfg) ?: return 0
+        val m = cachedZeroArgMethod(winConfig.javaClass, "getWindowingMode") ?: return 0
         return m.invoke(winConfig) as Int
     }
     return 0
 }
 
 private fun stackInfoTaskIds(info: Any): IntArray? =
-    runCatching { info.javaClass.getField("taskIds").get(info) as? IntArray }.getOrNull()
+    runCatching { cachedField(info.javaClass, "taskIds")?.get(info) as? IntArray }.getOrNull()
 
 private fun stackInfoTaskNames(info: Any): Array<String>? =
     runCatching {
-        (info.javaClass.getField("taskNames").get(info) as? Array<*>)?.map { it?.toString().orEmpty() }?.toTypedArray()
+        (cachedField(info.javaClass, "taskNames")?.get(info) as? Array<*>)?.map { it?.toString().orEmpty() }?.toTypedArray()
     }.getOrNull()
 
 private fun stackInfoTopPackage(info: Any): String? =
     runCatching {
-        (info.javaClass.getField("topActivity").get(info) as? android.content.ComponentName)?.packageName
+        (cachedField(info.javaClass, "topActivity")?.get(info) as? android.content.ComponentName)?.packageName
     }.getOrNull()
 
 private fun Context.findLauncherActivity(): Activity? {

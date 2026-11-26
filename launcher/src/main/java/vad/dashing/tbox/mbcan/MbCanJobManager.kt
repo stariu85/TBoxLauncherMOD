@@ -1,5 +1,6 @@
 package vad.dashing.tbox.mbcan
 
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +21,12 @@ object MbCanJobManager {
     private val signalJobs = mutableMapOf<MbCanSignal, Job>()
     private val burstUntil = mutableMapOf<MbCanSignal, Long>()
 
+    private fun nowElapsedMs(): Long = try {
+        SystemClock.elapsedRealtime()
+    } catch (_: Throwable) {
+        System.currentTimeMillis()
+    }
+
     suspend fun attach(serviceScope: CoroutineScope) {
         mutex.withLock {
             scope = serviceScope
@@ -39,6 +46,8 @@ object MbCanJobManager {
                 }
             }
             activeTypeRefCounts.clear()
+            activeSignals.clear()
+            burstUntil.clear()
             scope = null
         }
     }
@@ -106,7 +115,7 @@ object MbCanJobManager {
 
     suspend fun requestBurst(signal: MbCanSignal) {
         mutex.withLock {
-            val until = System.currentTimeMillis() + BURST_DURATION_MS
+            val until = nowElapsedMs() + BURST_DURATION_MS
             burstUntil[signal] = until
             MbCanDiagnostics.log("DEBUG", "requestBurst signal=$signal until=$until")
         }
@@ -118,7 +127,7 @@ object MbCanJobManager {
         signalJobs[signal] = currentScope.launch(Dispatchers.IO) {
             while (isActive) {
                 MbCanRepository.refreshSignal(signal)
-                val now = System.currentTimeMillis()
+                val now = nowElapsedMs()
                 val delayMs = mutex.withLock {
                     val inBurst = (burstUntil[signal] ?: 0L) > now
                     if (!inBurst) {

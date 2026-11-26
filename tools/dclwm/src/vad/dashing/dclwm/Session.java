@@ -1,14 +1,23 @@
 package vad.dashing.dclwm;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One text command from the launcher. The caller has already checked that the
  * socket peer is root or the launcher uid.
  */
 public final class Session {
+    private static final int VERIFY_RETRIES = 2;
+    private static final long VERIFY_RETRY_SLEEP_MS = 50L;
+    private static final Object MISSING_METHOD = new Object();
+    private static final Map<String, Object> METHOD_CACHE = new HashMap<String, Object>();
+    private static volatile Constructor<?> cachedRectCtor;
+
     private final Am am;
 
     public Session(Am am) {
@@ -16,7 +25,7 @@ public final class Session {
     }
 
     public String handle(String line, int peerUid, int launcherUid) {
-        if (!allowed(peerUid, launcherUid)) {
+        if (!isAllowed(peerUid, launcherUid)) {
             return "ERR forbidden\n";
         }
         if (line == null) {
@@ -70,7 +79,7 @@ public final class Session {
             if ("SET_WINDOWING_MODE".equals(op) && (parts.length == 1 || parts.length == 2 || parts.length == 3)) {
                 int mode = 1; // 1 = WINDOWING_MODE_FULLSCREEN
                 if (parts.length == 3) {
-                    return setTaskWindowingMode(parseId(parts[1]), Integer.parseInt(parts[2]));
+                    return setTaskWindowingMode(parseId(parts[1]), parseWindowingMode(parts[2]));
                 } else if (parts.length == 2) {
                     return setTaskWindowingMode(parseId(parts[1]), mode);
                 } else {
@@ -85,7 +94,7 @@ public final class Session {
         }
     }
 
-    private static boolean allowed(int peerUid, int launcherUid) {
+    static boolean isAllowed(int peerUid, int launcherUid) {
         if (peerUid == 0) {
             return true;
         }
@@ -103,6 +112,14 @@ public final class Session {
     private static int parseCoord(String text) {
         int value = Integer.parseInt(text);
         if (value < -100 || value > 4000) {
+            throw new NumberFormatException(text);
+        }
+        return value;
+    }
+
+    private static int parseWindowingMode(String text) {
+        int value = Integer.parseInt(text);
+        if (value < 0 || value > 15) {
             throw new NumberFormatException(text);
         }
         return value;
@@ -129,13 +146,18 @@ public final class Session {
         }
         moveStack(task.stackId, left, top, right, bottom);
         applyResizeTask(taskId, left, top, right, bottom);
-        WindowTask after = StackListParser.find(read(), taskId);
-        if (after == null
-                || after.left != left || after.top != top
-                || after.right != right || after.bottom != bottom) {
-            return "ERR am bounds\n";
+        for (int attempt = 0; attempt <= VERIFY_RETRIES; attempt++) {
+            if (attempt > 0) {
+                sleepQuietly(VERIFY_RETRY_SLEEP_MS);
+            }
+            WindowTask after = StackListParser.find(read(), taskId);
+            if (after != null
+                    && after.left == left && after.top == top
+                    && after.right == right && after.bottom == bottom) {
+                return "OK\n";
+            }
         }
-        return "OK\n";
+        return "ERR am bounds\n";
     }
 
     private String restoreFreeform(int taskId, int left, int top, int right, int bottom) throws AmFailure {
@@ -154,13 +176,18 @@ public final class Session {
         int targetStackId = updated != null ? updated.stackId : task.stackId;
         moveStack(targetStackId, left, top, right, bottom);
         applyResizeTask(taskId, left, top, right, bottom);
-        WindowTask after = StackListParser.find(read(), taskId);
-        if (after == null
-                || after.left != left || after.top != top
-                || after.right != right || after.bottom != bottom) {
-            return "ERR am bounds\n";
+        for (int attempt = 0; attempt <= VERIFY_RETRIES; attempt++) {
+            if (attempt > 0) {
+                sleepQuietly(VERIFY_RETRY_SLEEP_MS);
+            }
+            WindowTask after = StackListParser.find(read(), taskId);
+            if (after != null
+                    && after.left == left && after.top == top
+                    && after.right == right && after.bottom == bottom) {
+                return "OK\n";
+            }
         }
-        return "OK\n";
+        return "ERR am bounds\n";
     }
 
     private String minimize(int taskId) throws AmFailure {
@@ -170,15 +197,20 @@ public final class Session {
             return rejected;
         }
         moveStack(task.stackId, Protocol.OFF_LEFT, Protocol.OFF_TOP, Protocol.OFF_RIGHT, Protocol.OFF_BOTTOM);
-        WindowTask after = StackListParser.find(read(), taskId);
-        if (after == null
-                || after.stackLeft != Protocol.OFF_LEFT
-                || after.stackTop != Protocol.OFF_TOP
-                || after.stackRight != Protocol.OFF_RIGHT
-                || after.stackBottom != Protocol.OFF_BOTTOM) {
-            return "ERR am bounds\n";
+        for (int attempt = 0; attempt <= VERIFY_RETRIES; attempt++) {
+            if (attempt > 0) {
+                sleepQuietly(VERIFY_RETRY_SLEEP_MS);
+            }
+            WindowTask after = StackListParser.find(read(), taskId);
+            if (after != null
+                    && after.stackLeft == Protocol.OFF_LEFT
+                    && after.stackTop == Protocol.OFF_TOP
+                    && after.stackRight == Protocol.OFF_RIGHT
+                    && after.stackBottom == Protocol.OFF_BOTTOM) {
+                return "OK\n";
+            }
         }
-        return "OK\n";
+        return "ERR am bounds\n";
     }
 
     private String dismiss(int taskId) throws AmFailure {
@@ -188,10 +220,23 @@ public final class Session {
             return rejected;
         }
         am.run("am", "stack", "remove", Integer.toString(task.stackId));
-        if (StackListParser.find(read(), taskId) != null) {
-            return "ERR am still_there\n";
+        for (int attempt = 0; attempt <= VERIFY_RETRIES; attempt++) {
+            if (attempt > 0) {
+                sleepQuietly(VERIFY_RETRY_SLEEP_MS);
+            }
+            if (StackListParser.find(read(), taskId) == null) {
+                return "OK\n";
+            }
         }
-        return "OK\n";
+        return "ERR am still_there\n";
+    }
+
+    private static void sleepQuietly(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private String moveTaskToBack(int taskId) throws AmFailure {
@@ -204,15 +249,10 @@ public final class Session {
         try {
             Object iam = getService("android.app.ActivityManager");
             if (iam != null) {
-                for (Method m : iam.getClass().getMethods()) {
-                    if ("moveTaskToBack".equals(m.getName())) {
-                        Class<?>[] p = m.getParameterTypes();
-                        if (p.length == 1 && p[0] == int.class) {
-                            m.invoke(iam, taskId);
-                            done = true;
-                            break;
-                        }
-                    }
+                Method moveMethod = findMoveTaskToBackMethod(iam.getClass());
+                if (moveMethod != null) {
+                    moveMethod.invoke(iam, taskId);
+                    done = true;
                 }
             }
         } catch (Throwable ignored) {
@@ -230,15 +270,7 @@ public final class Session {
     private String moveForeignTasksToBack() throws AmFailure {
         List<WindowTask> tasks = read();
         Object iam = getService("android.app.ActivityManager");
-        Method moveMethod = null;
-        if (iam != null) {
-            for (Method m : iam.getClass().getMethods()) {
-                if ("moveTaskToBack".equals(m.getName()) && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class) {
-                    moveMethod = m;
-                    break;
-                }
-            }
-        }
+        Method moveMethod = iam != null ? findMoveTaskToBackMethod(iam.getClass()) : null;
 
         for (int i = 0; i < tasks.size(); i++) {
             WindowTask t = tasks.get(i);
@@ -318,14 +350,10 @@ public final class Session {
             if (svc == null) {
                 return false;
             }
-            for (Method m : svc.getClass().getMethods()) {
-                if ("setTaskWindowingMode".equals(m.getName())) {
-                    Class<?>[] p = m.getParameterTypes();
-                    if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
-                        m.invoke(svc, taskId, windowingMode, toTop);
-                        return true;
-                    }
-                }
+            Method m = findSetTaskWindowingModeMethod(svc.getClass());
+            if (m != null) {
+                m.invoke(svc, taskId, windowingMode, toTop);
+                return true;
             }
         } catch (Throwable ignored) {
         }
@@ -370,25 +398,22 @@ public final class Session {
                 return false;
             }
             Object rect = newRect(left, top, right, bottom);
-            Class<?> rectClass = rect.getClass();
-            for (Method m : svc.getClass().getMethods()) {
-                if (!"resizeStack".equals(m.getName())) {
-                    continue;
-                }
-                Class<?>[] p = m.getParameterTypes();
-                if (p.length == 6 && p[0] == int.class && p[1] == rectClass
-                        && p[2] == boolean.class && p[3] == boolean.class && p[4] == boolean.class && p[5] == int.class) {
-                    m.invoke(svc, stackId, rect, false, true, false, -1);
-                    return true;
-                }
-                if (p.length == 3 && p[0] == int.class && p[1] == rectClass && p[2] == boolean.class) {
-                    m.invoke(svc, stackId, rect, false);
-                    return true;
-                }
-                if (p.length == 2 && p[0] == int.class && p[1] == rectClass) {
-                    m.invoke(svc, stackId, rect);
-                    return true;
-                }
+            Method m = findResizeStackMethod(svc.getClass(), rect.getClass());
+            if (m == null) {
+                return false;
+            }
+            int paramCount = m.getParameterTypes().length;
+            if (paramCount == 6) {
+                m.invoke(svc, stackId, rect, false, true, false, -1);
+                return true;
+            }
+            if (paramCount == 3) {
+                m.invoke(svc, stackId, rect, false);
+                return true;
+            }
+            if (paramCount == 2) {
+                m.invoke(svc, stackId, rect);
+                return true;
             }
         } catch (Throwable ignored) {
         }
@@ -402,24 +427,116 @@ public final class Session {
                 return false;
             }
             Object rect = newRect(left, top, right, bottom);
-            Class<?> rectClass = rect.getClass();
-            for (Method m : svc.getClass().getMethods()) {
-                if (!"resizeTask".equals(m.getName())) {
-                    continue;
-                }
-                Class<?>[] p = m.getParameterTypes();
-                if (p.length == 3 && p[0] == int.class && p[1] == rectClass && p[2] == int.class) {
-                    m.invoke(svc, taskId, rect, 0);
-                    return true;
-                }
-                if (p.length == 2 && p[0] == int.class && p[1] == rectClass) {
-                    m.invoke(svc, taskId, rect);
-                    return true;
-                }
+            Method m = findResizeTaskMethod(svc.getClass(), rect.getClass());
+            if (m == null) {
+                return false;
+            }
+            int paramCount = m.getParameterTypes().length;
+            if (paramCount == 3) {
+                m.invoke(svc, taskId, rect, 0);
+                return true;
+            }
+            if (paramCount == 2) {
+                m.invoke(svc, taskId, rect);
+                return true;
             }
         } catch (Throwable ignored) {
         }
         return false;
+    }
+
+    private static Method findMoveTaskToBackMethod(Class<?> svcClass) {
+        String key = svcClass.getName() + "#moveTaskToBack";
+        synchronized (METHOD_CACHE) {
+            if (METHOD_CACHE.containsKey(key)) {
+                Object cached = METHOD_CACHE.get(key);
+                return cached == MISSING_METHOD ? null : (Method) cached;
+            }
+            Method found = null;
+            for (Method m : svcClass.getMethods()) {
+                if ("moveTaskToBack".equals(m.getName())) {
+                    Class<?>[] p = m.getParameterTypes();
+                    if (p.length == 1 && p[0] == int.class) {
+                        found = m;
+                        break;
+                    }
+                }
+            }
+            METHOD_CACHE.put(key, found != null ? found : MISSING_METHOD);
+            return found;
+        }
+    }
+
+    private static Method findSetTaskWindowingModeMethod(Class<?> svcClass) {
+        String key = svcClass.getName() + "#setTaskWindowingMode";
+        synchronized (METHOD_CACHE) {
+            if (METHOD_CACHE.containsKey(key)) {
+                Object cached = METHOD_CACHE.get(key);
+                return cached == MISSING_METHOD ? null : (Method) cached;
+            }
+            Method found = null;
+            for (Method m : svcClass.getMethods()) {
+                if ("setTaskWindowingMode".equals(m.getName())) {
+                    Class<?>[] p = m.getParameterTypes();
+                    if (p.length == 3 && p[0] == int.class && p[1] == int.class && p[2] == boolean.class) {
+                        found = m;
+                        break;
+                    }
+                }
+            }
+            METHOD_CACHE.put(key, found != null ? found : MISSING_METHOD);
+            return found;
+        }
+    }
+
+    private static Method findResizeStackMethod(Class<?> svcClass, Class<?> rectClass) {
+        String key = svcClass.getName() + "#resizeStack";
+        synchronized (METHOD_CACHE) {
+            if (METHOD_CACHE.containsKey(key)) {
+                Object cached = METHOD_CACHE.get(key);
+                return cached == MISSING_METHOD ? null : (Method) cached;
+            }
+            Method found = null;
+            for (Method m : svcClass.getMethods()) {
+                if (!"resizeStack".equals(m.getName())) {
+                    continue;
+                }
+                Class<?>[] p = m.getParameterTypes();
+                if ((p.length == 6 && p[0] == int.class && p[1] == rectClass
+                        && p[2] == boolean.class && p[3] == boolean.class && p[4] == boolean.class && p[5] == int.class)
+                        || (p.length == 3 && p[0] == int.class && p[1] == rectClass && p[2] == boolean.class)
+                        || (p.length == 2 && p[0] == int.class && p[1] == rectClass)) {
+                    found = m;
+                    break;
+                }
+            }
+            METHOD_CACHE.put(key, found != null ? found : MISSING_METHOD);
+            return found;
+        }
+    }
+
+    private static Method findResizeTaskMethod(Class<?> svcClass, Class<?> rectClass) {
+        String key = svcClass.getName() + "#resizeTask";
+        synchronized (METHOD_CACHE) {
+            if (METHOD_CACHE.containsKey(key)) {
+                Object cached = METHOD_CACHE.get(key);
+                return cached == MISSING_METHOD ? null : (Method) cached;
+            }
+            Method found = null;
+            for (Method m : svcClass.getMethods()) {
+                if (!"resizeTask".equals(m.getName())) {
+                    continue;
+                }
+                Class<?>[] p = m.getParameterTypes();
+                if ((p.length == 3 && p[0] == int.class && p[1] == rectClass && p[2] == int.class)
+                        || (p.length == 2 && p[0] == int.class && p[1] == rectClass)) {
+                    found = m;
+                    break;
+                }
+            }
+            METHOD_CACHE.put(key, found != null ? found : MISSING_METHOD);
+            return found;
+        }
     }
 
     private List<WindowTask> read() throws AmFailure {
@@ -572,9 +689,13 @@ public final class Session {
     }
 
     private static Object newRect(int left, int top, int right, int bottom) throws Exception {
-        Class<?> rectClass = Class.forName("android.graphics.Rect");
-        return rectClass.getConstructor(int.class, int.class, int.class, int.class)
-                .newInstance(left, top, right, bottom);
+        Constructor<?> ctor = cachedRectCtor;
+        if (ctor == null) {
+            Class<?> rectClass = Class.forName("android.graphics.Rect");
+            ctor = rectClass.getConstructor(int.class, int.class, int.class, int.class);
+            cachedRectCtor = ctor;
+        }
+        return ctor.newInstance(left, top, right, bottom);
     }
 
     private static int[] readRect(Object rect) throws Exception {

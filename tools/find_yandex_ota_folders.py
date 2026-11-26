@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import urllib.parse
+from collections import deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -13,39 +14,54 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from yandex_disk import API_BASE, YandexDiskError, _request, load_local_properties  # noqa: E402
 
 
-def get_json(token: str, url: str) -> dict:
+def get_json(token: str | None, url: str) -> dict:
     _, body = _request("GET", url, token=token)
     return json.loads(body.decode("utf-8"))
 
 
 def resolve_public(token: str, public_key: str) -> dict:
     query = urllib.parse.urlencode({"public_key": public_key})
-    # Public meta (no auth required for public, but token helps owner fields)
+    # Try authenticated first (populates owner fields when available), then unauthenticated fallback.
+    url = f"{API_BASE}/public/resources?{query}"
     try:
-        return get_json(token, f"{API_BASE}/public/resources?{query}")
+        return get_json(token, url)
     except YandexDiskError:
-        # Some deployments use /resources with public_key
-        return get_json(token, f"https://cloud-api.yandex.net/v1/disk/public/resources?{query}")
+        return get_json(None, url)
 
 
 def list_dir(token: str, path: str = "/") -> list[dict]:
-    query = urllib.parse.urlencode(
-        {
-            "path": path,
-            "limit": 200,
-            "fields": "_embedded.items.name,_embedded.items.path,"
-            "_embedded.items.type,_embedded.items.public_key,_embedded.items.public_url",
-        }
-    )
-    meta = get_json(token, f"{API_BASE}/resources?{query}")
-    return meta.get("_embedded", {}).get("items", [])
+    items: list[dict] = []
+    limit = 200
+    offset = 0
+    while True:
+        query = urllib.parse.urlencode(
+            {
+                "path": path,
+                "limit": limit,
+                "offset": offset,
+                "fields": "_embedded.items.name,_embedded.items.path,"
+                "_embedded.items.type,_embedded.items.public_key,_embedded.items.public_url,"
+                "_embedded.total",
+            }
+        )
+        meta = get_json(token, f"{API_BASE}/resources?{query}")
+        embedded = meta.get("_embedded", {})
+        batch = embedded.get("items", [])
+        if not batch:
+            break
+        items.extend(batch)
+        offset += len(batch)
+        total = embedded.get("total")
+        if len(batch) < limit or (isinstance(total, int) and offset >= total):
+            break
+    return items
 
 
 def walk_find(token: str, needle_names: set[str], max_depth: int = 4) -> dict[str, dict]:
     found: dict[str, dict] = {}
-    queue: list[tuple[str, int]] = [("/", 0)]
+    queue: deque[tuple[str, int]] = deque([("/", 0)])
     while queue and len(found) < len(needle_names):
-        path, depth = queue.pop(0)
+        path, depth = queue.popleft()
         try:
             items = list_dir(token, path)
         except YandexDiskError as error:

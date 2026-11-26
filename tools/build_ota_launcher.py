@@ -129,9 +129,13 @@ def ota_apk_file_name(version_name: str, flavor: str) -> str:
 
 
 def read_app_version(gradle_path: Path) -> AppVersion:
-    text = gradle_path.read_text(encoding="utf-8")
-    code_match = re.search(r"versionCode\s*=\s*(\d+)", text)
-    name_match = re.search(r'versionName\s*=\s*"([^"]+)"', text)
+    raw_text = gradle_path.read_text(encoding="utf-8")
+    # Strip block comments (/* ... */) and line comments (// ...) before parsing version fields.
+    no_block = re.sub(r"/\*.*?\*/", "", raw_text, flags=re.DOTALL)
+    active_lines = [re.sub(r"//.*$", "", line) for line in no_block.splitlines()]
+    text = "\n".join(active_lines)
+    code_match = re.search(r"^\s*versionCode\s*=\s*(\d+)", text, flags=re.MULTILINE)
+    name_match = re.search(r'^\s*versionName\s*=\s*"([^"]+)"', text, flags=re.MULTILINE)
     if not code_match or not name_match:
         raise ValueError(f"Could not parse versionCode/versionName from {gradle_path}")
     return AppVersion(
@@ -177,7 +181,7 @@ def run_gradle(project_dir: Path, tasks: tuple[str, ...]) -> None:
             ["wslpath", "-w", str(project_dir)],
             text=True,
         ).strip()
-        win_cmd = f'cd /d {win_dir} && gradlew.bat {" ".join(tasks)}'
+        win_cmd = f'cd /d "{win_dir}" && gradlew.bat {" ".join(tasks)}'
         print(f"Running (WSL->cmd): cmd.exe /c {win_cmd}")
         subprocess.run(["cmd.exe", "/c", win_cmd], check=True)
         return

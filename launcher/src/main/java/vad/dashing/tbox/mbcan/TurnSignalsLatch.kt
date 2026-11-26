@@ -93,6 +93,7 @@ class TurnSignalsLatch(
         return currentSide(now)
     }
 
+    @Synchronized
     fun currentSide(now: Long = timeProvider()): TurnSignalSide? {
         val left = held(lastLeftElapsedMs, now)
         val right = held(lastRightElapsedMs, now)
@@ -123,7 +124,7 @@ class TurnSignalsLatch(
             synchronized(this@TurnSignalsLatch) {
                 val now = timeProvider()
                 val lastMs = if (side == TurnSignalSide.Left) lastLeftElapsedMs else lastRightElapsedMs
-                if (lastMs == NEVER || (now - lastMs) >= holdMs) {
+                if (_latchedSide.value == side && lastMs != NEVER && (now - lastMs) >= holdMs) {
                     logDebug("Turn latch hold expired for side $side after ${holdMs}ms")
                     if (side == TurnSignalSide.Left) lastLeftElapsedMs = NEVER
                     if (side == TurnSignalSide.Right) lastRightElapsedMs = NEVER

@@ -11,6 +11,18 @@ import vad.dashing.tbox.ui.LaunchableAppEntry
 
 private const val TAG = "LauncherSplit"
 
+private val splitMainHandler = Handler(Looper.getMainLooper())
+private val splitLaunchLock = Any()
+@Volatile
+private var pendingRightPaneRunnable: Runnable? = null
+
+internal fun cancelPendingSplitRightLaunch() {
+    synchronized(splitLaunchLock) {
+        pendingRightPaneRunnable?.let { splitMainHandler.removeCallbacks(it) }
+        pendingRightPaneRunnable = null
+    }
+}
+
 internal fun launchSplitPreset(
     context: Context,
     preset: LauncherSplitPreset,
@@ -103,17 +115,34 @@ internal fun launchSplitApps(
         decision = "Launching split preset left=${left.packageName} bounds=$leftBounds, right=${right.packageName} bounds=$rightBounds, ratio=$ratio",
     )
 
+    cancelPendingSplitRightLaunch()
+
     val leftOk = tryLaunchIntentInBounds(context, left.packageName, leftIntent, leftBounds, launchAdjacent = true)
     if (!leftOk) {
         LauncherNavLogger.logNavError("SPLIT_LAUNCH", "launchSplitApps", "Failed launching left split app pkg=${left.packageName}")
         Toast.makeText(context, context.getString(R.string.launcher_split_left_failed), Toast.LENGTH_SHORT).show()
         return
     }
-    Handler(Looper.getMainLooper()).postDelayed({
-        val rightOk = tryLaunchIntentInBounds(context, right.packageName, rightIntent, rightBounds, launchAdjacent = true)
+    val runnable = Runnable {
+        synchronized(splitLaunchLock) {
+            pendingRightPaneRunnable = null
+        }
+        if (LauncherAvmRepository.isAvmActive.value) return@Runnable
+        val rightOk = tryLaunchIntentInBounds(
+            context = context,
+            packageName = right.packageName,
+            intent = rightIntent,
+            bounds = rightBounds,
+            launchAdjacent = true,
+            excludePackages = setOf(left.packageName),
+        )
         if (!rightOk) {
             LauncherNavLogger.logNavError("SPLIT_LAUNCH", "launchSplitApps", "Failed launching right split app pkg=${right.packageName}")
             Toast.makeText(context, context.getString(R.string.launcher_split_right_failed), Toast.LENGTH_SHORT).show()
         }
-    }, 150L)
+    }
+    synchronized(splitLaunchLock) {
+        pendingRightPaneRunnable = runnable
+    }
+    splitMainHandler.postDelayed(runnable, 150L)
 }

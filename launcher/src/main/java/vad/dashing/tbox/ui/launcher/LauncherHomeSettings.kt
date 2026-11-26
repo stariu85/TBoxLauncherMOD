@@ -513,7 +513,8 @@ internal fun LauncherSystemControlsContent() {
 @Composable
 private fun MediaCardOpacitySlider() {
     val context = LocalContext.current
-    var alpha by remember {
+    val revision by LauncherAppConfigStore.mediaCardAlphaRevisionFlow.collectAsStateWithLifecycle()
+    var alpha by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.mediaCardAlpha(context))
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -540,9 +541,9 @@ private fun MediaCardOpacitySlider() {
         )
         Slider(
             value = alpha,
-            onValueChange = { next ->
-                alpha = next
-                LauncherAppConfigStore.setMediaCardAlpha(context, next)
+            onValueChange = { next -> alpha = next },
+            onValueChangeFinished = {
+                LauncherAppConfigStore.setMediaCardAlpha(context, alpha)
             },
             valueRange = MEDIA_CARD_ALPHA_MIN..MEDIA_CARD_ALPHA_MAX,
             colors = SliderDefaults.colors(
@@ -557,7 +558,8 @@ private fun MediaCardOpacitySlider() {
 @Composable
 private fun MediaCardHeightScaleSlider() {
     val context = LocalContext.current
-    var scale by remember {
+    val revision by LauncherAppConfigStore.mediaCardHeightScaleRevisionFlow.collectAsStateWithLifecycle()
+    var scale by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.mediaCardHeightScale(context))
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -584,9 +586,9 @@ private fun MediaCardHeightScaleSlider() {
         )
         Slider(
             value = scale,
-            onValueChange = { next ->
-                scale = next
-                LauncherAppConfigStore.setMediaCardHeightScale(context, next)
+            onValueChange = { next -> scale = next },
+            onValueChangeFinished = {
+                LauncherAppConfigStore.setMediaCardHeightScale(context, scale)
             },
             valueRange = MEDIA_CARD_HEIGHT_SCALE_MIN..MEDIA_CARD_HEIGHT_SCALE_MAX,
             colors = SliderDefaults.colors(
@@ -601,7 +603,8 @@ private fun MediaCardHeightScaleSlider() {
 @Composable
 private fun TopBarHeightSlider() {
     val context = LocalContext.current
-    var heightDp by remember {
+    val revision by LauncherAppConfigStore.topBarHeightRevisionFlow.collectAsStateWithLifecycle()
+    var heightDp by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.topBarHeightDp(context).toFloat())
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -715,7 +718,8 @@ private fun IgnoreIdleFuelToggle() {
 @Composable
 private fun BottomBarHeightSlider() {
     val context = LocalContext.current
-    var heightDp by remember {
+    val revision by LauncherAppConfigStore.bottomBarHeightRevisionFlow.collectAsStateWithLifecycle()
+    var heightDp by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.bottomBarHeightDp(context).toFloat())
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1035,7 +1039,8 @@ private fun PdcVisualModeSelector() {
 @Composable
 private fun SidebarWidthSlider() {
     val context = LocalContext.current
-    var widthDp by remember {
+    val revision by LauncherAppConfigStore.sidebarWidthRevisionFlow.collectAsStateWithLifecycle()
+    var widthDp by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.sidebarWidthDp(context).toFloat())
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -1475,27 +1480,33 @@ private fun EdgeGestureActionPicker(
         )
     }
 
-    val desktopItems = remember(context) { LauncherHomeStore.loadItems(context) }
-    val desktopActions = remember(context, desktopItems) {
-        val pm = context.packageManager
-        desktopItems.mapNotNull { item ->
-            val key = "shortcut:${item.key}"
-            val label = when (item) {
-                is LauncherHomeItem.App -> {
-                    runCatching {
-                        val info = pm.getApplicationInfo(item.packageName, 0)
-                        pm.getApplicationLabel(info).toString()
-                    }.getOrDefault(item.packageName)
+    val desktopActions by androidx.compose.runtime.produceState<List<Pair<String, String>>>(
+        initialValue = emptyList(),
+        key1 = context,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val desktopItems = LauncherHomeStore.loadItems(context)
+            val presets = LauncherSplitPresetStore.loadPresets(context)
+            val pm = context.packageManager
+            desktopItems.mapNotNull { item ->
+                val key = "shortcut:${item.key}"
+                val label = when (item) {
+                    is LauncherHomeItem.App -> {
+                        runCatching {
+                            val info = pm.getApplicationInfo(item.packageName, 0)
+                            pm.getApplicationLabel(info).toString()
+                        }.getOrDefault(item.packageName)
+                    }
+                    is LauncherHomeItem.Split -> {
+                        val preset = presets.firstOrNull { it.id == item.presetId }
+                        preset?.name?.ifBlank { null } ?: "Сплит: ${item.presetId}"
+                    }
+                    is LauncherHomeItem.TbmAutomation -> {
+                        item.automationName.ifBlank { "TBM: ${item.automationId}" }
+                    }
                 }
-                is LauncherHomeItem.Split -> {
-                    val preset = LauncherSplitPresetStore.loadPresets(context).firstOrNull { it.id == item.presetId }
-                    preset?.name?.ifBlank { null } ?: "Сплит: ${item.presetId}"
-                }
-                is LauncherHomeItem.TbmAutomation -> {
-                    item.automationName.ifBlank { "TBM: ${item.automationId}" }
-                }
+                key to "Ярлык: $label"
             }
-            key to "Ярлык: $label"
         }
     }
 
@@ -1644,7 +1655,8 @@ private fun ResetBottomSlotsButton() {
 @Composable
 private fun AdasDistanceTextSizeSlider() {
     val context = LocalContext.current
-    var sizeSp by remember {
+    val revision by LauncherAppConfigStore.adasDistanceTextSizeRevisionFlow.collectAsStateWithLifecycle()
+    var sizeSp by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.adasDistanceTextSize(context).toFloat())
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -3096,7 +3108,8 @@ private fun NavBgMinimapWidgetToggle(isStubInstalled: Boolean) {
 @Composable
 private fun NavBgMinimapTransparencySlider() {
     val context = LocalContext.current
-    var transparency by remember {
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    var transparency by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapTransparency(context).toFloat())
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -3129,7 +3142,15 @@ private fun NavBgMinimapTransparencySlider() {
                     NAV_BG_MINIMAP_TRANSPARENCY_MAX,
                 )
                 transparency = snapped.toFloat()
-                LauncherAppConfigStore.setNavBgMinimapTransparency(context, snapped)
+            },
+            onValueChangeFinished = {
+                LauncherAppConfigStore.setNavBgMinimapTransparency(
+                    context,
+                    transparency.roundToInt().coerceIn(
+                        NAV_BG_MINIMAP_TRANSPARENCY_MIN,
+                        NAV_BG_MINIMAP_TRANSPARENCY_MAX,
+                    ),
+                )
             },
             valueRange = NAV_BG_MINIMAP_TRANSPARENCY_MIN.toFloat()..
                 NAV_BG_MINIMAP_TRANSPARENCY_MAX.toFloat(),
@@ -3146,7 +3167,8 @@ private fun NavBgMinimapTransparencySlider() {
 @Composable
 private fun NavBgMinimapHeightSlider() {
     val context = LocalContext.current
-    var heightDp by remember {
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    var heightDp by remember(context, revision) {
         mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapHeightDp(context).toFloat())
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -3601,7 +3623,8 @@ private fun CruisePresetSliderRow(
 @Composable
 private fun HiddenAppsSettings() {
     val context = LocalContext.current
-    val hidden = remember(context) { LauncherAppConfigStore.hiddenPackages(context) }
+    var hiddenRevision by remember { mutableStateOf(0) }
+    val hidden = remember(context, hiddenRevision) { LauncherAppConfigStore.hiddenPackages(context) }
     if (hidden.isNotEmpty()) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
@@ -3617,6 +3640,7 @@ private fun HiddenAppsSettings() {
             TextButton(
                 onClick = {
                     LauncherAppConfigStore.unhideAllPackages(context)
+                    hiddenRevision++
                 },
             ) {
                 Text(

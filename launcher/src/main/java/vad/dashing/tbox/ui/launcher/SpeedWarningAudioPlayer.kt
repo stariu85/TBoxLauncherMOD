@@ -18,25 +18,27 @@ object SpeedWarningAudioPlayer {
     @Synchronized
     fun init(context: Context) {
         if (soundPool != null) return
+        var pool: SoundPool? = null
         try {
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
 
-            val pool = SoundPool.Builder()
+            val created = SoundPool.Builder()
                 .setMaxStreams(1)
                 .setAudioAttributes(audioAttributes)
                 .build()
+            pool = created
 
-            pool.setOnLoadCompleteListener { _, sampleId, status ->
+            created.setOnLoadCompleteListener { _, sampleId, status ->
                 synchronized(this@SpeedWarningAudioPlayer) {
                     if (status == 0 && sampleId == soundId) {
                         isLoaded = true
                         Log.d(TAG, "Speed warning sound loaded successfully")
                         if (pendingPlay) {
                             pendingPlay = false
-                            activeStreamId = pool.play(soundId, 1.0f, 1.0f, 1, 0, 1.0f)
+                            activeStreamId = created.play(soundId, 1.0f, 1.0f, 1, 0, 1.0f)
                         }
                     } else {
                         Log.w(TAG, "Failed to load speed warning sound, status: $status")
@@ -45,9 +47,13 @@ object SpeedWarningAudioPlayer {
                 }
             }
 
-            soundId = pool.load(context.applicationContext, R.raw.speed_warning, 1)
-            soundPool = pool
+            soundId = created.load(context.applicationContext, R.raw.speed_warning, 1)
+            soundPool = created
         } catch (e: Exception) {
+            runCatching { pool?.release() }
+            soundId = 0
+            isLoaded = false
+            pendingPlay = false
             Log.e(TAG, "Error initializing SpeedWarningAudioPlayer", e)
         }
     }

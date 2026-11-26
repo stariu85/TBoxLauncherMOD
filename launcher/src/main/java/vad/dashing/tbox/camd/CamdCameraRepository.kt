@@ -2,20 +2,25 @@ package vad.dashing.tbox.camd
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.mbcan.MbCanSignal
 import vad.dashing.tbox.mbcan.TurnSignalSide
@@ -198,19 +203,21 @@ object CamdCameraRepository {
         },
     )
 
-    private var desktopOperationJob: Job? = null
-    private var turnSignalJob: Job? = null
-    private var reverseCamerasJob: Job? = null
+    @Volatile private var desktopOperationJob: Job? = null
+    @Volatile private var turnSignalJob: Job? = null
+    @Volatile private var reverseCamerasJob: Job? = null
     const val STEER_OFF_HOLD_MS = 3000L
     const val PDC_OFF_DELAY_MS = 3000L
     private const val STATUS_POLL_INTERVAL_MS = 2500L
     private const val STATUS_POLL_NOT_INSTALLED_INTERVAL_MS = 10_000L
+    private const val DVR_REQUEST_DEDUP_MS = 5_000L
 
-    private var autoAvmJob: Job? = null
-    private var sideCamerasMonitorJob: Job? = null
-    private var statusPollingJob: Job? = null
-    private var steerOffJob: Job? = null
-    private var pdcOffJob: Job? = null
+    @Volatile private var autoAvmJob: Job? = null
+    @Volatile private var sideCamerasMonitorJob: Job? = null
+    @Volatile private var configSignalsJob: Job? = null
+    @Volatile private var statusPollingJob: Job? = null
+    @Volatile private var steerOffJob: Job? = null
+    @Volatile private var pdcOffJob: Job? = null
     @Volatile
     private var _activeIsLowSpeed: Boolean = false
     @Volatile
@@ -221,7 +228,17 @@ object CamdCameraRepository {
     private var currentSteerSide: TurnSignalSide? = null
     @Volatile
     private var lastAutoAvmHoldOff: Boolean? = null
+    @Volatile
     private var avmVerificationJob: Job? = null
+    @Volatile
+    private var lastRequestedRecording: Boolean? = null
+    @Volatile
+    private var lastRequestedRecordingAtMs: Long = 0L
+    @Volatile
+    private var lastLogged360State: String? = null
+    @Volatile
+    private var lastSuppressedForStockAvm: Boolean = false
+    private val dvrCommandMutex = Mutex()
     private val cameraOperationMutex = Mutex()
     private val statusRefreshMutex = Mutex()
 
@@ -231,6 +248,13 @@ object CamdCameraRepository {
         LauncherAvmRepository.startObserving(appCtx)
         startAutoAvmMonitor(appCtx)
         startStatusPolling(appCtx)
+        if (configSignalsJob?.isActive != true) {
+            configSignalsJob = scope.launch {
+                LauncherAppConfigStore.camdConfigRevisionFlow.collect {
+                    updateSideCameraCanSignals(appCtx)
+                }
+            }
+        }
         if (sideCamerasMonitorJob?.isActive == true) return
 
         sideCamerasMonitorJob = scope.launch {
@@ -272,9 +296,10 @@ object CamdCameraRepository {
                 }
                 currentSteerSide == TurnSignalSide.Left -> {
                     if (angle < offAngle) {
-                        if (steerOffJob == null) {
+                        if (steerOffJob?.isActive != true) {
                             steerOffJob = scope.launch {
-                                kotlinx.coroutines.delay(STEER_OFF_HOLD_MS)
+                                delay(STEER_OFF_HOLD_MS)
+                                if (!isActive) return@launch
                                 currentSteerSide = null
                                 steerOffJob = null
                                 evaluateSideCameraState(context)
@@ -287,9 +312,10 @@ object CamdCameraRepository {
                 }
                 currentSteerSide == TurnSignalSide.Right -> {
                     if (angle > -offAngle) {
-                        if (steerOffJob == null) {
+                        if (steerOffJob?.isActive != true) {
                             steerOffJob = scope.launch {
-                                kotlinx.coroutines.delay(STEER_OFF_HOLD_MS)
+                                delay(STEER_OFF_HOLD_MS)
+                                if (!isActive) return@launch
                                 currentSteerSide = null
                                 steerOffJob = null
                                 evaluateSideCameraState(context)
@@ -307,7 +333,6 @@ object CamdCameraRepository {
             currentSteerSide = null
         }
 
-        updateSideCameraCanSignals(context)
         evaluateSideCameraState(context)
     }
 
@@ -335,7 +360,7 @@ object CamdCameraRepository {
     private data class AutoAvmInputs(
         val speed: Float?,
         val activeGear: Char?,
-        val pdc: LauncherPdcZones,
+        val hasPdcObstacle: Boolean,
         val isAvmActive: Boolean,
     )
 
@@ -351,7 +376,14 @@ object CamdCameraRepository {
         ) { gearMode, currentGear ->
             vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.gearSlotOverrideFlow.value
                 ?: vad.dashing.tbox.ui.launcher.resolveActiveGearSlot(gearMode, currentGear)
-        }
+        }.distinctUntilChanged()
+
+        val pdcObstacleFlow = LauncherAdasRepository.state
+            .map { adasLive ->
+                val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc ?: adasLive.pdc
+                hasPhysicalPdcObstacle(pdc)
+            }
+            .distinctUntilChanged()
 
         autoAvmJob = scope.launch {
             var lastAutoAvmGear: Char? = null
@@ -359,18 +391,17 @@ object CamdCameraRepository {
                 LauncherAppConfigStore.camdConfigRevisionFlow,
                 UniversalCanRepository.carSpeedState,
                 activeGearFlow,
-                LauncherAdasRepository.state,
+                pdcObstacleFlow,
                 LauncherAvmRepository.isAvmActive,
-            ) { _, speed, activeGear, adasLive, isAvmActive ->
-                val pdc = vad.dashing.tbox.ui.launcher.LauncherDevVehicleState.adasStateOrNull()?.pdc ?: adasLive.pdc
-                AutoAvmInputs(speed, activeGear, pdc, isAvmActive)
+            ) { _, speed, activeGear, hasPdcObstacle, isAvmActive ->
+                AutoAvmInputs(speed, activeGear, hasPdcObstacle, isAvmActive)
             }.collect { inputs ->
                 if (inputs.activeGear == 'P' && lastAutoAvmGear != null && lastAutoAvmGear != 'P') {
                     LauncherCar3DModelTrigger.notifyParkEngaged()
                 }
                 lastAutoAvmGear = inputs.activeGear
                 checkAutoAvmSpeed(appCtx, inputs.speed, inputs.activeGear)
-                check360Cameras(appCtx, inputs.speed, inputs.activeGear, inputs.pdc, inputs.isAvmActive)
+                check360CamerasWithObstacle(appCtx, inputs.speed, inputs.activeGear, inputs.hasPdcObstacle, inputs.isAvmActive)
                 evaluateSideCameraState(appCtx)
                 checkReverseAvmRetry(appCtx, inputs.activeGear, inputs.isAvmActive)
                 checkDvrAndAvmCoordination(appCtx, inputs.speed, inputs.isAvmActive)
@@ -465,6 +496,7 @@ object CamdCameraRepository {
         if (!recorderEnabled) {
             avmVerificationJob?.cancel()
             avmVerificationJob = null
+            lastRequestedRecording = null
             return
         }
 
@@ -509,12 +541,28 @@ object CamdCameraRepository {
             avmVerificationJob = null
         }
 
-        if (target.targetRecording != isCurrentlyRecording) {
+        if (target.targetRecording == isCurrentlyRecording) {
+            if (lastRequestedRecording == isCurrentlyRecording) {
+                lastRequestedRecording = null
+            }
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (lastRequestedRecording == target.targetRecording && (now - lastRequestedRecordingAtMs) < DVR_REQUEST_DEDUP_MS) {
+            return
+        }
+        if (!dvrCommandMutex.tryLock()) return
+        try {
+            lastRequestedRecording = target.targetRecording
+            lastRequestedRecordingAtMs = SystemClock.elapsedRealtime()
             vad.dashing.tbox.DclLogRecorder.log(
                 "CamdCameraRepository",
                 "checkDvrAndAvmCoordination: targetRecording=${target.targetRecording} (was=$isCurrentlyRecording, isAvmActive=$isAvmActive, speed=$speed)"
             )
             setRecorderEnabled(context, target.targetRecording, updateUserPreference = false)
+        } finally {
+            dvrCommandMutex.unlock()
         }
     }
 
@@ -642,6 +690,20 @@ object CamdCameraRepository {
         }
     }
 
+    suspend fun refreshStatusNow(
+        context: Context,
+        fetchPresets: Boolean = true,
+        forceLog: Boolean = true,
+    ) {
+        val appCtx = context.applicationContext
+        appContext = appCtx
+        refreshStatusInternal(
+            context = appCtx,
+            fetchPresets = fetchPresets,
+            forceLog = forceLog,
+        )
+    }
+
     fun refreshStatus(
         context: Context,
         fetchPresets: Boolean = true,
@@ -694,7 +756,7 @@ object CamdCameraRepository {
 
     suspend fun setHoldStockAvm(context: Context, holdOff: Boolean): Result<String> {
         val res = CamdSocketClient.setAvmHold(context, holdOff)
-        refreshStatus(context)
+        refreshStatusNow(context, fetchPresets = false, forceLog = true)
         return res
     }
 
@@ -703,6 +765,8 @@ object CamdCameraRepository {
         enabled: Boolean,
         updateUserPreference: Boolean = true,
     ): Result<String> {
+        lastRequestedRecording = enabled
+        lastRequestedRecordingAtMs = SystemClock.elapsedRealtime()
         val res = CamdSocketClient.setRecorder(context, enabled)
         if (updateUserPreference) {
             LauncherAppConfigStore.setCamdRecorderEnabled(context, enabled)
@@ -715,7 +779,7 @@ object CamdCameraRepository {
                 CamdSocketClient.setAvmHold(context, true)
             }
         }
-        refreshStatus(context)
+        refreshStatusNow(context, fetchPresets = false, forceLog = true)
         return res
     }
 
@@ -732,6 +796,22 @@ object CamdCameraRepository {
         pdc: LauncherPdcZones,
         isAvmActive: Boolean,
     ) {
+        check360CamerasWithObstacle(
+            context = context,
+            speed = speed,
+            activeGear = activeGear,
+            hasObstacle = hasPhysicalPdcObstacle(pdc),
+            isAvmActive = isAvmActive,
+        )
+    }
+
+    private fun check360CamerasWithObstacle(
+        context: Context,
+        speed: Float?,
+        activeGear: Char?,
+        hasObstacle: Boolean,
+        isAvmActive: Boolean,
+    ) {
         val disableStockAvm = LauncherAppConfigStore.camdDisableStockAvm(context)
         val reverseCamerasEnabled = LauncherAppConfigStore.camdReverseCameras(context)
         val pdcCamerasEnabled = LauncherAppConfigStore.camdPdcCameras(context)
@@ -742,6 +822,7 @@ object CamdCameraRepository {
             pdcOffJob = null
             reverseCamerasTriggered = false
             pdcCamerasTriggered = false
+            lastLogged360State = null
             apply360CamerasState(context, false)
             return
         }
@@ -757,7 +838,6 @@ object CamdCameraRepository {
             enabled = reverseCamerasEnabled,
         )
 
-        val hasObstacle = hasPhysicalPdcObstacle(pdc)
         val pdcState = resolvePdcCamerasState(
             currentPdcTriggered = pdcCamerasTriggered,
             hasObstacle = hasObstacle,
@@ -773,9 +853,10 @@ object CamdCameraRepository {
         pdcCamerasTriggered = pdcState.pdcTriggered
 
         if (pdcState.shouldScheduleTurnOff) {
-            if (pdcOffJob == null) {
+            if (pdcOffJob?.isActive != true) {
                 pdcOffJob = scope.launch {
                     delay(PDC_OFF_DELAY_MS)
+                    if (!isActive) return@launch
                     pdcOffJob = null
                     pdcCamerasTriggered = false
                     val target = reverseCamerasTriggered
@@ -786,10 +867,14 @@ object CamdCameraRepository {
         }
 
         val target360 = reverseCamerasTriggered || pdcCamerasTriggered
-        vad.dashing.tbox.DclLogRecorder.log(
-            "CamdCameraRepository",
-            "check360Cameras: target360=$target360 (revTriggered=$reverseCamerasTriggered, pdcTriggered=$pdcCamerasTriggered, gear=$activeGear, speed=$speed)"
-        )
+        val logKey = "$target360:$reverseCamerasTriggered:$pdcCamerasTriggered:$activeGear"
+        if (logKey != lastLogged360State) {
+            lastLogged360State = logKey
+            vad.dashing.tbox.DclLogRecorder.log(
+                "CamdCameraRepository",
+                "check360Cameras: target360=$target360 (revTriggered=$reverseCamerasTriggered, pdcTriggered=$pdcCamerasTriggered, gear=$activeGear, speed=$speed)"
+            )
+        }
         apply360CamerasState(context, target360)
     }
 
@@ -843,7 +928,7 @@ object CamdCameraRepository {
         )
     }
 
-    private var reverseAvmRetryJob: Job? = null
+    @Volatile private var reverseAvmRetryJob: Job? = null
     internal var stockAvmLauncher: ((Context) -> Unit)? = null
 
     internal fun launchStockAvm(context: Context) {
@@ -1082,15 +1167,11 @@ object CamdCameraRepository {
 
         fun buildCameraCommand(presetName: String, fallbackCamId: Int, x: Float, y: Float, w: Float, h: Float): String {
             val numId = presetName.toIntOrNull()
-            return if (numId != null) {
-                formatCmd(numId, x, y, w, h)
-            } else if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
-                formatPresetCmd(presetName, x, y, w, h)
-            } else if (presetName.isNotEmpty()) {
-                val targetId = connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: fallbackCamId
-                formatCmd(targetId, x, y, w, h)
-            } else {
-                formatCmd(fallbackCamId, x, y, w, h)
+            return when {
+                numId != null -> formatCmd(numId, x, y, w, h)
+                presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true ->
+                    formatPresetCmd(presetName, x, y, w, h)
+                else -> formatCmd(fallbackCamId, x, y, w, h)
             }
         }
 
@@ -1241,15 +1322,11 @@ object CamdCameraRepository {
 
         fun buildCameraCommand(presetName: String, fallbackCamId: Int, x: Float, y: Float, w: Float, h: Float): String {
             val numId = presetName.toIntOrNull()
-            return if (numId != null) {
-                formatCmd(numId, x, y, w, h)
-            } else if (presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true) {
-                formatPresetCmd(presetName, x, y, w, h)
-            } else if (presetName.isNotEmpty()) {
-                val targetId = connectedPresets?.firstOrNull { it.name == presetName }?.cameraId ?: fallbackCamId
-                formatCmd(targetId, x, y, w, h)
-            } else {
-                formatCmd(fallbackCamId, x, y, w, h)
+            return when {
+                numId != null -> formatCmd(numId, x, y, w, h)
+                presetName.isNotEmpty() && connectedPresets?.any { it.name == presetName } == true ->
+                    formatPresetCmd(presetName, x, y, w, h)
+                else -> formatCmd(fallbackCamId, x, y, w, h)
             }
         }
 
@@ -1422,6 +1499,8 @@ object CamdCameraRepository {
         vad.dashing.tbox.DclLogRecorder.log("CamdCameraRepository", "closeAll")
         steerOffJob?.cancel()
         steerOffJob = null
+        pdcOffJob?.cancel()
+        pdcOffJob = null
         turnSignalJob?.cancel()
         reverseCamerasJob?.cancel()
         cameraOperationMutex.withLock {
@@ -1433,6 +1512,8 @@ object CamdCameraRepository {
             _activeWidgetCameraMode.value = CamdWidgetCameraMode.NONE
             _isReverseCamerasOpen.value = false
             reverseCamerasTriggered = false
+            pdcCamerasTriggered = false
+            _activeIsLowSpeed = false
             _activeTurnSignalCamera.value = null
             _activeTurnSignalSide.value = null
             turnSignalsLatch.reset()
@@ -1484,10 +1565,6 @@ object CamdCameraRepository {
             return
         }
 
-        if (_status.value !is CamdConnectionStatus.Connected) {
-            refreshStatus(appCtx)
-        }
-
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(appCtx)
         val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(appCtx)
         val trigger = LauncherAppConfigStore.camdLowSpeedSideTrigger(appCtx)
@@ -1516,10 +1593,13 @@ object CamdCameraRepository {
         checkReverseAvmRetry(context, activeGear, isAvmActive)
 
         if (shouldCloseCamerasForStockAvm(disableStockAvm, activeGear, speed, minSpeed)) {
-            vad.dashing.tbox.DclLogRecorder.log(
-                "CamdCameraRepository",
-                "evaluateSideCameraState: suppressed by shouldCloseCamerasForStockAvm (disableStockAvm=$disableStockAvm, activeGear=$activeGear, speed=$speed, minSpeed=$minSpeed)"
-            )
+            if (!lastSuppressedForStockAvm) {
+                lastSuppressedForStockAvm = true
+                vad.dashing.tbox.DclLogRecorder.log(
+                    "CamdCameraRepository",
+                    "evaluateSideCameraState: suppressed by shouldCloseCamerasForStockAvm (disableStockAvm=$disableStockAvm, activeGear=$activeGear, speed=$speed, minSpeed=$minSpeed)"
+                )
+            }
             if (hasActiveCameras() || desktopOperationJob?.isActive == true || turnSignalJob?.isActive == true || reverseCamerasJob?.isActive == true) {
                 closeAllIfOpen(context)
             }
@@ -1530,6 +1610,7 @@ object CamdCameraRepository {
             }
             return
         }
+        lastSuppressedForStockAvm = false
 
         val turnSignalCameras = LauncherAppConfigStore.camdTurnSignalCameras(context)
         val lowSpeedEnabled = LauncherAppConfigStore.camdLowSpeedSideCameras(context)
@@ -1657,13 +1738,13 @@ object CamdCameraRepository {
     }
 
     private fun applyTargetSideCamera(context: Context, targetSide: TurnSignalSide?, isLowSpeed: Boolean) {
+        if (_activeTurnSignalSide.value == targetSide && _activeIsLowSpeed == isLowSpeed) {
+            return
+        }
         vad.dashing.tbox.DclLogRecorder.log(
             "CamdCameraRepository",
             "applyTargetSideCamera target=$targetSide isLowSpeed=$isLowSpeed active=${_activeTurnSignalSide.value} activeLow=$_activeIsLowSpeed"
         )
-        if (_activeTurnSignalSide.value == targetSide && _activeIsLowSpeed == isLowSpeed) {
-            return
-        }
 
         turnSignalJob?.cancel()
         val previousIsLowSpeed = _activeIsLowSpeed
@@ -1694,10 +1775,16 @@ object CamdCameraRepository {
             val openedCamId = openTurnSignalSideCamera(context, targetCamId, isLowSpeed = isLowSpeed)
             if (!isActive || _activeTurnSignalSide.value != targetSide || _activeIsLowSpeed != isLowSpeed) {
                 Log.i(TAG, "Side camera target changed during open, closing immediately")
-                if (openedCamId != null) closeCamera(context, openedCamId) else closeCamera(context, null)
-                _activeTurnSignalCamera.value = null
-                _activeTurnSignalSide.value = null
-                _activeIsLowSpeed = false
+                if (openedCamId != null) {
+                    withContext(NonCancellable) {
+                        closeCamera(context, openedCamId)
+                    }
+                }
+                if (_activeTurnSignalSide.value == targetSide && _activeIsLowSpeed == isLowSpeed) {
+                    _activeTurnSignalCamera.value = null
+                    _activeTurnSignalSide.value = null
+                    _activeIsLowSpeed = false
+                }
                 return@launch
             }
             _activeTurnSignalCamera.value = openedCamId
@@ -1918,22 +2005,27 @@ object CamdCameraRepository {
             "CamdCameraRepository",
             "openTurnSignalSideCamera: result success=$isSuccess resp='$responseText' err=${res.exceptionOrNull()?.message}"
         )
-        if (CamdSocketClient.isErrorResponse(responseText)) {
-            Log.w(TAG, "openTurnSignalSideCamera command failed: $responseText")
-            // Fallback: if preset failed with ERR unknown_preset, retry with raw camera
-            if (!presetName.isNullOrBlank()) {
+        if (!res.isSuccess || CamdSocketClient.isErrorResponse(responseText)) {
+            Log.w(TAG, "openTurnSignalSideCamera command failed: $responseText err=${res.exceptionOrNull()?.message}")
+            // Fallback: if preset failed with ERR unknown_preset (when connected), retry with raw camera
+            if (res.isSuccess && !presetName.isNullOrBlank()) {
                 val fallbackCmd = formatCmd(cameraId, x, y, w, h, shapeCircle = effectiveShapeCircle)
                 vad.dashing.tbox.DclLogRecorder.log(
                     "CamdCameraRepository",
                     "openTurnSignalSideCamera: preset failed, retrying fallback raw cameraId=$cameraId fallbackCmd='$fallbackCmd'"
                 )
                 val fallbackRes = CamdSocketClient.sendCommand(fallbackCmd)
+                val fallbackText = fallbackRes.getOrNull().orEmpty()
                 vad.dashing.tbox.DclLogRecorder.log(
                     "CamdCameraRepository",
-                    "openTurnSignalSideCamera: fallback result resp='${fallbackRes.getOrNull()}' err=${fallbackRes.exceptionOrNull()?.message}"
+                    "openTurnSignalSideCamera: fallback result resp='$fallbackText' err=${fallbackRes.exceptionOrNull()?.message}"
                 )
+                if (!fallbackRes.isSuccess || CamdSocketClient.isErrorResponse(fallbackText)) {
+                    return null
+                }
                 return cameraId
             }
+            return null
         }
         return targetCameraId
     }

@@ -37,6 +37,8 @@ class BackgroundService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var tboxLink: TboxLinkManager? = null
+    @Volatile
+    private var canBoundByService: Boolean = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -47,19 +49,21 @@ class BackgroundService : Service() {
         startAsForeground()
         DclLogRecorder.log("BACKGROUND_SERVICE", "BackgroundService onCreate: startAsForeground done")
         YandexNavRepository.start(applicationContext)
-        MbCanEngineFacade.ensureInitialized()
-        MbCanEngineFacade.setTurnLightCallback { left, right ->
-            vad.dashing.tbox.camd.CamdCameraRepository.onTurnLightSignal(applicationContext, left, right)
+        scope.launch(Dispatchers.IO) {
+            MbCanEngineFacade.ensureInitialized()
+            MbCanEngineFacade.setTurnLightCallback { left, right ->
+                vad.dashing.tbox.camd.CamdCameraRepository.onTurnLightSignal(applicationContext, left, right)
+            }
         }
         vad.dashing.tbox.camd.CamdCameraRepository.startSideCamerasMonitor(applicationContext)
         scope.launch {
             DclLogRecorder.log("BACKGROUND_SERVICE", "Triggering UniversalCanRepository.bind")
-            UniversalCanRepository.bind(scope)
+            UniversalCanRepository.bind(UniversalCanRepository.appScope)
+            canBoundByService = true
         }
         scope.launch {
             val tbmRepo = TbmRepositoryProvider.get(applicationContext)
             tbmRepo.startHealthMonitoring()
-            tbmRepo.checkHealth()
             DclLogRecorder.log("BACKGROUND_SERVICE", "TbmRepository health monitoring started")
         }
         tboxLink = TboxLinkManager(applicationContext).also { it.start() }
@@ -128,6 +132,17 @@ class BackgroundService : Service() {
 
     override fun onDestroy() {
         MbCanEngineFacade.setTurnLightCallback(null)
+        runCatching {
+            val tbmRepo = TbmRepositoryProvider.get(applicationContext)
+            tbmRepo.stopPolling()
+            tbmRepo.stopHealthMonitoring()
+        }
+        if (canBoundByService) {
+            canBoundByService = false
+            UniversalCanRepository.appScope.launch {
+                runCatching { UniversalCanRepository.unbind() }
+            }
+        }
         tboxLink?.stop()
         tboxLink = null
         scope.cancel()

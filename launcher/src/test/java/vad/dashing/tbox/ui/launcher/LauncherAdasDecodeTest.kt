@@ -187,4 +187,37 @@ class LauncherAdasDecodeTest {
         assertFalse(state0.accOverride)
         assertNull(state0.accSetSpeedKmh)
     }
+
+    @Test
+    fun pdcLevelFor_150cmIsFreeSpaceNone() {
+        assertEquals(LauncherPdcLevel.None, LauncherPdcZones.levelFor(0))
+        assertEquals(LauncherPdcLevel.None, LauncherPdcZones.levelFor(9))
+        assertEquals(LauncherPdcLevel.Near, LauncherPdcZones.levelFor(10))
+        assertEquals(LauncherPdcLevel.Near, LauncherPdcZones.levelFor(35))
+        assertEquals(LauncherPdcLevel.Mid, LauncherPdcZones.levelFor(75))
+        assertEquals(LauncherPdcLevel.Far, LauncherPdcZones.levelFor(149))
+        assertEquals(LauncherPdcLevel.None, LauncherPdcZones.levelFor(150))
+        assertFalse(LauncherPdcZones(rearLeftCm = 150).hasAny)
+    }
+
+    @Test
+    fun decodeTsrSign_prefersSlaCodesAndDropsTinyPositiveConfidence() {
+        // SLA codes 2..33 decode as (code - 1) * 5 km/h
+        val sign60 = decodeTsrSign(valueRaw = 13.toByte(), unitRaw = 0, confidence = 0f, signClass = 1)
+        assertTrue(sign60.valid)
+        assertEquals(60, sign60.speedLimitKmh)
+
+        val sign110 = decodeTsrSign(valueRaw = 23.toByte(), unitRaw = 0, confidence = 0.8f, signClass = 1)
+        assertTrue(sign110.valid)
+        assertEquals(110, sign110.speedLimitKmh)
+
+        // Values > 33 fall back to literal km/h
+        val literal80 = decodeTsrSign(valueRaw = 80.toByte(), unitRaw = 0, confidence = 0.9f, signClass = 1)
+        assertTrue(literal80.valid)
+        assertEquals(80, literal80.speedLimitKmh)
+
+        // Confidence in (0f, 0.15f] is filtered out, including < 0.01f
+        val tinyConf = decodeTsrSign(valueRaw = 13.toByte(), unitRaw = 0, confidence = 0.005f, signClass = 1)
+        assertFalse(tinyConf.valid)
+    }
 }

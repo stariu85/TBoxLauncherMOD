@@ -39,21 +39,26 @@ fun checkLength(data: ByteArray, length: Int): Boolean {
     return data.size - 14 >= length
 }
 
-fun extractData(data: ByteArray, length: Int): ByteArray {
-    if (xorSum(data.copyOfRange(0, 13+length)) != data[13+length]) {
-        return ByteArray(0)
+fun extractData(data: ByteArray, length: Int): ByteArray? {
+    if (length < 0 || 13 + length >= data.size) {
+        return null
     }
-    return data.copyOfRange(13, 13+length)
+    if (xorSum(data, start = 9, endExclusive = 13 + length) != data[13 + length]) {
+        return null
+    }
+    return data.copyOfRange(13, 13 + length)
 }
 
-fun xorSum(data: ByteArray): Byte {
-    if (data.isEmpty() || data.size < 9) {
+fun xorSum(data: ByteArray): Byte = xorSum(data, start = 9, endExclusive = data.size)
+
+fun xorSum(data: ByteArray, start: Int, endExclusive: Int): Byte {
+    if (data.isEmpty() || endExclusive <= start || start < 0 || endExclusive > data.size) {
         return 0
     }
 
     var checksum: Byte = 0
     // Начинаем с 10-го байта (индекс 9, так как индексация с 0)
-    for (i in 9 until data.size) {
+    for (i in start until endExclusive) {
         checksum = (checksum.toInt() xor data[i].toInt()).toByte()
     }
     return checksum

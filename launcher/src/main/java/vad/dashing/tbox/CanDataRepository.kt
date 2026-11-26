@@ -24,7 +24,24 @@ data class Wheels(
     val wheel2LastTimeNotNull: Long? = null,
     val wheel3LastTimeNotNull: Long? = null,
     val wheel4LastTimeNotNull: Long? = null,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is Wheels) return false
+        return wheel1 == other.wheel1 &&
+            wheel2 == other.wheel2 &&
+            wheel3 == other.wheel3 &&
+            wheel4 == other.wheel4
+    }
+
+    override fun hashCode(): Int {
+        var result = wheel1?.hashCode() ?: 0
+        result = 31 * result + (wheel2?.hashCode() ?: 0)
+        result = 31 * result + (wheel3?.hashCode() ?: 0)
+        result = 31 * result + (wheel4?.hashCode() ?: 0)
+        return result
+    }
+}
 
 data class CanFrame(
     val date: Date,
@@ -113,32 +130,129 @@ object CanDataRepository {
     private val _localTripDurationSeconds = MutableStateFlow<Long?>(null)
     val localTripDurationSeconds: StateFlow<Long?> = _localTripDurationSeconds.asStateFlow()
 
-    @Volatile
+    private val _distanceToNextMaintenance = MutableStateFlow<UInt?>(null)
+    val distanceToNextMaintenance: StateFlow<UInt?> = _distanceToNextMaintenance.asStateFlow()
+
+    private val _distanceToFuelEmpty = MutableStateFlow<UInt?>(null)
+    val distanceToFuelEmpty: StateFlow<UInt?> = _distanceToFuelEmpty.asStateFlow()
+
+    private val _breakingForce = MutableStateFlow<UInt?>(null)
+    val breakingForce: StateFlow<UInt?> = _breakingForce.asStateFlow()
+
+    private val _carSpeed = MutableStateFlow<Float?>(null)
+    val carSpeed: StateFlow<Float?> = _carSpeed.asStateFlow()
+
+    private val _carSpeedAccurate = MutableStateFlow<Float?>(null)
+    val carSpeedAccurate: StateFlow<Float?> = _carSpeedAccurate.asStateFlow()
+
+    private val _voltage = MutableStateFlow<Float?>(null)
+    val voltage: StateFlow<Float?> = _voltage.asStateFlow()
+
+    private val _fuelLevelPercentage = MutableStateFlow<UInt?>(null)
+    val fuelLevelPercentage: StateFlow<UInt?> = _fuelLevelPercentage.asStateFlow()
+
+    private val _fuelLevelPercentageFiltered = MutableStateFlow<UInt?>(null)
+    val fuelLevelPercentageFiltered: StateFlow<UInt?> = _fuelLevelPercentageFiltered.asStateFlow()
+
+    /** Литры в баке после калибровки (см. BackgroundService и пакет fuellevelcalibration). */
+    private val _fuelLevelCalibratedLiters = MutableStateFlow<Float?>(null)
+    val fuelLevelCalibratedLiters: StateFlow<Float?> = _fuelLevelCalibratedLiters.asStateFlow()
+
+    /** Литры в баке после калибровки с корректировкой по температуре (см. BackgroundService и пакет fuellevelcalibration). */
+    private val _fuelLevelCalibratedLitersActual = MutableStateFlow<Float?>(null)
+    val fuelLevelCalibratedLitersActual: StateFlow<Float?> = _fuelLevelCalibratedLitersActual.asStateFlow()
+
+    /** Уверенность калибровки, 0…1 (в UI пока не показывается). */
+    private val _fuelCalibrationConfidence = MutableStateFlow<Float?>(null)
+    val fuelCalibrationConfidence: StateFlow<Float?> = _fuelCalibrationConfidence.asStateFlow()
+
+    private val _currentFuelConsumption = MutableStateFlow<Float?>(null)
+    val currentFuelConsumption: StateFlow<Float?> = _currentFuelConsumption.asStateFlow()
+
+    private val _averageFuelConsumption = MutableStateFlow<Float?>(null)
+    val averageFuelConsumption: StateFlow<Float?> = _averageFuelConsumption.asStateFlow()
+
+    private val _gearBoxMode = MutableStateFlow("")
+    val gearBoxMode: StateFlow<String> = _gearBoxMode.asStateFlow()
+
+    private val _gearBoxCurrentGear = MutableStateFlow<Int?>(null)
+    val gearBoxCurrentGear: StateFlow<Int?> = _gearBoxCurrentGear.asStateFlow()
+
+    private val _gearBoxPreparedGear = MutableStateFlow<Int?>(null)
+    val gearBoxPreparedGear: StateFlow<Int?> = _gearBoxPreparedGear.asStateFlow()
+
+    private val _gearBoxChangeGear = MutableStateFlow<Boolean?>(null)
+    val gearBoxChangeGear: StateFlow<Boolean?> = _gearBoxChangeGear.asStateFlow()
+
+    private val _gearBoxOilTemperature = MutableStateFlow<Int?>(null)
+    val gearBoxOilTemperature: StateFlow<Int?> = _gearBoxOilTemperature.asStateFlow()
+
+    private val _gearBoxDriveMode = MutableStateFlow<String>("")
+    val gearBoxDriveMode: StateFlow<String> = _gearBoxDriveMode.asStateFlow()
+
+    private val _gearBoxWork = MutableStateFlow<String>("")
+    val gearBoxWork: StateFlow<String> = _gearBoxWork.asStateFlow()
+
+    private val _maxGearSeen = MutableStateFlow(0)
+    val maxGearSeen: StateFlow<Int> = _maxGearSeen.asStateFlow()
+
+    private val initialGearboxType: GearboxType = gearboxTypeBySystemConfig()
+
+    private val _gearboxType = MutableStateFlow(initialGearboxType)
+    val gearboxType: StateFlow<GearboxType> = _gearboxType.asStateFlow()
+
+    private val _is6DctGearbox = MutableStateFlow(initialGearboxType == GearboxType.DCT_6)
+    val is6DctGearbox: StateFlow<Boolean> = _is6DctGearbox.asStateFlow()
+
+    private val _isManualGearbox = MutableStateFlow(initialGearboxType == GearboxType.MANUAL)
+    val isManualGearbox: StateFlow<Boolean> = _isManualGearbox.asStateFlow()
+
+    private val _frontLeftSeatMode = MutableStateFlow<UInt?>(null)
+    val frontLeftSeatMode: StateFlow<UInt?> = _frontLeftSeatMode.asStateFlow()
+
+    private val _frontRightSeatMode = MutableStateFlow<UInt?>(null)
+    val frontRightSeatMode: StateFlow<UInt?> = _frontRightSeatMode.asStateFlow()
+
+    private val _outsideTemperature = MutableStateFlow<Float?>(null)
+    val outsideTemperature: StateFlow<Float?> = _outsideTemperature.asStateFlow()
+    private var outsideTemperatureLastTimeNotNull: Long? = null
+
+    private val _insideTemperature = MutableStateFlow<Float?>(null)
+    val insideTemperature: StateFlow<Float?> = _insideTemperature.asStateFlow()
+    private var insideTemperatureLastTimeNotNull: Long? = null
+
+    private val _outsideAirQuality = MutableStateFlow<UInt?>(null)
+    val outsideAirQuality: StateFlow<UInt?> = _outsideAirQuality.asStateFlow()
+
+    private val _insideAirQuality = MutableStateFlow<UInt?>(null)
+    val insideAirQuality: StateFlow<UInt?> = _insideAirQuality.asStateFlow()
+
+    private val _isWindowsBlocked = MutableStateFlow<Boolean?>(null)
+    val isWindowsBlocked: StateFlow<Boolean?> = _isWindowsBlocked.asStateFlow()
+
+    private val _rainSensorDetected = MutableStateFlow(false)
+    val rainSensorDetected: StateFlow<Boolean> = _rainSensorDetected.asStateFlow()
+
+    private val _canFramesStructured = MutableStateFlow<Map<String, List<CanFrame>>>(emptyMap())
+    val canFramesStructured: StateFlow<Map<String, List<CanFrame>>> = _canFramesStructured.asStateFlow()
+
+    private val _motorHoursTrip = MutableStateFlow<Float?>(null)
+    val motorHoursTrip: StateFlow<Float?> = _motorHoursTrip.asStateFlow()
+
+    private val tripFuelLock = Any()
     private var lastOdometer: UInt? = null
-    @Volatile
     private var accumulatedTripDistanceKm: Float = 0f
-    @Volatile
     private var accumulatedManualTripDistanceKm: Float = 0f
-    @Volatile
     private var initialFuelLiters: Float? = null
-    @Volatile
     private var previousAvgConsumption: Float? = null
-    @Volatile
     private var tripStartTimeMs: Long = System.currentTimeMillis()
 
-    @Volatile
     private var overallAccumulatedDistanceKm: Float = 0f
-    @Volatile
     private var overallAccumulatedFuelLiters: Float = 0f
-    @Volatile
     private var overallAccumulatedIdleFuelLiters: Double = 0.0
-    @Volatile
     private var currentSegmentDistKm: Float = 0f
-    @Volatile
     private var currentSegmentIdleFuelLiters: Double = 0.0
-    @Volatile
     private var lastKnownFuelLiters: Float? = null
-    @Volatile
     private var lastIdleCheckMs: Long = 0L
 
     private const val PREFS_PERSISTENCE = "tbox_can_data_persistence"
@@ -154,8 +268,23 @@ object CanDataRepository {
     private const val KEY_SEGMENT_DIST = "saved_segment_distance_km"
     private const val KEY_SEGMENT_IDLE_FUEL = "saved_segment_idle_fuel_liters"
 
+    private const val MAX_CAN_FRAMES = 5
+    private const val MAX_CAN_IDS = 500
+    private const val MAX_FRAMES_PER_ID = 10
+    private const val CAN_FRAMES_PUBLISH_MIN_INTERVAL_MS = 250L
+
+    private val canFramesLock = Any()
+    private val canFramesBuffer = LinkedHashMap<String, ArrayDeque<CanFrame>>()
+    private var lastCanFramesPublishMs: Long = 0L
+
     @Volatile
     private var isPersistedStateLoaded = false
+
+    private fun nowElapsedMs(): Long = try {
+        SystemClock.elapsedRealtime()
+    } catch (_: Throwable) {
+        System.currentTimeMillis()
+    }
 
     init {
         loadPersistedStateIfNeeded()
@@ -163,7 +292,7 @@ object CanDataRepository {
 
     private fun loadPersistedStateIfNeeded() {
         if (isPersistedStateLoaded) return
-        synchronized(this) {
+        synchronized(tripFuelLock) {
             if (isPersistedStateLoaded) return
             val context = AppContextHolder.appContextOrNull ?: return
             runCatching {
@@ -249,7 +378,7 @@ object CanDataRepository {
                     overallAccumulatedDistanceKm = baselineDist
                     overallAccumulatedFuelLiters = (previousAvgConsumption!! / 100f) * baselineDist
                 }
-                updateTripDuration()
+                updateTripDurationLocked()
                 isPersistedStateLoaded = true
             }
         }
@@ -258,8 +387,8 @@ object CanDataRepository {
     private var lastSavePersistedStateMs: Long = 0L
     private const val SAVE_PERSISTED_STATE_MIN_INTERVAL_MS = 15_000L
 
-    private fun savePersistedState(immediate: Boolean = false) {
-        val now = SystemClock.elapsedRealtime()
+    private fun savePersistedStateLocked(immediate: Boolean = false) {
+        val now = nowElapsedMs()
         if (!immediate && (now - lastSavePersistedStateMs) < SAVE_PERSISTED_STATE_MIN_INTERVAL_MS) {
             return
         }
@@ -282,117 +411,6 @@ object CanDataRepository {
             editor.apply()
         }
     }
-
-    private val _distanceToNextMaintenance = MutableStateFlow<UInt?>(null)
-    val distanceToNextMaintenance: StateFlow<UInt?> = _distanceToNextMaintenance.asStateFlow()
-
-    private val _distanceToFuelEmpty = MutableStateFlow<UInt?>(null)
-    val distanceToFuelEmpty: StateFlow<UInt?> = _distanceToFuelEmpty.asStateFlow()
-
-    private val _breakingForce = MutableStateFlow<UInt?>(null)
-    val breakingForce: StateFlow<UInt?> = _breakingForce.asStateFlow()
-
-    private val _carSpeed = MutableStateFlow<Float?>(null)
-    val carSpeed: StateFlow<Float?> = _carSpeed.asStateFlow()
-
-    private val _carSpeedAccurate = MutableStateFlow<Float?>(null)
-    val carSpeedAccurate: StateFlow<Float?> = _carSpeedAccurate.asStateFlow()
-
-    private val _voltage = MutableStateFlow<Float?>(null)
-    val voltage: StateFlow<Float?> = _voltage.asStateFlow()
-
-    private val _fuelLevelPercentage = MutableStateFlow<UInt?>(null)
-    val fuelLevelPercentage: StateFlow<UInt?> = _fuelLevelPercentage.asStateFlow()
-
-    private val _fuelLevelPercentageFiltered = MutableStateFlow<UInt?>(null)
-    val fuelLevelPercentageFiltered: StateFlow<UInt?> = _fuelLevelPercentageFiltered.asStateFlow()
-
-    /** Литры в баке после калибровки (см. BackgroundService и пакет fuellevelcalibration). */
-    private val _fuelLevelCalibratedLiters = MutableStateFlow<Float?>(null)
-    val fuelLevelCalibratedLiters: StateFlow<Float?> = _fuelLevelCalibratedLiters.asStateFlow()
-
-    /** Литры в баке после калибровки с корректировкой по температуре (см. BackgroundService и пакет fuellevelcalibration). */
-    private val _fuelLevelCalibratedLitersActual = MutableStateFlow<Float?>(null)
-    val fuelLevelCalibratedLitersActual: StateFlow<Float?> = _fuelLevelCalibratedLitersActual.asStateFlow()
-
-    /** Уверенность калибровки, 0…1 (в UI пока не показывается). */
-    private val _fuelCalibrationConfidence = MutableStateFlow<Float?>(null)
-    val fuelCalibrationConfidence: StateFlow<Float?> = _fuelCalibrationConfidence.asStateFlow()
-
-    private val _currentFuelConsumption = MutableStateFlow<Float?>(null)
-    val currentFuelConsumption: StateFlow<Float?> = _currentFuelConsumption.asStateFlow()
-
-    private val _averageFuelConsumption = MutableStateFlow<Float?>(null)
-    val averageFuelConsumption: StateFlow<Float?> = _averageFuelConsumption.asStateFlow()
-
-    private val _gearBoxMode = MutableStateFlow("")
-    val gearBoxMode: StateFlow<String> = _gearBoxMode.asStateFlow()
-
-    private val _gearBoxCurrentGear = MutableStateFlow<Int?>(null)
-    val gearBoxCurrentGear: StateFlow<Int?> = _gearBoxCurrentGear.asStateFlow()
-
-    private val _gearBoxPreparedGear = MutableStateFlow<Int?>(null)
-    val gearBoxPreparedGear: StateFlow<Int?> = _gearBoxPreparedGear.asStateFlow()
-
-    private val _gearBoxChangeGear = MutableStateFlow<Boolean?>(null)
-    val gearBoxChangeGear: StateFlow<Boolean?> = _gearBoxChangeGear.asStateFlow()
-
-    private val _gearBoxOilTemperature = MutableStateFlow<Int?>(null)
-    val gearBoxOilTemperature: StateFlow<Int?> = _gearBoxOilTemperature.asStateFlow()
-
-    private val _gearBoxDriveMode = MutableStateFlow<String>("")
-    val gearBoxDriveMode: StateFlow<String> = _gearBoxDriveMode.asStateFlow()
-
-    private val _gearBoxWork = MutableStateFlow<String>("")
-    val gearBoxWork: StateFlow<String> = _gearBoxWork.asStateFlow()
-
-    private val _maxGearSeen = MutableStateFlow(0)
-    val maxGearSeen: StateFlow<Int> = _maxGearSeen.asStateFlow()
-
-    private val _gearboxType = MutableStateFlow(gearboxTypeBySystemConfig())
-    val gearboxType: StateFlow<GearboxType> = _gearboxType.asStateFlow()
-
-    private val _is6DctGearbox = MutableStateFlow(gearboxTypeBySystemConfig() == GearboxType.DCT_6)
-    val is6DctGearbox: StateFlow<Boolean> = _is6DctGearbox.asStateFlow()
-
-    private val _isManualGearbox = MutableStateFlow(gearboxTypeBySystemConfig() == GearboxType.MANUAL)
-    val isManualGearbox: StateFlow<Boolean> = _isManualGearbox.asStateFlow()
-
-    private val _frontLeftSeatMode = MutableStateFlow<UInt?>(null)
-    val frontLeftSeatMode: StateFlow<UInt?> = _frontLeftSeatMode.asStateFlow()
-
-    private val _frontRightSeatMode = MutableStateFlow<UInt?>(null)
-    val frontRightSeatMode: StateFlow<UInt?> = _frontRightSeatMode.asStateFlow()
-
-    private val _outsideTemperature = MutableStateFlow<Float?>(null)
-    val outsideTemperature: StateFlow<Float?> = _outsideTemperature.asStateFlow()
-    private var outsideTemperatureLastTimeNotNull: Long? = null
-
-    private val _insideTemperature = MutableStateFlow<Float?>(null)
-    val insideTemperature: StateFlow<Float?> = _insideTemperature.asStateFlow()
-    private var insideTemperatureLastTimeNotNull: Long? = null
-
-    private val _outsideAirQuality = MutableStateFlow<UInt?>(null)
-    val outsideAirQuality: StateFlow<UInt?> = _outsideAirQuality.asStateFlow()
-
-    private val _insideAirQuality = MutableStateFlow<UInt?>(null)
-    val insideAirQuality: StateFlow<UInt?> = _insideAirQuality.asStateFlow()
-
-    private val _isWindowsBlocked = MutableStateFlow<Boolean?>(null)
-    val isWindowsBlocked: StateFlow<Boolean?> = _isWindowsBlocked.asStateFlow()
-
-    private val _rainSensorDetected = MutableStateFlow(false)
-    val rainSensorDetected: StateFlow<Boolean> = _rainSensorDetected.asStateFlow()
-
-    private val _canFramesStructured = MutableStateFlow<Map<String, List<CanFrame>>>(emptyMap())
-    val canFramesStructured: StateFlow<Map<String, List<CanFrame>>> = _canFramesStructured.asStateFlow()
-
-    private val _motorHoursTrip = MutableStateFlow<Float?>(null)
-    val motorHoursTrip: StateFlow<Float?> = _motorHoursTrip.asStateFlow()
-
-    private const val MAX_CAN_FRAMES = 5
-    private const val MAX_CAN_IDS = 500
-    private const val MAX_FRAMES_PER_ID = 10
 
     private val timeFormat: ThreadLocal<SimpleDateFormat> = ThreadLocal.withInitial {
         SimpleDateFormat("HH:mm:ss", Locale.getDefault())
@@ -433,33 +451,34 @@ object CanDataRepository {
 
     fun updateOdometer(newValue: UInt) {
         loadPersistedStateIfNeeded()
-        updateTripDuration()
         _odometer.setIfChanged(newValue)
-        val prevOdo = lastOdometer
-        if (prevOdo != null) {
-            if (newValue >= prevOdo) {
-                val deltaKm = (newValue - prevOdo).toFloat()
-                if (deltaKm > 0f && deltaKm < 1000f) {
-                    accumulatedTripDistanceKm += deltaKm
-                    accumulatedManualTripDistanceKm += deltaKm
-                    currentSegmentDistKm += deltaKm
-                    _localTripDistanceKm.value = accumulatedTripDistanceKm
-                    _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
+        synchronized(tripFuelLock) {
+            updateTripDurationLocked()
+            val prevOdo = lastOdometer
+            if (prevOdo != null) {
+                if (newValue >= prevOdo) {
+                    val deltaKm = (newValue - prevOdo).toFloat()
+                    if (deltaKm > 0f && deltaKm < 1000f) {
+                        accumulatedTripDistanceKm += deltaKm
+                        accumulatedManualTripDistanceKm += deltaKm
+                        currentSegmentDistKm += deltaKm
+                        _localTripDistanceKm.value = accumulatedTripDistanceKm
+                        _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
+                    }
+                } else {
+                    lastOdometer = newValue
                 }
             } else {
-                lastOdometer = newValue
+                _localTripDistanceKm.value = accumulatedTripDistanceKm
+                _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
             }
-        } else {
-            _localTripDistanceKm.value = accumulatedTripDistanceKm
-            _manualTripDistanceKm.value = accumulatedManualTripDistanceKm
+            lastOdometer = newValue
+            recalculateLocalAverageFuelConsumptionLocked()
+            savePersistedStateLocked()
         }
-        lastOdometer = newValue
-
         if (TripRepository.activeTrip.value == null) {
             TripRepository.setActiveTrip(true)
         }
-        recalculateLocalAverageFuelConsumption()
-        savePersistedState()
     }
 
     private fun getTankCapacityLiters(): Float {
@@ -473,40 +492,52 @@ object CanDataRepository {
 
     fun resetLocalTripDistance() {
         loadPersistedStateIfNeeded()
-        accumulatedTripDistanceKm = 0f
-        _localTripDistanceKm.value = 0f
-        lastOdometer = _odometer.value
-        val currentPercent = getEffectiveFuelPercentage()
-        initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
-        tripStartTimeMs = System.currentTimeMillis()
-        updateTripDuration()
-        savePersistedState(immediate = true)
+        synchronized(tripFuelLock) {
+            accumulatedTripDistanceKm = 0f
+            _localTripDistanceKm.value = 0f
+            lastOdometer = _odometer.value
+            val currentPercent = getEffectiveFuelPercentage()
+            initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
+            tripStartTimeMs = System.currentTimeMillis()
+            updateTripDurationLocked()
+            savePersistedStateLocked(immediate = true)
+        }
     }
 
     fun resetOverallAverageFuelConsumption() {
         loadPersistedStateIfNeeded()
-        overallAccumulatedDistanceKm = 0f
-        overallAccumulatedFuelLiters = 0f
-        overallAccumulatedIdleFuelLiters = 0.0
-        currentSegmentDistKm = 0f
-        currentSegmentIdleFuelLiters = 0.0
-        lastIdleCheckMs = 0L
-        val currentPercent = getEffectiveFuelPercentage()
-        initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
-        lastKnownFuelLiters = initialFuelLiters
-        previousAvgConsumption = null
-        _averageFuelConsumption.value = null
-        savePersistedState(immediate = true)
+        synchronized(tripFuelLock) {
+            overallAccumulatedDistanceKm = 0f
+            overallAccumulatedFuelLiters = 0f
+            overallAccumulatedIdleFuelLiters = 0.0
+            currentSegmentDistKm = 0f
+            currentSegmentIdleFuelLiters = 0.0
+            lastIdleCheckMs = 0L
+            val currentPercent = getEffectiveFuelPercentage()
+            initialFuelLiters = currentPercent?.let { it * (getTankCapacityLiters() / 100f) }
+            lastKnownFuelLiters = initialFuelLiters
+            previousAvgConsumption = null
+            _averageFuelConsumption.value = null
+            savePersistedStateLocked(immediate = true)
+        }
     }
 
     fun resetManualTripDistance() {
         loadPersistedStateIfNeeded()
-        accumulatedManualTripDistanceKm = 0f
-        _manualTripDistanceKm.value = 0f
-        savePersistedState(immediate = true)
+        synchronized(tripFuelLock) {
+            accumulatedManualTripDistanceKm = 0f
+            _manualTripDistanceKm.value = 0f
+            savePersistedStateLocked(immediate = true)
+        }
     }
 
     fun updateTripDuration() {
+        synchronized(tripFuelLock) {
+            updateTripDurationLocked()
+        }
+    }
+
+    private fun updateTripDurationLocked() {
         val durationSec = ((System.currentTimeMillis() - tripStartTimeMs) / 1000L).coerceAtLeast(0L)
         _localTripDurationSeconds.value = durationSec
     }
@@ -533,7 +564,13 @@ object CanDataRepository {
     }
 
     private fun updateIdleFuelTracking() {
-        val now = System.currentTimeMillis()
+        synchronized(tripFuelLock) {
+            updateIdleFuelTrackingLocked()
+        }
+    }
+
+    private fun updateIdleFuelTrackingLocked() {
+        val now = nowElapsedMs()
         val isRunning = isEngineRunning()
         val isStationary = isVehicleStationary()
         if (isRunning && isStationary) {
@@ -558,7 +595,13 @@ object CanDataRepository {
 
     private fun recalculateLocalAverageFuelConsumption() {
         loadPersistedStateIfNeeded()
-        updateIdleFuelTracking()
+        synchronized(tripFuelLock) {
+            recalculateLocalAverageFuelConsumptionLocked()
+        }
+    }
+
+    private fun recalculateLocalAverageFuelConsumptionLocked() {
+        updateIdleFuelTrackingLocked()
         val currentPercent = getEffectiveFuelPercentage()
             ?: (_fuelLevelCalibratedLitersActual.value ?: _fuelLevelCalibratedLiters.value)?.let { (it / getTankCapacityLiters()) * 100f }
             ?: return
@@ -570,16 +613,19 @@ object CanDataRepository {
         if (initFuel == null) {
             initFuel = currentFuelLiters
             initialFuelLiters = initFuel
-        } else if (currentFuelLiters > initFuel + 5.0f) {
-            // Refuel detected: commit segment fuel and distance to overall totals
-            val segUsed = (initFuel - (lastKnownFuelLiters ?: initFuel)).coerceAtLeast(0f)
-            overallAccumulatedFuelLiters += segUsed
-            overallAccumulatedIdleFuelLiters += currentSegmentIdleFuelLiters
-            currentSegmentIdleFuelLiters = 0.0
-            overallAccumulatedDistanceKm += currentSegmentDistKm
-            currentSegmentDistKm = 0f
-            initFuel = currentFuelLiters
-            initialFuelLiters = initFuel
+        } else {
+            val refuelBaseline = lastKnownFuelLiters ?: initFuel
+            if (currentFuelLiters > refuelBaseline + 5.0f) {
+                // Refuel detected (including partial refuels): commit segment fuel and distance to overall totals
+                val segUsed = (initFuel - refuelBaseline).coerceAtLeast(0f)
+                overallAccumulatedFuelLiters += segUsed
+                overallAccumulatedIdleFuelLiters += currentSegmentIdleFuelLiters
+                currentSegmentIdleFuelLiters = 0.0
+                overallAccumulatedDistanceKm += currentSegmentDistKm
+                currentSegmentDistKm = 0f
+                initFuel = currentFuelLiters
+                initialFuelLiters = initFuel
+            }
         }
 
         lastKnownFuelLiters = currentFuelLiters
@@ -607,7 +653,7 @@ object CanDataRepository {
         if (overallAvg != null && overallAvg > 0f && overallAvg < 50f) {
             previousAvgConsumption = overallAvg
             _averageFuelConsumption.value = overallAvg
-            savePersistedState()
+            savePersistedStateLocked()
         }
     }
 
@@ -806,9 +852,7 @@ object CanDataRepository {
     }
 
     fun updateMaxGearSeen(newValue: Int) {
-        if (newValue > _maxGearSeen.value) {
-            _maxGearSeen.value = newValue
-        }
+        _maxGearSeen.update { current -> if (newValue > current) newValue else current }
     }
 
     fun updateFrontLeftSeatMode(newValue: UInt) {
@@ -883,56 +927,74 @@ object CanDataRepository {
     }
 
     fun addMotorHoursTrip(newValue: Float) {
-        _motorHoursTrip.value = (_motorHoursTrip.value ?: 0f) + newValue
+        _motorHoursTrip.update { current -> (current ?: 0f) + newValue }
     }
 
     fun hasCanFramesStructuredSubscribers(): Boolean {
-        return _canFramesStructured.subscriptionCount.value > 0 || DclLogRecorder.isLoggingActive()
+        return _canFramesStructured.subscriptionCount.value > 0
     }
 
     fun addCanFrameStructured(canId: String, rawValue: ByteArray, maxFrames: Int = MAX_FRAMES_PER_ID) {
-        if (!hasCanFramesStructuredSubscribers()) return
-        val date = Date()
-        val frame = CanFrame(date, rawValue)
-
-        _canFramesStructured.update { currentMap ->
-            // Use insertion-ordered map so we can evict the oldest CAN IDs.
-            val limitedMap = LinkedHashMap(currentMap)
-            val currentFrames = limitedMap.remove(canId) ?: emptyList()
-            val updatedFrames = (currentFrames + frame).takeLast(maxFrames)
-            limitedMap[canId] = updatedFrames
-
-            while (limitedMap.size > MAX_CAN_IDS) {
-                val oldestCanId = limitedMap.keys.firstOrNull() ?: break
-                limitedMap.remove(oldestCanId)
+        if (_canFramesStructured.subscriptionCount.value <= 0) return
+        val nowMs = nowElapsedMs()
+        val frame = CanFrame(Date(), rawValue)
+        var snapshotToPublish: Map<String, List<CanFrame>>? = null
+        synchronized(canFramesLock) {
+            val deque = canFramesBuffer.remove(canId) ?: ArrayDeque(maxFrames.coerceAtLeast(1))
+            deque.addLast(frame)
+            while (deque.size > maxFrames) {
+                deque.removeFirst()
             }
-            limitedMap
+            canFramesBuffer[canId] = deque
+            while (canFramesBuffer.size > MAX_CAN_IDS) {
+                val oldestKey = canFramesBuffer.keys.firstOrNull() ?: break
+                canFramesBuffer.remove(oldestKey)
+            }
+            if (nowMs - lastCanFramesPublishMs >= CAN_FRAMES_PUBLISH_MIN_INTERVAL_MS) {
+                lastCanFramesPublishMs = nowMs
+                snapshotToPublish = LinkedHashMap<String, List<CanFrame>>(canFramesBuffer.size).apply {
+                    for ((k, v) in canFramesBuffer) {
+                        put(k, v.toList())
+                    }
+                }
+            }
         }
+        snapshotToPublish?.let { _canFramesStructured.value = it }
     }
 
-    fun getFramesForId(canId: String): List<CanFrame> {
-        return _canFramesStructured.value[canId] ?: emptyList()
+    fun getFramesForId(canId: String): List<CanFrame> = synchronized(canFramesLock) {
+        canFramesBuffer[canId]?.toList() ?: _canFramesStructured.value[canId] ?: emptyList()
     }
 
     // Получить последний фрейм для конкретного CAN ID
-    fun getLastFrameForId(canId: String): CanFrame? {
-        return _canFramesStructured.value[canId]?.lastOrNull()
+    fun getLastFrameForId(canId: String): CanFrame? = synchronized(canFramesLock) {
+        canFramesBuffer[canId]?.lastOrNull() ?: _canFramesStructured.value[canId]?.lastOrNull()
     }
 
     // Получить все CAN ID
-    fun getAllCanIds(): Set<String> {
-        return _canFramesStructured.value.keys
+    fun getAllCanIds(): Set<String> = synchronized(canFramesLock) {
+        if (canFramesBuffer.isNotEmpty()) canFramesBuffer.keys.toSet() else _canFramesStructured.value.keys
     }
 
     // Очистить все фреймы для конкретного CAN ID
     fun clearFramesForId(canId: String) {
-        _canFramesStructured.update { currentMap ->
-            currentMap - canId
+        val snapshot = synchronized(canFramesLock) {
+            canFramesBuffer.remove(canId)
+            LinkedHashMap<String, List<CanFrame>>(canFramesBuffer.size).apply {
+                for ((k, v) in canFramesBuffer) {
+                    put(k, v.toList())
+                }
+            }
         }
+        _canFramesStructured.value = snapshot
     }
 
     // Очистить все фреймы
     fun clearAllFrames() {
+        synchronized(canFramesLock) {
+            canFramesBuffer.clear()
+            lastCanFramesPublishMs = 0L
+        }
         _canFramesStructured.value = emptyMap()
     }
 

@@ -1,12 +1,15 @@
 package vad.dashing.tbox.update
 
-object UpdateSessionGate {
-    @Volatile
-    var checkStartedThisSession: Boolean = false
+import java.util.concurrent.atomic.AtomicBoolean
 
-    fun tryBeginSessionCheck(): Boolean {
-        if (checkStartedThisSession) return false
-        checkStartedThisSession = true
-        return true
-    }
+object UpdateSessionGate {
+    private val started = AtomicBoolean(false)
+
+    var checkStartedThisSession: Boolean
+        get() = started.get()
+        set(value) {
+            started.set(value)
+        }
+
+    fun tryBeginSessionCheck(): Boolean = started.compareAndSet(false, true)
 }

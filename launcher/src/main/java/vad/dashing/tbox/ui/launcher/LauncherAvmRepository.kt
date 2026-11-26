@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.DiagFileLog
 import vad.dashing.tbox.LauncherHomeActivityHolder
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Tracks 360 Camera (AVM) state via `Settings.Global.avm_state`.
@@ -37,7 +38,8 @@ object LauncherAvmRepository {
     private val _isAvmActive = MutableStateFlow(false)
     val isAvmActive: StateFlow<Boolean> = _isAvmActive.asStateFlow()
 
-    private var observerRegistered = false
+    private val observerRegistered = AtomicBoolean(false)
+    private val observerLock = Any()
 
     @Volatile
     private var targetBeforeAvm: LaunchedTarget? = null
@@ -113,6 +115,7 @@ object LauncherAvmRepository {
                 }
 
                 if (active) {
+                    cancelPendingSplitRightLaunch()
                     val cameraAction = LauncherAppConfigStore.avmCameraAction(appCtx)
                     val isOverlayFullscreenHome = LauncherAppConfigStore.experimentalHomeWindowingMode(appCtx)
                     vad.dashing.tbox.DclLogRecorder.log("AVM", "avm_state changed raw='$raw' active=$active cameraAction=$cameraAction overlayFullscreen=$isOverlayFullscreenHome")
@@ -126,6 +129,7 @@ object LauncherAvmRepository {
                             targetBeforeAvm = captureTargetBeforeAvm(appCtx)
                             Log.w(TAG, "AVM turned ON: cameraAction=CLOSE_APPS -> targetBeforeAvm=$targetBeforeAvm, capturing snapshot & blank activity between app and cameras")
                             LauncherHomeSnapshotHolder.captureSnapshot(LauncherHomeActivityHolder.instance) {
+                                if (!_isAvmActive.value) return@captureSnapshot
                                 LauncherAvmBlankActivity.show(appCtx)
                                 dismissForeignFreeformTasks(appCtx)
                                 goLauncherHome(appCtx, source = "AVM:camera_on")
@@ -135,6 +139,7 @@ object LauncherAvmRepository {
                             targetBeforeAvm = null
                             Log.w(TAG, "AVM turned ON: cameraAction=MINIMIZE_APPS -> showing blank activity with desktop snapshot over active apps")
                             LauncherHomeSnapshotHolder.captureSnapshot(LauncherHomeActivityHolder.instance) {
+                                if (!_isAvmActive.value) return@captureSnapshot
                                 LauncherAvmBlankActivity.show(appCtx)
                             }
                         }
@@ -160,20 +165,24 @@ object LauncherAvmRepository {
 
         update(isInitial = true)
 
-        if (observerRegistered) return
-        observerRegistered = true
-
-        runCatching {
-            val uri = Settings.Global.getUriFor(AVM_STATE_SETTING)
-            resolver.registerContentObserver(
-                uri,
-                false,
-                object : ContentObserver(Handler(Looper.getMainLooper())) {
-                    override fun onChange(selfChange: Boolean) {
-                        update(isInitial = false)
-                    }
-                },
-            )
+        if (observerRegistered.get()) return
+        synchronized(observerLock) {
+            if (observerRegistered.get()) return
+            val registered = runCatching {
+                val uri = Settings.Global.getUriFor(AVM_STATE_SETTING)
+                resolver.registerContentObserver(
+                    uri,
+                    false,
+                    object : ContentObserver(Handler(Looper.getMainLooper())) {
+                        override fun onChange(selfChange: Boolean) {
+                            update(isInitial = false)
+                        }
+                    },
+                )
+            }.isSuccess
+            if (registered) {
+                observerRegistered.set(true)
+            }
         }
     }
 }

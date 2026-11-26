@@ -55,11 +55,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -159,10 +161,10 @@ import kotlin.math.roundToInt
 private val isOperatingWindowsFlow = MutableStateFlow(false)
 private val activeSeatMemorySlotFlow = MutableStateFlow<Int?>(null)
 
-private fun recallSeatMemorySlot(context: Context, slot: Int) {
+private fun recallSeatMemorySlot(context: Context, slot: Int, scope: CoroutineScope) {
     activeSeatMemorySlotFlow.value = slot
     Toast.makeText(context, "Применение памяти: Слот $slot", Toast.LENGTH_SHORT).show()
-    CoroutineScope(Dispatchers.IO).launch {
+    scope.launch(Dispatchers.IO) {
         UniversalCanRepository.execute(
             MbCanCommand.SetProperty(MbCanKnownVehiclePropertyId.MIRROR_SET_DRIVER_MIRROR_LOCATION, slot)
         )
@@ -181,8 +183,8 @@ private fun recallSeatMemorySlot(context: Context, slot: Int) {
     }
 }
 
-private fun triggerSequentialWindows(targetPercent: Int) {
-    CoroutineScope(Dispatchers.IO).launch {
+private fun triggerSequentialWindows(targetPercent: Int, scope: CoroutineScope) {
+    scope.launch(Dispatchers.IO) {
         isOperatingWindowsFlow.value = true
         try {
             sendSequentialWindowCommands(targetPercent)
@@ -435,6 +437,7 @@ internal fun LauncherTopShadeContent(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val isDark = LauncherThemeState.darkTheme
     val revision by LauncherTopShadeConfigStore.tilesRevisionFlow.collectAsStateWithLifecycle()
     val tiles = remember(context, revision) {
@@ -643,41 +646,43 @@ internal fun LauncherTopShadeContent(
 
                     // 2. Render Placed Tiles
                     tiles.forEachIndexed { index, item ->
-                        val xPx = item.col * (cellWidthPx + gapPx)
-                        val yPx = item.row * (cellHeightPx + gapPx)
-                        val wDp = with(density) { (item.spanX * cellWidthPx + (item.spanX - 1) * gapPx).toDp() }
-                        val hDp = with(density) { (item.spanY * cellHeightPx + (item.spanY - 1) * gapPx).toDp() }
+                        key(item.id) {
+                            val xPx = item.col * (cellWidthPx + gapPx)
+                            val yPx = item.row * (cellHeightPx + gapPx)
+                            val wDp = with(density) { (item.spanX * cellWidthPx + (item.spanX - 1) * gapPx).toDp() }
+                            val hDp = with(density) { (item.spanY * cellHeightPx + (item.spanY - 1) * gapPx).toDp() }
 
-                        TopShadeTileCanvasItemView(
-                            spec = item,
-                            index = index,
-                            cellWidthPx = cellWidthPx,
-                            cellHeightPx = cellHeightPx,
-                            gapPx = gapPx,
-                            wDp = wDp,
-                            hDp = hDp,
-                            xPx = xPx,
-                            yPx = yPx,
-                            isEditMode = isEditMode,
-                            isDark = isDark,
-                            fontScale = fontScale,
-                            iconScale = iconScale,
-                            onClose = onClose,
-                            onRemove = {
-                                val next = tiles.toMutableList().apply { removeAt(index) }
-                                LauncherTopShadeConfigStore.setTiles(context, next)
-                            },
-                            onUpdateTile = { updatedTile ->
-                                val next = tiles.toMutableList()
-                                next[index] = updatedTile
-                                LauncherTopShadeConfigStore.setTiles(context, next)
-                            },
-                            onClick = {
-                                if (!isEditMode) {
-                                    executeTileAction(context, item, onClose)
-                                }
-                            },
-                        )
+                            TopShadeTileCanvasItemView(
+                                spec = item,
+                                index = index,
+                                cellWidthPx = cellWidthPx,
+                                cellHeightPx = cellHeightPx,
+                                gapPx = gapPx,
+                                wDp = wDp,
+                                hDp = hDp,
+                                xPx = xPx,
+                                yPx = yPx,
+                                isEditMode = isEditMode,
+                                isDark = isDark,
+                                fontScale = fontScale,
+                                iconScale = iconScale,
+                                onClose = onClose,
+                                onRemove = {
+                                    val next = tiles.toMutableList().apply { removeAt(index) }
+                                    LauncherTopShadeConfigStore.setTiles(context, next)
+                                },
+                                onUpdateTile = { updatedTile ->
+                                    val next = tiles.toMutableList()
+                                    next[index] = updatedTile
+                                    LauncherTopShadeConfigStore.setTiles(context, next)
+                                },
+                                onClick = {
+                                    if (!isEditMode) {
+                                        executeTileAction(context, item, scope, onClose)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -729,6 +734,344 @@ internal fun LauncherTopShadeContent(
     }
 }
 
+private data class ResolvedTopShadeTileState(
+    val isActive: Boolean = false,
+    val activeColor: Color = LauncherColors.AccentBlue,
+    val seatMode: MbCanSeatModeState = MbCanSeatModeState.Unknown,
+    val headrestMode: Int = 3,
+    val hvacFanSpeed: Int = 0,
+    val hvacFanDirection: Int = MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT,
+    val isRecircOn: Boolean = false,
+    val isPm25On: Boolean = false,
+    val temp: Float? = null,
+    val vehicleControls: LauncherVehicleControlSnapshot = LauncherVehicleControlSnapshot(),
+    val adas: LauncherAdasState = LauncherAdasState(),
+    val tboxCruise: UInt? = null,
+    val driveModeText: String = "",
+)
+
+@Composable
+private fun rememberResolvedTileState(
+    spec: TopShadeTileSpec,
+    context: Context,
+): ResolvedTopShadeTileState {
+    return when (spec.actionKey) {
+        "brightness", "vol_media", "vol_phone", "vol_navi", "vol_voice",
+        "seat_adjust", "passenger_seat_adjust", "dcl_log", "car_dialer",
+        "radio_app", "screen_off", "reboot_hu", "avm_camera" -> ResolvedTopShadeTileState()
+
+        "theme" -> ResolvedTopShadeTileState(isActive = LauncherThemeState.darkTheme)
+        "wifi" -> {
+            val enabled = remember(context) {
+                (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled == true
+            }
+            ResolvedTopShadeTileState(isActive = enabled)
+        }
+        "headrest_speaker" -> {
+            val headrestMode by PlatformAudioRepository.headrestMode.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = headrestMode != 3, headrestMode = headrestMode)
+        }
+        "seat_heat_left" -> {
+            val mode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = mode is MbCanSeatModeState.Heat && (mode as MbCanSeatModeState.Heat).level > 0,
+                activeColor = SeatHeatOnColor,
+                seatMode = mode,
+            )
+        }
+        "seat_vent_left" -> {
+            val mode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = mode is MbCanSeatModeState.Vent && (mode as MbCanSeatModeState.Vent).level > 0,
+                activeColor = HvacOnColor,
+                seatMode = mode,
+            )
+        }
+        "seat_heat_right" -> {
+            val mode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = mode is MbCanSeatModeState.Heat && (mode as MbCanSeatModeState.Heat).level > 0,
+                activeColor = SeatHeatOnColor,
+                seatMode = mode,
+            )
+        }
+        "seat_vent_right" -> {
+            val mode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = mode is MbCanSeatModeState.Vent && (mode as MbCanSeatModeState.Vent).level > 0,
+                activeColor = HvacOnColor,
+                seatMode = mode,
+            )
+        }
+        "seat_heat_rear_left" -> {
+            val mode by UniversalCanRepository.rearLeftSeatModeState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = mode is MbCanSeatModeState.Heat && (mode as MbCanSeatModeState.Heat).level > 0,
+                activeColor = SeatHeatOnColor,
+                seatMode = mode,
+            )
+        }
+        "seat_heat_rear_right" -> {
+            val mode by UniversalCanRepository.rearRightSeatModeState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = mode is MbCanSeatModeState.Heat && (mode as MbCanSeatModeState.Heat).level > 0,
+                activeColor = SeatHeatOnColor,
+                seatMode = mode,
+            )
+        }
+        "steering_heat" -> {
+            val state by UniversalCanRepository.steeringWheelHeatState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = state is MbCanBinaryState.On, activeColor = SeatHeatOnColor)
+        }
+        "windscreen_heat" -> {
+            val state by UniversalCanRepository.frontWindscreenHeatState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = state is MbCanBinaryState.On, activeColor = SeatHeatOnColor)
+        }
+        "rear_defrost" -> {
+            val state by UniversalCanRepository.hvacDefrosterState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = state is MbCanBinaryState.On, activeColor = SeatHeatOnColor)
+        }
+        "hvac_auto" -> {
+            val state by UniversalCanRepository.hvacAutoState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = state is MbCanBinaryState.On, activeColor = HvacOnColor)
+        }
+        "hvac_recirc", "recirc" -> {
+            val state by UniversalCanRepository.hvacAirRecirculationState.collectAsStateWithLifecycle()
+            val isOn = state is MbCanBinaryState.On
+            ResolvedTopShadeTileState(isActive = isOn, activeColor = HvacOnColor, isRecircOn = isOn)
+        }
+        "hvac_power" -> {
+            val hvacPower by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+            val hvacFanSpeed by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = hvacPower is MbCanBinaryState.On || hvacFanSpeed > 0,
+                activeColor = HvacOnColor,
+            )
+        }
+        "hvac_ac" -> {
+            val hvacAc by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = hvacAc is MbCanBinaryState.On, activeColor = HvacOnColor)
+        }
+        "hvac_sync" -> {
+            val hvacSync by UniversalCanRepository.hvacSyncState.collectAsStateWithLifecycle()
+            val driverTemp by CanDataRepository.climateSetTemperature1.collectAsStateWithLifecycle()
+            val passTemp by CanDataRepository.climateSetTemperature2.collectAsStateWithLifecycle()
+            val isSyncOn = hvacSync is MbCanBinaryState.On || (
+                hvacSync !is MbCanBinaryState.Off &&
+                    driverTemp != null &&
+                    passTemp != null &&
+                    abs(driverTemp!! - passTemp!!) < 0.1f
+                )
+            ResolvedTopShadeTileState(isActive = isSyncOn, activeColor = HvacOnColor)
+        }
+        "hvac_pm25" -> {
+            val hvacPm25 by UniversalCanRepository.hvacPm25State.collectAsStateWithLifecycle()
+            val isOn = hvacPm25 is MbCanBinaryState.On
+            ResolvedTopShadeTileState(isActive = isOn, activeColor = Color(0xFF22C55E), isPm25On = isOn)
+        }
+        "hvac_fan_speed" -> {
+            val hvacFanSpeed by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
+            val hvacAc by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = hvacFanSpeed > 0,
+                activeColor = if (hvacAc is MbCanBinaryState.On) HvacOnColor else SeatHeatOnColor,
+                hvacFanSpeed = hvacFanSpeed,
+            )
+        }
+        "hvac_fan_direction" -> {
+            val dir by UniversalCanRepository.hvacFanDirectionRawState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = false,
+                activeColor = HvacOnColor,
+                hvacFanDirection = dir ?: MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT,
+            )
+        }
+        "front_defrost" -> {
+            val hvacDefrost by UniversalCanRepository.hvacDefrosterFrontState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = hvacDefrost is MbCanBinaryState.On, activeColor = HvacOnColor)
+        }
+        "temp_driver", "hvac_heater_level" -> {
+            val driverTemp by CanDataRepository.climateSetTemperature1.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(temp = driverTemp)
+        }
+        "temp_pass" -> {
+            val passTemp by CanDataRepository.climateSetTemperature2.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(temp = passTemp)
+        }
+        "trunk_door" -> {
+            val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = vehicleBody.tailgateOpen)
+        }
+        "windows" -> {
+            val isOperatingWindows by isOperatingWindowsFlow.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(isActive = isOperatingWindows, activeColor = Color(0xFF10B981))
+        }
+        "seat_memory_1", "seat_memory_2", "seat_memory_3" -> {
+            val activeSlot by activeSeatMemorySlotFlow.collectAsStateWithLifecycle()
+            val slotNum = spec.actionKey.removePrefix("seat_memory_").toIntOrNull()
+            ResolvedTopShadeTileState(isActive = activeSlot == slotNum, activeColor = Color(0xFF10B981))
+        }
+        "wiper_maintenance" -> {
+            val wiperMaintenance by UniversalCanRepository.wiperMaintenanceState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = wiperMaintenance is MbCanBinaryState.On,
+                activeColor = LauncherColors.AccentCyan,
+            )
+        }
+        "drive_mode" -> {
+            val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
+            val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
+            val gearBoxDriveMode by CanDataRepository.gearBoxDriveMode.collectAsStateWithLifecycle()
+            val is6Dct by CanDataRepository.is6DctGearbox.collectAsStateWithLifecycle()
+            val resolvedDriveMode = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct) {
+                resolveDriveModeDisplayLabel(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct).uppercase()
+            }
+            val color = when (resolvedDriveMode) {
+                "ECO" -> Color(0xFF10B981)
+                "SPT", "SPORT" -> Color(0xFFEF4444)
+                "SNOW", "СНЕГ" -> Color(0xFF38BDF8)
+                else -> Color(0xFF3B82F6)
+            }
+            ResolvedTopShadeTileState(isActive = true, activeColor = color, driveModeText = resolvedDriveMode)
+        }
+        "acc" -> {
+            val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+            val tboxCruise by CanDataRepository.cruiseSetSpeed.collectAsStateWithLifecycle()
+            val accActive = adas.accActive || (tboxCruise ?: 0u) > 0u
+            val accStandby = adas.accStandby
+            ResolvedTopShadeTileState(
+                isActive = accActive || accStandby,
+                activeColor = if (accActive) Color(0xFF10B981) else Color(0xFF38BDF8),
+                adas = adas,
+                tboxCruise = tboxCruise,
+            )
+        }
+        "ngp" -> {
+            val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+            val tjaIcaState by UniversalCanRepository.tjaIcaState.collectAsStateWithLifecycle()
+            val ngpActive = adas.tja == LauncherAdasAssistIcon.Active
+            val ngpStandby = tjaIcaState is MbCanBinaryState.On || adas.tja == LauncherAdasAssistIcon.Dark
+            val ngpUnavailable = tjaIcaState is MbCanBinaryState.Unavailable
+            val color = when {
+                ngpUnavailable -> Color(0xFFEF4444)
+                ngpActive -> Color(0xFF10B981)
+                else -> Color(0xFF38BDF8)
+            }
+            ResolvedTopShadeTileState(
+                isActive = ngpActive || ngpStandby || ngpUnavailable,
+                activeColor = color,
+                adas = adas,
+            )
+        }
+        "adas_dist" -> {
+            val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+            ResolvedTopShadeTileState(
+                isActive = true,
+                activeColor = LauncherColors.AccentCyan,
+                adas = adas,
+            )
+        }
+        "smart_acc" -> {
+            val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+            val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
+            val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
+            ResolvedTopShadeTileState(
+                isActive = isSmartActive && (cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override),
+                activeColor = Color(0xFF10B981),
+                adas = adas,
+            )
+        }
+        "ldw", "lka", "fcw", "hma" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+            val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+            val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+            val currentLasMode = vehicleControls.lasMode ?: adas.lasMode
+            val active = when (spec.actionKey) {
+                "ldw" -> currentLasMode == 1
+                "lka" -> currentLasMode == 2
+                "fcw" -> vehicleControls.fcw == true || adas.fcwActive
+                "hma" -> vehicleControls.hmaOn == true || adas.hma == LauncherAdasAssistIcon.Active
+                else -> false
+            }
+            val color = when (spec.actionKey) {
+                "ldw", "lka" -> if (vehicleControls.lasSensitivity == 1) Color(0xFFF97316) else Color(0xFF10B981)
+                "fcw" -> when (vehicleControls.fcwOption) {
+                    1 -> Color(0xFF10B981)
+                    2 -> Color(0xFF3B82F6)
+                    3 -> Color(0xFFEF4444)
+                    else -> Color(0xFF10B981)
+                }
+                else -> Color(0xFF10B981)
+            }
+            ResolvedTopShadeTileState(
+                isActive = active,
+                activeColor = color,
+                vehicleControls = vehicleControls,
+                adas = adas,
+            )
+        }
+        "headlights", "mirror_fold", "esc_off", "bsd", "dow", "parking_radar", "hdc", "avh",
+        "rear_fog", "wiper_sensitivity", "acc_autobrake", "door_autolock", "door_ignoff_unlock",
+        "mirror_autofold", "mirror_reverse_turn", "welcome_lamp", "wireless_charging",
+        "car_wash_mode", "welcome_seat", "window_autoclose", "las", "homelight_delay",
+        "driver_unlock_mode" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+            val isMirrorFolded = if (spec.actionKey == "mirror_fold") {
+                MirrorFoldLastCommandStore.readLastValue() == MIRROR_FOLD_SWITCH_VALUE_FOLD
+            } else false
+            val isEscOff = vehicleControls.escOff == true
+            val active = when (spec.actionKey) {
+                "mirror_fold" -> isMirrorFolded
+                "bsd" -> vehicleControls.bsd == true
+                "dow" -> vehicleControls.dow == true
+                "parking_radar" -> vehicleControls.parkingRadar == true
+                "esc_off" -> true
+                "hdc" -> vehicleControls.hdc == true
+                "avh" -> vehicleControls.avh == true || vehicleControls.accAutobrake == true
+                "rear_fog" -> vehicleControls.rearFogLight == true
+                "wiper_sensitivity" -> true
+                "acc_autobrake" -> vehicleControls.accAutobrake == true
+                "door_autolock" -> vehicleControls.doorAutoLock == true
+                "door_ignoff_unlock" -> vehicleControls.doorIgnOffUnlock == true
+                "mirror_autofold" -> vehicleControls.mirrorAutofold == true
+                "mirror_reverse_turn" -> vehicleControls.mirrorReverseTurn == true
+                "welcome_lamp" -> vehicleControls.welcomeLamp == true
+                "wireless_charging" -> vehicleControls.wirelessCharging == true
+                "car_wash_mode" -> vehicleControls.vehWashMode == true
+                "welcome_seat" -> vehicleControls.welcomeSeat == true
+                "window_autoclose" -> vehicleControls.windowAutoclose == true
+                "las" -> ((vehicleControls.lasSensitivity ?: 0) > 0) || ((vehicleControls.lasMode ?: 0) > 0)
+                "homelight_delay" -> (vehicleControls.homelightDelay ?: 0) > 0
+                "driver_unlock_mode" -> (vehicleControls.driverUnlockMode ?: 0) > 0
+                else -> false
+            }
+            val color = when (spec.actionKey) {
+                "esc_off" -> if (isEscOff) Color(0xFFEF4444) else Color(0xFF10B981)
+                "rear_fog" -> Color(0xFFF97316)
+                "wiper_sensitivity" -> when (vehicleControls.wiperSensitivity ?: 1) {
+                    1 -> Color(0xFFEF4444)
+                    2 -> Color(0xFFEAB308)
+                    3 -> Color(0xFF3B82F6)
+                    4 -> Color(0xFF22C55E)
+                    else -> Color(0xFFEF4444)
+                }
+                "mirror_fold", "bsd", "dow", "parking_radar", "hdc", "avh" -> Color(0xFF10B981)
+                else -> LauncherColors.AccentBlue
+            }
+            ResolvedTopShadeTileState(
+                isActive = active,
+                activeColor = color,
+                vehicleControls = vehicleControls,
+            )
+        }
+        else -> ResolvedTopShadeTileState()
+    }
+}
+
 @Composable
 private fun TopShadeTileCanvasItemView(
     spec: TopShadeTileSpec,
@@ -750,137 +1093,9 @@ private fun TopShadeTileCanvasItemView(
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    val flSeatMode by UniversalCanRepository.frontLeftSeatModeState.collectAsStateWithLifecycle()
-    val frSeatMode by UniversalCanRepository.frontRightSeatModeState.collectAsStateWithLifecycle()
-    val rlSeatMode by UniversalCanRepository.rearLeftSeatModeState.collectAsStateWithLifecycle()
-    val rrSeatMode by UniversalCanRepository.rearRightSeatModeState.collectAsStateWithLifecycle()
-    val steeringHeat by UniversalCanRepository.steeringWheelHeatState.collectAsStateWithLifecycle()
-    val windscreenHeat by UniversalCanRepository.frontWindscreenHeatState.collectAsStateWithLifecycle()
-    val rearDefrost by UniversalCanRepository.hvacDefrosterState.collectAsStateWithLifecycle()
-    val hvacAuto by UniversalCanRepository.hvacAutoState.collectAsStateWithLifecycle()
-    val hvacRecirc by UniversalCanRepository.hvacAirRecirculationState.collectAsStateWithLifecycle()
-    val hvacPower by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
-    val hvacAc by UniversalCanRepository.hvacAcPowerState.collectAsStateWithLifecycle()
-    val hvacSync by UniversalCanRepository.hvacSyncState.collectAsStateWithLifecycle()
-    val hvacPm25 by UniversalCanRepository.hvacPm25State.collectAsStateWithLifecycle()
-    val hvacFanSpeed by UniversalCanRepository.hvacFanSpeedRawState.collectAsStateWithLifecycle()
-    val hvacFanDirection by UniversalCanRepository.hvacFanDirectionRawState.collectAsStateWithLifecycle()
-    val hvacDefrost by UniversalCanRepository.hvacDefrosterFrontState.collectAsStateWithLifecycle()
-    val driverTemp by CanDataRepository.climateSetTemperature1.collectAsStateWithLifecycle()
-    val passTemp by CanDataRepository.climateSetTemperature2.collectAsStateWithLifecycle()
-    val headrestMode by PlatformAudioRepository.headrestMode.collectAsStateWithLifecycle()
-
-    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
-
-    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
-    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
-    val tboxCruise by CanDataRepository.cruiseSetSpeed.collectAsStateWithLifecycle()
-    val tjaIcaState by UniversalCanRepository.tjaIcaState.collectAsStateWithLifecycle()
-    val wiperMaintenance by UniversalCanRepository.wiperMaintenanceState.collectAsStateWithLifecycle()
-    val driveModeRaw by UniversalCanRepository.carSettingsDriveMode.collectAsStateWithLifecycle()
-    val driveModeWetRaw by UniversalCanRepository.carSettingsDriveMode6dctWet.collectAsStateWithLifecycle()
-    val gearBoxDriveMode by CanDataRepository.gearBoxDriveMode.collectAsStateWithLifecycle()
-    val is6Dct by CanDataRepository.is6DctGearbox.collectAsStateWithLifecycle()
-    val isSmartActive by LauncherCruisePresetController.isSmartSpeedLimitActive.collectAsStateWithLifecycle()
-    val cruiseState by LauncherCruisePresetController.accCruiseState.collectAsStateWithLifecycle()
-    val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
-    val isOperatingWindows by isOperatingWindowsFlow.collectAsStateWithLifecycle()
-    val activeSeatMemorySlot by activeSeatMemorySlotFlow.collectAsStateWithLifecycle()
-
-    val mirrorFoldVal = remember(vehicleControls) { MirrorFoldLastCommandStore.readLastValue() }
-    val isMirrorFolded = mirrorFoldVal == MIRROR_FOLD_SWITCH_VALUE_FOLD
-    val isEscOff = vehicleControls.escOff == true
-    val currentLasMode = vehicleControls.lasMode ?: adas.lasMode
-    val isLdwActive = currentLasMode == 1
-    val isLkaActive = currentLasMode == 2
-    val isFcwActive = vehicleControls.fcw == true || adas.fcwActive
-    val isHmaActive = vehicleControls.hmaOn == true || adas.hma == LauncherAdasAssistIcon.Active
-    val isRearFogActive = vehicleControls.rearFogLight == true
-    val isWiperMaintenanceActive = wiperMaintenance is MbCanBinaryState.On
-    val accActive = adas.accActive || (tboxCruise ?: 0u) > 0u
-    val accStandby = adas.accStandby
-    val ngpActive = adas.tja == LauncherAdasAssistIcon.Active
-    val ngpStandby = tjaIcaState is MbCanBinaryState.On || adas.tja == LauncherAdasAssistIcon.Dark
-    val ngpUnavailable = tjaIcaState is MbCanBinaryState.Unavailable
-    val resolvedDriveMode = remember(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct) {
-        resolveDriveModeDisplayLabel(driveModeRaw, driveModeWetRaw, gearBoxDriveMode, is6Dct).uppercase()
-    }
-
-    val isSyncOn = hvacSync is MbCanBinaryState.On || (hvacSync !is MbCanBinaryState.Off && driverTemp != null && passTemp != null && abs(driverTemp!! - passTemp!!) < 0.1f)
-    val isPowerOn = hvacPower is MbCanBinaryState.On || hvacFanSpeed > 0
-
-    val isActive = remember(
-        spec.actionKey, flSeatMode, frSeatMode, rlSeatMode, rrSeatMode,
-        steeringHeat, windscreenHeat, rearDefrost, hvacAuto, hvacRecirc,
-        isPowerOn, hvacAc, isSyncOn, hvacPm25, hvacFanSpeed, hvacDefrost,
-        headrestMode, vehicleControls, isMirrorFolded, isOperatingWindows,
-        activeSeatMemorySlot, accActive, accStandby, ngpActive, ngpStandby,
-        ngpUnavailable, isSmartActive, cruiseState, isLdwActive, isLkaActive,
-        isFcwActive, isHmaActive, isRearFogActive, isWiperMaintenanceActive,
-        vehicleBody.tailgateOpen
-    ) {
-        when (spec.actionKey) {
-            "seat_heat_left" -> flSeatMode is MbCanSeatModeState.Heat && (flSeatMode as MbCanSeatModeState.Heat).level > 0
-            "seat_vent_left" -> flSeatMode is MbCanSeatModeState.Vent && (flSeatMode as MbCanSeatModeState.Vent).level > 0
-            "seat_heat_right" -> frSeatMode is MbCanSeatModeState.Heat && (frSeatMode as MbCanSeatModeState.Heat).level > 0
-            "seat_vent_right" -> frSeatMode is MbCanSeatModeState.Vent && (frSeatMode as MbCanSeatModeState.Vent).level > 0
-            "seat_heat_rear_left" -> rlSeatMode is MbCanSeatModeState.Heat && (rlSeatMode as MbCanSeatModeState.Heat).level > 0
-            "seat_heat_rear_right" -> rrSeatMode is MbCanSeatModeState.Heat && (rrSeatMode as MbCanSeatModeState.Heat).level > 0
-            "steering_heat" -> steeringHeat is MbCanBinaryState.On
-            "windscreen_heat" -> windscreenHeat is MbCanBinaryState.On
-            "rear_defrost" -> rearDefrost is MbCanBinaryState.On
-            "hvac_auto" -> hvacAuto is MbCanBinaryState.On
-            "hvac_recirc", "recirc" -> hvacRecirc is MbCanBinaryState.On
-            "hvac_power" -> isPowerOn
-            "hvac_ac" -> hvacAc is MbCanBinaryState.On
-            "hvac_sync" -> isSyncOn
-            "hvac_pm25" -> hvacPm25 is MbCanBinaryState.On
-            "hvac_fan_speed" -> hvacFanSpeed > 0
-            "front_defrost" -> hvacDefrost is MbCanBinaryState.On
-            "theme" -> LauncherThemeState.darkTheme
-            "wifi" -> (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled == true
-            "headrest_speaker" -> headrestMode != 3
-            "mirror_fold" -> isMirrorFolded
-            "trunk_door" -> vehicleBody.tailgateOpen
-            "windows" -> isOperatingWindows
-            "seat_memory_1" -> activeSeatMemorySlot == 1
-            "seat_memory_2" -> activeSeatMemorySlot == 2
-            "seat_memory_3" -> activeSeatMemorySlot == 3
-            "seat_adjust", "passenger_seat_adjust" -> false
-            "acc" -> accActive || accStandby
-            "ngp" -> ngpActive || ngpStandby || ngpUnavailable
-            "adas_dist" -> true
-            "smart_acc" -> isSmartActive && (cruiseState == AccCruiseState.Active || cruiseState == AccCruiseState.Override)
-            "ldw" -> isLdwActive
-            "lka" -> isLkaActive
-            "fcw" -> isFcwActive
-            "bsd" -> vehicleControls.bsd == true
-            "dow" -> vehicleControls.dow == true
-            "parking_radar" -> vehicleControls.parkingRadar == true
-            "esc_off" -> true
-            "hdc" -> vehicleControls.hdc == true
-            "avh" -> vehicleControls.avh == true || vehicleControls.accAutobrake == true
-            "hma" -> isHmaActive
-            "rear_fog" -> isRearFogActive
-            "wiper_maintenance" -> isWiperMaintenanceActive
-            "wiper_sensitivity" -> true
-            "drive_mode" -> true
-            "acc_autobrake" -> vehicleControls.accAutobrake == true
-            "door_autolock" -> vehicleControls.doorAutoLock == true
-            "door_ignoff_unlock" -> vehicleControls.doorIgnOffUnlock == true
-            "mirror_autofold" -> vehicleControls.mirrorAutofold == true
-            "mirror_reverse_turn" -> vehicleControls.mirrorReverseTurn == true
-            "welcome_lamp" -> vehicleControls.welcomeLamp == true
-            "wireless_charging" -> vehicleControls.wirelessCharging == true
-            "car_wash_mode" -> vehicleControls.vehWashMode == true
-            "welcome_seat" -> vehicleControls.welcomeSeat == true
-            "window_autoclose" -> vehicleControls.windowAutoclose == true
-            "las" -> ((vehicleControls.lasSensitivity ?: 0) > 0) || ((vehicleControls.lasMode ?: 0) > 0)
-            "homelight_delay" -> (vehicleControls.homelightDelay ?: 0) > 0
-            "driver_unlock_mode" -> (vehicleControls.driverUnlockMode ?: 0) > 0
-            else -> false
-        }
-    }
+    val tileState = rememberResolvedTileState(spec = spec, context = context)
+    val isActive = tileState.isActive
+    val activeColor = tileState.activeColor
 
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
@@ -900,60 +1115,6 @@ private fun TopShadeTileCanvasItemView(
 
     val renderXPx = if (isDragging) xPx + dragOffsetX else xPx
     val renderYPx = if (isDragging) yPx + dragOffsetY else yPx
-
-    val activeColor = remember(
-        spec.actionKey, hvacAc, isEscOff, isLdwActive, isLkaActive, vehicleControls.lasSensitivity,
-        vehicleControls.fcwOption, isFcwActive, accActive, accStandby, ngpActive, ngpStandby,
-        ngpUnavailable, vehicleControls.wiperSensitivity, driveModeRaw, is6Dct, gearBoxDriveMode
-    ) {
-        when {
-            spec.actionKey.startsWith("seat_heat_") ||
-            spec.actionKey in listOf("steering_heat", "windscreen_heat", "rear_defrost") -> SeatHeatOnColor
-            spec.actionKey == "hvac_pm25" -> Color(0xFF22C55E)
-            spec.actionKey == "hvac_fan_speed" -> if (hvacAc is MbCanBinaryState.On) HvacOnColor else SeatHeatOnColor
-            spec.actionKey.startsWith("seat_vent_") ||
-            spec.actionKey.startsWith("hvac_") ||
-            spec.actionKey in listOf("recirc", "front_defrost") -> HvacOnColor
-            spec.actionKey == "esc_off" -> if (isEscOff) Color(0xFFEF4444) else Color(0xFF10B981)
-            spec.actionKey == "ldw" -> if (vehicleControls.lasSensitivity == 1) Color(0xFFF97316) else Color(0xFF10B981)
-            spec.actionKey == "lka" -> if (vehicleControls.lasSensitivity == 1) Color(0xFFF97316) else Color(0xFF10B981)
-            spec.actionKey == "fcw" -> when (vehicleControls.fcwOption) {
-                1 -> Color(0xFF10B981)
-                2 -> Color(0xFF3B82F6)
-                3 -> Color(0xFFEF4444)
-                else -> Color(0xFF10B981)
-            }
-            spec.actionKey == "rear_fog" -> Color(0xFFF97316)
-            spec.actionKey == "wiper_maintenance" -> LauncherColors.AccentCyan
-            spec.actionKey == "wiper_sensitivity" -> when (vehicleControls.wiperSensitivity ?: 1) {
-                1 -> Color(0xFFEF4444)
-                2 -> Color(0xFFEAB308)
-                3 -> Color(0xFF3B82F6)
-                4 -> Color(0xFF22C55E)
-                else -> Color(0xFFEF4444)
-            }
-            spec.actionKey == "acc" -> if (accActive) Color(0xFF10B981) else Color(0xFF38BDF8)
-            spec.actionKey == "ngp" -> when {
-                ngpUnavailable -> Color(0xFFEF4444)
-                ngpActive -> Color(0xFF10B981)
-                else -> Color(0xFF38BDF8)
-            }
-            spec.actionKey == "adas_dist" -> LauncherColors.AccentCyan
-            spec.actionKey == "drive_mode" -> {
-                when (resolvedDriveMode) {
-                    "ECO" -> Color(0xFF10B981)
-                    "SPT", "SPORT" -> Color(0xFFEF4444)
-                    "SNOW", "СНЕГ" -> Color(0xFF38BDF8)
-                    else -> Color(0xFF3B82F6)
-                }
-            }
-            spec.actionKey in listOf(
-                "seat_memory_1", "seat_memory_2", "seat_memory_3", "windows", "mirror_fold",
-                "bsd", "dow", "parking_radar", "hdc", "avh", "hma", "smart_acc"
-            ) -> Color(0xFF10B981)
-            else -> LauncherColors.AccentBlue
-        }
-    }
 
     val containerBg = if (isDragging) {
         LauncherColors.AccentBlue.copy(alpha = 0.65f)
@@ -1053,14 +1214,11 @@ private fun TopShadeTileCanvasItemView(
                     "vol_phone" -> ChannelVolumeTileContent(PlatformVolumeChannel.Phone, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
                     "vol_navi" -> ChannelVolumeTileContent(PlatformVolumeChannel.Navi, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
                     "vol_voice" -> ChannelVolumeTileContent(PlatformVolumeChannel.Voice, spec = spec, isEditMode = isEditMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
-                    "headrest_speaker" -> HeadrestTileContent(spec = spec, headrestMode = headrestMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
+                    "headrest_speaker" -> HeadrestTileContent(spec = spec, headrestMode = tileState.headrestMode, isDark = isDark, fontScale = fontScale, iconScale = iconScale)
                     "seat_heat_left", "seat_vent_left", "seat_heat_right", "seat_vent_right", "seat_heat_rear_left", "seat_heat_rear_right" -> {
                         SeatTileContent(
                             spec = spec,
-                            flSeatMode = flSeatMode,
-                            frSeatMode = frSeatMode,
-                            rlSeatMode = rlSeatMode,
-                            rrSeatMode = rrSeatMode,
+                            seatMode = tileState.seatMode,
                             isDark = isDark,
                             fontScale = fontScale,
                             iconScale = iconScale,
@@ -1080,7 +1238,7 @@ private fun TopShadeTileCanvasItemView(
                     "hvac_fan_speed" -> {
                         HvacFanSpeedTileContent(
                             spec = spec,
-                            speedRaw = hvacFanSpeed,
+                            speedRaw = tileState.hvacFanSpeed,
                             activeColor = activeColor,
                             isActive = isActive,
                             isDark = isDark,
@@ -1091,7 +1249,7 @@ private fun TopShadeTileCanvasItemView(
                     "temp_driver" -> {
                         HvacTempStepperTileContent(
                             spec = spec,
-                            temp = driverTemp,
+                            temp = tileState.temp,
                             zone = HvacTempZone.Driver,
                             isDark = isDark,
                             isEditMode = isEditMode,
@@ -1103,7 +1261,7 @@ private fun TopShadeTileCanvasItemView(
                     "temp_pass" -> {
                         HvacTempStepperTileContent(
                             spec = spec,
-                            temp = passTemp,
+                            temp = tileState.temp,
                             zone = HvacTempZone.Passenger,
                             isDark = isDark,
                             isEditMode = isEditMode,
@@ -1115,7 +1273,7 @@ private fun TopShadeTileCanvasItemView(
                     "hvac_heater_level" -> {
                         HvacHeaterLevelTileContent(
                             spec = spec,
-                            driverTemp = driverTemp,
+                            driverTemp = tileState.temp,
                             isDark = isDark,
                             isEditMode = isEditMode,
                             onClose = onClose,
@@ -1126,7 +1284,7 @@ private fun TopShadeTileCanvasItemView(
                     "headlights" -> {
                         HeadlightsTileContent(
                             spec = spec,
-                            raw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF,
+                            raw = tileState.vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF,
                             isDark = isDark,
                             fontScale = fontScale,
                             iconScale = iconScale,
@@ -1141,13 +1299,13 @@ private fun TopShadeTileCanvasItemView(
                                 isActive = isActive,
                                 activeColor = activeColor,
                                 isDark = isDark,
-                                vehicleControls = vehicleControls,
-                                hvacFanDirectionRaw = hvacFanDirection ?: MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FOOT,
-                                isRecircOn = hvacRecirc is MbCanBinaryState.On,
-                                isPm25On = hvacPm25 is MbCanBinaryState.On,
-                                adas = adas,
-                                tboxCruise = tboxCruise,
-                                driveModeText = resolvedDriveMode,
+                                vehicleControls = tileState.vehicleControls,
+                                hvacFanDirectionRaw = tileState.hvacFanDirection,
+                                isRecircOn = tileState.isRecircOn,
+                                isPm25On = tileState.isPm25On,
+                                adas = tileState.adas,
+                                tboxCruise = tileState.tboxCruise,
+                                driveModeText = tileState.driveModeText,
                                 fontScale = fontScale,
                                 iconScale = iconScale,
                             )
@@ -1714,21 +1872,12 @@ private fun HeadrestTileContent(
 @Composable
 private fun SeatTileContent(
     spec: TopShadeTileSpec,
-    flSeatMode: MbCanSeatModeState,
-    frSeatMode: MbCanSeatModeState,
-    rlSeatMode: MbCanSeatModeState,
-    rrSeatMode: MbCanSeatModeState,
+    seatMode: MbCanSeatModeState,
     isDark: Boolean,
     fontScale: Float = 1.0f,
     iconScale: Float = 1.0f,
 ) {
-    val raw = when (spec.actionKey) {
-        "seat_heat_left", "seat_vent_left" -> launcherSeatModeToRaw(flSeatMode) ?: 1
-        "seat_heat_right", "seat_vent_right" -> launcherSeatModeToRaw(frSeatMode) ?: 1
-        "seat_heat_rear_left" -> launcherSeatModeToRaw(rlSeatMode) ?: 1
-        "seat_heat_rear_right" -> launcherSeatModeToRaw(rrSeatMode) ?: 1
-        else -> 1
-    }
+    val raw = launcherSeatModeToRaw(seatMode) ?: 1
     val isVent = spec.actionKey.startsWith("seat_vent_")
     val mirrored = spec.actionKey.endsWith("_right")
     val badgeText = if (spec.actionKey.contains("_rear_")) "REAR" else null
@@ -2207,10 +2356,14 @@ private fun StandardTileContent(
             }
         }
     }
-    val appIconBitmap = remember(spec.actionKey, spec.type) {
-        if (spec.type == TopShadeTileType.SHORTCUT) {
-            LauncherAppIconLoader.fromPackage(context, spec.actionKey, 96)
-        } else null
+    val appIconBitmap by produceState<ImageBitmap?>(initialValue = null, spec.actionKey, spec.type) {
+        value = if (spec.type == TopShadeTileType.SHORTCUT && !spec.actionKey.startsWith("tbm_auto:")) {
+            withContext(Dispatchers.IO) {
+                runCatching { LauncherAppIconLoader.fromPackage(context, spec.actionKey, 96) }.getOrNull()
+            }
+        } else {
+            null
+        }
     }
 
     val hasIcon = iconRes != null || appIconBitmap != null || spec.actionKey in listOf("adas_dist", "smart_acc")
@@ -2275,12 +2428,15 @@ private fun StandardTileContent(
                             } else Modifier
                         ),
                 )
-            } else if (appIconBitmap != null) {
-                Image(
-                    bitmap = appIconBitmap,
-                    contentDescription = displayTitle,
-                    modifier = Modifier.size(iconSize),
-                )
+            } else {
+                val resolvedAppIcon = appIconBitmap
+                if (resolvedAppIcon != null) {
+                    Image(
+                        bitmap = resolvedAppIcon,
+                        contentDescription = displayTitle,
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
             }
         }
     }
@@ -2348,7 +2504,12 @@ private fun TelemetryTileContent(
     }
 }
 
-private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose: () -> Unit) {
+private fun executeTileAction(
+    context: Context,
+    spec: TopShadeTileSpec,
+    scope: CoroutineScope,
+    onClose: () -> Unit,
+) {
     when (spec.actionKey) {
         "brightness", "vol_media", "vol_phone", "vol_navi", "vol_voice" -> {
             // Interactive via sliders inside tiles
@@ -2429,10 +2590,10 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
                 Toast.makeText(context, "Переключите передачу в P", Toast.LENGTH_SHORT).show()
             }
         }
-        "windows" -> triggerSequentialWindows(0)
-        "seat_memory_1" -> recallSeatMemorySlot(context, 1)
-        "seat_memory_2" -> recallSeatMemorySlot(context, 2)
-        "seat_memory_3" -> recallSeatMemorySlot(context, 3)
+        "windows" -> triggerSequentialWindows(0, scope)
+        "seat_memory_1" -> recallSeatMemorySlot(context, 1, scope)
+        "seat_memory_2" -> recallSeatMemorySlot(context, 2, scope)
+        "seat_memory_3" -> recallSeatMemorySlot(context, 3, scope)
         "seat_adjust" -> {
             onClose()
             launchMirrorAdjustSettingsEmbedded(context)
@@ -2614,7 +2775,7 @@ private fun executeTileAction(context: Context, spec: TopShadeTileSpec, onClose:
                 val autoId = parts.getOrNull(0) ?: ""
                 if (autoId.isNotBlank()) {
                     val tbmRepo = TbmRepositoryProvider.get(context)
-                    CoroutineScope(Dispatchers.Main).launch {
+                    scope.launch {
                         tbmRepo.runAutomation(autoId)
                     }
                 }
@@ -2759,27 +2920,31 @@ private fun AddTopShadeTileModal(
         )
     }
 
-    val appOptions = remember(context) {
-        val pm = context.packageManager
-        val launchIntent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
+    val appOptions by produceState<List<TopShadeTileSpec>>(initialValue = emptyList(), context) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val pm = context.packageManager
+                val launchIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                }
+                pm.queryIntentActivities(launchIntent, 0)
+                    .mapNotNull { resolveInfo ->
+                        val pkg = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
+                        val label = resolveInfo.loadLabel(pm).toString().ifBlank { pkg }
+                        TopShadeTileSpec(
+                            id = "app_$pkg",
+                            title = label,
+                            type = TopShadeTileType.SHORTCUT,
+                            actionKey = pkg,
+                            iconResName = null,
+                            spanX = 1,
+                            spanY = 1,
+                        )
+                    }
+                    .distinctBy { it.actionKey }
+                    .sortedBy { it.title.lowercase() }
+            }.getOrDefault(emptyList())
         }
-        pm.queryIntentActivities(launchIntent, 0)
-            .mapNotNull { resolveInfo ->
-                val pkg = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
-                val label = resolveInfo.loadLabel(pm).toString().ifBlank { pkg }
-                TopShadeTileSpec(
-                    id = "app_$pkg",
-                    title = label,
-                    type = TopShadeTileType.SHORTCUT,
-                    actionKey = pkg,
-                    iconResName = null,
-                    spanX = 1,
-                    spanY = 1,
-                )
-            }
-            .distinctBy { it.actionKey }
-            .sortedBy { it.title.lowercase() }
     }
 
     val tbmAutomationOptions = remember(tbmAutomations) {

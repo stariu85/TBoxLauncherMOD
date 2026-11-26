@@ -15,11 +15,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.update.UpdateChannel
 import java.io.FileOutputStream
@@ -39,7 +37,9 @@ enum class SetLauncherAppCustomIconResult {
 /**
  * Slim settings store for the standalone launcher — only fields the HOME UI and CAN bind need.
  */
-class SettingsManager(private val context: Context) {
+class SettingsManager(context: Context) {
+
+    private val appContext: Context = context.applicationContext
 
     companion object {
         const val LAUNCHER_APP_ICONS_DIR = "launcher_app_icons"
@@ -59,6 +59,8 @@ class SettingsManager(private val context: Context) {
             longPreferencesKey("hu_reboot_pending_version")
         private val KEY_HU_REBOOT_UPGRADE_ELAPSED =
             longPreferencesKey("hu_reboot_upgrade_elapsed")
+        private val KEY_HU_REBOOT_UPGRADE_BOOT_ID =
+            stringPreferencesKey("hu_reboot_upgrade_boot_id")
         private val KEY_HU_REBOOT_PROMPT_SHOWN_VERSION =
             longPreferencesKey("hu_reboot_prompt_shown_version")
         private val KEY_HU_REBOOT_AWAITING_INSTALL_VERSION =
@@ -71,99 +73,102 @@ class SettingsManager(private val context: Context) {
         private const val MAX_ICON_EDGE_PX = 512
     }
 
-    private val _iconRevision = MutableStateFlow(0)
-    val launcherAppIconRevisionFlow: Flow<Int> = _iconRevision.asStateFlow()
+    val launcherAppIconRevisionFlow: Flow<Int> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_ICON_REVISION] ?: 0 }
+        .distinctUntilChanged()
 
-    val autoBackupEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_AUTO_BACKUP_ENABLED] ?: true
-    }
+    val autoBackupEnabledFlow: Flow<Boolean> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_AUTO_BACKUP_ENABLED] ?: true }
+        .distinctUntilChanged()
 
-    val usbMountEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_USB_MOUNT_ENABLED] ?: true
-    }
+    val usbMountEnabledFlow: Flow<Boolean> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_USB_MOUNT_ENABLED] ?: true }
+        .distinctUntilChanged()
 
-    val uiClickSoundsEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_UI_CLICK_SOUNDS] ?: true
-    }
+    val uiClickSoundsEnabledFlow: Flow<Boolean> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_UI_CLICK_SOUNDS] ?: true }
+        .distinctUntilChanged()
 
-    val headUnitCanModeFlow: Flow<HeadUnitCanMode> = context.settingsDataStore.data.map { prefs ->
-        HeadUnitCanMode.fromStorageValue(prefs[KEY_HEAD_UNIT_CAN])
-    }
+    val headUnitCanModeFlow: Flow<HeadUnitCanMode> = appContext.settingsDataStore.data
+        .map { prefs -> HeadUnitCanMode.fromStorageValue(prefs[KEY_HEAD_UNIT_CAN]) }
+        .distinctUntilChanged()
 
-    val canAutoBindEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_CAN_AUTO_BIND] ?: true
-    }
+    val canAutoBindEnabledFlow: Flow<Boolean> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_CAN_AUTO_BIND] ?: true }
+        .distinctUntilChanged()
 
-    val canAutoBindLockedFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_CAN_AUTO_BIND_LOCKED] ?: false
-    }
+    val canAutoBindLockedFlow: Flow<Boolean> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_CAN_AUTO_BIND_LOCKED] ?: false }
+        .distinctUntilChanged()
 
-    val updateChannelFlow: Flow<UpdateChannel> = context.settingsDataStore.data.map { prefs ->
-        UpdateChannel.fromStorageValue(prefs[KEY_UPDATE_CHANNEL])
-    }
+    val updateChannelFlow: Flow<UpdateChannel> = appContext.settingsDataStore.data
+        .map { prefs -> UpdateChannel.fromStorageValue(prefs[KEY_UPDATE_CHANNEL]) }
+        .distinctUntilChanged()
 
-    val updateCheckEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_UPDATE_CHECK_ENABLED] ?: false
-    }
+    val updateCheckEnabledFlow: Flow<Boolean> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_UPDATE_CHECK_ENABLED] ?: false }
+        .distinctUntilChanged()
 
-    val tbmApiTokenFlow: Flow<String?> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_TBM_API_TOKEN]
-    }
+    val tbmApiTokenFlow: Flow<String?> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_TBM_API_TOKEN] }
+        .distinctUntilChanged()
 
-    val tbmApiPortFlow: Flow<Int> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_TBM_API_PORT] ?: 8765
-    }
+    val tbmApiPortFlow: Flow<Int> = appContext.settingsDataStore.data
+        .map { prefs -> prefs[KEY_TBM_API_PORT] ?: 8765 }
+        .distinctUntilChanged()
 
     val huRebootAfterUpdateFlow: Flow<HuRebootAfterUpdateSnapshot> =
-        context.settingsDataStore.data.map { huRebootSnapshotFrom(it) }
+        appContext.settingsDataStore.data
+            .map { huRebootSnapshotFrom(it) }
+            .distinctUntilChanged()
 
     suspend fun saveHeadUnitCanMode(mode: HeadUnitCanMode) {
-        context.settingsDataStore.edit { it[KEY_HEAD_UNIT_CAN] = mode.storageValue }
+        appContext.settingsDataStore.edit { it[KEY_HEAD_UNIT_CAN] = mode.storageValue }
     }
 
     suspend fun saveCanAutoBindEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_CAN_AUTO_BIND] = enabled }
+        appContext.settingsDataStore.edit { it[KEY_CAN_AUTO_BIND] = enabled }
     }
 
     suspend fun saveCanAutoBindLocked(locked: Boolean) {
-        context.settingsDataStore.edit { it[KEY_CAN_AUTO_BIND_LOCKED] = locked }
+        appContext.settingsDataStore.edit { it[KEY_CAN_AUTO_BIND_LOCKED] = locked }
     }
 
     suspend fun saveCanAutoBindLastPrimaryMode(mode: HeadUnitCanMode?) {
-        context.settingsDataStore.edit {
+        appContext.settingsDataStore.edit {
             if (mode == null) it.remove(KEY_CAN_AUTO_BIND_PRIMARY)
             else it[KEY_CAN_AUTO_BIND_PRIMARY] = mode.storageValue
         }
     }
 
     suspend fun saveCanAutoBindLastResult(result: String) {
-        context.settingsDataStore.edit { it[KEY_CAN_AUTO_BIND_RESULT] = result }
+        appContext.settingsDataStore.edit { it[KEY_CAN_AUTO_BIND_RESULT] = result }
     }
 
     suspend fun saveUpdateChannel(channel: UpdateChannel) {
-        context.settingsDataStore.edit { it[KEY_UPDATE_CHANNEL] = channel.storageValue }
+        appContext.settingsDataStore.edit { it[KEY_UPDATE_CHANNEL] = channel.storageValue }
     }
 
     suspend fun saveUpdateCheckEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_UPDATE_CHECK_ENABLED] = enabled }
+        appContext.settingsDataStore.edit { it[KEY_UPDATE_CHECK_ENABLED] = enabled }
     }
 
     suspend fun clearCacheOnAppUpdate(currentVersionCode: Long) {
         withContext(Dispatchers.IO) {
-            val prefs = context.settingsDataStore.data.first()
+            val prefs = appContext.settingsDataStore.data.first()
             val lastClearedVersion = prefs[KEY_LAST_CLEARED_CACHE_VERSION] ?: 0L
             if (lastClearedVersion < currentVersionCode) {
                 var filesDeletedCount = 0
                 runCatching {
-                    context.cacheDir?.listFiles()?.forEach { file ->
+                    appContext.cacheDir?.listFiles()?.forEach { file ->
                         if (file.deleteRecursively()) filesDeletedCount++
                     }
-                    context.externalCacheDir?.listFiles()?.forEach { file ->
+                    appContext.externalCacheDir?.listFiles()?.forEach { file ->
                         if (file.deleteRecursively()) filesDeletedCount++
                     }
                 }
                 android.util.Log.i("SettingsManager", "App cache cleared on update (from $lastClearedVersion to $currentVersionCode, deleted $filesDeletedCount items)")
-                context.settingsDataStore.edit { mutablePrefs ->
+                appContext.settingsDataStore.edit { mutablePrefs ->
                     mutablePrefs[KEY_LAST_CLEARED_CACHE_VERSION] = currentVersionCode
                 }
             }
@@ -171,26 +176,26 @@ class SettingsManager(private val context: Context) {
     }
 
     suspend fun saveTbmApiToken(token: String?) {
-        context.settingsDataStore.edit {
+        appContext.settingsDataStore.edit {
             if (token.isNullOrEmpty()) it.remove(KEY_TBM_API_TOKEN)
             else it[KEY_TBM_API_TOKEN] = token
         }
     }
 
     suspend fun saveTbmApiPort(port: Int) {
-        context.settingsDataStore.edit { it[KEY_TBM_API_PORT] = port }
+        appContext.settingsDataStore.edit { it[KEY_TBM_API_PORT] = port }
     }
 
     suspend fun saveUiClickSoundsEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_UI_CLICK_SOUNDS] = enabled }
+        appContext.settingsDataStore.edit { it[KEY_UI_CLICK_SOUNDS] = enabled }
     }
 
     suspend fun saveAutoBackupEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_AUTO_BACKUP_ENABLED] = enabled }
+        appContext.settingsDataStore.edit { it[KEY_AUTO_BACKUP_ENABLED] = enabled }
     }
 
     suspend fun saveUsbMountEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_USB_MOUNT_ENABLED] = enabled }
+        appContext.settingsDataStore.edit { it[KEY_USB_MOUNT_ENABLED] = enabled }
     }
 
     suspend fun isUsbMountEnabled(): Boolean = usbMountEnabledFlow.first()
@@ -206,7 +211,7 @@ class SettingsManager(private val context: Context) {
         firstInstallTimeMs: Long,
         nowWallClockMs: Long,
     ) {
-        context.settingsDataStore.edit { prefs ->
+        appContext.settingsDataStore.edit { prefs ->
             val step = HuRebootAfterUpdate.onAppStart(
                 currentVersionCode = currentVersionCode,
                 elapsedRealtimeMs = elapsedRealtimeMs,
@@ -220,7 +225,7 @@ class SettingsManager(private val context: Context) {
     }
 
     suspend fun markAwaitingHuRebootAfterInstall(installVersionCode: Long) {
-        context.settingsDataStore.edit { prefs ->
+        appContext.settingsDataStore.edit { prefs ->
             writeHuRebootSnapshot(
                 prefs,
                 HuRebootAfterUpdate.markAwaitingInstall(
@@ -232,7 +237,7 @@ class SettingsManager(private val context: Context) {
     }
 
     suspend fun markHuRebootStartupPromptShown(currentVersionCode: Long) {
-        context.settingsDataStore.edit { prefs ->
+        appContext.settingsDataStore.edit { prefs ->
             writeHuRebootSnapshot(
                 prefs,
                 HuRebootAfterUpdate.markStartupPromptShown(
@@ -244,7 +249,7 @@ class SettingsManager(private val context: Context) {
     }
 
     suspend fun markHuRebootedAfterUpdate(currentVersionCode: Long) {
-        context.settingsDataStore.edit { prefs ->
+        appContext.settingsDataStore.edit { prefs ->
             writeHuRebootSnapshot(
                 prefs,
                 HuRebootAfterUpdate.markRebooted(
@@ -262,6 +267,7 @@ class SettingsManager(private val context: Context) {
             upgradeDetectedElapsedMs = prefs[KEY_HU_REBOOT_UPGRADE_ELAPSED] ?: 0L,
             startupPromptShownForVersion = prefs[KEY_HU_REBOOT_PROMPT_SHOWN_VERSION] ?: 0L,
             awaitingInstallVersionCode = prefs[KEY_HU_REBOOT_AWAITING_INSTALL_VERSION] ?: 0L,
+            upgradeDetectedBootId = prefs[KEY_HU_REBOOT_UPGRADE_BOOT_ID].orEmpty(),
         )
 
     private fun writeHuRebootSnapshot(
@@ -273,6 +279,7 @@ class SettingsManager(private val context: Context) {
         prefs[KEY_HU_REBOOT_UPGRADE_ELAPSED] = snapshot.upgradeDetectedElapsedMs
         prefs[KEY_HU_REBOOT_PROMPT_SHOWN_VERSION] = snapshot.startupPromptShownForVersion
         prefs[KEY_HU_REBOOT_AWAITING_INSTALL_VERSION] = snapshot.awaitingInstallVersionCode
+        prefs[KEY_HU_REBOOT_UPGRADE_BOOT_ID] = snapshot.upgradeDetectedBootId
     }
 
     suspend fun launcherAppIconLookup(): LauncherAppIconPaths.Lookup =
@@ -280,12 +287,12 @@ class SettingsManager(private val context: Context) {
 
     suspend fun hasCustomLauncherAppIcon(packageName: String): Boolean =
         withContext(Dispatchers.IO) {
-            LauncherAppIconPaths.hasSharedOverride(context.filesDir, packageName)
+            LauncherAppIconPaths.hasSharedOverride(appContext.filesDir, packageName)
         }
 
     suspend fun clearCustomLauncherAppIcon(packageName: String) {
         withContext(Dispatchers.IO) {
-            val dir = LauncherAppIconPaths.sharedIconsDir(context.filesDir)
+            val dir = LauncherAppIconPaths.sharedIconsDir(appContext.filesDir)
             LauncherAppIconPaths.resolveStoredIconFile(dir, packageName)?.delete()
             bumpIconRevision()
         }
@@ -298,14 +305,25 @@ class SettingsManager(private val context: Context) {
         val pkg = packageName.trim()
         if (pkg.isEmpty()) return@withContext SetLauncherAppCustomIconResult.InvalidPackage
         if (sourceUri == null) return@withContext SetLauncherAppCustomIconResult.NotImageOrUnreadable
+        val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        val boundsRead = runCatching {
+            appContext.contentResolver.openInputStream(sourceUri)?.use {
+                BitmapFactory.decodeStream(it, null, boundsOpts)
+            }
+            boundsOpts.outWidth > 0 && boundsOpts.outHeight > 0
+        }.getOrDefault(false)
+        if (!boundsRead) return@withContext SetLauncherAppCustomIconResult.NotImageOrUnreadable
+        if (boundsOpts.outWidth > MAX_ICON_EDGE_PX || boundsOpts.outHeight > MAX_ICON_EDGE_PX) {
+            return@withContext SetLauncherAppCustomIconResult.DimensionsTooLarge
+        }
         val decoded = runCatching {
-            context.contentResolver.openInputStream(sourceUri)?.use { BitmapFactory.decodeStream(it) }
+            appContext.contentResolver.openInputStream(sourceUri)?.use { BitmapFactory.decodeStream(it) }
         }.getOrNull() ?: return@withContext SetLauncherAppCustomIconResult.NotImageOrUnreadable
         if (decoded.width > MAX_ICON_EDGE_PX || decoded.height > MAX_ICON_EDGE_PX) {
             decoded.recycle()
             return@withContext SetLauncherAppCustomIconResult.DimensionsTooLarge
         }
-        val dir = LauncherAppIconPaths.sharedIconsDir(context.filesDir)
+        val dir = LauncherAppIconPaths.sharedIconsDir(appContext.filesDir)
         if (!dir.exists() && !dir.mkdirs()) {
             decoded.recycle()
             return@withContext SetLauncherAppCustomIconResult.CopyFailed
@@ -322,9 +340,9 @@ class SettingsManager(private val context: Context) {
         SetLauncherAppCustomIconResult.Success
     }
 
-    private fun bumpIconRevision() {
-        _iconRevision.update { it + 1 }
-        // Persist so cold start keeps a non-zero counter for caches that key on it.
-        // Fire-and-forget: revision is also kept in memory for the process lifetime.
+    private suspend fun bumpIconRevision() {
+        appContext.settingsDataStore.edit { prefs ->
+            prefs[KEY_ICON_REVISION] = (prefs[KEY_ICON_REVISION] ?: 0) + 1
+        }
     }
 }

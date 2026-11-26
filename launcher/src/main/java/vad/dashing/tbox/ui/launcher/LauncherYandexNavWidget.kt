@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -70,6 +71,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.R
 import kotlin.math.roundToInt
+
+private val SPEED_LIMIT_UNIT_REGEX = Regex("(?i)\\s*(км/?ч|km/?h|км|km)\\s*")
+private val DISTANCE_SPLIT_REGEX = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$")
 
 /**
  * Freely movable Overlay 3: Current Speed & Speed Limit Sign (with Camera TSR fallback).
@@ -518,7 +522,7 @@ private fun SpeedLimitBadge(
 ) {
     val cleanText = remember(speedLimit) {
         val digitsOnly = speedLimit.filter { it.isDigit() }
-        digitsOnly.ifEmpty { speedLimit.replace(Regex("(?i)\\s*(км/?ч|km/?h|км|km)\\s*"), "").trim() }
+        digitsOnly.ifEmpty { speedLimit.replace(SPEED_LIMIT_UNIT_REGEX, "").trim() }
     }
 
     val bgColor = when {
@@ -619,16 +623,18 @@ internal fun LauncherNavBgManeuverOverlay(
             val turnIconFilter = if (isDark) ColorFilter.tint(Color.White, BlendMode.SrcIn) else null
 
             if (primaryBmp != null) {
+                val primaryImage = remember(primaryBmp) { primaryBmp.asImageBitmap() }
                 Box(contentAlignment = Alignment.BottomEnd) {
                     Image(
-                        bitmap = primaryBmp.asImageBitmap(),
+                        bitmap = primaryImage,
                         contentDescription = null,
                         colorFilter = turnIconFilter,
                         modifier = Modifier.size(36.dp),
                     )
                     secondaryBmp?.let { sec ->
+                        val secImage = remember(sec) { sec.asImageBitmap() }
                         Image(
-                            bitmap = sec.asImageBitmap(),
+                            bitmap = secImage,
                             contentDescription = null,
                             colorFilter = turnIconFilter,
                             modifier = Modifier
@@ -768,8 +774,9 @@ internal fun LauncherNavBgEtaOverlay(
             }
 
             navState.etaProgressBitmap?.let { bar ->
+                val barImage = remember(bar) { bar.asImageBitmap() }
                 Image(
-                    bitmap = bar.asImageBitmap(),
+                    bitmap = barImage,
                     contentDescription = null,
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier
@@ -829,10 +836,11 @@ internal fun LauncherNavBgLanesOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (isLiveNavigating && navState.lanesBitmaps.isNotEmpty()) {
+                val laneImages = remember(navState.lanesBitmaps) { navState.lanesBitmaps.map { it.asImageBitmap() } }
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    navState.lanesBitmaps.forEach { lane ->
+                    laneImages.forEach { laneImage ->
                         Image(
-                            bitmap = lane.asImageBitmap(),
+                            bitmap = laneImage,
                             contentDescription = null,
                             colorFilter = laneColorFilter,
                             modifier = Modifier.size(31.2.dp),
@@ -840,8 +848,10 @@ internal fun LauncherNavBgLanesOverlay(
                     }
                 }
             } else if (isLiveNavigating && navState.lanesBitmap != null) {
+                val singleLaneBmp = navState.lanesBitmap!!
+                val singleLaneImage = remember(singleLaneBmp) { singleLaneBmp.asImageBitmap() }
                 Image(
-                    bitmap = navState.lanesBitmap!!.asImageBitmap(),
+                    bitmap = singleLaneImage,
                     contentDescription = null,
                     colorFilter = laneColorFilter,
                     modifier = Modifier.height(33.8.dp),
@@ -892,14 +902,38 @@ internal fun LauncherNavBgMinimapOverlay(
     val bmp = minimapFrame.bitmap
     if (!isYandexOpen) return
 
-    val targetZoom = remember(speedKmh, isAutoZoomEnabled) {
-        YandexNavRepository.resolveMinimapZoomForSpeed(speedKmh, isAutoZoomEnabled)
+    var appliedZoom by remember(isAutoZoomEnabled) {
+        mutableStateOf(YandexNavRepository.resolveMinimapZoomForSpeed(speedKmh, isAutoZoomEnabled))
+    }
+    LaunchedEffect(speedKmh, isAutoZoomEnabled) {
+        val desired = YandexNavRepository.resolveMinimapZoomForSpeed(speedKmh, isAutoZoomEnabled)
+        if (!isAutoZoomEnabled) {
+            appliedZoom = desired
+            return@LaunchedEffect
+        }
+        if (desired == appliedZoom) return@LaunchedEffect
+        // Apply 3 km/h hysteresis around thresholds (20/50/80/110 km/h) + 1.5s debounce
+        val withinHysteresis = when {
+            appliedZoom == 17.0f && desired == 16.5f -> speedKmh < 23f
+            appliedZoom == 16.5f && desired == 17.0f -> speedKmh > 17f
+            appliedZoom == 16.5f && desired == 16.0f -> speedKmh < 53f
+            appliedZoom == 16.0f && desired == 16.5f -> speedKmh > 47f
+            appliedZoom == 16.0f && desired == 15.2f -> speedKmh < 83f
+            appliedZoom == 15.2f && desired == 16.0f -> speedKmh > 77f
+            appliedZoom == 15.2f && desired == 14.5f -> speedKmh < 113f
+            appliedZoom == 14.5f && desired == 15.2f -> speedKmh > 107f
+            else -> false
+        }
+        if (withinHysteresis) return@LaunchedEffect
+        delay(1_500L)
+        appliedZoom = desired
     }
     val viewMode = if (is3dEnabled) 1 else 0
+    val lightBuffer = remember { MinimapLightThemeBuffer() }
 
     // Keep offscreen minimap active in Yandex Navi with 5s heartbeat while widget is active,
     // and immediately push updated zoom / 3D view mode when changed.
-    LaunchedEffect(containerWidthPx, heightPx, targetZoom, viewMode) {
+    LaunchedEffect(containerWidthPx, heightPx, appliedZoom, viewMode) {
         val density = context.resources.displayMetrics.density
         val rawWidth = if (containerWidthPx > 0) containerWidthPx else (180 * density).toInt()
         val rawHeight = if (heightPx > 0) heightPx else (NAV_BG_MINIMAP_HEIGHT_DEFAULT_DP * density).toInt()
@@ -910,7 +944,7 @@ internal fun LauncherNavBgMinimapOverlay(
                 context = context,
                 widthPx = widthPx,
                 heightPx = heightPx,
-                zoom = targetZoom,
+                zoom = appliedZoom,
                 viewMode = viewMode,
             )
             delay(5000L)
@@ -919,6 +953,7 @@ internal fun LauncherNavBgMinimapOverlay(
 
     DisposableEffect(Unit) {
         onDispose {
+            lightBuffer.release()
             YandexNavRepository.disableMinimap(context)
         }
     }
@@ -926,7 +961,6 @@ internal fun LauncherNavBgMinimapOverlay(
     if (bmp == null) return
 
     val isDarkTheme = LauncherThemeState.darkTheme
-    val lightBuffer = remember { MinimapLightThemeBuffer() }
     var lightFrame by remember { mutableStateOf<Pair<android.graphics.Bitmap, ImageBitmap>?>(null) }
 
     LaunchedEffect(bmp, isDarkTheme) {
@@ -1075,8 +1109,9 @@ internal fun LauncherNavBgTrafficLightOverlay(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             tlBmp?.let { bmp ->
+                val tlImage = remember(bmp) { bmp.asImageBitmap() }
                 Image(
-                    bitmap = bmp.asImageBitmap(),
+                    bitmap = tlImage,
                     contentDescription = null,
                     modifier = Modifier.size(22.dp),
                 )
@@ -1153,8 +1188,9 @@ internal fun LauncherNavBgNextTurnOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (turnBmp != null) {
+                val turnImage = remember(turnBmp) { turnBmp.asImageBitmap() }
                 Image(
-                    bitmap = turnBmp.asImageBitmap(),
+                    bitmap = turnImage,
                     contentDescription = null,
                     colorFilter = arrowColorFilter,
                     modifier = Modifier.size(31.2.dp),
@@ -1185,7 +1221,7 @@ internal fun LauncherNavBgNextTurnOverlay(
  */
 internal fun splitDistanceNumberAndUnit(rawDistance: String): Pair<String, String> {
     val trimmed = rawDistance.trim()
-    val match = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$").find(trimmed)
+    val match = DISTANCE_SPLIT_REGEX.find(trimmed)
     return if (match != null) {
         match.groupValues[1] to match.groupValues[2].trim()
     } else {
@@ -1204,39 +1240,46 @@ internal fun trimBitmapTransparentBounds(
 ): android.graphics.Bitmap {
     if (source.isRecycled || source.width <= 1 || source.height <= 1) return source
     return runCatching {
-        val readable = if (source.config == android.graphics.Bitmap.Config.HARDWARE) {
+        val isHardwareCopy = source.config == android.graphics.Bitmap.Config.HARDWARE
+        val readable = if (isHardwareCopy) {
             source.copy(android.graphics.Bitmap.Config.ARGB_8888, false) ?: return source
         } else {
             source
         }
-        val w = readable.width
-        val h = readable.height
-        val pixels = IntArray(w * h)
-        readable.getPixels(pixels, 0, w, 0, 0, w, h)
+        try {
+            val w = readable.width
+            val h = readable.height
+            val pixels = IntArray(w * h)
+            readable.getPixels(pixels, 0, w, 0, 0, w, h)
 
-        var minX = w
-        var maxX = -1
-        var minY = h
-        var maxY = -1
+            var minX = w
+            var maxX = -1
+            var minY = h
+            var maxY = -1
 
-        for (y in 0 until h) {
-            val rowOffset = y * w
-            for (x in 0 until w) {
-                val alpha = pixels[rowOffset + x] ushr 24
-                if (alpha >= alphaThreshold) {
-                    if (x < minX) minX = x
-                    if (x > maxX) maxX = x
-                    if (y < minY) minY = y
-                    if (y > maxY) maxY = y
+            for (y in 0 until h) {
+                val rowOffset = y * w
+                for (x in 0 until w) {
+                    val alpha = pixels[rowOffset + x] ushr 24
+                    if (alpha >= alphaThreshold) {
+                        if (x < minX) minX = x
+                        if (x > maxX) maxX = x
+                        if (y < minY) minY = y
+                        if (y > maxY) maxY = y
+                    }
                 }
             }
-        }
 
-        if (maxX < minX || maxY < minY) return source
-        val cropW = (maxX - minX + 1).coerceAtLeast(1)
-        val cropH = (maxY - minY + 1).coerceAtLeast(1)
-        if (cropW == w && cropH == h) return source
-        android.graphics.Bitmap.createBitmap(readable, minX, minY, cropW, cropH)
+            if (maxX < minX || maxY < minY) return source
+            val cropW = (maxX - minX + 1).coerceAtLeast(1)
+            val cropH = (maxY - minY + 1).coerceAtLeast(1)
+            if (cropW == w && cropH == h) return source
+            android.graphics.Bitmap.createBitmap(readable, minX, minY, cropW, cropH)
+        } finally {
+            if (isHardwareCopy && !readable.isRecycled) {
+                readable.recycle()
+            }
+        }
     }.getOrDefault(source)
 }
 
@@ -1252,7 +1295,9 @@ internal fun trimLaneBitmapsCommonVerticalBounds(
     if (bitmaps.isEmpty()) return bitmaps
     return runCatching {
         data class LaneScan(
+            val source: android.graphics.Bitmap,
             val readable: android.graphics.Bitmap,
+            val isHardwareCopy: Boolean,
             val minX: Int,
             val maxX: Int,
             val minY: Int,
@@ -1261,10 +1306,11 @@ internal fun trimLaneBitmapsCommonVerticalBounds(
 
         val scans = bitmaps.map { src ->
             if (src.isRecycled || src.width <= 1 || src.height <= 1) {
-                return@map LaneScan(src, 0, src.width - 1, 0, src.height - 1)
+                return@map LaneScan(src, src, false, 0, src.width - 1, 0, src.height - 1)
             }
-            val readable = if (src.config == android.graphics.Bitmap.Config.HARDWARE) {
-                src.copy(android.graphics.Bitmap.Config.ARGB_8888, false) ?: src
+            val isHardwareCopy = src.config == android.graphics.Bitmap.Config.HARDWARE
+            val readable = if (isHardwareCopy) {
+                src.copy(android.graphics.Bitmap.Config.ARGB_8888, false) ?: return@map LaneScan(src, src, false, 0, src.width - 1, 0, src.height - 1)
             } else {
                 src
             }
@@ -1290,28 +1336,36 @@ internal fun trimLaneBitmapsCommonVerticalBounds(
                 }
             }
             if (maxX < minX || maxY < minY) {
-                LaneScan(readable, 0, w - 1, 0, h - 1)
+                LaneScan(src, readable, isHardwareCopy, 0, w - 1, 0, h - 1)
             } else {
-                LaneScan(readable, minX, maxX, minY, maxY)
+                LaneScan(src, readable, isHardwareCopy, minX, maxX, minY, maxY)
             }
         }
 
-        val globalMinY = scans.minOf { it.minY }.coerceAtLeast(0)
-        val globalMaxY = scans.maxOf { it.maxY }
+        try {
+            val globalMinY = scans.minOf { it.minY }.coerceAtLeast(0)
+            val globalMaxY = scans.maxOf { it.maxY }
 
-        scans.map { scan ->
-            val w = scan.readable.width
-            val h = scan.readable.height
-            val top = globalMinY.coerceIn(0, h - 1)
-            val bottom = globalMaxY.coerceIn(top, h - 1)
-            val left = scan.minX.coerceIn(0, w - 1)
-            val right = scan.maxX.coerceIn(left, w - 1)
-            val cropW = (right - left + 1).coerceAtLeast(1)
-            val cropH = (bottom - top + 1).coerceAtLeast(1)
-            if (cropW == w && cropH == h) {
-                scan.readable
-            } else {
-                android.graphics.Bitmap.createBitmap(scan.readable, left, top, cropW, cropH)
+            scans.map { scan ->
+                val w = scan.readable.width
+                val h = scan.readable.height
+                val top = globalMinY.coerceIn(0, h - 1)
+                val bottom = globalMaxY.coerceIn(top, h - 1)
+                val left = scan.minX.coerceIn(0, w - 1)
+                val right = scan.maxX.coerceIn(left, w - 1)
+                val cropW = (right - left + 1).coerceAtLeast(1)
+                val cropH = (bottom - top + 1).coerceAtLeast(1)
+                if (cropW == w && cropH == h) {
+                    scan.source
+                } else {
+                    android.graphics.Bitmap.createBitmap(scan.readable, left, top, cropW, cropH)
+                }
+            }
+        } finally {
+            scans.forEach { scan ->
+                if (scan.isHardwareCopy && !scan.readable.isRecycled) {
+                    scan.readable.recycle()
+                }
             }
         }
     }.getOrDefault(bitmaps)
@@ -1364,14 +1418,47 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
     val whiteIconFilter = ColorFilter.tint(Color.White, BlendMode.SrcIn)
     val arrowHeight = (45f * s).dp
 
-    val trimmedLanesBitmaps = remember(navState.lanesBitmaps) {
-        trimLaneBitmapsCommonVerticalBounds(navState.lanesBitmaps)
+    val trimmedLanesBitmaps by produceState<List<android.graphics.Bitmap>>(
+        initialValue = if (hasLanes) navState.lanesBitmaps else emptyList(),
+        key1 = hasLanes,
+        key2 = navState.lanesBitmaps,
+    ) {
+        value = if (hasLanes && navState.lanesBitmaps.isNotEmpty()) {
+            withContext(Dispatchers.Default) {
+                trimLaneBitmapsCommonVerticalBounds(navState.lanesBitmaps)
+            }
+        } else {
+            emptyList()
+        }
     }
-    val trimmedLanesBitmap = remember(navState.lanesBitmap) {
-        navState.lanesBitmap?.let { trimBitmapTransparentBounds(it) }
+    val needSingleLaneBitmap = hasLanes && navState.lanesBitmaps.isEmpty() && navState.lanesBitmap != null
+    val trimmedLanesBitmap by produceState<android.graphics.Bitmap?>(
+        initialValue = if (needSingleLaneBitmap) navState.lanesBitmap else null,
+        key1 = needSingleLaneBitmap,
+        key2 = navState.lanesBitmap,
+    ) {
+        val src = navState.lanesBitmap
+        value = if (needSingleLaneBitmap && src != null) {
+            withContext(Dispatchers.Default) {
+                trimBitmapTransparentBounds(src)
+            }
+        } else {
+            null
+        }
     }
-    val trimmedTurnBmp = remember(turnBmp) {
-        turnBmp?.let { trimBitmapTransparentBounds(it) }
+    val needTurnBitmap = !hasLanes && turnBmp != null
+    val trimmedTurnBmp by produceState<android.graphics.Bitmap?>(
+        initialValue = if (needTurnBitmap) turnBmp else null,
+        key1 = needTurnBitmap,
+        key2 = turnBmp,
+    ) {
+        value = if (needTurnBitmap && turnBmp != null) {
+            withContext(Dispatchers.Default) {
+                trimBitmapTransparentBounds(turnBmp)
+            }
+        } else {
+            null
+        }
     }
 
     val currentOnDrag by rememberUpdatedState(onDrag)
@@ -1407,15 +1494,20 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
         ) {
             if (hasLanes) {
                 if (trimmedLanesBitmaps.isNotEmpty()) {
+                    val trimmedLaneImages = remember(trimmedLanesBitmaps) {
+                        trimmedLanesBitmaps.map { bmp ->
+                            val aspect = (bmp.width.toFloat() / bmp.height.coerceAtLeast(1).toFloat())
+                                .coerceIn(0.2f, 8f)
+                            bmp.asImageBitmap() to aspect
+                        }
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy((8f * s).dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        trimmedLanesBitmaps.forEach { lane ->
-                            val aspect = (lane.width.toFloat() / lane.height.coerceAtLeast(1).toFloat())
-                                .coerceIn(0.2f, 8f)
+                        trimmedLaneImages.forEach { (laneImg, aspect) ->
                             Image(
-                                bitmap = lane.asImageBitmap(),
+                                bitmap = laneImg,
                                 contentDescription = null,
                                 colorFilter = whiteIconFilter,
                                 contentScale = ContentScale.FillBounds,
@@ -1425,13 +1517,33 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
                             )
                         }
                     }
-                } else if (trimmedLanesBitmap != null) {
+                } else {
+                    trimmedLanesBitmap?.let { laneBmp ->
+                        val laneImg = remember(laneBmp) { laneBmp.asImageBitmap() }
+                        val aspect = (
+                            laneBmp.width.toFloat() /
+                                laneBmp.height.coerceAtLeast(1).toFloat()
+                            ).coerceIn(0.2f, 16f)
+                        Image(
+                            bitmap = laneImg,
+                            contentDescription = null,
+                            colorFilter = whiteIconFilter,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier
+                                .height(arrowHeight)
+                                .aspectRatio(aspect),
+                        )
+                    }
+                }
+            } else {
+                trimmedTurnBmp?.let { tBmp ->
+                    val turnImg = remember(tBmp) { tBmp.asImageBitmap() }
                     val aspect = (
-                        trimmedLanesBitmap.width.toFloat() /
-                            trimmedLanesBitmap.height.coerceAtLeast(1).toFloat()
-                        ).coerceIn(0.2f, 16f)
+                        tBmp.width.toFloat() /
+                            tBmp.height.coerceAtLeast(1).toFloat()
+                        ).coerceIn(0.2f, 8f)
                     Image(
-                        bitmap = trimmedLanesBitmap.asImageBitmap(),
+                        bitmap = turnImg,
                         contentDescription = null,
                         colorFilter = whiteIconFilter,
                         contentScale = ContentScale.FillBounds,
@@ -1440,20 +1552,6 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
                             .aspectRatio(aspect),
                     )
                 }
-            } else if (trimmedTurnBmp != null) {
-                val aspect = (
-                    trimmedTurnBmp.width.toFloat() /
-                        trimmedTurnBmp.height.coerceAtLeast(1).toFloat()
-                    ).coerceIn(0.2f, 8f)
-                Image(
-                    bitmap = trimmedTurnBmp.asImageBitmap(),
-                    contentDescription = null,
-                    colorFilter = whiteIconFilter,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier
-                        .height(arrowHeight)
-                        .aspectRatio(aspect),
-                )
             }
 
             if (!distText.isNullOrBlank()) {

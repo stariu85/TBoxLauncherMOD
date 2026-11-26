@@ -1,5 +1,7 @@
 package vad.dashing.tbox
 
+import java.io.File
+
 /**
  * After an APK replace the HU often needs a reboot (mbCAN / HOME / 3D).
  * Persist upgrade vs. already-rebooted so HOME does not nag on every start.
@@ -10,6 +12,7 @@ data class HuRebootAfterUpdateSnapshot(
     val upgradeDetectedElapsedMs: Long = 0L,
     val startupPromptShownForVersion: Long = 0L,
     val awaitingInstallVersionCode: Long = 0L,
+    val upgradeDetectedBootId: String = "",
 )
 
 data class HuRebootAfterUpdateUiState(
@@ -25,6 +28,10 @@ data class HuRebootAfterUpdateStep(
 object HuRebootAfterUpdate {
     /** Fallback when DataStore has no last-seen code (first launch of this feature). */
     const val RECENT_UPDATE_WINDOW_MS: Long = 48L * 60L * 60L * 1000L
+
+    fun readKernelBootId(): String = runCatching {
+        File("/proc/sys/kernel/random/boot_id").readText().trim()
+    }.getOrDefault("")
 
     fun uiState(
         snapshot: HuRebootAfterUpdateSnapshot,
@@ -46,11 +53,13 @@ object HuRebootAfterUpdate {
         firstInstallTimeMs: Long,
         nowWallClockMs: Long,
         previous: HuRebootAfterUpdateSnapshot,
+        currentBootId: String = readKernelBootId(),
     ): HuRebootAfterUpdateStep {
         var lastSeen = previous.lastSeenVersionCode
         var pending = previous.pendingRebootVersionCode
         var detectedElapsed = previous.upgradeDetectedElapsedMs
-        var promptShownFor = previous.startupPromptShownForVersion
+        var detectedBootId = previous.upgradeDetectedBootId
+        val promptShownFor = previous.startupPromptShownForVersion
         var awaiting = previous.awaitingInstallVersionCode
 
         val recentlyUpdated = lastUpdateTimeMs != firstInstallTimeMs &&
@@ -68,16 +77,22 @@ object HuRebootAfterUpdate {
             lastSeen = currentVersionCode
             pending = currentVersionCode
             detectedElapsed = elapsedRealtimeMs
+            detectedBootId = currentBootId
             awaiting = 0L
         } else if (lastSeen == 0L) {
             lastSeen = currentVersionCode
         }
 
-        // elapsedRealtime restarts at 0 after a HU reboot; DataStore survives.
-        if (pending == currentVersionCode &&
+        // Prefer kernel boot_id change to detect a true HU reboot (handles cases where
+        // uptime after reboot exceeds detectedElapsed). Fall back to elapsedRealtime reset
+        // when boot_id is unavailable or not yet recorded in legacy snapshots.
+        val rebootedByBootId = detectedBootId.isNotEmpty() &&
+            currentBootId.isNotEmpty() &&
+            currentBootId != detectedBootId
+        val rebootedByElapsed = (detectedBootId.isEmpty() || currentBootId.isEmpty()) &&
             detectedElapsed > 0L &&
             elapsedRealtimeMs < detectedElapsed
-        ) {
+        if (pending == currentVersionCode && (rebootedByBootId || rebootedByElapsed)) {
             pending = 0L
         }
 
@@ -87,6 +102,7 @@ object HuRebootAfterUpdate {
             upgradeDetectedElapsedMs = detectedElapsed,
             startupPromptShownForVersion = promptShownFor,
             awaitingInstallVersionCode = awaiting,
+            upgradeDetectedBootId = detectedBootId,
         )
         return HuRebootAfterUpdateStep(
             snapshot = snapshot,

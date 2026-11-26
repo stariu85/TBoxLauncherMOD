@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="vad.dashing.tbox">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -10,8 +9,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -42,8 +45,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
         android:minSdkVersion="29" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
-        android:minSdkVersion="34" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission
@@ -56,9 +57,15 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="vad.dashing.camd.permission.START" />
 
+    <!-- Kept protectionLevel="normal" because TBox Monitor (vad.dashing.tbox) is signed with a separate key;
+         DclLauncherApiProvider authenticates callers by UID of vad.dashing.tbox. -->
     <permission
         android:name="ras.dashing.tbox.launcher.permission.CALL_LAUNCHER_API"
         android:protectionLevel="normal" />
+    <permission
+        android:name="ras.dashing.tbox.launcher.permission.ARM_USB_MOUNT"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="ras.dashing.tbox.launcher.permission.ARM_USB_MOUNT" />
     <uses-permission
         android:name="android.car.permission.CAR_INFO"
         tools:ignore="ProtectedPermissions" />
@@ -136,13 +143,14 @@
         <package android:name="com.android.settings" />
         <package android:name="vad.dashing.tbox" />
         <package android:name="android.car.usb.handler" />
+        <package android:name="plus.monjaro" />
         <provider android:authorities="vad.dashing.tbox.localaccess" />
         <provider android:authorities="com.wt.launcher3" />
     </queries>
 
     <application
         android:name="vad.dashing.tbox.LauncherApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/launcher_standalone_app_name"
@@ -282,6 +290,14 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
                 <action android:name="android.intent.action.MEDIA_CHECKING" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="vad.dashing.tbox.usbmount.UsbMountArmReceiver"
+            android:exported="true"
+            android:permission="ras.dashing.tbox.launcher.permission.ARM_USB_MOUNT">
+            <intent-filter>
                 <action android:name="vad.dashing.usbmount.ARM" />
             </intent-filter>
         </receiver>

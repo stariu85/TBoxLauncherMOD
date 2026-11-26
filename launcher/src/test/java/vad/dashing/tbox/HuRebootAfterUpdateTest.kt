@@ -126,4 +126,48 @@ class HuRebootAfterUpdateTest {
         assertFalse(ui.recommendReboot)
         assertFalse(ui.shouldOpenStartupPrompt)
     }
+
+    @Test
+    fun bootIdChangeClearsPendingEvenWhenElapsedIsHigher() {
+        val previous = HuRebootAfterUpdateSnapshot(
+            lastSeenVersionCode = 53L,
+            pendingRebootVersionCode = 53L,
+            upgradeDetectedElapsedMs = 5_000L,
+            startupPromptShownForVersion = 53L,
+            upgradeDetectedBootId = "boot-uuid-1",
+        )
+        val step = HuRebootAfterUpdate.onAppStart(
+            currentVersionCode = 53L,
+            elapsedRealtimeMs = 120_000L,
+            lastUpdateTimeMs = 9_000L,
+            firstInstallTimeMs = 1_000L,
+            nowWallClockMs = 150_000L,
+            previous = previous,
+            currentBootId = "boot-uuid-2",
+        )
+        assertEquals(0L, step.snapshot.pendingRebootVersionCode)
+        assertFalse(step.ui.recommendReboot)
+    }
+
+    @Test
+    fun sameBootIdKeepsPendingRecommendation() {
+        val previous = HuRebootAfterUpdateSnapshot(
+            lastSeenVersionCode = 53L,
+            pendingRebootVersionCode = 53L,
+            upgradeDetectedElapsedMs = 5_000L,
+            startupPromptShownForVersion = 53L,
+            upgradeDetectedBootId = "boot-uuid-1",
+        )
+        val step = HuRebootAfterUpdate.onAppStart(
+            currentVersionCode = 53L,
+            elapsedRealtimeMs = 40_000L,
+            lastUpdateTimeMs = 9_000L,
+            firstInstallTimeMs = 1_000L,
+            nowWallClockMs = 50_000L,
+            previous = previous,
+            currentBootId = "boot-uuid-1",
+        )
+        assertTrue(step.ui.recommendReboot)
+        assertFalse(step.ui.shouldOpenStartupPrompt)
+    }
 }

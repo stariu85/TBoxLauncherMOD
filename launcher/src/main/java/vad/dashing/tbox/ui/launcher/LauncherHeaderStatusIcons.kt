@@ -49,11 +49,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +69,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -208,7 +209,7 @@ private suspend fun PointerInputScope.detectDraggableTopBarItem(
     index: Int,
     totalCount: Int,
     isRightSide: Boolean,
-    itemWidthPx: Float,
+    getItemWidthPx: () -> Float,
     onDragStateChange: (Boolean) -> Unit,
     onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
     onMoveSide: () -> Unit,
@@ -315,6 +316,7 @@ private suspend fun PointerInputScope.detectDraggableTopBarItem(
             if (shouldRemove) {
                 onRemove()
             } else {
+                val itemWidthPx = getItemWidthPx()
                 val spacingPx = with(density) { 14.dp.toPx() }
                 val stepWidthPx = if (itemWidthPx > 0f) itemWidthPx + spacingPx else with(density) { 50.dp.toPx() }
                 val gapThresholdPx = with(density) { 150.dp.toPx() }
@@ -381,53 +383,6 @@ internal fun LauncherTopHeaderBar(
     val isPickerOverlayShowing = LauncherTopBarPickerOverlayWindow.isShowingState.value
     val isSpacerHighlighted = isAnyItemDragging || isPickerOverlayShowing
 
-    val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
-    val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
-    val engineTemp by canViewModel.engineTemperature.collectAsStateWithLifecycle()
-    val canGearboxTemp by canViewModel.gearBoxOilTemperature.collectAsStateWithLifecycle()
-    val insideAirQuality by canViewModel.insideAirQuality.collectAsStateWithLifecycle()
-    val outsideAirQuality by canViewModel.outsideAirQuality.collectAsStateWithLifecycle()
-    val displayedAvgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
-    val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
-    val activeTripDistanceKm by tbmRepo.activeTripDistanceKm.collectAsStateWithLifecycle()
-    val tbmGearboxTemp by tbmRepo.gearboxOilTemperature.collectAsStateWithLifecycle()
-    val gearboxTemp = canGearboxTemp?.toFloat() ?: tbmGearboxTemp
-    val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
-    val manualTripDistanceKm by canViewModel.manualTripDistanceKm.collectAsStateWithLifecycle()
-    val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
-
-    val activeTripDurationSeconds by tbmRepo.activeTripDurationSeconds.collectAsStateWithLifecycle()
-    val localTripDurationSeconds by canViewModel.localTripDurationSeconds.collectAsStateWithLifecycle()
-    val displayTripDurationSec = activeTripDurationSeconds ?: localTripDurationSeconds
-
-    var durationTick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            delay(1000L)
-            CanDataRepository.updateTripDuration()
-            durationTick++
-        }
-    }
-    val cruisePresetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
-        .collectAsStateWithLifecycle()
-    val fuelPrice = remember(context, cruisePresetsRevision) {
-        LauncherAppConfigStore.fuelPriceRub(context)
-    }
-    val tripCost = remember(displayedAvgFuel, displayTripDistanceKm, fuelPrice) {
-        val avg = displayedAvgFuel ?: 0f
-        val dist = displayTripDistanceKm ?: 0f
-        (avg / 100f) * dist * fuelPrice
-    }
-    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
-    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
-    val fuelPct = fuelPctFiltered ?: fuelPctRaw
-    val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
-    val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
-    val maintenanceDistance by canViewModel.distanceToNextMaintenance.collectAsStateWithLifecycle()
-
-    val cpuUsage = rememberCpuUsagePercentage()
-    val ramUsage = rememberRamUsagePercentage()
-
     val topBarLeftIndicatorsRevision by LauncherAppConfigStore.topBarLeftIndicatorsRevisionFlow
         .collectAsStateWithLifecycle()
     val topBarLeftIndicatorsVisible = remember(context, topBarLeftIndicatorsRevision) {
@@ -439,13 +394,6 @@ internal fun LauncherTopHeaderBar(
     val topBarHeightDp = remember(context, topBarHeightRevision) {
         LauncherAppConfigStore.topBarHeightDp(context)
     }
-
-    val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
-    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
-    val satInfo = rememberSatelliteInfo(
-        tboxConnected = tboxConnected,
-        locValues = locValues,
-    )
 
     val topBarItemsRevision by LauncherAppConfigStore.topBarItemsRevisionFlow
         .collectAsStateWithLifecycle()
@@ -474,9 +422,6 @@ internal fun LauncherTopHeaderBar(
         LauncherAppConfigStore.topBarTimeSignalBorderEnabled(context)
     }
 
-    val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
-    val headlightsRaw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF
-
     val groupVerticalPaddingDp = when {
         topBarHeightDp <= 30 -> 2.dp
         topBarHeightDp <= 38 -> 3.dp
@@ -498,37 +443,6 @@ internal fun LauncherTopHeaderBar(
         ),
     )
 
-    var fuelShowsRange by remember {
-        mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
-    }
-    val unitKm = stringResource(R.string.unit_km)
-    val fuelText = if (fuelShowsRange) {
-        rangeKm?.let { "${valueToString(it, 0)} $unitKm" } ?: "—"
-    } else {
-        fuelPct?.toInt()?.let { "$it%" } ?: "—"
-    }
-
-    val voltageValue = voltage?.takeIf { !it.isNaN() && !it.isInfinite() }
-    val voltageLow = voltageValue != null && voltageValue < 12f
-    val voltageText = voltageValue?.let {
-        "${valueToString(it, 1)} ${stringResource(R.string.unit_volt)}"
-    } ?: "— ${stringResource(R.string.unit_volt)}"
-
-    var clockNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val now = System.currentTimeMillis()
-            clockNowMs = now
-            delay(1_000L - (now % 1_000L))
-        }
-    }
-    val timeText = remember(clockNowMs) {
-        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(clockNowMs))
-    }
-    val dateText = remember(clockNowMs) {
-        SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(clockNowMs))
-    }
-
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -547,7 +461,6 @@ internal fun LauncherTopHeaderBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
             if (topBarLeftIndicatorsVisible) {
                 val groups = remember(effectiveTopBarItems) { groupTopBarItems(effectiveTopBarItems) }
                 val isDark = LauncherThemeState.darkTheme
@@ -593,64 +506,39 @@ internal fun LauncherTopHeaderBar(
                                             )
                                         }
 
-                                        LauncherDraggableTopBarItem(
-                                            itemId = itemId,
-                                            index = originalIndex,
-                                            totalCount = effectiveTopBarItems.size,
-                                            isRightSide = false,
-                                            topBarHeightDp = topBarHeightDp,
-                                            context = context,
-                                            onDragStateChange = { dragging ->
-                                                isAnyItemDragging = dragging
-                                            },
-                                            onReorder = { fromIdx, toIdx ->
-                                                LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = false)
-                                            },
-                                            onMoveSide = {
-                                                LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = false, toRightSide = true)
-                                            },
-                                            onRemove = {
-                                                LauncherAppConfigStore.removeTopBarItem(context, itemId)
-                                            },
-                                        ) {
-                                            RenderTopBarItemContent(
+                                        key(itemId, originalIndex) {
+                                            LauncherDraggableTopBarItem(
                                                 itemId = itemId,
-                                                outsideTemp = outsideTemp,
-                                                insideTemp = insideTemp,
-                                                engineTemp = engineTemp,
-                                                gearboxTemp = gearboxTemp,
-                                                insideAirQuality = insideAirQuality,
-                                                outsideAirQuality = outsideAirQuality,
-                                                displayedAvgFuel = displayedAvgFuel,
-                                                manualTripDistanceKm = manualTripDistanceKm,
-                                                tripCost = tripCost,
-                                                displayTripDurationSec = displayTripDurationSec,
-                                                fuelText = fuelText,
-                                                fuelPct = fuelPct,
-                                                fuelShowsRange = fuelShowsRange,
-                                                onFuelShowsRangeToggle = {
-                                                    val next = !fuelShowsRange
-                                                    fuelShowsRange = next
-                                                    LauncherAppConfigStore.setFuelShowsRange(context, next)
-                                                },
-                                                voltageText = voltageText,
-                                                voltageLow = voltageLow,
-                                                cpuUsage = cpuUsage,
-                                                ramUsage = ramUsage,
-                                                satInfo = satInfo,
-                                                maintenanceDistance = maintenanceDistance,
-                                                timeText = timeText,
-                                                dateText = dateText,
-                                                tboxViewModel = tboxViewModel,
-                                                headlightsRaw = headlightsRaw,
-                                                vehicleControls = vehicleControls,
-                                                buttonDiameterDp = buttonDiameterDp,
-                                                indicatorFontSizeSp = indicatorFontSizeSp,
-                                                indicatorIconSizeDp = indicatorIconSizeDp,
-                                                indicatorTextStyle = indicatorTextStyle,
-                                                isSpacerHighlighted = isSpacerHighlighted,
+                                                index = originalIndex,
+                                                totalCount = effectiveTopBarItems.size,
+                                                isRightSide = false,
+                                                topBarHeightDp = topBarHeightDp,
                                                 context = context,
-                                            )
+                                                onDragStateChange = { dragging ->
+                                                    isAnyItemDragging = dragging
+                                                },
+                                                onReorder = { fromIdx, toIdx ->
+                                                    LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = false)
+                                                },
+                                                onMoveSide = {
+                                                    LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = false, toRightSide = true)
+                                                },
+                                                onRemove = {
+                                                    LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                                                },
+                                            ) {
+                                                RenderTopBarItemContent(
+                                                    itemId = itemId,
+                                                    canViewModel = canViewModel,
+                                                    tboxViewModel = tboxViewModel,
+                                                    buttonDiameterDp = buttonDiameterDp,
+                                                    indicatorFontSizeSp = indicatorFontSizeSp,
+                                                    indicatorIconSizeDp = indicatorIconSizeDp,
+                                                    indicatorTextStyle = indicatorTextStyle,
+                                                    isSpacerHighlighted = isSpacerHighlighted,
+                                                    context = context,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -658,64 +546,39 @@ internal fun LauncherTopHeaderBar(
                         }
                         TopBarGroupType.Button -> {
                             group.items.forEach { (originalIndex, itemId) ->
-                                LauncherDraggableTopBarItem(
-                                    itemId = itemId,
-                                    index = originalIndex,
-                                    totalCount = effectiveTopBarItems.size,
-                                    isRightSide = false,
-                                    topBarHeightDp = topBarHeightDp,
-                                    context = context,
-                                    onDragStateChange = { dragging ->
-                                        isAnyItemDragging = dragging
-                                    },
-                                    onReorder = { fromIdx, toIdx ->
-                                        LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = false)
-                                    },
-                                    onMoveSide = {
-                                        LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = false, toRightSide = true)
-                                    },
-                                    onRemove = {
-                                        LauncherAppConfigStore.removeTopBarItem(context, itemId)
-                                    },
-                                ) {
-                                    RenderTopBarItemContent(
+                                key(itemId, originalIndex) {
+                                    LauncherDraggableTopBarItem(
                                         itemId = itemId,
-                                        outsideTemp = outsideTemp,
-                                        insideTemp = insideTemp,
-                                        engineTemp = engineTemp,
-                                        gearboxTemp = gearboxTemp,
-                                        insideAirQuality = insideAirQuality,
-                                        outsideAirQuality = outsideAirQuality,
-                                        displayedAvgFuel = displayedAvgFuel,
-                                        manualTripDistanceKm = manualTripDistanceKm,
-                                        tripCost = tripCost,
-                                        displayTripDurationSec = displayTripDurationSec,
-                                        fuelText = fuelText,
-                                        fuelPct = fuelPct,
-                                        fuelShowsRange = fuelShowsRange,
-                                        onFuelShowsRangeToggle = {
-                                            val next = !fuelShowsRange
-                                            fuelShowsRange = next
-                                            LauncherAppConfigStore.setFuelShowsRange(context, next)
-                                        },
-                                        voltageText = voltageText,
-                                        voltageLow = voltageLow,
-                                        cpuUsage = cpuUsage,
-                                        ramUsage = ramUsage,
-                                        satInfo = satInfo,
-                                        maintenanceDistance = maintenanceDistance,
-                                        timeText = timeText,
-                                        dateText = dateText,
-                                        tboxViewModel = tboxViewModel,
-                                        headlightsRaw = headlightsRaw,
-                                        vehicleControls = vehicleControls,
-                                        buttonDiameterDp = buttonDiameterDp,
-                                        indicatorFontSizeSp = indicatorFontSizeSp,
-                                        indicatorIconSizeDp = indicatorIconSizeDp,
-                                        indicatorTextStyle = indicatorTextStyle,
-                                        isSpacerHighlighted = isSpacerHighlighted,
+                                        index = originalIndex,
+                                        totalCount = effectiveTopBarItems.size,
+                                        isRightSide = false,
+                                        topBarHeightDp = topBarHeightDp,
                                         context = context,
-                                    )
+                                        onDragStateChange = { dragging ->
+                                            isAnyItemDragging = dragging
+                                        },
+                                        onReorder = { fromIdx, toIdx ->
+                                            LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = false)
+                                        },
+                                        onMoveSide = {
+                                            LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = false, toRightSide = true)
+                                        },
+                                        onRemove = {
+                                            LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                                        },
+                                    ) {
+                                        RenderTopBarItemContent(
+                                            itemId = itemId,
+                                            canViewModel = canViewModel,
+                                            tboxViewModel = tboxViewModel,
+                                            buttonDiameterDp = buttonDiameterDp,
+                                            indicatorFontSizeSp = indicatorFontSizeSp,
+                                            indicatorIconSizeDp = indicatorIconSizeDp,
+                                            indicatorTextStyle = indicatorTextStyle,
+                                            isSpacerHighlighted = isSpacerHighlighted,
+                                            context = context,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -797,64 +660,39 @@ internal fun LauncherTopHeaderBar(
                                         )
                                     }
 
-                                    LauncherDraggableTopBarItem(
-                                        itemId = itemId,
-                                        index = originalIndex,
-                                        totalCount = effectiveTopBarRightItems.size,
-                                        isRightSide = true,
-                                        topBarHeightDp = topBarHeightDp,
-                                        context = context,
-                                        onDragStateChange = { dragging ->
-                                            isAnyItemDragging = dragging
-                                        },
-                                        onReorder = { fromIdx, toIdx ->
-                                            LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = true)
-                                        },
-                                        onMoveSide = {
-                                            LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = true, toRightSide = false)
-                                        },
-                                        onRemove = {
-                                            LauncherAppConfigStore.removeTopBarItem(context, itemId)
-                                        },
-                                    ) {
-                                        RenderTopBarItemContent(
+                                    key(itemId, originalIndex) {
+                                        LauncherDraggableTopBarItem(
                                             itemId = itemId,
-                                            outsideTemp = outsideTemp,
-                                            insideTemp = insideTemp,
-                                            engineTemp = engineTemp,
-                                            gearboxTemp = gearboxTemp,
-                                            insideAirQuality = insideAirQuality,
-                                            outsideAirQuality = outsideAirQuality,
-                                            displayedAvgFuel = displayedAvgFuel,
-                                            manualTripDistanceKm = manualTripDistanceKm,
-                                            tripCost = tripCost,
-                                            displayTripDurationSec = displayTripDurationSec,
-                                            fuelText = fuelText,
-                                            fuelPct = fuelPct,
-                                            fuelShowsRange = fuelShowsRange,
-                                            onFuelShowsRangeToggle = {
-                                                val next = !fuelShowsRange
-                                                fuelShowsRange = next
-                                                LauncherAppConfigStore.setFuelShowsRange(context, next)
-                                            },
-                                            voltageText = voltageText,
-                                            voltageLow = voltageLow,
-                                            cpuUsage = cpuUsage,
-                                            ramUsage = ramUsage,
-                                            satInfo = satInfo,
-                                            maintenanceDistance = maintenanceDistance,
-                                            timeText = timeText,
-                                            dateText = dateText,
-                                            tboxViewModel = tboxViewModel,
-                                            headlightsRaw = headlightsRaw,
-                                            vehicleControls = vehicleControls,
-                                            buttonDiameterDp = buttonDiameterDp,
-                                            indicatorFontSizeSp = indicatorFontSizeSp,
-                                            indicatorIconSizeDp = indicatorIconSizeDp,
-                                            indicatorTextStyle = indicatorTextStyle,
-                                            isSpacerHighlighted = isSpacerHighlighted,
+                                            index = originalIndex,
+                                            totalCount = effectiveTopBarRightItems.size,
+                                            isRightSide = true,
+                                            topBarHeightDp = topBarHeightDp,
                                             context = context,
-                                        )
+                                            onDragStateChange = { dragging ->
+                                                isAnyItemDragging = dragging
+                                            },
+                                            onReorder = { fromIdx, toIdx ->
+                                                LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = true)
+                                            },
+                                            onMoveSide = {
+                                                LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = true, toRightSide = false)
+                                            },
+                                            onRemove = {
+                                                LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                                            },
+                                        ) {
+                                            RenderTopBarItemContent(
+                                                itemId = itemId,
+                                                canViewModel = canViewModel,
+                                                tboxViewModel = tboxViewModel,
+                                                buttonDiameterDp = buttonDiameterDp,
+                                                indicatorFontSizeSp = indicatorFontSizeSp,
+                                                indicatorIconSizeDp = indicatorIconSizeDp,
+                                                indicatorTextStyle = indicatorTextStyle,
+                                                isSpacerHighlighted = isSpacerHighlighted,
+                                                context = context,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -862,64 +700,39 @@ internal fun LauncherTopHeaderBar(
                     }
                     TopBarGroupType.Button -> {
                         group.items.forEach { (originalIndex, itemId) ->
-                            LauncherDraggableTopBarItem(
-                                itemId = itemId,
-                                index = originalIndex,
-                                totalCount = effectiveTopBarRightItems.size,
-                                isRightSide = true,
-                                topBarHeightDp = topBarHeightDp,
-                                context = context,
-                                onDragStateChange = { dragging ->
-                                    isAnyItemDragging = dragging
-                                },
-                                onReorder = { fromIdx, toIdx ->
-                                    LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = true)
-                                },
-                                onMoveSide = {
-                                    LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = true, toRightSide = false)
-                                },
-                                onRemove = {
-                                    LauncherAppConfigStore.removeTopBarItem(context, itemId)
-                                },
-                            ) {
-                                RenderTopBarItemContent(
+                            key(itemId, originalIndex) {
+                                LauncherDraggableTopBarItem(
                                     itemId = itemId,
-                                    outsideTemp = outsideTemp,
-                                    insideTemp = insideTemp,
-                                    engineTemp = engineTemp,
-                                    gearboxTemp = gearboxTemp,
-                                    insideAirQuality = insideAirQuality,
-                                    outsideAirQuality = outsideAirQuality,
-                                    displayedAvgFuel = displayedAvgFuel,
-                                    manualTripDistanceKm = manualTripDistanceKm,
-                                    tripCost = tripCost,
-                                    displayTripDurationSec = displayTripDurationSec,
-                                    fuelText = fuelText,
-                                    fuelPct = fuelPct,
-                                    fuelShowsRange = fuelShowsRange,
-                                    onFuelShowsRangeToggle = {
-                                        val next = !fuelShowsRange
-                                        fuelShowsRange = next
-                                        LauncherAppConfigStore.setFuelShowsRange(context, next)
-                                    },
-                                    voltageText = voltageText,
-                                    voltageLow = voltageLow,
-                                    cpuUsage = cpuUsage,
-                                    ramUsage = ramUsage,
-                                    satInfo = satInfo,
-                                    maintenanceDistance = maintenanceDistance,
-                                    timeText = timeText,
-                                    dateText = dateText,
-                                    tboxViewModel = tboxViewModel,
-                                    headlightsRaw = headlightsRaw,
-                                    vehicleControls = vehicleControls,
-                                    buttonDiameterDp = buttonDiameterDp,
-                                    indicatorFontSizeSp = indicatorFontSizeSp,
-                                    indicatorIconSizeDp = indicatorIconSizeDp,
-                                    indicatorTextStyle = indicatorTextStyle,
-                                    isSpacerHighlighted = isSpacerHighlighted,
+                                    index = originalIndex,
+                                    totalCount = effectiveTopBarRightItems.size,
+                                    isRightSide = true,
+                                    topBarHeightDp = topBarHeightDp,
                                     context = context,
-                                )
+                                    onDragStateChange = { dragging ->
+                                        isAnyItemDragging = dragging
+                                    },
+                                    onReorder = { fromIdx, toIdx ->
+                                        LauncherAppConfigStore.reorderTopBarItem(context, fromIdx, toIdx, isRightSide = true)
+                                    },
+                                    onMoveSide = {
+                                        LauncherAppConfigStore.moveTopBarItemSide(context, itemId, fromRightSide = true, toRightSide = false)
+                                    },
+                                    onRemove = {
+                                        LauncherAppConfigStore.removeTopBarItem(context, itemId)
+                                    },
+                                ) {
+                                    RenderTopBarItemContent(
+                                        itemId = itemId,
+                                        canViewModel = canViewModel,
+                                        tboxViewModel = tboxViewModel,
+                                        buttonDiameterDp = buttonDiameterDp,
+                                        indicatorFontSizeSp = indicatorFontSizeSp,
+                                        indicatorIconSizeDp = indicatorIconSizeDp,
+                                        indicatorTextStyle = indicatorTextStyle,
+                                        isSpacerHighlighted = isSpacerHighlighted,
+                                        context = context,
+                                    )
+                                }
                             }
                         }
                     }
@@ -930,33 +743,26 @@ internal fun LauncherTopHeaderBar(
 }
 
 @Composable
+private fun rememberTopBarClockText(pattern: String): String {
+    val locale = Locale.getDefault()
+    val formatter = remember(pattern, locale) { SimpleDateFormat(pattern, locale) }
+    var formatted by remember(formatter) { mutableStateOf(formatter.format(Date())) }
+    LaunchedEffect(formatter) {
+        while (isActive) {
+            val now = System.currentTimeMillis()
+            formatted = formatter.format(Date(now))
+            val delayToNextMinute = (60_000L - (now % 60_000L)).coerceIn(1_000L, 60_000L)
+            delay(delayToNextMinute)
+        }
+    }
+    return formatted
+}
+
+@Composable
 private fun RenderTopBarItemContent(
     itemId: String,
-    outsideTemp: Float?,
-    insideTemp: Float?,
-    engineTemp: Float? = null,
-    gearboxTemp: Float? = null,
-    insideAirQuality: UInt? = null,
-    outsideAirQuality: UInt? = null,
-    displayedAvgFuel: Float?,
-    manualTripDistanceKm: Float? = null,
-    tripCost: Float? = null,
-    displayTripDurationSec: Long? = null,
-    fuelText: String,
-    fuelPct: UInt? = null,
-    fuelShowsRange: Boolean,
-    onFuelShowsRangeToggle: () -> Unit,
-    voltageText: String,
-    voltageLow: Boolean,
-    cpuUsage: Int,
-    ramUsage: Int,
-    satInfo: SatelliteInfo,
-    maintenanceDistance: UInt? = null,
-    timeText: String = "",
-    dateText: String = "",
+    canViewModel: CanDataViewModel,
     tboxViewModel: TboxViewModel? = null,
-    headlightsRaw: Int,
-    vehicleControls: LauncherVehicleControlSnapshot,
     buttonDiameterDp: Int,
     indicatorFontSizeSp: TextUnit,
     indicatorIconSizeDp: Dp,
@@ -1001,6 +807,7 @@ private fun RenderTopBarItemContent(
             )
         }
         itemId == "time" -> {
+            val timeText = rememberTopBarClockText("HH:mm")
             Text(
                 text = timeText,
                 color = LauncherColors.TextPrimary,
@@ -1008,6 +815,7 @@ private fun RenderTopBarItemContent(
             )
         }
         itemId == "date" -> {
+            val dateText = rememberTopBarClockText("EEE, d MMM")
             Text(
                 text = dateText,
                 color = LauncherColors.TextPrimary,
@@ -1057,6 +865,7 @@ private fun RenderTopBarItemContent(
             )
         }
         itemId == "temp" -> {
+            val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1075,6 +884,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "inside_temp" -> {
+            val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1093,6 +903,8 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "combined_temp" -> {
+            val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
+            val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
             val insideStr = insideTemp?.let { valueToString(it, 0) } ?: "—"
             val outsideStr = outsideTemp?.let { valueToString(it, 0) } ?: "—"
             Row(
@@ -1113,6 +925,8 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "air_quality" -> {
+            val insideAirQuality by canViewModel.insideAirQuality.collectAsStateWithLifecycle()
+            val outsideAirQuality by canViewModel.outsideAirQuality.collectAsStateWithLifecycle()
             val insideStr = insideAirQuality?.toString() ?: "—"
             val outsideStr = outsideAirQuality?.toString() ?: "—"
             Row(
@@ -1133,6 +947,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "avg_fuel" -> {
+            val displayedAvgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
             val avgNum = displayedAvgFuel?.let { valueToString(it, 1) } ?: "—"
             val unitStr = stringResource(R.string.unit_liter)
             Row(
@@ -1168,6 +983,21 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "trip_cost" -> {
+            val displayedAvgFuel by canViewModel.averageFuelConsumption.collectAsStateWithLifecycle()
+            val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+            val activeTripDistanceKm by tbmRepo.activeTripDistanceKm.collectAsStateWithLifecycle()
+            val localTripDistanceKm by canViewModel.localTripDistanceKm.collectAsStateWithLifecycle()
+            val displayTripDistanceKm = activeTripDistanceKm ?: localTripDistanceKm
+            val cruisePresetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
+                .collectAsStateWithLifecycle()
+            val fuelPrice = remember(context, cruisePresetsRevision) {
+                LauncherAppConfigStore.fuelPriceRub(context)
+            }
+            val tripCost = remember(displayedAvgFuel, displayTripDistanceKm, fuelPrice) {
+                val avg = displayedAvgFuel ?: 0f
+                val dist = displayTripDistanceKm ?: 0f
+                (avg / 100f) * dist * fuelPrice
+            }
             val costStr = valueToString(tripCost, 1)
             val unitStr = stringResource(R.string.unit_ruble_short)
             Row(
@@ -1203,6 +1033,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "engine_temp" -> {
+            val engineTemp by canViewModel.engineTemperature.collectAsStateWithLifecycle()
             val engineTempStr = engineTemp?.let { "${valueToString(it, 0)}°" } ?: "—°"
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1222,6 +1053,10 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "gearbox_temp" -> {
+            val canGearboxTemp by canViewModel.gearBoxOilTemperature.collectAsStateWithLifecycle()
+            val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+            val tbmGearboxTemp by tbmRepo.gearboxOilTemperature.collectAsStateWithLifecycle()
+            val gearboxTemp = canGearboxTemp?.toFloat() ?: tbmGearboxTemp
             val gearboxTempStr = gearboxTemp?.let { "${valueToString(it, 0)}°" } ?: "—°"
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1241,6 +1076,16 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "trip_duration" -> {
+            val tbmRepo = remember(context) { TbmRepositoryProvider.get(context) }
+            val activeTripDurationSeconds by tbmRepo.activeTripDurationSeconds.collectAsStateWithLifecycle()
+            val localTripDurationSeconds by canViewModel.localTripDurationSeconds.collectAsStateWithLifecycle()
+            val displayTripDurationSec = activeTripDurationSeconds ?: localTripDurationSeconds
+            LaunchedEffect(Unit) {
+                while (isActive) {
+                    delay(1000L)
+                    CanDataRepository.updateTripDuration()
+                }
+            }
             val totalSec = displayTripDurationSec ?: 0L
             val hours = totalSec / 3600L
             val mins = (totalSec % 3600L) / 60L
@@ -1295,6 +1140,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "trip_distance" -> {
+            val manualTripDistanceKm by canViewModel.manualTripDistanceKm.collectAsStateWithLifecycle()
             val distStr = manualTripDistanceKm?.let { valueToString(it, 1) } ?: "0.0"
             val unitStr = stringResource(R.string.unit_km)
             Row(
@@ -1330,6 +1176,19 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "fuel" -> {
+            val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+            val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
+            val fuelPct = fuelPctFiltered ?: fuelPctRaw
+            val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
+            var fuelShowsRange by remember {
+                mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
+            }
+            val unitKm = stringResource(R.string.unit_km)
+            val fuelText = if (fuelShowsRange) {
+                rangeKm?.let { "${valueToString(it, 0)} $unitKm" } ?: "—"
+            } else {
+                fuelPct?.toInt()?.let { "$it%" } ?: "—"
+            }
             val fuelColor = when {
                 fuelPct != null && fuelPct < 10u -> LauncherColors.WarningRed
                 fuelPct != null && fuelPct < 15u -> LauncherColors.WarningAmber
@@ -1341,7 +1200,11 @@ private fun RenderTopBarItemContent(
                 modifier = Modifier.clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onFuelShowsRangeToggle,
+                    onClick = {
+                        val next = !fuelShowsRange
+                        fuelShowsRange = next
+                        LauncherAppConfigStore.setFuelShowsRange(context, next)
+                    },
                 ),
             ) {
                 Image(
@@ -1358,6 +1221,12 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "voltage" -> {
+            val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
+            val voltageValue = voltage?.takeIf { !it.isNaN() && !it.isInfinite() }
+            val voltageLow = voltageValue != null && voltageValue < 12f
+            val voltageText = voltageValue?.let {
+                "${valueToString(it, 1)} ${stringResource(R.string.unit_volt)}"
+            } ?: "— ${stringResource(R.string.unit_volt)}"
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1376,6 +1245,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "cpu" -> {
+            val cpuUsage = rememberCpuUsagePercentage()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1394,6 +1264,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "ram" -> {
+            val ramUsage = rememberRamUsagePercentage()
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -1412,6 +1283,12 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "gps" -> {
+            val tboxConnected = tboxViewModel?.tboxConnected?.collectAsStateWithLifecycle()?.value ?: false
+            val locValues = tboxViewModel?.locValues?.collectAsStateWithLifecycle()?.value ?: LocValues()
+            val satInfo = rememberSatelliteInfo(
+                tboxConnected = tboxConnected,
+                locValues = locValues,
+            )
             val satPainter = when {
                 satInfo.hasFix -> painterResource(R.drawable.ic_launcher_satellite)
                 satInfo.isInertial -> painterResource(R.drawable.ic_launcher_satellite_outline)
@@ -1437,6 +1314,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "maintenance" -> {
+            val maintenanceDistance by canViewModel.distanceToNextMaintenance.collectAsStateWithLifecycle()
             val distStr = maintenanceDistance?.let { valueToString(it, 0) } ?: "—"
             val unitStr = stringResource(R.string.unit_km)
             Row(
@@ -1511,6 +1389,8 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "headlights" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
+            val headlightsRaw = vehicleControls.lightControlRaw ?: LIGHT_CONTROL_OFF
             val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
             val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
             Box(
@@ -1604,6 +1484,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "autohold" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
             val avhActive = vehicleControls.avh == true
             val buttonCircleBg = if (isDark) Color(0xFF2D3B4E) else Color(0xFFCBD5E1)
             val buttonCircleBorder = if (isDark) Color(0x6038BDF8) else Color(0x4094A3B8)
@@ -1638,6 +1519,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "pdc" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
             val pdcActive = vehicleControls.parkingRadar == true
             val buttonCircleBg = if (pdcActive) {
                 if (isDark) Color(0xFF0369A1) else Color(0xFF38BDF8)
@@ -1667,6 +1549,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "rear_fog" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
             val fogActive = vehicleControls.rearFogLight == true
             val buttonCircleBg = if (fogActive) {
                 if (isDark) Color(0xFF0369A1) else Color(0xFF38BDF8)
@@ -1696,6 +1579,7 @@ private fun RenderTopBarItemContent(
             }
         }
         itemId == "hdc" -> {
+            val vehicleControls = rememberLauncherVehicleControlSnapshot(enabled = true)
             val hdcActive = vehicleControls.hdc == true
             val buttonCircleBg = if (hdcActive) {
                 if (isDark) Color(0xFF0369A1) else Color(0xFF38BDF8)
@@ -1768,6 +1652,12 @@ private fun LauncherDraggableTopBarItem(
     var isDragging by remember { mutableStateOf(false) }
     var itemWidthPx by remember { mutableFloatStateOf(0f) }
 
+    val latestItemWidthPx by rememberUpdatedState(itemWidthPx)
+    val latestOnDragStateChange by rememberUpdatedState(onDragStateChange)
+    val latestOnReorder by rememberUpdatedState(onReorder)
+    val latestOnMoveSide by rememberUpdatedState(onMoveSide)
+    val latestOnRemove by rememberUpdatedState(onRemove)
+
     val density = LocalDensity.current
     val removeThresholdPx = remember(density) { with(density) { 20.dp.toPx() } }
     val isRemoving = isDragging && offsetY > removeThresholdPx
@@ -1794,14 +1684,14 @@ private fun LauncherDraggableTopBarItem(
                     index = index,
                     totalCount = totalCount,
                     isRightSide = isRightSide,
-                    itemWidthPx = itemWidthPx,
+                    getItemWidthPx = { latestItemWidthPx },
                     onDragStateChange = { dragging ->
                         isDragging = dragging
-                        onDragStateChange(dragging)
+                        latestOnDragStateChange(dragging)
                     },
-                    onReorder = onReorder,
-                    onMoveSide = onMoveSide,
-                    onRemove = onRemove,
+                    onReorder = { fromIdx, toIdx -> latestOnReorder(fromIdx, toIdx) },
+                    onMoveSide = { latestOnMoveSide() },
+                    onRemove = { latestOnRemove() },
                     onOffsetChange = { dx, dy ->
                         offsetX = dx
                         offsetY = dy
@@ -2510,7 +2400,7 @@ private fun rememberCpuUsagePercentage(): Int {
 @Composable
 private fun rememberRamUsagePercentage(): Int {
     val context = LocalContext.current
-    var ramUsage by remember { mutableIntStateOf(readRamUsagePercentage(context)) }
+    var ramUsage by remember { mutableIntStateOf(0) }
     LaunchedEffect(context) {
         while (isActive) {
             val usage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

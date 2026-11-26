@@ -64,13 +64,17 @@ class LauncherNavAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        instance = null
+        if (instance === this) {
+            instance = null
+        }
         lastWindowPackage = null
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        instance = null
+        if (instance === this) {
+            instance = null
+        }
         lastWindowPackage = null
         super.onDestroy()
     }
@@ -84,10 +88,10 @@ class LauncherNavAccessibilityService : AccessibilityService() {
             val previousPkg = lastWindowPackage
             lastWindowPackage = pkg
             if (pkg == ownPackage && previousPkg != null && previousPkg != ownPackage) {
-                LauncherCar3DModelTrigger.notifyWindowReturned()
+                runCatching { LauncherCar3DModelTrigger.notifyWindowReturned() }
             }
-            LauncherCarSurfaceRecovery.onWindowPackage(pkg)
-            YandexNavWindowTracker.onWindowStateChanged(pkg, applicationContext)
+            runCatching { LauncherCarSurfaceRecovery.onWindowPackage(pkg) }
+            runCatching { YandexNavWindowTracker.onWindowStateChanged(pkg, applicationContext) }
         }
     }
 

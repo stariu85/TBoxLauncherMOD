@@ -1,6 +1,7 @@
 package vad.dashing.tbox.utils
 
 import android.os.SystemClock
+import java.util.concurrent.ConcurrentHashMap
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.TboxRepository
 import vad.dashing.tbox.Wheels
@@ -17,8 +18,13 @@ object CanFramesProcess {
         .map { it.toByte() }
         .toSet()
 
+    private const val MAX_CAN_ID_STRING_CACHE = 512
     private val fuelLevelPercentageBuffer = FuelLevelBuffer(15)
-    private val canIdStringCache = mutableMapOf<Int, String>()
+    private val canIdStringCache = ConcurrentHashMap<Int, String>()
+    @Volatile private var wheel1PressureLastTimeNotNull: Long? = null
+    @Volatile private var wheel2PressureLastTimeNotNull: Long? = null
+    @Volatile private var wheel3PressureLastTimeNotNull: Long? = null
+    @Volatile private var wheel4PressureLastTimeNotNull: Long? = null
 
     private var carType: String = "1.5_6MT"
 
@@ -101,7 +107,6 @@ object CanFramesProcess {
                     val param3 = readUInt16BigEndian(rawValue, payloadStart + 4).toFloat()
                     CanDataRepository.updateParam3(param3)
                 } else if (canId == CAN_ID_PARAM_4) {
-                    val engineTemperature = unsignedByte(b0).toFloat() * 0.75f - 48f
                     val param4 = unsignedByte(b5).toFloat()
                     CanDataRepository.updateParam4(param4)
                 } else if (canId == CAN_ID_DISTANCE_TO_MAINTENANCE) {
@@ -229,8 +234,8 @@ object CanFramesProcess {
                         CanDataRepository.updateFuelLevelPercentageFiltered(filteredFuel)
                     }
                 } else if (canId == CAN_ID_FUEL_CONSUMPTION) {
-                    val currentFuelConsumption = if (b2 != 0xFF.toByte() && b3 != 0xFF.toByte()) {
-                            readUInt16BigEndian(rawValue, payloadStart + 2).toFloat() / 160f
+                    val currentFuelConsumption = if (b2 != 0xFF.toByte() || b3 != 0xFF.toByte()) {
+                        readUInt16BigEndian(rawValue, payloadStart + 2).toFloat() / 160f
                     } else {
                         null
                     }
@@ -243,11 +248,7 @@ object CanFramesProcess {
                     CanDataRepository.updateParam5(param5)
 
                 } else if (canId == CAN_ID_SPEED_ACCURATE) {
-                    val speed = if (b2 != 0x00.toByte()) {
-                        readUInt12FromNibbleBigEndian(rawValue, payloadStart + 1).toFloat() / 16f
-                    } else {
-                        0f
-                    }
+                    val speed = readUInt12FromNibbleBigEndian(rawValue, payloadStart + 1).toFloat() / 16f
                     CanDataRepository.updateCarSpeedAccurate(speed)
                 } else if (canId == CAN_ID_WHEELS_TPMS) {
                     val temperature = if (b3 != 0xFF.toByte()) {
@@ -274,10 +275,11 @@ object CanFramesProcess {
                     val cur = CanDataRepository.wheelsPressure.value
                     val curTime = SystemClock.elapsedRealtime()
 
+                    val prevLast1 = wheel1PressureLastTimeNotNull ?: cur.wheel1LastTimeNotNull ?: 0L
                     val pressure1 = if (b4 != 0xFF.toByte()) {
                         unsignedByte(b4).toFloat() / 36f
                     } else {
-                        if (curTime - (cur.wheel1LastTimeNotNull ?: 0L) > pressureNullDebounce) {
+                        if (curTime - prevLast1 > pressureNullDebounce) {
                             null
                         } else {
                             cur.wheel1
@@ -286,13 +288,15 @@ object CanFramesProcess {
                     val wheel1LastTimeNotNull = if (b4 != 0xFF.toByte()) {
                         curTime
                     } else {
-                        cur.wheel1LastTimeNotNull
+                        wheel1PressureLastTimeNotNull ?: cur.wheel1LastTimeNotNull
                     }
+                    wheel1PressureLastTimeNotNull = wheel1LastTimeNotNull
 
+                    val prevLast2 = wheel2PressureLastTimeNotNull ?: cur.wheel2LastTimeNotNull ?: 0L
                     val pressure2 = if (b5 != 0xFF.toByte()) {
                         unsignedByte(b5).toFloat() / 36f
                     } else {
-                        if (curTime - (cur.wheel2LastTimeNotNull ?: 0L) > pressureNullDebounce) {
+                        if (curTime - prevLast2 > pressureNullDebounce) {
                             null
                         } else {
                             cur.wheel2
@@ -301,13 +305,15 @@ object CanFramesProcess {
                     val wheel2LastTimeNotNull = if (b5 != 0xFF.toByte()) {
                         curTime
                     } else {
-                        cur.wheel2LastTimeNotNull
+                        wheel2PressureLastTimeNotNull ?: cur.wheel2LastTimeNotNull
                     }
+                    wheel2PressureLastTimeNotNull = wheel2LastTimeNotNull
 
+                    val prevLast3 = wheel3PressureLastTimeNotNull ?: cur.wheel3LastTimeNotNull ?: 0L
                     val pressure3 = if (b6 != 0xFF.toByte()) {
                         unsignedByte(b6).toFloat() / 36f
                     } else {
-                        if (curTime - (cur.wheel3LastTimeNotNull ?: 0L) > pressureNullDebounce) {
+                        if (curTime - prevLast3 > pressureNullDebounce) {
                             null
                         } else {
                             cur.wheel3
@@ -316,13 +322,15 @@ object CanFramesProcess {
                     val wheel3LastTimeNotNull = if (b6 != 0xFF.toByte()) {
                         curTime
                     } else {
-                        cur.wheel3LastTimeNotNull
+                        wheel3PressureLastTimeNotNull ?: cur.wheel3LastTimeNotNull
                     }
+                    wheel3PressureLastTimeNotNull = wheel3LastTimeNotNull
 
+                    val prevLast4 = wheel4PressureLastTimeNotNull ?: cur.wheel4LastTimeNotNull ?: 0L
                     val pressure4 = if (b7 != 0xFF.toByte()) {
                         unsignedByte(b7).toFloat() / 36f
                     } else {
-                        if (curTime - (cur.wheel4LastTimeNotNull ?: 0L) > pressureNullDebounce) {
+                        if (curTime - prevLast4 > pressureNullDebounce) {
                             null
                         } else {
                             cur.wheel4
@@ -331,8 +339,9 @@ object CanFramesProcess {
                     val wheel4LastTimeNotNull = if (b7 != 0xFF.toByte()) {
                         curTime
                     } else {
-                        cur.wheel4LastTimeNotNull
+                        wheel4PressureLastTimeNotNull ?: cur.wheel4LastTimeNotNull
                     }
+                    wheel4PressureLastTimeNotNull = wheel4LastTimeNotNull
 
                     CanDataRepository.updateWheelsPressure(
                         Wheels(
@@ -388,10 +397,12 @@ object CanFramesProcess {
                 )
             }
         }
-        TboxRepository.addLog(
-            "DEBUG", "CRT response",
-            "Get CAN Frame ${rawValue.size} bytes"
-        )
+        if (TboxRepository.isDebugLoggingActive()) {
+            TboxRepository.addLog(
+                "DEBUG", "CRT response",
+                "Get CAN Frame ${rawValue.size} bytes"
+            )
+        }
     }
 
     /**
@@ -433,7 +444,7 @@ object CanFramesProcess {
     private fun parseTireTemperatureByte(b: Byte): Float? {
         val u = unsignedByte(b)
         if (u == 0xFF || u == 0) return null
-        val temp = if (u >= 60) u - 60 else u
+        val temp = u - 60
         return if (temp in -50..150) temp.toFloat() else null
     }
 
@@ -460,13 +471,16 @@ object CanFramesProcess {
     }
 
     private fun canIdToHexString(canId: Int): String {
-        return canIdStringCache.getOrPut(canId) {
-            val b1 = (canId ushr 24) and 0xFF
-            val b2 = (canId ushr 16) and 0xFF
-            val b3 = (canId ushr 8) and 0xFF
-            val b4 = canId and 0xFF
-            "%02X %02X %02X %02X".format(b1, b2, b3, b4)
+        canIdStringCache[canId]?.let { return it }
+        val b1 = (canId ushr 24) and 0xFF
+        val b2 = (canId ushr 16) and 0xFF
+        val b3 = (canId ushr 8) and 0xFF
+        val b4 = canId and 0xFF
+        val formatted = "%02X %02X %02X %02X".format(b1, b2, b3, b4)
+        if (canIdStringCache.size < MAX_CAN_ID_STRING_CACHE) {
+            canIdStringCache.putIfAbsent(canId, formatted)
         }
+        return formatted
     }
 
     private fun unsignedByte(value: Byte): Int = value.toInt() and 0xFF

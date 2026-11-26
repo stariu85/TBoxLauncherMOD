@@ -73,7 +73,7 @@ data class UtcTime(
 
     fun toLocalDateTime(): LocalDateTime? {
         return if (isValid()) {
-            LocalDateTime.of(year, month, day, hour, minute, second)
+            runCatching { LocalDateTime.of(year, month, day, hour, minute, second) }.getOrNull()
         } else {
             null
         }
@@ -250,6 +250,10 @@ object TboxRepository {
         val threshold = minLogLevel ?: return true
         val entryLevel = parseLogLevel(level) ?: return true
         return entryLevel.priority >= threshold.priority
+    }
+
+    fun isDebugLoggingActive(): Boolean {
+        return minLogLevel == LogLevel.DEBUG && _logs.subscriptionCount.value > 0
     }
 
     fun addLog(level: String, tag: String, message: String) {

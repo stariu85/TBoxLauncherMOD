@@ -63,9 +63,9 @@ object MbAdasTsrFacade {
                             parseTsr(args[0], loader)?.let { onTsr?.invoke(it) }
                         }
                     }
-                    "equals" -> args?.getOrNull(0) === proxyHolder[0]
-                    "hashCode" -> System.identityHashCode(proxyHolder[0] ?: this)
-                    "toString" -> "TBoxTsrAdasListener"
+                    "equals" -> return@InvocationHandler (args?.getOrNull(0) === proxyHolder[0])
+                    "hashCode" -> return@InvocationHandler System.identityHashCode(proxyHolder[0] ?: this)
+                    "toString" -> return@InvocationHandler "TBoxTsrAdasListener"
                 }
                 when (method.returnType) {
                     java.lang.Boolean.TYPE -> false

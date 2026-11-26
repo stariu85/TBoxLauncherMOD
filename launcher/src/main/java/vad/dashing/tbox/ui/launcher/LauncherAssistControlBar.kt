@@ -235,7 +235,7 @@ fun LauncherLanesControlBar(
                 sensitivityFallbackJob?.cancel()
                 sensitivityFallbackJob = scope.launch {
                     delay(1000L)
-                    if (vehicleControls.lasSensitivity == null) {
+                    if (LauncherVehicleControlRepository.snapshot.value.lasSensitivity == null) {
                         sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
                     }
                 }
@@ -278,7 +278,7 @@ fun LauncherLanesControlBar(
                 sensitivityFallbackJob?.cancel()
                 sensitivityFallbackJob = scope.launch {
                     delay(1000L)
-                    if (vehicleControls.lasSensitivity == null) {
+                    if (LauncherVehicleControlRepository.snapshot.value.lasSensitivity == null) {
                         sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
                     }
                 }
@@ -1121,7 +1121,7 @@ fun LauncherNgpLkaLdwBar(
                 sensitivityFallbackJob?.cancel()
                 sensitivityFallbackJob = scope.launch {
                     delay(1000L)
-                    if (vehicleControls.lasSensitivity == null) {
+                    if (LauncherVehicleControlRepository.snapshot.value.lasSensitivity == null) {
                         sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
                     }
                 }
@@ -1162,7 +1162,7 @@ fun LauncherNgpLkaLdwBar(
                 sensitivityFallbackJob?.cancel()
                 sensitivityFallbackJob = scope.launch {
                     delay(1000L)
-                    if (vehicleControls.lasSensitivity == null) {
+                    if (LauncherVehicleControlRepository.snapshot.value.lasSensitivity == null) {
                         sendSetMbCanProperty(context, MbCanKnownVehiclePropertyId.LAS_SENSITIVITY_LEVEL, 0)
                     }
                 }

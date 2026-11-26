@@ -75,15 +75,18 @@ class BlankWallpaperService : WallpaperService() {
                 val width = if (metrics.widthPixels > 0) metrics.widthPixels else 1920
                 val height = if (metrics.heightPixels > 0) metrics.heightPixels else 1080
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                canvas.drawColor(Color.BLACK)
-                wallpaperManager.setBitmap(
-                    bitmap,
-                    null,
-                    true,
-                    WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK,
-                )
-                bitmap.recycle()
+                try {
+                    val canvas = Canvas(bitmap)
+                    canvas.drawColor(Color.BLACK)
+                    wallpaperManager.setBitmap(
+                        bitmap,
+                        null,
+                        true,
+                        WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK,
+                    )
+                } finally {
+                    bitmap.recycle()
+                }
                 Toast.makeText(
                     context,
                     context.getString(R.string.launcher_system_wallpaper_set_success),

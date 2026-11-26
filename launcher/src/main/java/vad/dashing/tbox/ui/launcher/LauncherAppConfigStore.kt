@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.GearboxType
 import vad.dashing.tbox.api.DclUiStateNotifier
@@ -493,8 +494,12 @@ private val DEFAULT_DOCK = listOf(
 )
 
 internal object LauncherAppConfigStore {
+    private val allRevisionFlows = mutableListOf<MutableStateFlow<Int>>()
 
-    private val wallpaperRevision = MutableStateFlow(0)
+    private fun registeredRevisionFlow(): MutableStateFlow<Int> =
+        MutableStateFlow<Int>(0).also { allRevisionFlows.add(it) }
+
+    private val wallpaperRevision = registeredRevisionFlow()
     internal val wallpaperRevisionFlow: StateFlow<Int> = wallpaperRevision
 
     fun wallpaperDarkUri(context: Context): String =
@@ -521,256 +526,256 @@ internal object LauncherAppConfigStore {
         wallpaperRevision.value++
     }
 
-    private val mediaCardAlphaRevision = MutableStateFlow(0)
+    private val mediaCardAlphaRevision = registeredRevisionFlow()
     internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
-    private val mediaCardHeightScaleRevision = MutableStateFlow(0)
+    private val mediaCardHeightScaleRevision = registeredRevisionFlow()
     internal val mediaCardHeightScaleRevisionFlow: StateFlow<Int> = mediaCardHeightScaleRevision
-    private val mediaMiniPlayerRevision = MutableStateFlow(0)
+    private val mediaMiniPlayerRevision = registeredRevisionFlow()
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
-    private val showPlayerNameInWidgetRevision = MutableStateFlow(0)
+    private val showPlayerNameInWidgetRevision = registeredRevisionFlow()
     internal val showPlayerNameInWidgetRevisionFlow: StateFlow<Int> = showPlayerNameInWidgetRevision
-    private val selectedMediaPackagesRevision = MutableStateFlow(0)
+    private val selectedMediaPackagesRevision = registeredRevisionFlow()
     internal val selectedMediaPackagesRevisionFlow: StateFlow<Int> = selectedMediaPackagesRevision
-    private val experimentalPlayerLaunchModeRevision = MutableStateFlow(0)
+    private val experimentalPlayerLaunchModeRevision = registeredRevisionFlow()
     internal val experimentalPlayerLaunchModeRevisionFlow: StateFlow<Int> = experimentalPlayerLaunchModeRevision
-    private val experimentalHideAppsOnHomeRevision = MutableStateFlow(0)
+    private val experimentalHideAppsOnHomeRevision = registeredRevisionFlow()
     internal val experimentalHideAppsOnHomeRevisionFlow: StateFlow<Int> = experimentalHideAppsOnHomeRevision
-    private val experimentalHomeMoveTaskToBackRevision = MutableStateFlow(0)
+    private val experimentalHomeMoveTaskToBackRevision = registeredRevisionFlow()
     internal val experimentalHomeMoveTaskToBackRevisionFlow: StateFlow<Int> = experimentalHomeMoveTaskToBackRevision
-    private val experimentalHomeWindowingModeRevision = MutableStateFlow(0)
+    private val experimentalHomeWindowingModeRevision = registeredRevisionFlow()
     internal val experimentalHomeWindowingModeRevisionFlow: StateFlow<Int> = experimentalHomeWindowingModeRevision
-    private val useNewSettingsViewRevision = MutableStateFlow(0)
+    private val useNewSettingsViewRevision = registeredRevisionFlow()
     internal val useNewSettingsViewRevisionFlow: StateFlow<Int> = useNewSettingsViewRevision
-    private val bootLogRevision = MutableStateFlow(0)
+    private val bootLogRevision = registeredRevisionFlow()
     internal val bootLogRevisionFlow: StateFlow<Int> = bootLogRevision
-    private val seatMirrorLaunchModeRevision = MutableStateFlow(0)
+    private val seatMirrorLaunchModeRevision = registeredRevisionFlow()
     internal val seatMirrorLaunchModeRevisionFlow: StateFlow<Int> = seatMirrorLaunchModeRevision
-    private val disableMediaCardCoverColorRevision = MutableStateFlow(0)
+    private val disableMediaCardCoverColorRevision = registeredRevisionFlow()
     internal val disableMediaCardCoverColorRevisionFlow: StateFlow<Int> = disableMediaCardCoverColorRevision
-    private val dockIconScaleRevision = MutableStateFlow(0)
+    private val dockIconScaleRevision = registeredRevisionFlow()
     internal val dockIconScaleRevisionFlow: StateFlow<Int> = dockIconScaleRevision
-    private val topBarHeightRevision = MutableStateFlow(0)
+    private val topBarHeightRevision = registeredRevisionFlow()
     internal val topBarHeightRevisionFlow: StateFlow<Int> = topBarHeightRevision
-    private val topBarLeftIndicatorsRevision = MutableStateFlow(0)
+    private val topBarLeftIndicatorsRevision = registeredRevisionFlow()
     internal val topBarLeftIndicatorsRevisionFlow: StateFlow<Int> = topBarLeftIndicatorsRevision
-    private val ignoreIdleFuelRevision = MutableStateFlow(0)
+    private val ignoreIdleFuelRevision = registeredRevisionFlow()
     internal val ignoreIdleFuelRevisionFlow: StateFlow<Int> = ignoreIdleFuelRevision
-    private val topBarItemsRevision = MutableStateFlow(0)
+    private val topBarItemsRevision = registeredRevisionFlow()
     internal val topBarItemsRevisionFlow: StateFlow<Int> = topBarItemsRevision
-    private val topBarIndicatorsBorderRevision = MutableStateFlow(0)
+    private val topBarIndicatorsBorderRevision = registeredRevisionFlow()
     internal val topBarIndicatorsBorderRevisionFlow: StateFlow<Int> = topBarIndicatorsBorderRevision
-    private val topBarTimeSignalBorderRevision = MutableStateFlow(0)
+    private val topBarTimeSignalBorderRevision = registeredRevisionFlow()
     internal val topBarTimeSignalBorderRevisionFlow: StateFlow<Int> = topBarTimeSignalBorderRevision
-    private val topBarCellularNetworkTypeVisibleRevision = MutableStateFlow(0)
+    private val topBarCellularNetworkTypeVisibleRevision = registeredRevisionFlow()
     internal val topBarCellularNetworkTypeVisibleRevisionFlow: StateFlow<Int> = topBarCellularNetworkTypeVisibleRevision
-    private val bottomBarHeightRevision = MutableStateFlow(0)
+    private val bottomBarHeightRevision = registeredRevisionFlow()
     internal val bottomBarHeightRevisionFlow: StateFlow<Int> = bottomBarHeightRevision
-    private val floatingHomeSizeRevision = MutableStateFlow(0)
+    private val floatingHomeSizeRevision = registeredRevisionFlow()
     internal val floatingHomeSizeRevisionFlow: StateFlow<Int> = floatingHomeSizeRevision
-    private val floatingHomeVisibleRevision = MutableStateFlow(0)
+    private val floatingHomeVisibleRevision = registeredRevisionFlow()
     internal val floatingHomeVisibleRevisionFlow: StateFlow<Int> = floatingHomeVisibleRevision
-    private val carModelScaleRevision = MutableStateFlow(0)
+    private val carModelScaleRevision = registeredRevisionFlow()
     internal val carModelScaleRevisionFlow: StateFlow<Int> = carModelScaleRevision
-    private val carModelDriveScaleRevision = MutableStateFlow(0)
+    private val carModelDriveScaleRevision = registeredRevisionFlow()
     internal val carModelDriveScaleRevisionFlow: StateFlow<Int> = carModelDriveScaleRevision
-    private val carModelVisibleRevision = MutableStateFlow(0)
+    private val carModelVisibleRevision = registeredRevisionFlow()
     internal val carModelVisibleRevisionFlow: StateFlow<Int> = carModelVisibleRevision
-    private val carPaintRevision = MutableStateFlow(0)
+    private val carPaintRevision = registeredRevisionFlow()
     internal val carPaintRevisionFlow: StateFlow<Int> = carPaintRevision
-    private val sidebarWidthRevision = MutableStateFlow(0)
+    private val sidebarWidthRevision = registeredRevisionFlow()
     internal val sidebarWidthRevisionFlow: StateFlow<Int> = sidebarWidthRevision
-    private val cameraSwitchModeRevision = MutableStateFlow(0)
+    private val cameraSwitchModeRevision = registeredRevisionFlow()
     internal val cameraSwitchModeRevisionFlow: StateFlow<Int> = cameraSwitchModeRevision
-    private val cameraAnimationRevision = MutableStateFlow(0)
+    private val cameraAnimationRevision = registeredRevisionFlow()
     internal val cameraAnimationRevisionFlow: StateFlow<Int> = cameraAnimationRevision
-    private val trunkLongPressRevision = MutableStateFlow(0)
+    private val trunkLongPressRevision = registeredRevisionFlow()
     internal val trunkLongPressRevisionFlow: StateFlow<Int> = trunkLongPressRevision
-    private val avmCameraActionRevision = MutableStateFlow(0)
+    private val avmCameraActionRevision = registeredRevisionFlow()
     internal val avmCameraActionRevisionFlow: StateFlow<Int> = avmCameraActionRevision
-    private val camdConfigRevision = MutableStateFlow(0)
+    private val camdConfigRevision = registeredRevisionFlow()
     internal val camdConfigRevisionFlow: StateFlow<Int> = camdConfigRevision
-    private val pdcVisualModeRevision = MutableStateFlow(0)
+    private val pdcVisualModeRevision = registeredRevisionFlow()
     internal val pdcVisualModeRevisionFlow: StateFlow<Int> = pdcVisualModeRevision
-    private val navButtonsRevision = MutableStateFlow(0)
+    private val navButtonsRevision = registeredRevisionFlow()
     internal val navButtonsRevisionFlow: StateFlow<Int> = navButtonsRevision
-    private val adasDistanceTextSizeRevision = MutableStateFlow(0)
+    private val adasDistanceTextSizeRevision = registeredRevisionFlow()
     internal val adasDistanceTextSizeRevisionFlow: StateFlow<Int> = adasDistanceTextSizeRevision
-    private val adasIconScaleRevision = MutableStateFlow(0)
+    private val adasIconScaleRevision = registeredRevisionFlow()
     internal val adasIconScaleRevisionFlow: StateFlow<Int> = adasIconScaleRevision
-    private val adasAccBySpeedLimitRevision = MutableStateFlow(0)
+    private val adasAccBySpeedLimitRevision = registeredRevisionFlow()
     internal val adasAccBySpeedLimitRevisionFlow: StateFlow<Int> = adasAccBySpeedLimitRevision
-    private val adasAccSpeedOffsetRevision = MutableStateFlow(0)
+    private val adasAccSpeedOffsetRevision = registeredRevisionFlow()
     internal val adasAccSpeedOffsetRevisionFlow: StateFlow<Int> = adasAccSpeedOffsetRevision
-    private val adasDistanceLabelOffsetRevision = MutableStateFlow(0)
+    private val adasDistanceLabelOffsetRevision = registeredRevisionFlow()
     internal val adasDistanceLabelOffsetRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetRevision
-    private val adasDistanceLabelOffsetPercentRevision = MutableStateFlow(0)
+    private val adasDistanceLabelOffsetPercentRevision = registeredRevisionFlow()
     internal val adasDistanceLabelOffsetPercentRevisionFlow: StateFlow<Int> = adasDistanceLabelOffsetPercentRevision
-    private val adasLeadCarMinDistOffsetPercentRevision = MutableStateFlow(0)
+    private val adasLeadCarMinDistOffsetPercentRevision = registeredRevisionFlow()
     internal val adasLeadCarMinDistOffsetPercentRevisionFlow: StateFlow<Int> = adasLeadCarMinDistOffsetPercentRevision
-    private val adasLeadCarMinDistGapDpRevision = MutableStateFlow(0)
+    private val adasLeadCarMinDistGapDpRevision = registeredRevisionFlow()
     internal val adasLeadCarMinDistGapDpRevisionFlow: StateFlow<Int> = adasLeadCarMinDistGapDpRevision
-    private val adasPanelVisibleRevision = MutableStateFlow(0)
+    private val adasPanelVisibleRevision = registeredRevisionFlow()
     internal val adasPanelVisibleRevisionFlow: StateFlow<Int> = adasPanelVisibleRevision
-    private val backflipAnimationRevision = MutableStateFlow(0)
+    private val backflipAnimationRevision = registeredRevisionFlow()
     internal val backflipAnimationRevisionFlow: StateFlow<Int> = backflipAnimationRevision
-    private val adasAlertsPlacementRevision = MutableStateFlow(0)
+    private val adasAlertsPlacementRevision = registeredRevisionFlow()
     internal val adasAlertsPlacementRevisionFlow: StateFlow<Int> = adasAlertsPlacementRevision
-    private val adasBsdAlertOverlayRevision = MutableStateFlow(0)
+    private val adasBsdAlertOverlayRevision = registeredRevisionFlow()
     internal val adasBsdAlertOverlayRevisionFlow: StateFlow<Int> = adasBsdAlertOverlayRevision
-    private val adasCompassWidgetRevision = MutableStateFlow(0)
+    private val adasCompassWidgetRevision = registeredRevisionFlow()
     internal val adasCompassWidgetRevisionFlow: StateFlow<Int> = adasCompassWidgetRevision
-    private val adasCompassYRatioRevision = MutableStateFlow(0)
+    private val adasCompassYRatioRevision = registeredRevisionFlow()
     internal val adasCompassYRatioRevisionFlow: StateFlow<Int> = adasCompassYRatioRevision
-    private val seatMemoryAdasPanelRevision = MutableStateFlow(0)
+    private val seatMemoryAdasPanelRevision = registeredRevisionFlow()
     internal val seatMemoryAdasPanelRevisionFlow: StateFlow<Int> = seatMemoryAdasPanelRevision
-    private val themeButtonOffsetRevision = MutableStateFlow(0)
+    private val themeButtonOffsetRevision = registeredRevisionFlow()
     internal val themeButtonOffsetRevisionFlow: StateFlow<Int> = themeButtonOffsetRevision
-    private val seatMemoryButtonOffsetRevision = MutableStateFlow(0)
+    private val seatMemoryButtonOffsetRevision = registeredRevisionFlow()
     internal val seatMemoryButtonOffsetRevisionFlow: StateFlow<Int> = seatMemoryButtonOffsetRevision
-    private val passengerSeatButtonOffsetRevision = MutableStateFlow(0)
+    private val passengerSeatButtonOffsetRevision = registeredRevisionFlow()
     internal val passengerSeatButtonOffsetRevisionFlow: StateFlow<Int> = passengerSeatButtonOffsetRevision
-    private val speedLimitPositionRevision = MutableStateFlow(0)
+    private val speedLimitPositionRevision = registeredRevisionFlow()
     internal val speedLimitPositionRevisionFlow: StateFlow<Int> = speedLimitPositionRevision
-    private val climateControlsRevision = MutableStateFlow(0)
+    private val climateControlsRevision = registeredRevisionFlow()
     internal val climateControlsRevisionFlow: StateFlow<Int> = climateControlsRevision
-    private val climateCardBgRevision = MutableStateFlow(0)
+    private val climateCardBgRevision = registeredRevisionFlow()
     internal val climateCardBgRevisionFlow: StateFlow<Int> = climateCardBgRevision
-    private val climateTempColorIndicationRevision = MutableStateFlow(0)
+    private val climateTempColorIndicationRevision = registeredRevisionFlow()
     internal val climateTempColorIndicationRevisionFlow: StateFlow<Int> = climateTempColorIndicationRevision
-    private val bottomSlotsRevision = MutableStateFlow(0)
+    private val bottomSlotsRevision = registeredRevisionFlow()
     internal val bottomSlotsRevisionFlow: StateFlow<Int> = bottomSlotsRevision
-    private val dockSecondRowRevision = MutableStateFlow(0)
+    private val dockSecondRowRevision = registeredRevisionFlow()
     internal val dockSecondRowRevisionFlow: StateFlow<Int> = dockSecondRowRevision
-    private val dockColumnsRevision = MutableStateFlow(0)
+    private val dockColumnsRevision = registeredRevisionFlow()
     internal val dockColumnsRevisionFlow: StateFlow<Int> = dockColumnsRevision
-    private val tirePressureConfigRevision = MutableStateFlow(0)
+    private val tirePressureConfigRevision = registeredRevisionFlow()
     internal val tirePressureConfigRevisionFlow: StateFlow<Int> = tirePressureConfigRevision
-    private val cruisePresetsRevision = MutableStateFlow(0)
+    private val cruisePresetsRevision = registeredRevisionFlow()
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
-    private val cruisePanelRevision = MutableStateFlow(0)
+    private val cruisePanelRevision = registeredRevisionFlow()
     internal val cruisePanelRevisionFlow: StateFlow<Int> = cruisePanelRevision
-    private val cruisePanelPositionRevision = MutableStateFlow(0)
+    private val cruisePanelPositionRevision = registeredRevisionFlow()
     internal val cruisePanelPositionRevisionFlow: StateFlow<Int> = cruisePanelPositionRevision
-    private val swapTopBottomPanelsRevision = MutableStateFlow(0)
+    private val swapTopBottomPanelsRevision = registeredRevisionFlow()
     internal val swapTopBottomPanelsRevisionFlow: StateFlow<Int> = swapTopBottomPanelsRevision
-    private val driveModeBarRevision = MutableStateFlow(0)
+    private val driveModeBarRevision = registeredRevisionFlow()
     internal val driveModeBarRevisionFlow: StateFlow<Int> = driveModeBarRevision
-    private val assistPanelRevision = MutableStateFlow(0)
+    private val assistPanelRevision = registeredRevisionFlow()
     internal val assistPanelRevisionFlow: StateFlow<Int> = assistPanelRevision
-    private val bodyControlsPanelRevision = MutableStateFlow(0)
+    private val bodyControlsPanelRevision = registeredRevisionFlow()
     internal val bodyControlsPanelRevisionFlow: StateFlow<Int> = bodyControlsPanelRevision
-    private val camdControlsPanelRevision = MutableStateFlow(0)
+    private val camdControlsPanelRevision = registeredRevisionFlow()
     internal val camdControlsPanelRevisionFlow: StateFlow<Int> = camdControlsPanelRevision
-    private val carColorPanelRevision = MutableStateFlow(0)
+    private val carColorPanelRevision = registeredRevisionFlow()
     internal val carColorPanelRevisionFlow: StateFlow<Int> = carColorPanelRevision
-    private val classicSpeedLimitRevision = MutableStateFlow(0)
+    private val classicSpeedLimitRevision = registeredRevisionFlow()
     internal val classicSpeedLimitRevisionFlow: StateFlow<Int> = classicSpeedLimitRevision
-    private val speedLimitWarningSoundRevision = MutableStateFlow(0)
+    private val speedLimitWarningSoundRevision = registeredRevisionFlow()
     internal val speedLimitWarningSoundRevisionFlow: StateFlow<Int> = speedLimitWarningSoundRevision
-    private val tsrSystemRevision = MutableStateFlow(0)
+    private val tsrSystemRevision = registeredRevisionFlow()
     internal val tsrSystemRevisionFlow: StateFlow<Int> = tsrSystemRevision
-    private val navManeuverRevision = MutableStateFlow(0)
+    private val navManeuverRevision = registeredRevisionFlow()
     internal val navManeuverRevisionFlow: StateFlow<Int> = navManeuverRevision
-    private val navStreetRevision = MutableStateFlow(0)
+    private val navStreetRevision = registeredRevisionFlow()
     internal val navStreetRevisionFlow: StateFlow<Int> = navStreetRevision
-    private val navSpeedRevision = MutableStateFlow(0)
+    private val navSpeedRevision = registeredRevisionFlow()
     internal val navSpeedRevisionFlow: StateFlow<Int> = navSpeedRevision
-    private val navTrafficLightRevision = MutableStateFlow(0)
+    private val navTrafficLightRevision = registeredRevisionFlow()
     internal val navTrafficLightRevisionFlow: StateFlow<Int> = navTrafficLightRevision
-    private val navTextRevision = MutableStateFlow(0)
+    private val navTextRevision = registeredRevisionFlow()
     internal val navTextRevisionFlow: StateFlow<Int> = navTextRevision
 
 
-    private val navManeuverPositionRevision = MutableStateFlow(0)
+    private val navManeuverPositionRevision = registeredRevisionFlow()
     internal val navManeuverPositionRevisionFlow: StateFlow<Int> = navManeuverPositionRevision
-    private val navStreetPositionRevision = MutableStateFlow(0)
+    private val navStreetPositionRevision = registeredRevisionFlow()
     internal val navStreetPositionRevisionFlow: StateFlow<Int> = navStreetPositionRevision
-    private val navSpeedPositionRevision = MutableStateFlow(0)
+    private val navSpeedPositionRevision = registeredRevisionFlow()
     internal val navSpeedPositionRevisionFlow: StateFlow<Int> = navSpeedPositionRevision
-    private val navTrafficLightPositionRevision = MutableStateFlow(0)
+    private val navTrafficLightPositionRevision = registeredRevisionFlow()
     internal val navTrafficLightPositionRevisionFlow: StateFlow<Int> = navTrafficLightPositionRevision
-    private val navTextPositionRevision = MutableStateFlow(0)
+    private val navTextPositionRevision = registeredRevisionFlow()
     internal val navTextPositionRevisionFlow: StateFlow<Int> = navTextPositionRevision
-    private val navTrafficLightScaleRevision = MutableStateFlow(0)
+    private val navTrafficLightScaleRevision = registeredRevisionFlow()
     internal val navTrafficLightScaleRevisionFlow: StateFlow<Int> = navTrafficLightScaleRevision
 
-    private val navBgManeuverRevision = MutableStateFlow(0)
+    private val navBgManeuverRevision = registeredRevisionFlow()
     internal val navBgManeuverRevisionFlow: StateFlow<Int> = navBgManeuverRevision
-    private val navBgManeuverPositionRevision = MutableStateFlow(0)
+    private val navBgManeuverPositionRevision = registeredRevisionFlow()
     internal val navBgManeuverPositionRevisionFlow: StateFlow<Int> = navBgManeuverPositionRevision
 
-    private val navBgEtaRevision = MutableStateFlow(0)
+    private val navBgEtaRevision = registeredRevisionFlow()
     internal val navBgEtaRevisionFlow: StateFlow<Int> = navBgEtaRevision
-    private val navBgEtaPositionRevision = MutableStateFlow(0)
+    private val navBgEtaPositionRevision = registeredRevisionFlow()
     internal val navBgEtaPositionRevisionFlow: StateFlow<Int> = navBgEtaPositionRevision
 
-    private val navBgLanesRevision = MutableStateFlow(0)
+    private val navBgLanesRevision = registeredRevisionFlow()
     internal val navBgLanesRevisionFlow: StateFlow<Int> = navBgLanesRevision
-    private val navBgLanesPositionRevision = MutableStateFlow(0)
+    private val navBgLanesPositionRevision = registeredRevisionFlow()
     internal val navBgLanesPositionRevisionFlow: StateFlow<Int> = navBgLanesPositionRevision
 
-    private val navBgTrafficLightRevision = MutableStateFlow(0)
+    private val navBgTrafficLightRevision = registeredRevisionFlow()
     internal val navBgTrafficLightRevisionFlow: StateFlow<Int> = navBgTrafficLightRevision
-    private val navBgTrafficLightPositionRevision = MutableStateFlow(0)
+    private val navBgTrafficLightPositionRevision = registeredRevisionFlow()
     internal val navBgTrafficLightPositionRevisionFlow: StateFlow<Int> = navBgTrafficLightPositionRevision
 
-    private val navBgMinimapRevision = MutableStateFlow(0)
+    private val navBgMinimapRevision = registeredRevisionFlow()
     internal val navBgMinimapRevisionFlow: StateFlow<Int> = navBgMinimapRevision
-    private val navBgMinimapPositionRevision = MutableStateFlow(0)
+    private val navBgMinimapPositionRevision = registeredRevisionFlow()
     internal val navBgMinimapPositionRevisionFlow: StateFlow<Int> = navBgMinimapPositionRevision
 
-    private val navBgNextTurnRevision = MutableStateFlow(0)
+    private val navBgNextTurnRevision = registeredRevisionFlow()
     internal val navBgNextTurnRevisionFlow: StateFlow<Int> = navBgNextTurnRevision
-    private val navBgNextTurnPositionRevision = MutableStateFlow(0)
+    private val navBgNextTurnPositionRevision = registeredRevisionFlow()
     internal val navBgNextTurnPositionRevisionFlow: StateFlow<Int> = navBgNextTurnPositionRevision
 
-    private val navBgLanesOrTurnRevision = MutableStateFlow(0)
+    private val navBgLanesOrTurnRevision = registeredRevisionFlow()
     internal val navBgLanesOrTurnRevisionFlow: StateFlow<Int> = navBgLanesOrTurnRevision
-    private val navBgLanesOrTurnPositionRevision = MutableStateFlow(0)
+    private val navBgLanesOrTurnPositionRevision = registeredRevisionFlow()
     internal val navBgLanesOrTurnPositionRevisionFlow: StateFlow<Int> = navBgLanesOrTurnPositionRevision
 
-    private val navHideWidgetsOnScreenRevision = MutableStateFlow(0)
+    private val navHideWidgetsOnScreenRevision = registeredRevisionFlow()
     internal val navHideWidgetsOnScreenRevisionFlow: StateFlow<Int> = navHideWidgetsOnScreenRevision
-    private val accPresetsInQuickSettingsRevision = MutableStateFlow(0)
+    private val accPresetsInQuickSettingsRevision = registeredRevisionFlow()
     internal val accPresetsInQuickSettingsRevisionFlow: StateFlow<Int> = accPresetsInQuickSettingsRevision
-    private val smartPanelRevision = MutableStateFlow(0)
+    private val smartPanelRevision = registeredRevisionFlow()
     internal val smartPanelRevisionFlow: StateFlow<Int> = smartPanelRevision
-    private val assistPresetsTabRevision = MutableStateFlow(0)
+    private val assistPresetsTabRevision = registeredRevisionFlow()
     internal val assistPresetsTabRevisionFlow: StateFlow<Int> = assistPresetsTabRevision
-    private val adasPanelsRevision = MutableStateFlow(0)
+    private val adasPanelsRevision = registeredRevisionFlow()
     internal val adasPanelsRevisionFlow: StateFlow<Int> = adasPanelsRevision
-    private val driveModeGlowRevision = MutableStateFlow(0)
+    private val driveModeGlowRevision = registeredRevisionFlow()
     internal val driveModeGlowRevisionFlow: StateFlow<Int> = driveModeGlowRevision
-    private val gearboxTypeRevision = MutableStateFlow(0)
+    private val gearboxTypeRevision = registeredRevisionFlow()
     internal val gearboxTypeRevisionFlow: StateFlow<Int> = gearboxTypeRevision
-    private val cruiseTypeRevision = MutableStateFlow(0)
+    private val cruiseTypeRevision = registeredRevisionFlow()
     internal val cruiseTypeRevisionFlow: StateFlow<Int> = cruiseTypeRevision
-    private val cruiseEngageActionRevision = MutableStateFlow(0)
+    private val cruiseEngageActionRevision = registeredRevisionFlow()
     internal val cruiseEngageActionRevisionFlow: StateFlow<Int> = cruiseEngageActionRevision
-    private val launcherSettingsOnDoubleTapRevision = MutableStateFlow(0)
+    private val launcherSettingsOnDoubleTapRevision = registeredRevisionFlow()
     internal val launcherSettingsOnDoubleTapRevisionFlow: StateFlow<Int> = launcherSettingsOnDoubleTapRevision
-    private val headlightBeamsRevision = MutableStateFlow(0)
+    private val headlightBeamsRevision = registeredRevisionFlow()
     internal val headlightBeamsRevisionFlow: StateFlow<Int> = headlightBeamsRevision
-    private val ngpRevision = MutableStateFlow(0)
+    private val ngpRevision = registeredRevisionFlow()
     internal val ngpRevisionFlow: StateFlow<Int> = ngpRevision
-    private val gridColumnsRevision = MutableStateFlow(0)
+    private val gridColumnsRevision = registeredRevisionFlow()
     internal val gridColumnsRevisionFlow: StateFlow<Int> = gridColumnsRevision
-    private val gridRowsRevision = MutableStateFlow(0)
+    private val gridRowsRevision = registeredRevisionFlow()
     internal val gridRowsRevisionFlow: StateFlow<Int> = gridRowsRevision
-    private val gridRowSpacingRevision = MutableStateFlow(0)
+    private val gridRowSpacingRevision = registeredRevisionFlow()
     internal val gridRowSpacingRevisionFlow: StateFlow<Int> = gridRowSpacingRevision
-    private val homeIconScaleRevision = MutableStateFlow(0)
+    private val homeIconScaleRevision = registeredRevisionFlow()
     internal val homeIconScaleRevisionFlow: StateFlow<Int> = homeIconScaleRevision
-    private val edgeGesturesRevision = MutableStateFlow(0)
+    private val edgeGesturesRevision = registeredRevisionFlow()
     internal val edgeGesturesRevisionFlow: StateFlow<Int> = edgeGesturesRevision
 
     private const val KEY_QUICK_SETTINGS_TOP_PANELS = "quick_settings_top_panels"
     private const val KEY_QUICK_SETTINGS_BOTTOM_PANELS = "quick_settings_bottom_panels"
-    private val quickSettingsPanelsRevision = MutableStateFlow(0)
+    private val quickSettingsPanelsRevision = registeredRevisionFlow()
     internal val quickSettingsPanelsRevisionFlow: StateFlow<Int> = quickSettingsPanelsRevision
 
     private const val KEY_ENABLED_ADAS_PANEL_IDS = "enabled_adas_panel_ids"
-    private val enabledAdasPanelsRevision = MutableStateFlow(0)
+    private val enabledAdasPanelsRevision = registeredRevisionFlow()
     internal val enabledAdasPanelsRevisionFlow: StateFlow<Int> = enabledAdasPanelsRevision
 
     val ALL_ADAS_PANEL_IDS = listOf(
@@ -789,7 +794,7 @@ internal object LauncherAppConfigStore {
     )
 
     private val activeSubPanelsMap = mutableStateMapOf<String, String>()
-    private val activeSubPanelsRevision = MutableStateFlow(0)
+    private val activeSubPanelsRevision = registeredRevisionFlow()
     internal val activeSubPanelsRevisionFlow: StateFlow<Int> = activeSubPanelsRevision
 
     fun setVisibleSubPanel(slotPanelId: String, visibleSubPanelId: String) {
@@ -1084,11 +1089,13 @@ internal object LauncherAppConfigStore {
         if (enabled) {
             editor.putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, false)
             editor.putBoolean(KEY_EXPERIMENTAL_HOME_WINDOWING_MODE, false)
-            experimentalHomeMoveTaskToBackRevision.value++
-            experimentalHomeWindowingModeRevision.value++
         }
         editor.apply()
-        experimentalHideAppsOnHomeRevision.value++
+        if (enabled) {
+            experimentalHomeMoveTaskToBackRevision.update { it + 1 }
+            experimentalHomeWindowingModeRevision.update { it + 1 }
+        }
+        experimentalHideAppsOnHomeRevision.update { it + 1 }
     }
 
     fun experimentalHomeMoveTaskToBack(context: Context): Boolean =
@@ -1099,11 +1106,13 @@ internal object LauncherAppConfigStore {
         if (enabled) {
             editor.putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
             editor.putBoolean(KEY_EXPERIMENTAL_HOME_WINDOWING_MODE, false)
-            experimentalHideAppsOnHomeRevision.value++
-            experimentalHomeWindowingModeRevision.value++
         }
         editor.apply()
-        experimentalHomeMoveTaskToBackRevision.value++
+        if (enabled) {
+            experimentalHideAppsOnHomeRevision.update { it + 1 }
+            experimentalHomeWindowingModeRevision.update { it + 1 }
+        }
+        experimentalHomeMoveTaskToBackRevision.update { it + 1 }
     }
 
     fun experimentalHomeWindowingMode(context: Context): Boolean =
@@ -1114,11 +1123,13 @@ internal object LauncherAppConfigStore {
         if (enabled) {
             editor.putBoolean(KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME, false)
             editor.putBoolean(KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK, false)
-            experimentalHideAppsOnHomeRevision.value++
-            experimentalHomeMoveTaskToBackRevision.value++
         }
         editor.apply()
-        experimentalHomeWindowingModeRevision.value++
+        if (enabled) {
+            experimentalHideAppsOnHomeRevision.update { it + 1 }
+            experimentalHomeMoveTaskToBackRevision.update { it + 1 }
+        }
+        experimentalHomeWindowingModeRevision.update { it + 1 }
     }
 
     fun isAnyDclwmRequired(context: Context): Boolean =
@@ -1179,7 +1190,7 @@ internal object LauncherAppConfigStore {
         CanDataRepository.onIgnoreIdleFuelSettingChanged()
     }
 
-    private val topBarModemCellularVisibleRevision = MutableStateFlow(0)
+    private val topBarModemCellularVisibleRevision = registeredRevisionFlow()
     internal val topBarModemCellularVisibleRevisionFlow: StateFlow<Int> = topBarModemCellularVisibleRevision
 
     fun topBarCellularNetworkTypeVisible(context: Context): Boolean =
@@ -1375,19 +1386,20 @@ internal object LauncherAppConfigStore {
         prefs(context).edit().putBoolean(KEY_FLOATING_HOME_VISIBLE, visible).apply()
         if (visible) {
             LauncherOverlayBar.show(context)
-            // Ensure slot 0 is cleared if occupied
+            // Ensure the floating home slot is cleared if occupied, relocating within actual slots.size.
             val slots = bottomSlotsUnified(context).toMutableList()
-            if (slots[0] != null) {
-                val occupied = slots[0]
-                slots[0] = null
-                val freeIdx = (1 until GRID_SLOTS_TOTAL_COUNT).firstOrNull { slots[it] == null }
+            val homeSlot = floatingHomeSlotIndex(context)
+            if (homeSlot in slots.indices && slots[homeSlot] != null) {
+                val occupied = slots[homeSlot]
+                slots[homeSlot] = null
+                val freeIdx = slots.indices.firstOrNull { it != homeSlot && slots[it] == null }
                 if (freeIdx != null) slots[freeIdx] = occupied
                 setBottomSlotsUnified(context, slots)
             }
         } else {
             LauncherOverlayBar.hide()
         }
-        floatingHomeVisibleRevision.value++
+        floatingHomeVisibleRevision.update { it + 1 }
     }
 
     fun carModelScale(context: Context): Float =
@@ -1424,13 +1436,14 @@ internal object LauncherAppConfigStore {
     fun setNavButtonsVisible(context: Context, visible: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_BUTTONS_VISIBLE, visible).apply()
         val slots = bottomSlotsUnified(context).toMutableList()
+        val reservedHomeSlot = if (floatingHomeVisible(context)) floatingHomeSlotIndex(context) else -1
         if (visible) {
             if ("home_nav" !in slots) {
-                val firstEmpty = (1 until GRID_SLOTS_TOTAL_COUNT).firstOrNull { slots[it] == null }
+                val firstEmpty = slots.indices.firstOrNull { it != reservedHomeSlot && slots[it] == null }
                 if (firstEmpty != null) slots[firstEmpty] = "home_nav"
             }
             if ("back_nav" !in slots) {
-                val secondEmpty = (1 until GRID_SLOTS_TOTAL_COUNT).firstOrNull { slots[it] == null }
+                val secondEmpty = slots.indices.firstOrNull { it != reservedHomeSlot && slots[it] == null }
                 if (secondEmpty != null) slots[secondEmpty] = "back_nav"
             }
         } else {
@@ -1441,7 +1454,7 @@ internal object LauncherAppConfigStore {
             }
         }
         setBottomSlotsUnified(context, slots)
-        navButtonsRevision.value++
+        navButtonsRevision.update { it + 1 }
     }
 
     fun adasDistanceTextSize(context: Context): Int =
@@ -2946,15 +2959,13 @@ internal object LauncherAppConfigStore {
 
     fun gearboxType(context: Context): GearboxType {
         val prefs = prefs(context)
-        val result = if (prefs.contains(KEY_GEARBOX_TYPE)) {
+        return if (prefs.contains(KEY_GEARBOX_TYPE)) {
             GearboxType.fromCode(prefs.getString(KEY_GEARBOX_TYPE, null))
         } else if (prefs.contains(KEY_GEARBOX_TYPE_IS_6DCT)) {
             if (prefs.getBoolean(KEY_GEARBOX_TYPE_IS_6DCT, false)) GearboxType.DCT_6 else GearboxType.DCT_7
         } else {
             CanDataRepository.gearboxTypeBySystemConfig()
         }
-        CanDataRepository.setGearboxType(result)
-        return result
     }
 
     fun setGearboxType(context: Context, type: GearboxType) {
@@ -3225,71 +3236,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun notifyAllRevisionsChanged() {
-        wallpaperRevision.value++
-        mediaCardAlphaRevision.value++
-        mediaCardHeightScaleRevision.value++
-        mediaMiniPlayerRevision.value++
-        showPlayerNameInWidgetRevision.value++
-        experimentalPlayerLaunchModeRevision.value++
-        experimentalHideAppsOnHomeRevision.value++
-        disableMediaCardCoverColorRevision.value++
-        dockIconScaleRevision.value++
-        topBarHeightRevision.value++
-        topBarLeftIndicatorsRevision.value++
-        ignoreIdleFuelRevision.value++
-        topBarItemsRevision.value++
-        topBarIndicatorsBorderRevision.value++
-        topBarCellularNetworkTypeVisibleRevision.value++
-        bottomBarHeightRevision.value++
-        floatingHomeSizeRevision.value++
-        floatingHomeVisibleRevision.value++
-        carModelScaleRevision.value++
-        carModelDriveScaleRevision.value++
-        carModelVisibleRevision.value++
-        sidebarWidthRevision.value++
-        cameraSwitchModeRevision.value++
-        cameraAnimationRevision.value++
-        trunkLongPressRevision.value++
-        avmCameraActionRevision.value++
-        pdcVisualModeRevision.value++
-        navButtonsRevision.value++
-        adasDistanceTextSizeRevision.value++
-        adasDistanceLabelOffsetRevision.value++
-        adasDistanceLabelOffsetPercentRevision.value++
-        adasLeadCarMinDistOffsetPercentRevision.value++
-        adasLeadCarMinDistGapDpRevision.value++
-        adasPanelVisibleRevision.value++
-        adasAlertsPlacementRevision.value++
-        adasBsdAlertOverlayRevision.value++
-        seatMemoryAdasPanelRevision.value++
-        speedLimitPositionRevision.value++
-        climateControlsRevision.value++
-        climateCardBgRevision.value++
-        bottomSlotsRevision.value++
-        dockSecondRowRevision.value++
-        dockColumnsRevision.value++
-        tirePressureConfigRevision.value++
-        cruisePresetsRevision.value++
-        cruisePanelRevision.value++
-        cruisePanelPositionRevision.value++
-        swapTopBottomPanelsRevision.value++
-        driveModeBarRevision.value++
-        assistPanelRevision.value++
-        bodyControlsPanelRevision.value++
-        camdControlsPanelRevision.value++
-        assistPresetsTabRevision.value++
-        adasPanelsRevision.value++
-        driveModeGlowRevision.value++
-        headlightBeamsRevision.value++
-        ngpRevision.value++
-        gridColumnsRevision.value++
-        gridRowsRevision.value++
-        gridRowSpacingRevision.value++
-        homeIconScaleRevision.value++
-        edgeGesturesRevision.value++
-        navBgNextTurnRevision.value++
-        navBgLanesOrTurnRevision.value++
-        navHideWidgetsOnScreenRevision.value++
+        allRevisionFlows.forEach { flow -> flow.update { it + 1 } }
     }
 
     private fun decodeSlots(raw: String?, count: Int): List<String> {

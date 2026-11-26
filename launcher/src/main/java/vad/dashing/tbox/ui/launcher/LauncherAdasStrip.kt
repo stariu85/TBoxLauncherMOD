@@ -186,9 +186,10 @@ fun LauncherAdasStrip(
         if (adas.rearThreats.rcw != LauncherRearThreatLevel.Off || showAll) add("rcw")
     }
 
-    val activationTimes = remember { mutableMapOf<String, Long>() }
-    SideEffect {
-        activationTimes.keys.retainAll(activeKeys)
+    val activationTimes = remember { androidx.compose.runtime.mutableStateMapOf<String, Long>() }
+    androidx.compose.runtime.LaunchedEffect(activeKeys) {
+        val toRemove = activationTimes.keys.filter { it !in activeKeys }
+        toRemove.forEach { activationTimes.remove(it) }
         val now = SystemClock.uptimeMillis()
         for (key in activeKeys) {
             if (!activationTimes.containsKey(key)) {

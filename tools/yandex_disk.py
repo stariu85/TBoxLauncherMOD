@@ -26,6 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import BinaryIO
 
 API_BASE = "https://cloud-api.yandex.net/v1/disk"
 
@@ -54,8 +55,9 @@ def _request(
     url: str,
     *,
     token: str | None = None,
-    data: bytes | None = None,
+    data: bytes | BinaryIO | None = None,
     content_type: str | None = None,
+    content_length: int | None = None,
     timeout: float = 120.0,
 ) -> tuple[int, bytes]:
     headers: dict[str, str] = {}
@@ -63,6 +65,8 @@ def _request(
         headers["Authorization"] = f"OAuth {token}"
     if content_type:
         headers["Content-Type"] = content_type
+    if content_length is not None:
+        headers["Content-Length"] = str(content_length)
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     context = ssl.create_default_context()
     try:
@@ -72,6 +76,8 @@ def _request(
         body = error.read()
         message = body.decode("utf-8", errors="replace")
         raise YandexDiskError(f"HTTP {error.code} {method} {url}: {message}") from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise YandexDiskError(f"Network error {method} {url}: {error}") from error
 
 
 def ensure_folder(token: str, disk_path: str) -> None:
@@ -122,14 +128,16 @@ def upload_file(token: str, local_file: Path, disk_path: str, *, overwrite: bool
         raise YandexDiskError(f"upload href missing: {payload}")
 
     content_type = mimetypes.guess_type(local_file.name)[0] or "application/octet-stream"
-    data = local_file.read_bytes()
-    put_status, _ = _request(
-        method,
-        href,
-        data=data,
-        content_type=content_type,
-        timeout=600.0,
-    )
+    file_size = local_file.stat().st_size
+    with local_file.open("rb") as fh:
+        put_status, _ = _request(
+            method,
+            href,
+            data=fh,
+            content_type=content_type,
+            content_length=file_size,
+            timeout=600.0,
+        )
     if put_status not in (201, 202):
         raise YandexDiskError(f"upload PUT failed: HTTP {put_status}")
 

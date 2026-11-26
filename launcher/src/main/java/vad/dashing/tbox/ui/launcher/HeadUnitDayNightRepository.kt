@@ -92,14 +92,18 @@ object HeadUnitDayNightRepository {
         var success = false
         runCatching {
             val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
-            uiModeManager?.setNightMode(mode)
-            success = true
+            if (uiModeManager != null) {
+                uiModeManager.setNightMode(mode)
+                success = true
+            }
         }.onFailure {
             Log.w(TAG, "Failed to set UiModeManager nightMode=$mode", it)
         }
 
         runCatching {
-            Settings.Secure.putInt(context.contentResolver, "ui_night_mode", mode)
+            if (Settings.Secure.putInt(context.contentResolver, "ui_night_mode", mode)) {
+                success = true
+            }
         }.onFailure {
             Log.w(TAG, "Failed to write ui_night_mode to Settings.Secure", it)
         }
@@ -110,36 +114,24 @@ object HeadUnitDayNightRepository {
     /**
      * Determines whether system theme is dark.
      * Checks DAY_NIGHT_STATUS first (2 = dark, 1 = light).
-     * If missing, falls back to checking night_mode_auto (2 = dark, 0 = light).
-     * If still missing, falls back to UiModeManager.
+     * If missing or indeterminate, falls back to checking night_mode_auto (2 = dark, 0 = light).
+     * If still missing or auto, falls back to UiModeManager.
      */
     fun isSystemDark(context: Context): Boolean? {
-        val status = getSystemDayNightStatus(context)
-        if (status != null) {
-            return when (status) {
-                HeadUnitDayNightMapping.THEME_DARK -> true
-                HeadUnitDayNightMapping.THEME_LIGHT -> false
-                else -> null
-            }
+        when (getSystemDayNightStatus(context)) {
+            HeadUnitDayNightMapping.THEME_DARK -> return true
+            HeadUnitDayNightMapping.THEME_LIGHT -> return false
         }
-        val autoMode = getSystemNightModeAuto(context)
-        if (autoMode != null) {
-            return when (autoMode) {
-                HeadUnitDayNightMapping.NIGHT_MODE_DARK_MANUAL -> true
-                HeadUnitDayNightMapping.NIGHT_MODE_LIGHT_MANUAL -> false
-                else -> null
-            }
+        when (getSystemNightModeAuto(context)) {
+            HeadUnitDayNightMapping.NIGHT_MODE_DARK_MANUAL -> return true
+            HeadUnitDayNightMapping.NIGHT_MODE_LIGHT_MANUAL -> return false
         }
         val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
-        val nightMode = uiModeManager?.nightMode
-        if (nightMode != null) {
-            return when (nightMode) {
-                UiModeManager.MODE_NIGHT_YES -> true
-                UiModeManager.MODE_NIGHT_NO -> false
-                else -> null
-            }
+        return when (uiModeManager?.nightMode) {
+            UiModeManager.MODE_NIGHT_YES -> true
+            UiModeManager.MODE_NIGHT_NO -> false
+            else -> null
         }
-        return null
     }
 
     /**

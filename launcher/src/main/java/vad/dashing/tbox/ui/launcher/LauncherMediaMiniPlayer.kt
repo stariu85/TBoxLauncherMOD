@@ -145,8 +145,19 @@ fun LauncherMediaMiniPlayer(
     val defaultPackage = remember(context, defaultRevision) {
         LauncherAppConfigStore.defaultMediaPackage(context)
     }
-    val mediaPackages = remember(context, defaultRevision, playerStates) {
-        (discoverAllMediaPlayerPackages(context, defaultPackage) + playerStates.keys).distinct()
+    val discoveredPackages by androidx.compose.runtime.produceState<List<String>>(
+        initialValue = emptyList(),
+        key1 = context,
+        key2 = defaultRevision,
+        key3 = defaultPackage,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            discoverAllMediaPlayerPackages(context, defaultPackage)
+        }
+    }
+    val playerStateKeys = remember(playerStates) { playerStates.keys.toList() }
+    val mediaPackages = remember(discoveredPackages, playerStateKeys) {
+        (discoveredPackages + playerStateKeys).distinct()
     }
     val monitorPackages = remember(mediaPackages, defaultPackage) {
         buildSet {
@@ -164,23 +175,30 @@ fun LauncherMediaMiniPlayer(
         }
     }
 
-    val mediaPickerApps = remember(context, res, mediaPackages) {
-        val pm = context.packageManager
-        mediaPackages.mapNotNull { pkg ->
-            runCatching {
-                val info = pm.getApplicationInfo(pkg, 0)
-                val label = pm.getApplicationLabel(info).toString()
-                val icon = runCatching {
-                    val sizePx = (64f * res.displayMetrics.density).toInt().coerceIn(96, 256)
-                    val drawable = pm.getApplicationIcon(info)
-                    if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) {
-                        drawable.setBounds(0, 0, sizePx, sizePx)
-                    }
-                    drawable.toBitmap(sizePx, sizePx).asImageBitmap()
+    val mediaPickerApps by androidx.compose.runtime.produceState<List<LaunchableAppEntry>>(
+        initialValue = emptyList(),
+        key1 = context,
+        key2 = res,
+        key3 = mediaPackages,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val pm = context.packageManager
+            val sizePx = (64f * res.displayMetrics.density).toInt().coerceIn(96, 256)
+            mediaPackages.mapNotNull { pkg ->
+                runCatching {
+                    val info = pm.getApplicationInfo(pkg, 0)
+                    val label = pm.getApplicationLabel(info).toString()
+                    val icon = runCatching {
+                        val drawable = pm.getApplicationIcon(info)
+                        if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) {
+                            drawable.setBounds(0, 0, sizePx, sizePx)
+                        }
+                        drawable.toBitmap(sizePx, sizePx).asImageBitmap()
+                    }.getOrNull()
+                    LaunchableAppEntry(packageName = pkg, label = label, icon = icon, activityName = null)
                 }.getOrNull()
-                LaunchableAppEntry(packageName = pkg, label = label, icon = icon, activityName = null)
-            }.getOrNull()
-        }.sortedBy { it.label.lowercase() }
+            }.sortedBy { it.label.lowercase() }
+        }
     }
 
     val selectedPackagesRevision by LauncherAppConfigStore.selectedMediaPackagesRevisionFlow
@@ -257,21 +275,30 @@ fun LauncherMediaMiniPlayer(
         }.getOrNull()
     }
 
-    // Tint the card towards the album art's accent so the widget follows the music.
-    val mediaCardTarget = remember(albumArtBitmap, isDark, disableCoverColor) {
-        val baseCardColor = LauncherColors.LeftPanelCard
-        if (disableCoverColor) return@remember baseCardColor
-        val bitmap = albumArtBitmap ?: return@remember baseCardColor
-        runCatching {
-            val palette = Palette.from(bitmap.asAndroidBitmap()).generate()
-            if (isDark) {
-                val swatch = palette.darkVibrantSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
-                swatch?.let { lerp(baseCardColor, Color(it.rgb), 0.42f) }
-            } else {
-                val swatch = palette.lightVibrantSwatch ?: palette.lightMutedSwatch ?: palette.dominantSwatch ?: palette.vibrantSwatch
-                swatch?.let { lerp(baseCardColor, Color(it.rgb), 0.18f) }
-            }
-        }.getOrNull() ?: baseCardColor
+    // Tint the card towards the album art's accent off the Main thread.
+    val baseCardColor = LauncherColors.LeftPanelCard
+    val mediaCardTarget by androidx.compose.runtime.produceState(
+        initialValue = baseCardColor,
+        key1 = albumArtBitmap,
+        key2 = isDark,
+        key3 = disableCoverColor,
+    ) {
+        if (disableCoverColor || albumArtBitmap == null) {
+            value = baseCardColor
+            return@produceState
+        }
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching {
+                val palette = Palette.from(albumArtBitmap.asAndroidBitmap()).generate()
+                if (isDark) {
+                    val swatch = palette.darkVibrantSwatch ?: palette.darkMutedSwatch ?: palette.dominantSwatch
+                    swatch?.let { lerp(baseCardColor, Color(it.rgb), 0.42f) }
+                } else {
+                    val swatch = palette.lightVibrantSwatch ?: palette.lightMutedSwatch ?: palette.dominantSwatch ?: palette.vibrantSwatch
+                    swatch?.let { lerp(baseCardColor, Color(it.rgb), 0.18f) }
+                }
+            }.getOrNull() ?: baseCardColor
+        }
     }
     val mediaCardColor by animateColorAsState(
         targetValue = mediaCardTarget.copy(alpha = mediaCardTarget.alpha * mediaCardAlpha),
@@ -283,7 +310,13 @@ fun LauncherMediaMiniPlayer(
     val warningTextColor = if (isDark) LauncherColors.AccentCyan else Color(0xFF0284C7)
 
     val pickerTitle = stringResource(R.string.launcher_media_bind_player)
-    LaunchedEffect(pickerVisible) {
+    DisposableEffect(Unit) {
+        onDispose {
+            LauncherOverlayElevator.setHoldSource("media_picker", false)
+            LauncherAppPickerOverlayWindow.hide()
+        }
+    }
+    LaunchedEffect(pickerVisible, mediaPickerApps) {
         LauncherOverlayElevator.setHoldSource("media_picker", pickerVisible)
         if (pickerVisible) {
             val shown = LauncherAppPickerOverlayWindow.show(
@@ -676,7 +709,7 @@ private fun RotatingPlayerNameText(
     val pathRadiusPx = playButtonRadiusPx + with(density) { 10.dp.toPx() }
 
     val infiniteTransition = rememberInfiniteTransition(label = "playerTextRotation")
-    val rotationAngle by infiniteTransition.animateFloat(
+    val rotationAngleState = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -712,17 +745,18 @@ private fun RotatingPlayerNameText(
             sectorUnit.repeat(count)
         }
     }
+    val reusablePath = remember { android.graphics.Path() }
 
     Canvas(modifier = modifier) {
         if (formattedText.isNotBlank()) {
             val centerX = size.width / 2f
             val centerY = size.height / 2f
-            val path = android.graphics.Path().apply {
-                addCircle(centerX, centerY, pathRadiusPx, android.graphics.Path.Direction.CW)
-            }
+            reusablePath.reset()
+            reusablePath.addCircle(centerX, centerY, pathRadiusPx, android.graphics.Path.Direction.CW)
+            val angle = rotationAngleState.value
             drawIntoCanvas { canvas ->
-                canvas.nativeCanvas.withRotation(rotationAngle, centerX, centerY) {
-                    drawTextOnPath(formattedText, path, 0f, 0f, paint)
+                canvas.nativeCanvas.withRotation(angle, centerX, centerY) {
+                    drawTextOnPath(formattedText, reusablePath, 0f, 0f, paint)
                 }
             }
         }

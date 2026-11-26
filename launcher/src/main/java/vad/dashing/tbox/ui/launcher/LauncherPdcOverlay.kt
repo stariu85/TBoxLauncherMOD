@@ -92,22 +92,23 @@ fun LauncherPdcOverlay(
     val hasPhysicalObstacle = hasPhysicalPdcObstacle(pdc)
     val showOverlay = pasOn || hasPhysicalObstacle
 
-    val overlayAlpha by animateFloatAsState(
+    val overlayAlphaState = animateFloatAsState(
         targetValue = if (showOverlay) 1f else 0f,
         animationSpec = if (showOverlay) tween(200) else tween(1000, easing = LinearEasing),
         label = "pdcOverlayAlpha",
     )
 
-    if (overlayAlpha <= 0.001f) return
+    if (!showOverlay && overlayAlphaState.value <= 0.001f) return
 
-    val pulse by rememberInfiniteTransition(label = "pdcPulse").animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(label = "pdcAnim")
+    val pulseState = infiniteTransition.animateFloat(
         initialValue = 0.6f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(380), RepeatMode.Reverse),
         label = "pdcPulseValue",
     )
 
-    val standbyJitter by rememberInfiniteTransition(label = "pdcStandbyJitter").animateFloat(
+    val standbyJitterState = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * Math.PI).toFloat(),
         animationSpec = infiniteRepeatable(
@@ -122,17 +123,48 @@ fun LauncherPdcOverlay(
         lastValidFrame = rings
     }
     val effectiveFrame = rings ?: lastValidFrame
+    val cachedArcGeometry = remember(effectiveFrame) {
+        effectiveFrame?.let { frame ->
+            val ring0 = frame.rings.firstOrNull() ?: return@let null
+            val frontPts = ring0.filter { angleWithinDeg(it.first, -35f, 35f) }
+                .sortedBy { normFrom(it.first, -35f) }
+            val rearPts = ring0.filter { angleWithinDeg(it.first, 145f, 215f) }
+                .sortedBy { normFrom(it.first, 145f) }
+            val frontNosePt = frontPts.minByOrNull { angularDiffDeg(it.first, 0f) }?.second
+            val frontNoseDist = if (frontNosePt != null) {
+                hypot(frontNosePt.x - frame.center.x, frontNosePt.y - frame.center.y)
+            } else {
+                100f
+            }
+            val rearTailPt = rearPts.minByOrNull { angularDiffDeg(it.first, 180f) }?.second
+            val rearTailDist = if (rearTailPt != null) {
+                hypot(rearTailPt.x - frame.center.x, rearTailPt.y - frame.center.y)
+            } else {
+                100f
+            }
+            CachedPdcArcGeometry(
+                frontPts = frontPts,
+                rearPts = rearPts,
+                frontBumperRadius = frontNoseDist * 0.76f,
+                rearBumperRadius = rearTailDist * 0.76f,
+            )
+        }
+    }
+    val reusablePath = remember { Path() }
 
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = overlayAlpha },
+            .graphicsLayer { alpha = overlayAlphaState.value },
     ) {
+        val pulse = pulseState.value
+        val standbyJitter = standbyJitterState.value
         when (visualMode) {
             PDC_VISUAL_ARCS -> {
                 drawBendingPdcArcs(
                     pdc = pdc,
                     frame = effectiveFrame,
+                    cachedGeometry = cachedArcGeometry,
                     standbyJitter = standbyJitter,
                     pulse = pulse,
                 )
@@ -144,11 +176,24 @@ fun LauncherPdcOverlay(
                         frame = effectiveFrame,
                         driving = driving,
                         pulse = pulse,
+                        reusablePath = reusablePath,
                     )
                 }
             }
         }
     }
+}
+
+private class CachedPdcArcGeometry(
+    val frontPts: List<Pair<Float, Offset>>,
+    val rearPts: List<Pair<Float, Offset>>,
+    val frontBumperRadius: Float,
+    val rearBumperRadius: Float,
+)
+
+private fun circularMidAngleDeg(thetaA: Float, thetaB: Float): Float {
+    val diff = ((thetaB - thetaA + 540f) % 360f) - 180f
+    return (thetaA + diff / 2f + 360f) % 360f
 }
 
 private fun normFrom(angle: Float, start: Float): Float =
@@ -287,62 +332,48 @@ private fun DrawScope.computeArcPoint(
 private fun DrawScope.drawBendingPdcArcs(
     pdc: LauncherPdcZones,
     frame: LauncherPdcRingFrame?,
+    cachedGeometry: CachedPdcArcGeometry?,
     standbyJitter: Float,
     pulse: Float,
 ) {
     val gap = 3.dp.toPx()
-    val lineGaps = listOf(-gap, gap)
     val strokeWidth = 2.0.dp.toPx()
     val standbyDistPx = 82.5.dp.toPx() // 82.5dp from 3D bumper in standby
     val targetMinDistPx = 5.dp.toPx() // 5dp at maximum close approach
     val maxBendPx = standbyDistPx - targetMinDistPx // 82.5dp - 5dp = 77.5dp
     val maxJitter = 1.2.dp.toPx()
 
-    if (frame != null) {
-        val ring0 = frame.rings.firstOrNull() ?: return
+    if (frame != null && cachedGeometry != null) {
         val center = frame.center
         val channelAngles = frame.channelAngles
 
-        val frontPts = ring0.filter { angleWithinDeg(it.first, -35f, 35f) }
-            .sortedBy { normFrom(it.first, -35f) }
-        val rearPts = ring0.filter { angleWithinDeg(it.first, 145f, 215f) }
-            .sortedBy { normFrom(it.first, 145f) }
-
-        val frontNosePt = frontPts.minByOrNull { angularDiffDeg(it.first, 0f) }?.second
-        val frontNoseDist = if (frontNosePt != null) hypot(frontNosePt.x - center.x, frontNosePt.y - center.y) else 100f
-        val frontBumperRadius = frontNoseDist * 0.76f
-
-        val rearTailPt = rearPts.minByOrNull { angularDiffDeg(it.first, 180f) }?.second
-        val rearTailDist = if (rearTailPt != null) hypot(rearTailPt.x - center.x, rearTailPt.y - center.y) else 100f
-        val rearBumperRadius = rearTailDist * 0.76f
-
-        val arcGroups = listOf(
-            Triple(frontPts, FRONT_CHANNELS, frontBumperRadius),
-            Triple(rearPts, REAR_CHANNELS, rearBumperRadius),
-        )
-
-        arcGroups.forEach { (pts, channels, bumperRadius) ->
+        fun drawBumperGroup(
+            pts: List<Pair<Float, Offset>>,
+            channels: List<LauncherPdcChannel>,
+            bumperRadius: Float,
+            isFront: Boolean,
+        ) {
             if (pts.size >= 2) {
-                lineGaps.forEachIndexed { lineIdx, lineOffsetGap ->
+                for (lineIdx in 0..1) {
+                    val lineOffsetGap = if (lineIdx == 0) -gap else gap
+                    var prevPos = computeArcPoint(
+                        center = center,
+                        ringPt = pts[0].second,
+                        theta = pts[0].first,
+                        lineIdx = lineIdx,
+                        ptIdx = 0,
+                        bumperRadiusPx = bumperRadius,
+                        lineOffsetGap = lineOffsetGap,
+                        maxBendPx = maxBendPx,
+                        maxJitter = maxJitter,
+                        standbyJitter = standbyJitter,
+                        pdc = pdc,
+                        channels = channels,
+                        channelAngles = channelAngles,
+                    )
                     for (i in 0 until pts.lastIndex) {
-                        val (thetaA, ringPtA) = pts[i]
+                        val thetaA = pts[i].first
                         val (thetaB, ringPtB) = pts[i + 1]
-
-                        val posA = computeArcPoint(
-                            center = center,
-                            ringPt = ringPtA,
-                            theta = thetaA,
-                            lineIdx = lineIdx,
-                            ptIdx = i,
-                            bumperRadiusPx = bumperRadius,
-                            lineOffsetGap = lineOffsetGap,
-                            maxBendPx = maxBendPx,
-                            maxJitter = maxJitter,
-                            standbyJitter = standbyJitter,
-                            pdc = pdc,
-                            channels = channels,
-                            channelAngles = channelAngles,
-                        )
                         val posB = computeArcPoint(
                             center = center,
                             ringPt = ringPtB,
@@ -359,22 +390,24 @@ private fun DrawScope.drawBendingPdcArcs(
                             channelAngles = channelAngles,
                         )
 
-                        val midTheta = (thetaA + thetaB) / 2f
+                        // Circular midpoint avoids wrap-around bug across 356° -> 0° at nose center.
+                        val midTheta = circularMidAngleDeg(thetaA, thetaB)
                         val pMid = proximityAtAngle(midTheta, channels, pdc, channelAngles)
                         val segmentColor = computeArcColor(pMid, lineIdx, pulse)
 
                         drawLine(
                             color = segmentColor,
-                            start = posA,
+                            start = prevPos,
                             end = posB,
                             strokeWidth = strokeWidth,
                             cap = StrokeCap.Round,
                         )
+                        prevPos = posB
                     }
                 }
             } else {
                 drawFallbackSingleBumperArc(
-                    isFront = channels == FRONT_CHANNELS,
+                    isFront = isFront,
                     pdc = pdc,
                     standbyJitter = standbyJitter,
                     pulse = pulse,
@@ -385,6 +418,9 @@ private fun DrawScope.drawBendingPdcArcs(
                 )
             }
         }
+
+        drawBumperGroup(cachedGeometry.frontPts, FRONT_CHANNELS, cachedGeometry.frontBumperRadius, isFront = true)
+        drawBumperGroup(cachedGeometry.rearPts, REAR_CHANNELS, cachedGeometry.rearBumperRadius, isFront = false)
     } else {
         drawFallbackBendingArcs(pdc, standbyJitter, pulse, gap, strokeWidth, maxBendPx, maxJitter)
     }
@@ -483,6 +519,7 @@ private fun DrawScope.drawPdcBands(
     frame: LauncherPdcRingFrame,
     driving: Boolean,
     pulse: Float,
+    reusablePath: Path,
 ) {
     fun segsFor(channels: List<LauncherPdcChannel>, pxPerMeter: Float): List<PdcSeg> =
         channels.mapNotNull { ch ->
@@ -496,19 +533,21 @@ private fun DrawScope.drawPdcBands(
             )
         }.sortedBy { it.angleDeg }
 
-    listOf(
-        false to if (driving) emptyList() else segsFor(FRONT_CHANNELS, frame.pxPerMeterFront),
-        true to segsFor(REAR_CHANNELS, frame.pxPerMeterRear),
-    ).forEach { (isRear, segs) ->
-        if (segs.isEmpty()) return@forEach
+    fun drawSegGroup(isRear: Boolean, segs: List<PdcSeg>) {
+        if (segs.isEmpty()) return
         val maxHalfSpan = if (isRear) 11f else 10f
         segs.forEachIndexed { i, seg ->
             val prevGap = if (i > 0) angularDiffDeg(seg.angleDeg, segs[i - 1].angleDeg) else 40f
             val nextGap = if (i < segs.lastIndex) angularDiffDeg(segs[i + 1].angleDeg, seg.angleDeg) else 40f
             val halfSpan = (minOf(prevGap, nextGap) / 2f - 0.75f).coerceIn(4f, maxHalfSpan)
-            drawPdcSegment(frame, seg, seg.angleDeg - halfSpan, halfSpan * 2f, driving, pulse)
+            drawPdcSegment(frame, seg, seg.angleDeg - halfSpan, halfSpan * 2f, driving, pulse, reusablePath)
         }
     }
+
+    if (!driving) {
+        drawSegGroup(isRear = false, segs = segsFor(FRONT_CHANNELS, frame.pxPerMeterFront))
+    }
+    drawSegGroup(isRear = true, segs = segsFor(REAR_CHANNELS, frame.pxPerMeterRear))
 }
 
 private fun DrawScope.drawPdcSegment(
@@ -518,6 +557,7 @@ private fun DrawScope.drawPdcSegment(
     sweep: Float,
     driving: Boolean,
     pulse: Float,
+    reusablePath: Path,
     extraRadialBoost: Float? = null,
     forceAllRings: Boolean = false,
 ) {
@@ -539,22 +579,23 @@ private fun DrawScope.drawPdcSegment(
     }
     val radialBoost = extraRadialBoost ?: if (driving) 1.05f else 1f
     val strokeWidth = (seg.pxPerMeter * if (driving) 0.13f else 0.12f).coerceIn(6f, 14f)
+    val strokeStyle = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     ringIndex.forEach { ring ->
         val ringPts = frame.rings.getOrNull(ring) ?: return@forEach
         val pts = ringArcPoints(ringPts, startAngle, sweep)
         if (pts.size < 2) return@forEach
-        val path = Path()
+        reusablePath.reset()
         pts.forEachIndexed { index, pt ->
             val x = frame.center.x + (pt.x - frame.center.x) * radialBoost
             val y = frame.center.y + (pt.y - frame.center.y) * radialBoost
-            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            if (index == 0) reusablePath.moveTo(x, y) else reusablePath.lineTo(x, y)
         }
         val alpha = (1f - ring * 0.16f) * alphaScale
         drawPath(
-            path = path,
+            path = reusablePath,
             color = color.copy(alpha = alpha),
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            style = strokeStyle,
         )
     }
 }

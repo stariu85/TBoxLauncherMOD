@@ -45,11 +45,13 @@ import vad.dashing.tbox.camd.CamdSocketClient
 import vad.dashing.tbox.ui.sendToggleMirrorFold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,45 +98,12 @@ import kotlin.math.roundToInt
 internal object LauncherAdasQuickSettingsWindow {
     private const val TAG = "LauncherAdasQuickSetWin"
 
-    @Volatile
-    private var composeView: ComposeView? = null
-    private var lifecycleOwner: MyLifecycleOwner? = null
-    private var windowManager: WindowManager? = null
+    private val overlayWindow = ManagedComposeOverlayWindow(TAG)
 
     private val _isShowingFlow = MutableStateFlow(false)
     val isShowingFlow: StateFlow<Boolean> = _isShowingFlow.asStateFlow()
 
-    fun isShowing(): Boolean = composeView != null
-
-    private fun calculateAdasPanelBounds(context: Context): Rect {
-        val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
-            ?: Rect(0, 51, 344, 1000)
-        val metrics = (activity as Context).resources.displayMetrics
-        val density = metrics.density
-        val screenH = metrics.heightPixels.coerceAtLeast(1080)
-
-        val adasVisible = LauncherAppConfigStore.adasPanelVisible(context)
-        val sidebarDp = LauncherAppConfigStore.sidebarWidthDp(context)
-        val topBarDp = LauncherAppConfigStore.topBarHeightDp(context)
-        val bottomBarDp = LauncherAppConfigStore.bottomBarHeightDp(context)
-
-        val widthPx = if (adasVisible) (sidebarDp * density).toInt() else (344 * density).toInt()
-        val topPx = (topBarDp * density).toInt().coerceIn(0, 100).takeIf { it > 0 } ?: 51
-        val bottomPx = screenH - (bottomBarDp * density).toInt().coerceIn(0, 150)
-
-        val top = LauncherEmbeddedBoundsState.topHeaderBottomPx.takeIf { it > 0 } ?: topPx
-        val bottom = LauncherEmbeddedBoundsState.bottomBarTopPx.takeIf { it > 0 } ?: bottomPx
-        val measuredLeftPanel = LauncherEmbeddedBoundsState.leftPanelBounds
-
-        val width = if (measuredLeftPanel != null && measuredLeftPanel.width() > 200) {
-            measuredLeftPanel.width()
-        } else {
-            widthPx
-        }
-        val height = (bottom - top).coerceAtLeast(400)
-
-        return Rect(0, top, width, top + height)
-    }
+    fun isShowing(): Boolean = overlayWindow.isShowing
 
     fun toggle(
         context: Context,
@@ -158,19 +127,9 @@ internal object LauncherAdasQuickSettingsWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
-        if (!Settings.canDrawOverlays(activity)) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
-            return false
-        }
 
-        val bounds = calculateAdasPanelBounds(activity)
+        val bounds = calculateSharedAdasPanelBounds(activity)
 
-        val owner = MyLifecycleOwner().also {
-            it.setCurrentState(Lifecycle.State.CREATED)
-            it.setCurrentState(Lifecycle.State.STARTED)
-            it.setCurrentState(Lifecycle.State.RESUMED)
-        }
-        val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -190,100 +149,73 @@ internal object LauncherAdasQuickSettingsWindow {
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
-        val view = ComposeView(activity).apply {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            setOnKeyListener { _, keyCode, event ->
-                if (keyCode != KeyEvent.KEYCODE_BACK) return@setOnKeyListener false
-                if (event.action == KeyEvent.ACTION_UP) {
-                    hide()
-                }
-                true
-            }
-            setViewTreeLifecycleOwner(owner)
-            setViewTreeSavedStateRegistryOwner(owner)
-            setViewTreeViewModelStoreOwner(activity)
-            setContent {
-                val density = LocalDensity.current
-                val windowHeightDp = with(density) { bounds.height().toDp() }
+        val shown = overlayWindow.show(
+            context = activity,
+            params = params,
+            viewModelStoreOwner = activity,
+            focusableBackHandler = ::hide,
+        ) {
+            val density = LocalDensity.current
+            val windowHeightDp = with(density) { bounds.height().toDp() }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = ::hide,
+                    ),
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .offset(
+                            x = with(density) { bounds.left.toDp() },
+                            y = with(density) { bounds.top.toDp() },
+                        )
+                        .size(
+                            width = with(density) { bounds.width().toDp() },
+                            height = with(density) { bounds.height().toDp() },
+                        )
+                        .background(LauncherColors.LeftPanelBg, RoundedCornerShape(12.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = ::hide,
-                        ),
+                            onClick = {},
+                        )
+                        .padding(8.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .offset(
-                                x = with(density) { bounds.left.toDp() },
-                                y = with(density) { bounds.top.toDp() },
-                            )
-                            .size(
-                                width = with(density) { bounds.width().toDp() },
-                                height = with(density) { bounds.height().toDp() },
-                            )
-                            .background(LauncherColors.LeftPanelBg, RoundedCornerShape(12.dp))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = {},
-                            )
-                            .padding(8.dp),
-                    ) {
-                        ProvideUiClickSounds {
-                            tboxViewModel.currentTheme.collectAsStateWithLifecycle()
-                            vad.dashing.tbox.ui.theme.TboxAppTheme(theme = 2) {
-                                BackHandler {
-                                    hide()
-                                }
-                                LauncherAdasQuickSettingsContent(
-                                    canViewModel = canViewModel,
-                                    windowHeightDp = windowHeightDp,
-                                )
+                    ProvideUiClickSounds {
+                        vad.dashing.tbox.ui.theme.TboxAppTheme(theme = 2) {
+                            BackHandler {
+                                hide()
                             }
+                            LauncherAdasQuickSettingsContent(
+                                canViewModel = canViewModel,
+                                windowHeightDp = windowHeightDp,
+                            )
                         }
                     }
                 }
             }
         }
 
-        return runCatching {
-            lifecycleOwner = owner
-            windowManager = wm
-            wm.addView(view, params)
-            composeView = view
-            _isShowingFlow.value = true
-            LauncherVehicleControlRepository.refreshNow()
-            view.requestFocus()
-            LauncherOverlayBar.bringToFront()
-            LauncherEdgeGestureOverlay.bringToFront()
-            true
-        }.onFailure {
-            Log.e(TAG, "Unable to add adas quick settings overlay", it)
+        if (!shown) {
             _isShowingFlow.value = false
-            lifecycleOwner = null
-            windowManager = null
-            owner.setCurrentState(Lifecycle.State.DESTROYED)
-            owner.clear()
-        }.getOrDefault(false)
+            return false
+        }
+
+        _isShowingFlow.value = true
+        LauncherVehicleControlRepository.refreshNow()
+        overlayWindow.composeView?.requestFocus()
+        LauncherOverlayBar.bringToFront()
+        LauncherEdgeGestureOverlay.bringToFront()
+        return true
     }
 
     fun hide() {
-        val view = composeView ?: return
-        composeView = null
+        if (!overlayWindow.hide()) return
         _isShowingFlow.value = false
         LauncherCar3DModelTrigger.notifyQuickSettingsClosed()
-        runCatching { windowManager?.removeViewImmediate(view) }
-            .onFailure { Log.w(TAG, "Unable to remove adas quick settings overlay", it) }
-        windowManager = null
-        lifecycleOwner?.let { owner ->
-            owner.setCurrentState(Lifecycle.State.DESTROYED)
-            owner.clear()
-        }
-        lifecycleOwner = null
     }
 }
 
@@ -427,7 +359,7 @@ private fun LauncherAdasQuickSettingsContent(
         LauncherAppConfigStore.enabledAdasPanels(context)
     }
 
-    val availableItems = remember(directlyVisiblePanels, carColorPanelVisible, accPresetsInQuickSettingsVisible, isConventional, enabledPanels) {
+    val availableItems = remember(directlyVisiblePanels, miniPlayerVisible, carColorPanelVisible, accPresetsInQuickSettingsVisible, isConventional, enabledPanels) {
         val allCandidates = listOf(
             "media_player",
             "drive_mode",
@@ -666,49 +598,51 @@ private fun LauncherAdasQuickSettingsContent(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             quickTopPanels.forEach { id ->
-                                RenderQuickPanelCard(
-                                    id = id,
-                                    activeGear = activeGear,
-                                    adas = adas,
-                                    canViewModel = canViewModel,
-                                    primarySlots = primarySlots,
-                                    draggingItemId = draggingItemId,
-                                    dragOffsetY = dragOffsetY,
-                                    showBadges = showQuickBadges,
-                                    mediaPlayerHeightDp = mediaPlayerHeightDp,
-                                    containerWindowTopPx = containerWindowTopPx,
-                                    onDragStart = { item, topPx, hPx ->
-                                        draggingItemId = item
-                                        activeGreenPlusItemId = item
-                                        initialPanelTopPx = topPx
-                                        panelHeightPx = hPx
-                                        hideQuickBadgesTimerJob?.cancel()
-                                        showQuickBadges = true
-                                    },
-                                    onDragMove = { deltaY ->
-                                        dragOffsetY = deltaY
-                                    },
-                                    onDragEnd = { accumulativeY ->
-                                        val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
-                                        val newLayout = calculateNewPanelLayout(
-                                            draggedPanelId = id,
-                                            releasedCenterY = releasedCenterY,
-                                            containerHeightPx = quickContainerHeightPx,
-                                            currentTop = quickTopPanels,
-                                            currentBottom = quickBottomPanels,
-                                        )
-                                        draggingItemId = null
-                                        dragOffsetY = 0f
-                                        LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+                                key(id) {
+                                    RenderQuickPanelCard(
+                                        id = id,
+                                        activeGear = activeGear,
+                                        adas = adas,
+                                        canViewModel = canViewModel,
+                                        primarySlots = primarySlots,
+                                        draggingItemId = draggingItemId,
+                                        dragOffsetY = dragOffsetY,
+                                        showBadges = showQuickBadges,
+                                        mediaPlayerHeightDp = mediaPlayerHeightDp,
+                                        containerWindowTopPx = containerWindowTopPx,
+                                        onDragStart = { item, topPx, hPx ->
+                                            draggingItemId = item
+                                            activeGreenPlusItemId = item
+                                            initialPanelTopPx = topPx
+                                            panelHeightPx = hPx
+                                            hideQuickBadgesTimerJob?.cancel()
+                                            showQuickBadges = true
+                                        },
+                                        onDragMove = { deltaY ->
+                                            dragOffsetY = deltaY
+                                        },
+                                        onDragEnd = { accumulativeY ->
+                                            val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
+                                            val newLayout = calculateNewPanelLayout(
+                                                draggedPanelId = id,
+                                                releasedCenterY = releasedCenterY,
+                                                containerHeightPx = quickContainerHeightPx,
+                                                currentTop = quickTopPanels,
+                                                currentBottom = quickBottomPanels,
+                                            )
+                                            draggingItemId = null
+                                            dragOffsetY = 0f
+                                            LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
 
-                                        hideQuickBadgesTimerJob?.cancel()
-                                        hideQuickBadgesTimerJob = scope.launch {
-                                            delay(5000L)
-                                            showQuickBadges = false
-                                        }
-                                    },
-                                    onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
-                                )
+                                            hideQuickBadgesTimerJob?.cancel()
+                                            hideQuickBadgesTimerJob = scope.launch {
+                                                delay(5000L)
+                                                showQuickBadges = false
+                                            }
+                                        },
+                                        onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
+                                    )
+                                }
                             }
                         }
                     }
@@ -728,49 +662,51 @@ private fun LauncherAdasQuickSettingsContent(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             quickBottomPanels.forEach { id ->
-                                RenderQuickPanelCard(
-                                    id = id,
-                                    activeGear = activeGear,
-                                    adas = adas,
-                                    canViewModel = canViewModel,
-                                    primarySlots = primarySlots,
-                                    draggingItemId = draggingItemId,
-                                    dragOffsetY = dragOffsetY,
-                                    showBadges = showQuickBadges,
-                                    mediaPlayerHeightDp = mediaPlayerHeightDp,
-                                    containerWindowTopPx = containerWindowTopPx,
-                                    onDragStart = { item, topPx, hPx ->
-                                        draggingItemId = item
-                                        activeGreenPlusItemId = item
-                                        initialPanelTopPx = topPx
-                                        panelHeightPx = hPx
-                                        hideQuickBadgesTimerJob?.cancel()
-                                        showQuickBadges = true
-                                    },
-                                    onDragMove = { deltaY ->
-                                        dragOffsetY = deltaY
-                                    },
-                                    onDragEnd = { accumulativeY ->
-                                        val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
-                                        val newLayout = calculateNewPanelLayout(
-                                            draggedPanelId = id,
-                                            releasedCenterY = releasedCenterY,
-                                            containerHeightPx = quickContainerHeightPx,
-                                            currentTop = quickTopPanels,
-                                            currentBottom = quickBottomPanels,
-                                        )
-                                        draggingItemId = null
-                                        dragOffsetY = 0f
-                                        LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
+                                key(id) {
+                                    RenderQuickPanelCard(
+                                        id = id,
+                                        activeGear = activeGear,
+                                        adas = adas,
+                                        canViewModel = canViewModel,
+                                        primarySlots = primarySlots,
+                                        draggingItemId = draggingItemId,
+                                        dragOffsetY = dragOffsetY,
+                                        showBadges = showQuickBadges,
+                                        mediaPlayerHeightDp = mediaPlayerHeightDp,
+                                        containerWindowTopPx = containerWindowTopPx,
+                                        onDragStart = { item, topPx, hPx ->
+                                            draggingItemId = item
+                                            activeGreenPlusItemId = item
+                                            initialPanelTopPx = topPx
+                                            panelHeightPx = hPx
+                                            hideQuickBadgesTimerJob?.cancel()
+                                            showQuickBadges = true
+                                        },
+                                        onDragMove = { deltaY ->
+                                            dragOffsetY = deltaY
+                                        },
+                                        onDragEnd = { accumulativeY ->
+                                            val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeY
+                                            val newLayout = calculateNewPanelLayout(
+                                                draggedPanelId = id,
+                                                releasedCenterY = releasedCenterY,
+                                                containerHeightPx = quickContainerHeightPx,
+                                                currentTop = quickTopPanels,
+                                                currentBottom = quickBottomPanels,
+                                            )
+                                            draggingItemId = null
+                                            dragOffsetY = 0f
+                                            LauncherAppConfigStore.setQuickSettingsPanelsLayout(context, newLayout.first, newLayout.second)
 
-                                        hideQuickBadgesTimerJob?.cancel()
-                                        hideQuickBadgesTimerJob = scope.launch {
-                                            delay(5000L)
-                                            showQuickBadges = false
-                                        }
-                                    },
-                                    onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
-                                )
+                                            hideQuickBadgesTimerJob?.cancel()
+                                            hideQuickBadgesTimerJob = scope.launch {
+                                                delay(5000L)
+                                                showQuickBadges = false
+                                            }
+                                        },
+                                        onAddClick = { addPanelToAdas(it); activeGreenPlusItemId = null },
+                                    )
+                                }
                             }
                         }
                     }
@@ -813,6 +749,9 @@ private fun RenderQuickPanelCard(
 
     var localTopPx by remember { mutableFloatStateOf(0f) }
     var localHeightPx by remember { mutableFloatStateOf(0f) }
+    val latestOnDragStart by rememberUpdatedState(onDragStart)
+    val latestOnDragMove by rememberUpdatedState(onDragMove)
+    val latestOnDragEnd by rememberUpdatedState(onDragEnd)
 
     Box(
         modifier = Modifier
@@ -864,7 +803,7 @@ private fun RenderQuickPanelCard(
                         if (!pointer.pressed) {
                             if (dragActive) {
                                 pointer.consume()
-                                onDragEnd(accumulativeY)
+                                latestOnDragEnd(accumulativeY)
                             }
                             break
                         }
@@ -875,21 +814,21 @@ private fun RenderQuickPanelCard(
                             val totalDeltaX = abs(pointer.position.x - down.position.x)
                             if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
                                 dragActive = true
-                                onDragStart(id, localTopPx, localHeightPx)
+                                latestOnDragStart(id, localTopPx, localHeightPx)
                                 accumulativeY = pointer.position.y - down.position.y
-                                onDragMove(accumulativeY)
+                                latestOnDragMove(accumulativeY)
                                 pointer.consume()
                             } else if (elapsed >= 1000L) {
                                 dragActive = true
-                                onDragStart(id, localTopPx, localHeightPx)
+                                latestOnDragStart(id, localTopPx, localHeightPx)
                                 accumulativeY = 0f
-                                onDragMove(accumulativeY)
+                                latestOnDragMove(accumulativeY)
                                 pointer.consume()
                             }
                         } else {
                             val frameDelta = pointer.position.y - pointer.previousPosition.y
                             accumulativeY += frameDelta
-                            onDragMove(accumulativeY)
+                            latestOnDragMove(accumulativeY)
                             pointer.consume()
                         }
                     }

@@ -34,11 +34,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.valueToString
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -74,13 +76,23 @@ fun LauncherTireBadges(
 
     LaunchedEffect(inertiaEnabled, isRearView) {
         if (!inertiaEnabled || !isRearView) {
-            launch { targetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
-            launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
+            if (abs(targetYAnim.value) > 0.05f || abs(targetYAnim.targetValue) > 0.05f) {
+                launch { targetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
+            }
+            if (abs(targetXAnim.value) > 0.05f || abs(targetXAnim.targetValue) > 0.05f) {
+                launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
+            }
             return@LaunchedEffect
         }
         var lastSpeed = currentSpeedState.value
         var accumulatedY = 0f
         var accumulatedX = 0f
+        var yAnimJob: Job? = null
+        var xAnimJob: Job? = null
+        val looseSpring = spring<Float>(
+            dampingRatio = 0.38f, // Loose pendulum oscillation (bouncy)
+            stiffness = 10f,     // Very low stiffness (loose spring / ball on thread)
+        )
 
         while (isActive) {
             delay(40L) // 25 Hz calculation rate for smooth continuous motion
@@ -93,6 +105,7 @@ fun LauncherTireBadges(
             // Y axis: longitudinal acceleration (back = +dp, braking = -dp)
             val impulseY = (delta * 45f).coerceIn(-40f, 40f)
             accumulatedY = (accumulatedY * 0.30f + impulseY * 0.70f).coerceIn(-40f, 40f)
+            if (abs(accumulatedY) < 0.05f) accumulatedY = 0f
 
             // X axis: lateral centrifugal force from steering angle and speed
             // Right turn (steer > 0) -> badges fly LEFT (-40dp)
@@ -102,24 +115,21 @@ fun LauncherTireBadges(
             val targetCentrifugalX = -steerNorm * speedFactor * 50f
 
             accumulatedX = (accumulatedX * 0.30f + targetCentrifugalX * 0.70f).coerceIn(-40f, 40f)
+            if (abs(accumulatedX) < 0.05f) accumulatedX = 0f
 
-            launch {
-                targetYAnim.animateTo(
-                    targetValue = accumulatedY,
-                    animationSpec = spring(
-                        dampingRatio = 0.38f, // Loose pendulum oscillation (bouncy)
-                        stiffness = 10f,     // Very low stiffness (loose spring / ball on thread)
-                    ),
-                )
+            if (abs(accumulatedY - targetYAnim.targetValue) > 0.25f) {
+                yAnimJob?.cancel()
+                val targetY = accumulatedY
+                yAnimJob = launch {
+                    targetYAnim.animateTo(targetValue = targetY, animationSpec = looseSpring)
+                }
             }
-            launch {
-                targetXAnim.animateTo(
-                    targetValue = accumulatedX,
-                    animationSpec = spring(
-                        dampingRatio = 0.38f, // Loose pendulum oscillation (bouncy)
-                        stiffness = 10f,     // Very low stiffness (loose spring / ball on thread)
-                    ),
-                )
+            if (abs(accumulatedX - targetXAnim.targetValue) > 0.25f) {
+                xAnimJob?.cancel()
+                val targetX = accumulatedX
+                xAnimJob = launch {
+                    targetXAnim.animateTo(targetValue = targetX, animationSpec = looseSpring)
+                }
             }
         }
     }
@@ -144,34 +154,39 @@ fun LauncherTireBadges(
         }
         val badgeWidthPx = with(density) { badgeWidth.toPx() }
         val badgeHeightPx = with(density) { badgeHeight.toPx() }
-        val visibleCorners = LauncherWheelCorner.entries.filter { corner ->
-            val wheel = state.wheel(corner)
-            if (showAll) {
-                wheel.available || !state.hasAvailableData
-            } else {
-                wheel.needsAttention(lowPressureThreshold)
+        val visibleCorners = remember(state, showAll, lowPressureThreshold, allowLowTempNotification) {
+            LauncherWheelCorner.entries.filter { corner ->
+                val wheel = state.wheel(corner)
+                if (showAll) {
+                    wheel.available || !state.hasAvailableData
+                } else {
+                    wheel.needsAttention(lowPressureThreshold) ||
+                        (allowLowTempNotification && wheel.isLowTemperature())
+                }
             }
         }
-        val layout = layoutTireCallouts(
-            corners = visibleCorners,
-            anchors = wheelAnchorsPx,
-            containerWidth = boxWidthPx,
-            containerHeight = boxHeightPx,
-            calloutWidth = badgeWidthPx,
-            calloutHeight = badgeHeightPx,
-            gap = with(density) { 18.dp.toPx() },
-        )
+        val gapPx = with(density) { 18.dp.toPx() }
+        val layout = remember(visibleCorners, wheelAnchorsPx, boxWidthPx, boxHeightPx, badgeWidthPx, badgeHeightPx, gapPx) {
+            layoutTireCallouts(
+                corners = visibleCorners,
+                anchors = wheelAnchorsPx,
+                containerWidth = boxWidthPx,
+                containerHeight = boxHeightPx,
+                calloutWidth = badgeWidthPx,
+                calloutHeight = badgeHeightPx,
+                gap = gapPx,
+            )
+        }
 
-        val yOffsetDp = targetYAnim.value
-        val xOffsetDp = targetXAnim.value
-
+        // Read animated inertia offsets strictly in Draw (Canvas) and Layout (Modifier.offset)
+        // phases so steady 60 FPS animations never trigger composition of all badges.
         Canvas(modifier = Modifier.fillMaxSize()) {
+            val cornerXOffsetPx = targetXAnim.value.dp.toPx()
+            val cornerYOffsetPx = targetYAnim.value.dp.toPx()
+            val strokePx = 1.5.dp.toPx()
             visibleCorners.forEach { corner ->
                 val anchor = wheelAnchorsPx[corner] ?: return@forEach
                 val rect = layout[corner] ?: return@forEach
-
-                val cornerXOffsetPx = with(density) { xOffsetDp.dp.toPx() }
-                val cornerYOffsetPx = with(density) { yOffsetDp.dp.toPx() }
 
                 val shiftedLeft = rect.left + cornerXOffsetPx
                 val shiftedTop = rect.top + cornerYOffsetPx
@@ -188,18 +203,13 @@ fun LauncherTireBadges(
                     },
                     start = anchor,
                     end = Offset(endX, shiftedTop + rect.height / 2f),
-                    strokeWidth = with(density) { 1.5.dp.toPx() },
+                    strokeWidth = strokePx,
                     cap = StrokeCap.Round,
                 )
             }
         }
         for (corner in visibleCorners) {
             val rect = layout[corner] ?: continue
-            val cornerXOffsetPx = with(density) { xOffsetDp.dp.toPx() }
-            val cornerYOffsetPx = with(density) { yOffsetDp.dp.toPx() }
-
-            val shiftedLeft = rect.left + cornerXOffsetPx
-            val shiftedTop = rect.top + cornerYOffsetPx
 
             LauncherTireBadge(
                 corner = corner,
@@ -212,7 +222,14 @@ fun LauncherTireBadges(
                 showHundredths = showHundredths,
                 showTemperature = showTemperature,
                 modifier = Modifier
-                    .offset { IntOffset(shiftedLeft.roundToInt(), shiftedTop.roundToInt()) }
+                    .offset {
+                        val cornerXOffsetPx = targetXAnim.value.dp.toPx()
+                        val cornerYOffsetPx = targetYAnim.value.dp.toPx()
+                        IntOffset(
+                            (rect.left + cornerXOffsetPx).roundToInt(),
+                            (rect.top + cornerYOffsetPx).roundToInt(),
+                        )
+                    }
                     .width(badgeWidth),
             )
         }

@@ -27,6 +27,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
@@ -63,7 +64,7 @@ internal object LauncherEdgeGestureOverlay {
 
     private var windowManager: WindowManager? = null
     private var revisionJob: Job? = null
-    private val overlayScope = CoroutineScope(Dispatchers.Main.immediate)
+    internal val overlayScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     fun isShowing(): Boolean = leftView != null || rightView != null || bottomView != null || topView != null
 
@@ -134,10 +135,11 @@ internal object LauncherEdgeGestureOverlay {
         // 1. Left Strip
         if (isActionActive(leftAction)) {
             if (leftView == null) {
-                leftView = createStripView(activity, EDGE_GESTURE_SIDE_LEFT)
-                leftOwner = createOwner()
                 val params = createLayoutParams(type, stripWidthPx, WindowManager.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.TOP)
-                runCatching { wm.addView(leftView, params) }
+                addStripView(wm, activity, EDGE_GESTURE_SIDE_LEFT, params)?.let { (view, owner) ->
+                    leftView = view
+                    leftOwner = owner
+                }
             } else {
                 val params = leftView?.layoutParams as? WindowManager.LayoutParams
                 if (params != null && params.width != stripWidthPx) {
@@ -152,10 +154,11 @@ internal object LauncherEdgeGestureOverlay {
         // 2. Right Strip
         if (isActionActive(rightAction)) {
             if (rightView == null) {
-                rightView = createStripView(activity, EDGE_GESTURE_SIDE_RIGHT)
-                rightOwner = createOwner()
                 val params = createLayoutParams(type, stripWidthPx, WindowManager.LayoutParams.MATCH_PARENT, Gravity.END or Gravity.TOP)
-                runCatching { wm.addView(rightView, params) }
+                addStripView(wm, activity, EDGE_GESTURE_SIDE_RIGHT, params)?.let { (view, owner) ->
+                    rightView = view
+                    rightOwner = owner
+                }
             } else {
                 val params = rightView?.layoutParams as? WindowManager.LayoutParams
                 if (params != null && params.width != stripWidthPx) {
@@ -170,10 +173,11 @@ internal object LauncherEdgeGestureOverlay {
         // 3. Bottom Strip
         if (isActionActive(bottomAction)) {
             if (bottomView == null) {
-                bottomView = createStripView(activity, EDGE_GESTURE_SIDE_BOTTOM)
-                bottomOwner = createOwner()
                 val params = createLayoutParams(type, WindowManager.LayoutParams.MATCH_PARENT, stripWidthPx, Gravity.START or Gravity.BOTTOM)
-                runCatching { wm.addView(bottomView, params) }
+                addStripView(wm, activity, EDGE_GESTURE_SIDE_BOTTOM, params)?.let { (view, owner) ->
+                    bottomView = view
+                    bottomOwner = owner
+                }
             } else {
                 val params = bottomView?.layoutParams as? WindowManager.LayoutParams
                 if (params != null && params.height != stripWidthPx) {
@@ -188,10 +192,11 @@ internal object LauncherEdgeGestureOverlay {
         // 4. Top Strip
         if (isActionActive(topAction)) {
             if (topView == null) {
-                topView = createStripView(activity, EDGE_GESTURE_SIDE_TOP)
-                topOwner = createOwner()
                 val params = createLayoutParams(type, WindowManager.LayoutParams.MATCH_PARENT, stripWidthPx, Gravity.START or Gravity.TOP)
-                runCatching { wm.addView(topView, params) }
+                addStripView(wm, activity, EDGE_GESTURE_SIDE_TOP, params)?.let { (view, owner) ->
+                    topView = view
+                    topOwner = owner
+                }
             } else {
                 val params = topView?.layoutParams as? WindowManager.LayoutParams
                 if (params != null && params.height != stripWidthPx) {
@@ -226,9 +231,14 @@ internal object LauncherEdgeGestureOverlay {
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
-    private fun createStripView(activity: LauncherHomeActivity, side: Int): ComposeView {
+    private fun addStripView(
+        wm: WindowManager,
+        activity: LauncherHomeActivity,
+        side: Int,
+        params: WindowManager.LayoutParams,
+    ): Pair<ComposeView, MyLifecycleOwner>? {
         val owner = createOwner()
-        return ComposeView(activity).apply {
+        val view = ComposeView(activity).apply {
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(activity)
@@ -240,6 +250,13 @@ internal object LauncherEdgeGestureOverlay {
                 }
             }
         }
+        return runCatching {
+            wm.addView(view, params)
+            view to owner
+        }.onFailure { err ->
+            Log.e(TAG, "Failed to add edge gesture strip side=$side", err)
+            owner.destroyAndClear()
+        }.getOrNull()
     }
 
     private fun removeLeftStrip() {
@@ -247,7 +264,7 @@ internal object LauncherEdgeGestureOverlay {
             runCatching { windowManager?.removeViewImmediate(view) }
         }
         leftView = null
-        leftOwner?.clear()
+        leftOwner?.destroyAndClear()
         leftOwner = null
     }
 
@@ -256,7 +273,7 @@ internal object LauncherEdgeGestureOverlay {
             runCatching { windowManager?.removeViewImmediate(view) }
         }
         rightView = null
-        rightOwner?.clear()
+        rightOwner?.destroyAndClear()
         rightOwner = null
     }
 
@@ -265,7 +282,7 @@ internal object LauncherEdgeGestureOverlay {
             runCatching { windowManager?.removeViewImmediate(view) }
         }
         bottomView = null
-        bottomOwner?.clear()
+        bottomOwner?.destroyAndClear()
         bottomOwner = null
     }
 
@@ -274,7 +291,7 @@ internal object LauncherEdgeGestureOverlay {
             runCatching { windowManager?.removeViewImmediate(view) }
         }
         topView = null
-        topOwner?.clear()
+        topOwner?.destroyAndClear()
         topOwner = null
     }
 
@@ -489,7 +506,7 @@ private fun launchHomeItem(context: Context, item: LauncherHomeItem) {
         }
         is LauncherHomeItem.TbmAutomation -> {
             val tbmRepo = TbmRepositoryProvider.get(context)
-            CoroutineScope(Dispatchers.Main).launch {
+            LauncherEdgeGestureOverlay.overlayScope.launch {
                 tbmRepo.runAutomation(item.automationId)
             }
         }

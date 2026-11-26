@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -264,14 +265,17 @@ fun LauncherCompassOverlay(
         }
     }
 
-    // 1-second smoothing animation to prevent erratic heading jumping
-    val animatedHeading by animateFloatAsState(
+    // 1-second smoothing animation to prevent erratic heading jumping (read inside Canvas draw scope)
+    val animatedHeadingState = animateFloatAsState(
         targetValue = continuousHeading,
         animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
         label = "compassHeading",
     )
 
-    val displayHeading = ((animatedHeading % 360f) + 360f) % 360f
+    val currentOnDragY = rememberUpdatedState(onDragY)
+    val currentOnDragEnd = rememberUpdatedState(onDragEnd)
+    val reusableArcPath = remember { Path() }
+    val reusableTrianglePath = remember { Path() }
 
     var isDragging by remember { mutableStateOf(false) }
 
@@ -318,16 +322,17 @@ fun LauncherCompassOverlay(
                     onDragCancel = { isDragging = false },
                     onDragEnd = {
                         isDragging = false
-                        onDragEnd()
+                        currentOnDragEnd.value()
                     },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        onDragY(dragAmount)
+                        currentOnDragY.value(dragAmount)
                     },
                 )
             },
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
+            val displayHeading = ((animatedHeadingState.value % 360f) + 360f) % 360f
             val w = size.width
             val cx = w / 2f
 
@@ -343,19 +348,19 @@ fun LauncherCompassOverlay(
 
             // 1. Draw smooth uniform blue/cyan arc as a single continuous Path without segment cells
             val arcSteps = 96
-            val arcPath = Path().apply {
-                for (i in 0..arcSteps) {
-                    val t = i.toFloat() / arcSteps
-                    val alpha = -phiMaxRad + t * 2f * phiMaxRad
-                    val x = cx + sin(alpha) * rx
-                    val y = arcTopY + (1f - cos(alpha)) * ry
-                    if (i == 0) {
-                        moveTo(x, y)
-                    } else {
-                        lineTo(x, y)
-                    }
+            reusableArcPath.reset()
+            for (i in 0..arcSteps) {
+                val t = i.toFloat() / arcSteps
+                val alpha = -phiMaxRad + t * 2f * phiMaxRad
+                val x = cx + sin(alpha) * rx
+                val y = arcTopY + (1f - cos(alpha)) * ry
+                if (i == 0) {
+                    reusableArcPath.moveTo(x, y)
+                } else {
+                    reusableArcPath.lineTo(x, y)
                 }
             }
+            val arcPath = reusableArcPath
 
             val arcColor = if (isDark) {
                 if (isDragging) Color(0xFF7DD3FC) else Color(0xFF38BDF8)
@@ -492,12 +497,12 @@ fun LauncherCompassOverlay(
             val arrowBaseY = arrowApexY + arrowHeight
             val arrowHalfW = 6.5.dp.toPx()
 
-            val trianglePath = Path().apply {
-                moveTo(cx, arrowApexY)
-                lineTo(cx - arrowHalfW, arrowBaseY)
-                lineTo(cx + arrowHalfW, arrowBaseY)
-                close()
-            }
+            reusableTrianglePath.reset()
+            reusableTrianglePath.moveTo(cx, arrowApexY)
+            reusableTrianglePath.lineTo(cx - arrowHalfW, arrowBaseY)
+            reusableTrianglePath.lineTo(cx + arrowHalfW, arrowBaseY)
+            reusableTrianglePath.close()
+            val trianglePath = reusableTrianglePath
 
             if (isDark) {
                 // Subtle dark outline behind triangle for contrast against dark road

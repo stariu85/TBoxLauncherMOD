@@ -1,6 +1,7 @@
 package vad.dashing.tbox.tbm
 
 import android.content.Context
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,12 +39,29 @@ class TbmRepository(
     private val settingsManager: SettingsManager,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
+    @Volatile
     private var currentPort: Int = 8765
+    @Volatile
+    private var cachedToken: String? = null
+    @Volatile
+    private var tokenLoadedFromSettings: Boolean = false
+
+    private fun nowElapsedMs(): Long = try {
+        SystemClock.elapsedRealtime()
+    } catch (_: Throwable) {
+        System.currentTimeMillis()
+    }
 
     init {
         scope.launch {
             settingsManager.tbmApiPortFlow.collect { port ->
                 currentPort = port
+            }
+        }
+        scope.launch {
+            settingsManager.tbmApiTokenFlow.collect { token ->
+                cachedToken = token?.takeIf { it.isNotBlank() }
+                tokenLoadedFromSettings = true
             }
         }
     }
@@ -106,8 +124,11 @@ class TbmRepository(
     private val _locateStatusSignal = MutableStateFlow<Boolean?>(null)
     val locateStatusSignal: StateFlow<Boolean?> = _locateStatusSignal.asStateFlow()
 
+    @Volatile
     private var pollingJob: Job? = null
+    @Volatile
     private var healthCheckJob: Job? = null
+    @Volatile
     private var lastTokenRefreshMs = 0L
 
     // Default signal sets grouped by API source for Launcher widgets/panels
@@ -155,46 +176,81 @@ class TbmRepository(
         }
     }
 
-    private suspend fun ensureTokenAndPort(): String? {
+    fun stopHealthMonitoring() {
+        healthCheckJob?.cancel()
+        healthCheckJob = null
+    }
+
+    private suspend fun persistTokenAndPortIfChanged(token: String?, port: Int?) {
+        val cleanToken = token?.takeIf { it.isNotBlank() }
+        if (cleanToken != null && cleanToken != cachedToken) {
+            cachedToken = cleanToken
+            tokenLoadedFromSettings = true
+            settingsManager.saveTbmApiToken(cleanToken)
+        }
+        if (port != null && port > 0 && port != currentPort) {
+            currentPort = port
+            settingsManager.saveTbmApiPort(port)
+        }
+    }
+
+    private suspend fun ensureTokenAndPort(forceRefresh: Boolean = false): String? {
+        if (!forceRefresh) {
+            val inMemory = cachedToken
+            if (!inMemory.isNullOrBlank()) {
+                return inMemory
+            }
+            if (!tokenLoadedFromSettings) {
+                val persisted = settingsManager.getTbmApiToken()?.takeIf { it.isNotBlank() }
+                cachedToken = persisted
+                tokenLoadedFromSettings = true
+                if (!persisted.isNullOrBlank()) {
+                    return persisted
+                }
+            }
+        }
+
         val localAccess = LocalAccessClient.getAccess(appContext)
-        if (localAccess.isGranted && !localAccess.accessToken.isNullOrEmpty()) {
-            settingsManager.saveTbmApiToken(localAccess.accessToken)
-            settingsManager.saveTbmApiPort(localAccess.port)
+        if (localAccess.isGranted && !localAccess.accessToken.isNullOrBlank()) {
+            persistTokenAndPortIfChanged(localAccess.accessToken, localAccess.port)
             return localAccess.accessToken
-        } else if (localAccess.status == LocalAccessContract.STATUS_PENDING || localAccess.status == LocalAccessContract.STATUS_CONSENT_REQUIRED) {
+        } else if (
+            localAccess.status == LocalAccessContract.STATUS_PENDING ||
+            localAccess.status == LocalAccessContract.STATUS_CONSENT_REQUIRED
+        ) {
             val waited = LocalAccessClient.awaitAccess(appContext, timeoutMs = 15_000L)
-            if (waited.isGranted && !waited.accessToken.isNullOrEmpty()) {
-                settingsManager.saveTbmApiToken(waited.accessToken)
-                settingsManager.saveTbmApiPort(waited.port)
+            if (waited.isGranted && !waited.accessToken.isNullOrBlank()) {
+                persistTokenAndPortIfChanged(waited.accessToken, waited.port)
                 return waited.accessToken
             }
         }
 
-        var token = settingsManager.getTbmApiToken()
-        if (token.isNullOrEmpty() && (localAccess.isNotSupported || localAccess.status == LocalAccessContract.STATUS_UNAVAILABLE)) {
+        var token = cachedToken ?: settingsManager.getTbmApiToken()?.takeIf { it.isNotBlank() }
+        if (token.isNullOrBlank() && (localAccess.isNotSupported || localAccess.status == LocalAccessContract.STATUS_UNAVAILABLE)) {
             val pairResult = apiClient.requestPairing(TBM_CLIENT_ID, "TBox Launcher")
             val pairResp = pairResult.getOrNull()
-            if (pairResp?.status == "approved" && !pairResp.accessToken.isNullOrEmpty()) {
+            if (pairResp?.status == "approved" && !pairResp.accessToken.isNullOrBlank()) {
                 token = pairResp.accessToken
-                settingsManager.saveTbmApiToken(token)
+                persistTokenAndPortIfChanged(token, port = null)
             }
         }
+        cachedToken = token
+        tokenLoadedFromSettings = true
         return token
     }
 
     private suspend fun refreshLocalAccessOnAuthError(): String? {
-        val now = System.currentTimeMillis()
-        if (now - lastTokenRefreshMs < 30_000L) {
-            return settingsManager.getTbmApiToken()
+        val now = nowElapsedMs()
+        if (lastTokenRefreshMs > 0L && now - lastTokenRefreshMs < 30_000L) {
+            return cachedToken ?: settingsManager.getTbmApiToken()
         }
         lastTokenRefreshMs = now
         val localAccess = LocalAccessClient.getAccess(appContext, interactive = false)
-        if (localAccess.isGranted && !localAccess.accessToken.isNullOrEmpty()) {
-            settingsManager.saveTbmApiToken(localAccess.accessToken)
-            settingsManager.saveTbmApiPort(localAccess.port)
+        if (localAccess.isGranted && !localAccess.accessToken.isNullOrBlank()) {
+            persistTokenAndPortIfChanged(localAccess.accessToken, localAccess.port)
             return localAccess.accessToken
         }
-        return settingsManager.getTbmApiToken()
+        return cachedToken ?: settingsManager.getTbmApiToken()
     }
 
     suspend fun checkHealth(): Result<TbmHealthResponse> {
@@ -202,8 +258,8 @@ class TbmRepository(
         _connectionState.value = TbmConnectionState.Connecting
         val healthResult = apiClient.checkHealth()
         healthResult.onSuccess { health ->
-            val token = ensureTokenAndPort()
-            if (!token.isNullOrEmpty()) {
+            val token = ensureTokenAndPort(forceRefresh = cachedToken.isNullOrBlank())
+            if (!token.isNullOrBlank()) {
                 _connectionState.value = TbmConnectionState.Connected(health)
                 startPolling()
             } else {
@@ -226,9 +282,8 @@ class TbmRepository(
             LocalAccessClient.getAccess(appContext, interactive = true)
         }
 
-        if (localAccess.isGranted && !localAccess.accessToken.isNullOrEmpty()) {
-            settingsManager.saveTbmApiToken(localAccess.accessToken)
-            settingsManager.saveTbmApiPort(localAccess.port)
+        if (localAccess.isGranted && !localAccess.accessToken.isNullOrBlank()) {
+            persistTokenAndPortIfChanged(localAccess.accessToken, localAccess.port)
             checkHealth()
             return Result.success(
                 TbmPairResponse(
@@ -243,8 +298,8 @@ class TbmRepository(
             var result = apiClient.requestPairing(clientId, clientName)
             var pairResp = result.getOrNull()
 
-            if (pairResp?.status == "approved" && !pairResp.accessToken.isNullOrEmpty()) {
-                settingsManager.saveTbmApiToken(pairResp.accessToken)
+            if (pairResp?.status == "approved" && !pairResp.accessToken.isNullOrBlank()) {
+                persistTokenAndPortIfChanged(pairResp.accessToken, port = null)
                 checkHealth()
                 return result
             }
@@ -256,8 +311,8 @@ class TbmRepository(
                     delay(1500L)
                     result = apiClient.requestPairing(clientId, clientName, requestId = currentRequestId)
                     pairResp = result.getOrNull()
-                    if (pairResp?.status == "approved" && !pairResp.accessToken.isNullOrEmpty()) {
-                        settingsManager.saveTbmApiToken(pairResp.accessToken)
+                    if (pairResp?.status == "approved" && !pairResp.accessToken.isNullOrBlank()) {
+                        persistTokenAndPortIfChanged(pairResp.accessToken, port = null)
                         checkHealth()
                         return result
                     }
@@ -280,14 +335,14 @@ class TbmRepository(
 
     suspend fun refreshAutomations(): Result<List<TbmAutomationItem>> {
         var token = ensureTokenAndPort()
-        if (token.isNullOrEmpty()) {
+        if (token.isNullOrBlank()) {
             return Result.failure(IllegalStateException("No TBM API token"))
         }
 
         var result = apiClient.getAutomations(token)
         if (result.isFailure && result.exceptionOrNull()?.message?.contains("401") == true) {
             token = refreshLocalAccessOnAuthError()
-            if (!token.isNullOrEmpty()) {
+            if (!token.isNullOrBlank()) {
                 result = apiClient.getAutomations(token)
             }
         }
@@ -300,14 +355,14 @@ class TbmRepository(
 
     suspend fun runAutomation(automationId: String): Result<Boolean> {
         var token = ensureTokenAndPort()
-        if (token.isNullOrEmpty()) {
+        if (token.isNullOrBlank()) {
             return Result.failure(IllegalStateException("No TBM API token"))
         }
 
         var result = apiClient.runAutomation(automationId, token)
         if (result.isFailure && result.exceptionOrNull()?.message?.contains("401") == true) {
             token = refreshLocalAccessOnAuthError()
-            if (!token.isNullOrEmpty()) {
+            if (!token.isNullOrBlank()) {
                 result = apiClient.runAutomation(automationId, token)
             }
         }
@@ -315,11 +370,17 @@ class TbmRepository(
     }
 
     suspend fun invokeAction(action: TbmActionItem): Result<Boolean> {
-        var token = ensureTokenAndPort() ?: return Result.failure(IllegalStateException("No TBM API token"))
+        var token = ensureTokenAndPort()
+        if (token.isNullOrBlank()) {
+            return Result.failure(IllegalStateException("No TBM API token"))
+        }
         var result = apiClient.invokeActions(listOf(action), token)
         if (result.isFailure && result.exceptionOrNull()?.message?.contains("401") == true) {
-            token = refreshLocalAccessOnAuthError() ?: token
-            result = apiClient.invokeActions(listOf(action), token)
+            val refreshed = refreshLocalAccessOnAuthError()
+            if (!refreshed.isNullOrBlank()) {
+                token = refreshed
+                result = apiClient.invokeActions(listOf(action), token)
+            }
         }
         return result.map { it.firstOrNull()?.success == true }
     }
@@ -331,9 +392,10 @@ class TbmRepository(
     ) {
         pollingJob?.cancel()
         pollingJob = scope.launch {
+            var consecutiveErrors = 0
             while (isActive) {
                 val token = ensureTokenAndPort()
-                if (token.isNullOrEmpty()) {
+                if (token.isNullOrBlank()) {
                     _connectionState.value = TbmConnectionState.PairingRequired
                     delay(intervalMs)
                     continue
@@ -345,19 +407,23 @@ class TbmRepository(
                 var lastErrorMessage = ""
                 var unauthorized = false
 
+                fun mergeSignalValues(requestedIds: List<String>, signalValues: List<TbmSignalValue>) {
+                    val receivedIds = HashSet<String>(signalValues.size)
+                    signalValues.forEach { item ->
+                        mergedMap[item.id] = item.value
+                        receivedIds.add(item.id)
+                    }
+                    requestedIds.forEach { id ->
+                        if (!receivedIds.contains(id)) {
+                            mergedMap[id] = null
+                        }
+                    }
+                }
+
                 if (appSignalIds.isNotEmpty()) {
                     val appResult = apiClient.getSignals(ids = appSignalIds, source = "app", token = currentToken)
                     appResult.onSuccess { signalValues ->
-                        val receivedIds = HashSet<String>()
-                        signalValues.forEach { item ->
-                            mergedMap[item.id] = item.value
-                            receivedIds.add(item.id)
-                        }
-                        appSignalIds.forEach { id ->
-                            if (!receivedIds.contains(id)) {
-                                mergedMap[id] = null
-                            }
-                        }
+                        mergeSignalValues(appSignalIds, signalValues)
                     }.onFailure { err ->
                         if (err.message?.contains("401") == true) {
                             unauthorized = true
@@ -369,48 +435,36 @@ class TbmRepository(
 
                 if (unauthorized) {
                     val newToken = refreshLocalAccessOnAuthError()
-                    if (!newToken.isNullOrEmpty()) {
+                    if (!newToken.isNullOrBlank()) {
                         currentToken = newToken
-                        // Retry app signals once with refreshed token
                         val appResult = apiClient.getSignals(ids = appSignalIds, source = "app", token = currentToken)
                         appResult.onSuccess { signalValues ->
-                            val receivedIds = HashSet<String>()
-                            signalValues.forEach { item ->
-                                mergedMap[item.id] = item.value
-                                receivedIds.add(item.id)
-                            }
-                            appSignalIds.forEach { id ->
-                                if (!receivedIds.contains(id)) {
-                                    mergedMap[id] = null
-                                }
-                            }
+                            mergeSignalValues(appSignalIds, signalValues)
                             hasError = false
+                            unauthorized = false
                         }
                     }
                 }
 
                 if (tboxSignalIds.isNotEmpty() && !hasError) {
-                    val tboxResult = apiClient.getSignals(ids = tboxSignalIds, source = "tbox", token = currentToken)
+                    var tboxResult = apiClient.getSignals(ids = tboxSignalIds, source = "tbox", token = currentToken)
+                    if (tboxResult.isFailure && tboxResult.exceptionOrNull()?.message?.contains("401") == true) {
+                        val newToken = refreshLocalAccessOnAuthError()
+                        if (!newToken.isNullOrBlank()) {
+                            currentToken = newToken
+                            tboxResult = apiClient.getSignals(ids = tboxSignalIds, source = "tbox", token = currentToken)
+                        }
+                    }
                     tboxResult.onSuccess { signalValues ->
-                        val receivedIds = HashSet<String>()
-                        signalValues.forEach { item ->
-                            mergedMap[item.id] = item.value
-                            receivedIds.add(item.id)
-                        }
-                        tboxSignalIds.forEach { id ->
-                            if (!receivedIds.contains(id)) {
-                                mergedMap[id] = null
-                            }
-                        }
+                        mergeSignalValues(tboxSignalIds, signalValues)
                     }.onFailure { err ->
-                        if (!hasError) {
-                            hasError = true
-                            lastErrorMessage = err.message ?: "TBox signals polling failed"
-                        }
+                        hasError = true
+                        lastErrorMessage = err.message ?: "TBox signals polling failed"
                     }
                 }
 
                 if (mergedMap.isNotEmpty()) {
+                    consecutiveErrors = 0
                     val currentMap = _signals.value.toMutableMap()
                     currentMap.putAll(mergedMap)
                     _signals.value = currentMap
@@ -418,10 +472,18 @@ class TbmRepository(
                 }
 
                 if (hasError && mergedMap.isEmpty()) {
+                    consecutiveErrors = (consecutiveErrors + 1).coerceAtMost(5)
                     _connectionState.value = TbmConnectionState.Error(lastErrorMessage)
+                } else {
+                    consecutiveErrors = 0
                 }
 
-                delay(intervalMs)
+                val nextDelayMs = if (consecutiveErrors > 0) {
+                    (intervalMs * (1L shl (consecutiveErrors - 1))).coerceAtMost(30_000L)
+                } else {
+                    intervalMs
+                }
+                delay(nextDelayMs)
             }
         }
     }

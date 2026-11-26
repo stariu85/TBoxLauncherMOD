@@ -2,14 +2,23 @@ package vad.dashing.tbox.tbm
 
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
+import vad.dashing.tbox.SharedHttpClient
 
 data class TbmHealthResponse(
     val ok: Boolean,
@@ -67,7 +76,7 @@ class TbmApiClient(
 ) {
     companion object {
         private fun defaultOkHttpClient(): OkHttpClient {
-            return OkHttpClient.Builder()
+            return SharedHttpClient.client.newBuilder()
                 .connectTimeout(3, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
                 .writeTimeout(5, TimeUnit.SECONDS)
@@ -75,19 +84,51 @@ class TbmApiClient(
         }
     }
 
-    private val baseUrl: String
-        get() = "http://$host:${portProvider()}/v1"
+    private fun urlBuilder(): HttpUrl.Builder = HttpUrl.Builder()
+        .scheme("http")
+        .host(host)
+        .port(portProvider())
+        .addPathSegment("v1")
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    private suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutine { cont ->
+        cont.invokeOnCancellation { cancel() }
+        enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                if (cont.isActive) {
+                    cont.resumeWithException(e)
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (cont.isActive) {
+                    cont.resume(response)
+                } else {
+                    response.close()
+                }
+            }
+        })
+    }
+
+    private suspend inline fun <T> runCancellable(crossinline block: suspend () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Result.failure(t)
+        }
+
     suspend fun checkHealth(): Result<TbmHealthResponse> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCancellable {
+            val url = urlBuilder().addPathSegment("health").build()
             val request = Request.Builder()
-                .url("$baseUrl/health")
+                .url(url)
                 .get()
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).awaitResponse().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException("HTTP ${response.code}: ${response.message}")
                 }
@@ -119,7 +160,7 @@ class TbmApiClient(
         clientKind: String = "launcher",
         requestId: String? = null,
     ): Result<TbmPairResponse> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCancellable {
             val jsonBody = JSONObject().apply {
                 put("clientId", clientId)
                 put("clientName", clientName)
@@ -127,16 +168,23 @@ class TbmApiClient(
                 requestId?.let { put("requestId", it) }
             }.toString()
 
+            val url = urlBuilder()
+                .addPathSegment("pair")
+                .addPathSegment("request")
+                .build()
             val request = Request.Builder()
-                .url("$baseUrl/pair/request")
+                .url(url)
                 .post(jsonBody.toRequestBody(jsonMediaType))
                 .build()
 
-            pairingOkHttpClient.newCall(request).execute().use { response ->
+            pairingOkHttpClient.newCall(request).awaitResponse().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("HTTP ${response.code}: ${response.message}")
+                }
                 val body = response.body?.string()?.trim() ?: throw IOException("Empty response body")
                 val json = if (body.startsWith("{")) JSONObject(body) else JSONObject()
                 TbmPairResponse(
-                    status = json.optString("status", if (response.isSuccessful) "approved" else "pending"),
+                    status = json.optString("status", "approved"),
                     requestId = json.optString("requestId").takeIf { it.isNotEmpty() },
                     accessToken = json.optString("accessToken").takeIf { it.isNotEmpty() },
                     clientId = json.optString("clientId").takeIf { it.isNotEmpty() },
@@ -151,12 +199,16 @@ class TbmApiClient(
         source: String? = null,
         token: String,
     ): Result<List<TbmSignalValue>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val idsParam = ids.joinToString(",")
-            var url = "$baseUrl/signals?ids=$idsParam"
-            if (!source.isNullOrEmpty()) {
-                url += "&source=$source"
-            }
+        runCancellable {
+            val url = urlBuilder()
+                .addPathSegment("signals")
+                .addQueryParameter("ids", ids.joinToString(","))
+                .apply {
+                    if (!source.isNullOrEmpty()) {
+                        addQueryParameter("source", source)
+                    }
+                }
+                .build()
 
             val request = Request.Builder()
                 .url(url)
@@ -164,7 +216,7 @@ class TbmApiClient(
                 .get()
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).awaitResponse().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException("HTTP ${response.code}: ${response.message}")
                 }
@@ -199,7 +251,7 @@ class TbmApiClient(
         actions: List<TbmActionItem>,
         token: String,
     ): Result<List<TbmActionResult>> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCancellable {
             val actionsArray = JSONArray()
             actions.forEach { (type, bus, propertyId, operation, value) ->
                 val actObj = JSONObject().apply {
@@ -213,13 +265,17 @@ class TbmApiClient(
             }
             val root = JSONObject().apply { put("actions", actionsArray) }
 
+            val url = urlBuilder()
+                .addPathSegment("actions")
+                .addPathSegment("invoke")
+                .build()
             val request = Request.Builder()
-                .url("$baseUrl/actions/invoke")
+                .url(url)
                 .addHeader("Authorization", "Bearer $token")
                 .post(root.toString().toRequestBody(jsonMediaType))
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).awaitResponse().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException("HTTP ${response.code}: ${response.message}")
                 }
@@ -256,14 +312,17 @@ class TbmApiClient(
     }
 
     suspend fun getAutomations(token: String): Result<List<TbmAutomationItem>> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCancellable {
+            val url = urlBuilder()
+                .addPathSegment("automations")
+                .build()
             val request = Request.Builder()
-                .url("$baseUrl/automations")
+                .url(url)
                 .addHeader("Authorization", "Bearer $token")
                 .get()
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).awaitResponse().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException("HTTP ${response.code}: ${response.message}")
                 }
@@ -301,14 +360,19 @@ class TbmApiClient(
     }
 
     suspend fun runAutomation(automationId: String, token: String): Result<TbmAutomationRunResponse> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCancellable {
+            val url = urlBuilder()
+                .addPathSegment("automations")
+                .addPathSegment(automationId)
+                .addPathSegment("run")
+                .build()
             val request = Request.Builder()
-                .url("$baseUrl/automations/$automationId/run")
+                .url(url)
                 .addHeader("Authorization", "Bearer $token")
                 .post("{}".toRequestBody(jsonMediaType))
                 .build()
 
-            okHttpClient.newCall(request).execute().use { response ->
+            okHttpClient.newCall(request).awaitResponse().use { response ->
                 if (!response.isSuccessful) {
                     throw IOException("HTTP ${response.code}: ${response.message}")
                 }

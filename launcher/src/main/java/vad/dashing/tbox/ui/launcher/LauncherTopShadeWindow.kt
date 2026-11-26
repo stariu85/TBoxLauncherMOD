@@ -3,7 +3,6 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
-import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
@@ -13,7 +12,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -26,21 +24,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.api.DclUiStateNotifier
 import vad.dashing.tbox.LauncherHomeActivityHolder
-import vad.dashing.tbox.ui.MyLifecycleOwner
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 import vad.dashing.tbox.ui.theme.TboxAppTheme
 import kotlin.math.roundToInt
@@ -52,12 +45,9 @@ import kotlin.math.roundToInt
 internal object LauncherTopShadeWindow {
     private const val TAG = "LauncherTopShadeWin"
 
-    @Volatile
-    private var composeView: ComposeView? = null
-    private var lifecycleOwner: MyLifecycleOwner? = null
-    private var windowManager: WindowManager? = null
+    private val overlayWindow = ManagedComposeOverlayWindow(TAG)
 
-    fun isShowing(): Boolean = composeView != null
+    fun isShowing(): Boolean = overlayWindow.isShowing
 
     fun toggle(context: Context): Boolean {
         return if (isShowing()) {
@@ -73,13 +63,8 @@ internal object LauncherTopShadeWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return false
         if (activity.isFinishing || activity.isDestroyed) return false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(activity)) {
-            Log.w(TAG, "SYSTEM_ALERT_WINDOW is not granted")
-            return false
-        }
 
         val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        windowManager = wm
 
         val realMetrics = DisplayMetrics()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -98,13 +83,6 @@ internal object LauncherTopShadeWindow {
 
         val calculatedBottomPx = screenHeightPx - bottomBarHeightPx
         val targetHeightPx = (LauncherEmbeddedBoundsState.bottomBarTopPx.takeIf { it > 0 } ?: calculatedBottomPx).coerceAtLeast(300)
-
-        val owner = MyLifecycleOwner().also {
-            it.setCurrentState(Lifecycle.State.CREATED)
-            it.setCurrentState(Lifecycle.State.STARTED)
-            it.setCurrentState(Lifecycle.State.RESUMED)
-        }
-        lifecycleOwner = owner
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -128,43 +106,32 @@ internal object LauncherTopShadeWindow {
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
-        val view = ComposeView(activity).apply {
-            setViewTreeLifecycleOwner(owner)
-            setViewTreeSavedStateRegistryOwner(owner)
-            setViewTreeViewModelStoreOwner(activity)
-            setContent {
-                ProvideUiClickSounds {
-                    TboxAppTheme(theme = if (LauncherThemeState.darkTheme) 2 else 1) {
-                        TopShadeWrapperContent(
-                            heightDp = (targetHeightPx / density).dp,
-                            onClose = { hide() },
-                        )
-                    }
+        val shown = overlayWindow.show(
+            context = activity,
+            params = params,
+            viewModelStoreOwner = activity,
+            focusableBackHandler = { hide() },
+        ) {
+            ProvideUiClickSounds {
+                TboxAppTheme(theme = if (LauncherThemeState.darkTheme) 2 else 1) {
+                    TopShadeWrapperContent(
+                        heightDp = (targetHeightPx / density).dp,
+                        onClose = { hide() },
+                    )
                 }
             }
         }
-
-        return runCatching {
-            wm.addView(view, params)
-            composeView = view
+        if (shown) {
+            overlayWindow.composeView?.requestFocus()
             LauncherCar3DModelTrigger.setTopShadeOpen(true)
             DclUiStateNotifier.notifyUiStateChanged(activity, immediate = true)
             Log.w(TAG, "Top Shade Window shown successfully: width=$screenWidthPx height=$targetHeightPx")
-            true
-        }.getOrElse { e ->
-            Log.e(TAG, "Failed to show Top Shade Window", e)
-            false
         }
+        return shown
     }
 
     fun hide(context: Context? = null) {
-        val view = composeView ?: return
-        val wm = windowManager ?: return
-        runCatching { wm.removeViewImmediate(view) }
-        composeView = null
-        lifecycleOwner?.clear()
-        lifecycleOwner = null
-        windowManager = null
+        if (!overlayWindow.hide()) return
         LauncherCar3DModelTrigger.setTopShadeOpen(false)
         context?.let { DclUiStateNotifier.notifyUiStateChanged(it, immediate = true) }
         Log.w(TAG, "Top Shade Window hidden")
@@ -198,14 +165,22 @@ private fun TopShadeWrapperContent(
         dismissWithAnimation()
     }
 
-    // Dynamic backdrop effect based on current drag position and theme
-    val openFraction = (1f - (-offsetYAnim.value / heightPx)).coerceIn(0f, 1f)
+    // Dynamic backdrop effect deferred to draw phase to avoid 60 FPS recomposition during drag
     val backdropColor = if (LauncherThemeState.darkTheme) Color.Black else Color.White
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backdropColor.copy(alpha = 0.6f * openFraction))
+            .drawBehind {
+                val openFraction = if (heightPx > 0f) {
+                    (1f - (-offsetYAnim.value / heightPx)).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                if (openFraction > 0f) {
+                    drawRect(backdropColor.copy(alpha = 0.6f * openFraction))
+                }
+            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

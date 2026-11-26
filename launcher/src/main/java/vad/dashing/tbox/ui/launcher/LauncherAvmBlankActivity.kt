@@ -16,7 +16,13 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
 import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.LauncherHomeActivityHolder
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Snapshot holder capturing the desktop (Home screen) before launching [LauncherAvmBlankActivity].
@@ -27,6 +33,12 @@ object LauncherHomeSnapshotHolder {
     private const val TAG = "LauncherHomeSnapshot"
     internal const val THEME_CHANGE_CAPTURE_DELAY_MS = 2_000L
     internal const val SETTINGS_CLOSE_CAPTURE_DELAY_MS = 500L
+    private const val SCREENCAP_TIMEOUT_MS = 3_000L
+
+    private val snapshotScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val screencapExecutor = Executors.newCachedThreadPool { r ->
+        Thread(r, "dcl-screencap").apply { isDaemon = true }
+    }
 
     @Volatile
     var lastSnapshot: Bitmap? = null
@@ -78,6 +90,7 @@ object LauncherHomeSnapshotHolder {
         return (THEME_CHANGE_CAPTURE_DELAY_MS - elapsed).coerceAtLeast(minDelayMs)
     }
 
+    @Synchronized
     fun hasValidSnapshot(): Boolean {
         val bmp = lastSnapshot
         return isSnapshotValidForTheme(
@@ -212,35 +225,78 @@ object LauncherHomeSnapshotHolder {
                 onComplete = onComplete,
             )
         } else {
-            Thread {
-                val bitmap = captureViaScreencap()
-                if (bitmap != null) {
-                    if (currentDarkTheme() == targetDarkTheme) {
-                        updateSnapshot(bitmap, targetDarkTheme, markDesktopCaptured = false)
-                    } else {
-                        bitmap.recycle()
-                    }
+            launchScreencapFallback(targetDarkTheme, onComplete)
+        }
+    }
+
+    private fun launchScreencapFallback(targetDarkTheme: Boolean, onComplete: () -> Unit) {
+        snapshotScope.launch {
+            val bitmap = captureViaScreencap()
+            if (bitmap != null) {
+                if (currentDarkTheme() == targetDarkTheme) {
+                    updateSnapshot(bitmap, targetDarkTheme, markDesktopCaptured = false)
+                } else {
+                    bitmap.recycle()
                 }
-                mainHandler.post { onComplete() }
-            }.start()
+            }
+            mainHandler.post { onComplete() }
         }
     }
 
     private fun captureViaScreencap(): Bitmap? {
-        return runCatching {
-            val process = Runtime.getRuntime().exec(arrayOf("screencap", "-p"))
-            val inputStream = process.inputStream.buffered()
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            process.waitFor()
+        var process: Process? = null
+        return try {
+            process = ProcessBuilder("screencap", "-p")
+                .redirectErrorStream(false)
+                .start()
+            val proc = process
+            runCatching { proc.outputStream.close() }
+            val bitmapFuture = screencapExecutor.submit<Bitmap?> {
+                proc.inputStream.buffered().use { input ->
+                    BitmapFactory.decodeStream(input)
+                }
+            }
+            val stderrFuture = screencapExecutor.submit {
+                runCatching {
+                    proc.errorStream.use { err ->
+                        val buf = ByteArray(1024)
+                        while (err.read(buf) > 0) {
+                            // Drain stderr to avoid child pipe deadlock.
+                        }
+                    }
+                }
+            }
+            val finished = proc.waitFor(SCREENCAP_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            if (!finished) {
+                proc.destroyForcibly()
+                bitmapFuture.cancel(true)
+                stderrFuture.cancel(true)
+                Log.w(TAG, "screencap timed out after ${SCREENCAP_TIMEOUT_MS}ms")
+                return null
+            }
+            val bitmap = runCatching { bitmapFuture.get(500L, TimeUnit.MILLISECONDS) }.getOrNull()
+            runCatching { stderrFuture.get(200L, TimeUnit.MILLISECONDS) }
             if (bitmap != null && bitmap.width > 0 && bitmap.height > 0) {
                 Log.i(TAG, "Captured screen snapshot via screencap ${bitmap.width}x${bitmap.height}")
                 bitmap
             } else {
+                bitmap?.recycle()
                 null
             }
-        }.onFailure { e ->
+        } catch (e: Exception) {
             Log.w(TAG, "Failed screencap execution", e)
-        }.getOrNull()
+            process?.destroyForcibly()
+            null
+        } finally {
+            process?.let { p ->
+                runCatching { p.inputStream.close() }
+                runCatching { p.errorStream.close() }
+                runCatching { p.outputStream.close() }
+                if (p.isAlive) {
+                    runCatching { p.destroyForcibly() }
+                }
+            }
+        }
     }
 
     private fun captureViaPixelCopy(
@@ -266,17 +322,7 @@ object LauncherHomeSnapshotHolder {
         val height = view.height
         if (!view.isAttachedToWindow || width <= 0 || height <= 0) {
             if (allowScreencapFallback) {
-                Thread {
-                    val fb = captureViaScreencap()
-                    if (fb != null) {
-                        if (currentDarkTheme() == targetDarkTheme) {
-                            updateSnapshot(fb, targetDarkTheme, markDesktopCaptured = false)
-                        } else {
-                            fb.recycle()
-                        }
-                    }
-                    mainHandler.post { onComplete() }
-                }.start()
+                launchScreencapFallback(targetDarkTheme, onComplete)
             } else {
                 Log.w(TAG, "Skipping PixelCopy: decorView not ready (${width}x${height}, attached=${view.isAttachedToWindow})")
                 onComplete()
@@ -284,8 +330,10 @@ object LauncherHomeSnapshotHolder {
             return
         }
 
+        var allocatedBitmap: Bitmap? = null
         runCatching {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            allocatedBitmap = bitmap
             PixelCopy.request(
                 window,
                 bitmap,
@@ -303,17 +351,7 @@ object LauncherHomeSnapshotHolder {
                         bitmap.recycle()
                         if (allowScreencapFallback) {
                             Log.w(TAG, "PixelCopy failed with result=$copyResult, trying screencap fallback")
-                            Thread {
-                                val fb = captureViaScreencap()
-                                if (fb != null) {
-                                    if (currentDarkTheme() == targetDarkTheme) {
-                                        updateSnapshot(fb, targetDarkTheme, markDesktopCaptured = false)
-                                    } else {
-                                        fb.recycle()
-                                    }
-                                }
-                                mainHandler.post { onComplete() }
-                            }.start()
+                            launchScreencapFallback(targetDarkTheme, onComplete)
                         } else {
                             Log.w(TAG, "Scheduled desktop PixelCopy failed with result=$copyResult (will retry when desktop is visible)")
                             onComplete()
@@ -323,19 +361,12 @@ object LauncherHomeSnapshotHolder {
                 mainHandler,
             )
         }.onFailure { e ->
+            allocatedBitmap?.let { bmp ->
+                if (!bmp.isRecycled) bmp.recycle()
+            }
             if (allowScreencapFallback) {
                 Log.e(TAG, "Failed to request PixelCopy snapshot, trying screencap fallback", e)
-                Thread {
-                    val fb = captureViaScreencap()
-                    if (fb != null) {
-                        if (currentDarkTheme() == targetDarkTheme) {
-                            updateSnapshot(fb, targetDarkTheme, markDesktopCaptured = false)
-                        } else {
-                            fb.recycle()
-                        }
-                    }
-                    mainHandler.post { onComplete() }
-                }.start()
+                launchScreencapFallback(targetDarkTheme, onComplete)
             } else {
                 Log.w(TAG, "Failed to request scheduled PixelCopy snapshot (will retry when desktop is visible)", e)
                 onComplete()
@@ -349,25 +380,20 @@ object LauncherHomeSnapshotHolder {
         darkTheme: Boolean,
         markDesktopCaptured: Boolean,
     ) {
-        val old = lastSnapshot
+        // Do not eagerly recycle the previous bitmap: ImageView / RenderThread may still draw it.
         lastSnapshot = newBitmap
         snapshotDarkTheme = darkTheme
         if (markDesktopCaptured && currentDarkTheme() == darkTheme) {
             pendingThemeRefresh = false
         }
-        if (old != null && old != newBitmap && !old.isRecycled && !LauncherAvmBlankActivity.isShowing()) {
-            old.recycle()
-        }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     @Synchronized
     fun clearSnapshot(recycleBitmap: Boolean = !LauncherAvmBlankActivity.isShowing()) {
-        val bmp = lastSnapshot
+        // Detach reference and let GC collect safely once RenderThread finishes using any drawn frame.
         lastSnapshot = null
         snapshotDarkTheme = null
-        if (recycleBitmap && bmp != null && !bmp.isRecycled) {
-            bmp.recycle()
-        }
     }
 }
 
@@ -380,6 +406,8 @@ object LauncherHomeSnapshotHolder {
  */
 @Suppress("DEPRECATION")
 class LauncherAvmBlankActivity : Activity() {
+
+    private var snapshotImageView: ImageView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -403,6 +431,7 @@ class LauncherAvmBlankActivity : Activity() {
                 scaleType = ImageView.ScaleType.FIT_XY
                 setImageBitmap(snapshot)
             }
+            snapshotImageView = imageView
             setContentView(imageView)
             Log.i(TAG, "LauncherAvmBlankActivity created with home snapshot background")
         } else {
@@ -431,6 +460,8 @@ class LauncherAvmBlankActivity : Activity() {
     }
 
     override fun onDestroy() {
+        snapshotImageView?.setImageDrawable(null)
+        snapshotImageView = null
         if (instance == this) {
             instance = null
         }
@@ -475,6 +506,8 @@ class LauncherAvmBlankActivity : Activity() {
             val act = instance ?: return
             act.runOnUiThread {
                 if (act.isFinishing || act.isDestroyed) return@runOnUiThread
+                act.snapshotImageView?.setImageDrawable(null)
+                act.snapshotImageView = null
                 val bgColor = getThemeBackgroundColor(act)
                 val bgView = View(act).apply {
                     setBackgroundColor(bgColor)

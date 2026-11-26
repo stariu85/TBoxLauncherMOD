@@ -2,10 +2,13 @@ package vad.dashing.dclwm;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.util.concurrent.TimeUnit;
 
 /** ProcessBuilder wrapper. The argument list is executed as-is, with no shell. */
 public final class ProcessAm implements Am {
-    private static final int TIMEOUT_MS = 8000;
+    private static final long TIMEOUT_MS = 8000L;
+    private static final Charset UTF8 = Charset.forName("UTF-8");
 
     @Override
     public String run(String... args) throws AmFailure {
@@ -21,8 +24,8 @@ public final class ProcessAm implements Am {
         reader.start();
         int code;
         try {
-            if (!waitFor(process, TIMEOUT_MS)) {
-                process.destroy();
+            if (!process.waitFor(TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly();
                 reader.join(500);
                 throw new AmFailure("timeout");
             }
@@ -30,27 +33,32 @@ public final class ProcessAm implements Am {
             reader.join(500);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            process.destroy();
+            process.destroyForcibly();
             throw new AmFailure("interrupted");
+        } finally {
+            closeQuietly(process.getInputStream());
+            closeQuietly(process.getErrorStream());
+            closeQuietly(process.getOutputStream());
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
         }
-        String text = new String(buf.toByteArray(), java.nio.charset.Charset.forName("UTF-8"));
+        String text;
+        synchronized (buf) {
+            text = new String(buf.toByteArray(), UTF8);
+        }
         if (code != 0) {
             throw new AmFailure(text);
         }
         return text;
     }
 
-    private static boolean waitFor(Process process, int timeoutMs) throws InterruptedException {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (true) {
+    private static void closeQuietly(java.io.Closeable closeable) {
+        if (closeable != null) {
             try {
-                process.exitValue();
-                return true;
-            } catch (IllegalThreadStateException running) {
-                if (System.currentTimeMillis() >= deadline) {
-                    return false;
-                }
-                Thread.sleep(10);
+                closeable.close();
+            } catch (Exception ignored) {
+                // Best-effort stream cleanup.
             }
         }
     }

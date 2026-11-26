@@ -2,6 +2,7 @@ package vad.dashing.tbox.mbcan
 
 import android.os.Handler
 import android.os.Looper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,6 +35,7 @@ import vad.dashing.tbox.mbcan.MbCanRepository.stateApplyDispatcher
 import vad.dashing.tbox.ui.decodeHvacTemperatureRaw
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 enum class MbCanSignalCategory { FAST, MEDIUM, SLOW }
 
@@ -188,8 +190,9 @@ object MbCanRepository {
 
     private val sourceSignals = mutableMapOf<String, Set<MbCanSignal>>()
     private val sourceMutex = Mutex()
+    @Volatile
     private var boundScope: CoroutineScope? = null
-    private var reapplyJob: Job? = null
+    private val reapplyJobRef = AtomicReference<Job?>(null)
 
     private val _availability = MutableStateFlow<MbCanAvailability>(MbCanAvailability.Unknown)
     val availability: StateFlow<MbCanAvailability> = _availability.asStateFlow()
@@ -334,7 +337,7 @@ object MbCanRepository {
     suspend fun bind(scope: CoroutineScope) {
         try {
             boundScope = scope
-            _availability.value = MbCanEngineFacade.probeAvailability()
+            _availability.value = withContext(Dispatchers.IO) { MbCanEngineFacade.probeAvailability() }
             MbCanDiagnostics.log("DEBUG", "bind() availability=${_availability.value}")
             android.util.Log.i("TBoxCan", "bind() availability=${_availability.value}")
             MbCanJobManager.attach(scope)
@@ -342,6 +345,8 @@ object MbCanRepository {
             flushPendingCfgPushes()
             flushPendingAudioPushes()
             flushPendingTelemetryPushes()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             MbCanDiagnostics.log("ERROR", "bind() failed: ${e.message}")
             android.util.Log.w("TBoxCan", "bind() failed", e)
@@ -352,7 +357,7 @@ object MbCanRepository {
      * Ensures mbCAN is initialized and republishes [availability] without any widget subscriptions.
      * Used so Settings (e.g. "Reboot HU") can enable controls when no mbCAN dashboard widget was shown yet.
      */
-    suspend fun warmUpAvailabilityForUi() = withContext(Dispatchers.Default) {
+    suspend fun warmUpAvailabilityForUi() = withContext(Dispatchers.IO) {
         try {
             if (MbCanEngineFacade.isInitialized()) {
                 _availability.value = MbCanEngineFacade.availability
@@ -365,6 +370,8 @@ object MbCanRepository {
                 MbCanJobManager.onEngineInitialized()
                 reapplyAllInterests()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             MbCanDiagnostics.log("ERROR", "warmUpAvailabilityForUi ${e.message}")
         }
@@ -389,10 +396,11 @@ object MbCanRepository {
             MbCanEngineFacade.syncVehicleCfgCmdListener(false)
             MbCanEngineFacade.syncAudioCfgCmdListener(false)
             MbCanEngineFacade.unregisterSettingsTelemetryBridge()
-            reapplyJob?.cancel()
-            reapplyJob = null
+            reapplyJobRef.getAndSet(null)?.cancel()
             boundScope = null
             MbCanJobManager.detach()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             MbCanDiagnostics.log("ERROR", "unbind() failed: ${e.message}")
         }
@@ -421,6 +429,7 @@ object MbCanRepository {
             MbCanKnownVehiclePropertyId.HVAC_TEMPERATURE,
             MbCanKnownVehiclePropertyId.HVAC_FR_TEMPERATURE,
             MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH,
+            MbCanKnownVehiclePropertyId.TJA_ICA,
             in carSettingsCfgVehicleIds,
             MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH,
             MbCanKnownVehiclePropertyId.FRONT_RIGHT_SEAT_HEAT_VENT_SWITCH,
@@ -441,10 +450,10 @@ object MbCanRepository {
     }
 
     private fun flushPendingCfgPushes() {
-        val scope = boundScope ?: return
         synchronized(cfgPushScheduleLock) {
             cfgPushFlushScheduled = false
         }
+        val scope = boundScope ?: return
         val snapshot = synchronized(pendingCfgPushes) {
             if (pendingCfgPushes.isEmpty()) return
             pendingCfgPushes.toMap().also { pendingCfgPushes.clear() }
@@ -517,6 +526,10 @@ object MbCanRepository {
                     MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH ->
                         stateEngine.applyWirelessChargingCandidate(
                             MbCanSignalStateEngine.decodeWirelessChargingRaw(raw)
+                        )
+                    MbCanKnownVehiclePropertyId.TJA_ICA ->
+                        stateEngine.applyTjaIcaCandidate(
+                            MbCanSignalStateEngine.decodeTjaIcaRaw(raw)
                         )
                     in carSettingsCfgVehicleIds -> applyCarSettingsVehicleCfgPush(item, raw)
                     MbCanKnownVehiclePropertyId.FRONT_LEFT_SEAT_HEAT_VENT_SWITCH ->
@@ -613,10 +626,10 @@ object MbCanRepository {
     }
 
     private fun flushPendingAudioPushes() {
-        val scope = boundScope ?: return
         synchronized(audioPushScheduleLock) {
             audioPushFlushScheduled = false
         }
+        val scope = boundScope ?: return
         val snapshot = synchronized(pendingAudioPushes) {
             if (pendingAudioPushes.isEmpty()) return
             pendingAudioPushes.toMap().also { pendingAudioPushes.clear() }
@@ -637,12 +650,13 @@ object MbCanRepository {
     }
 
     private fun flushPendingTelemetryPushes() {
-        val scope = boundScope ?: return
         val snapshot = synchronized(telemetryPushLock) {
             telemetryPushFlushScheduled = false
             if (pendingTelemetryPushes.isEmpty()) return
+            if (boundScope == null) return
             pendingTelemetryPushes.toMap().also { pendingTelemetryPushes.clear() }
         }
+        val scope = boundScope ?: return
         scope.launch(stateApplyDispatcher) {
             snapshot.forEach { (signal, value) ->
                 when (signal) {
@@ -938,428 +952,191 @@ object MbCanRepository {
         // Do not overwrite CanDataRepository.steerAngle with property 24.
     }
 
-    private suspend fun refreshSteeringWheelHeat() {
-        withContext(stateApplyDispatcher) {
+    private suspend fun refreshBinaryVehicleParam(
+        propertyId: Int,
+        logName: String,
+        decode: (Int) -> MbCanBinaryState,
+        applyCandidate: suspend (MbCanBinaryState) -> Unit,
+        currentState: () -> MbCanBinaryState,
+    ) {
+        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applySteeringCandidate(MbCanBinaryState.Unknown)
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.canGetVehicleParam(propertyId)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
+            }
+        }
+        withContext(stateApplyDispatcher) {
+            _availability.value = availability
+            if (!initialized) {
+                applyCandidate(MbCanBinaryState.Unknown)
                 return@withContext
             }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
             if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshSteeringWheelHeat unavailable=$availability")
-                stateEngine.applySteeringCandidate(
+                MbCanDiagnostics.log("WARN", "$logName unavailable=$availability")
+                applyCandidate(
                     MbCanBinaryState.Unavailable(
                         reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
                     )
                 )
                 return@withContext
             }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeSteeringWheelHeatRaw(raw)
-            }
-            stateEngine.applySteeringCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshSteeringWheelHeat raw=$raw state=${_steeringWheelHeatState.value}"
-            )
+            val decoded = if (raw == null) MbCanBinaryState.Unknown else decode(raw)
+            applyCandidate(decoded)
+            MbCanDiagnostics.log("DEBUG", "$logName raw=$raw state=${currentState()}")
         }
     }
 
-    private suspend fun refreshWiperMaintenance() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyWiperMaintenanceCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
+    private suspend fun refreshSteeringWheelHeat() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.STEERING_WHEEL_HEAT_SWITCH,
+        logName = "refreshSteeringWheelHeat",
+        decode = MbCanSignalStateEngine::decodeSteeringWheelHeatRaw,
+        applyCandidate = stateEngine::applySteeringCandidate,
+        currentState = { _steeringWheelHeatState.value }
+    )
 
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshWiperMaintenance unavailable=$availability")
-                stateEngine.applyWiperMaintenanceCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeSteeringWheelHeatRaw(raw)
-            }
-            stateEngine.applyWiperMaintenanceCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshWiperMaintenance raw=$raw state=${_wiperMaintenanceState.value}"
-            )
-        }
-    }
+    private suspend fun refreshWiperMaintenance() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.WIPER_MAINTENANCE_SWITCH,
+        logName = "refreshWiperMaintenance",
+        decode = MbCanSignalStateEngine::decodeSteeringWheelHeatRaw,
+        applyCandidate = stateEngine::applyWiperMaintenanceCandidate,
+        currentState = { _wiperMaintenanceState.value }
+    )
 
-    private suspend fun refreshParkingRadar() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyParkingRadarCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
+    private suspend fun refreshParkingRadar() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH,
+        logName = "refreshParkingRadar",
+        decode = MbCanSignalStateEngine::decodeSteeringWheelHeatRaw,
+        applyCandidate = stateEngine::applyParkingRadarCandidate,
+        currentState = { _parkingRadarState.value }
+    )
 
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshParkingRadar unavailable=$availability")
-                stateEngine.applyParkingRadarCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.PARKING_RADAR_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeSteeringWheelHeatRaw(raw)
-            }
-            stateEngine.applyParkingRadarCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshParkingRadar raw=$raw state=${_parkingRadarState.value}"
-            )
-        }
-    }
+    private suspend fun refreshFrontWindscreenHeat() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH,
+        logName = "refreshFrontWindscreenHeat",
+        decode = MbCanSignalStateEngine::decodeFrontWindscreenHeatRaw,
+        applyCandidate = stateEngine::applyWindshieldHeatCandidate,
+        currentState = { _frontWindscreenHeatState.value }
+    )
 
-    private suspend fun refreshFrontWindscreenHeat() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyWindshieldHeatCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
+    private suspend fun refreshHvacDefroster() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH,
+        logName = "refreshHvacDefroster",
+        decode = MbCanSignalStateEngine::decodeHvacDefrosterRaw,
+        applyCandidate = stateEngine::applyHvacDefrosterCandidate,
+        currentState = { _hvacDefrosterState.value }
+    )
 
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshFrontWindscreenHeat unavailable=$availability")
-                stateEngine.applyWindshieldHeatCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.FRONT_WINDSCREEN_HEAT_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeFrontWindscreenHeatRaw(raw)
-            }
-            stateEngine.applyWindshieldHeatCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshFrontWindscreenHeat raw=$raw state=${_frontWindscreenHeatState.value}"
-            )
-        }
-    }
+    private suspend fun refreshHvacAirRecirculation() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION,
+        logName = "refreshHvacAirRecirculation",
+        decode = MbCanSignalStateEngine::decodeHvacAirRecirculationRaw,
+        applyCandidate = stateEngine::applyHvacAirRecirculationCandidate,
+        currentState = { _hvacAirRecirculationState.value }
+    )
 
-    private suspend fun refreshHvacDefroster() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyHvacDefrosterCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
+    private suspend fun refreshHvacAcPower() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.HVAC_POWER,
+        logName = "refreshHvacAcPower",
+        decode = MbCanSignalStateEngine::decodeHvacAcPowerRaw,
+        applyCandidate = stateEngine::applyHvacAcPowerCandidate,
+        currentState = { _hvacAcPowerState.value }
+    )
 
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshHvacDefroster unavailable=$availability")
-                stateEngine.applyHvacDefrosterCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_DEFROSTER_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeHvacDefrosterRaw(raw)
-            }
-            stateEngine.applyHvacDefrosterCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshHvacDefroster raw=$raw state=${_hvacDefrosterState.value}"
-            )
-        }
-    }
+    private suspend fun refreshHvacAutoState() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE,
+        logName = "refreshHvacAutoState",
+        decode = MbCanSignalStateEngine::decodeHvacAutoStateRaw,
+        applyCandidate = stateEngine::applyHvacAutoStateCandidate,
+        currentState = { _hvacAutoState.value }
+    )
 
-    private suspend fun refreshHvacAirRecirculation() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyHvacAirRecirculationCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
+    private suspend fun refreshHvacSyncState() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH,
+        logName = "refreshHvacSyncState",
+        decode = MbCanSignalStateEngine::decodeHvacSyncRaw,
+        applyCandidate = stateEngine::applyHvacSyncCandidate,
+        currentState = { _hvacSyncState.value }
+    )
 
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshHvacAirRecirculation unavailable=$availability")
-                stateEngine.applyHvacAirRecirculationCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AIR_RECIRCULATION)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeHvacAirRecirculationRaw(raw)
-            }
-            stateEngine.applyHvacAirRecirculationCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshHvacAirRecirculation raw=$raw state=${_hvacAirRecirculationState.value}"
-            )
-        }
-    }
-
-    private suspend fun refreshHvacAcPower() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyHvacAcPowerCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshHvacAcPower unavailable=$availability")
-                stateEngine.applyHvacAcPowerCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_POWER)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeHvacAcPowerRaw(raw)
-            }
-            stateEngine.applyHvacAcPowerCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshHvacAcPower raw=$raw state=${_hvacAcPowerState.value}"
-            )
-        }
-    }
-
-    private suspend fun refreshHvacAutoState() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyHvacAutoStateCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshHvacAutoState unavailable=$availability")
-                stateEngine.applyHvacAutoStateCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AUTO_STATE)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeHvacAutoStateRaw(raw)
-            }
-            stateEngine.applyHvacAutoStateCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshHvacAutoState raw=$raw state=${_hvacAutoState.value}"
-            )
-        }
-    }
-
-    private suspend fun refreshHvacSyncState() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyHvacSyncCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshHvacSyncState unavailable=$availability")
-                stateEngine.applyHvacSyncCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_SYNC_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeHvacSyncRaw(raw)
-            }
-            stateEngine.applyHvacSyncCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshHvacSyncState raw=$raw state=${_hvacSyncState.value}"
-            )
-        }
-    }
-
-    private suspend fun refreshHvacDefrosterFront() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyHvacDefrosterFrontCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshHvacDefrosterFront unavailable=$availability")
-                stateEngine.applyHvacDefrosterFrontCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeHvacFrontDefrostMbCanRaw(raw)
-            }
-            stateEngine.applyHvacDefrosterFrontCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshHvacDefrosterFront raw=$raw state=${_hvacDefrosterFrontState.value}"
-            )
-        }
-    }
+    private suspend fun refreshHvacDefrosterFront() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION,
+        logName = "refreshHvacDefrosterFront",
+        decode = MbCanSignalStateEngine::decodeHvacFrontDefrostMbCanRaw,
+        applyCandidate = stateEngine::applyHvacDefrosterFrontCandidate,
+        currentState = { _hvacDefrosterFrontState.value }
+    )
 
     private suspend fun refreshHvacPm25() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AQS)
+                        ?: MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
+            }
+        }
+        withContext(stateApplyDispatcher) {
+            _availability.value = availability
+            if (!initialized) {
                 _hvacPm25State.value = MbCanBinaryState.Unknown
                 return@withContext
             }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_AQS)
-                ?: MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.HVAC_PM25_MONITORING)
             val decoded = if (raw == 2) MbCanBinaryState.On else if (raw == 1) MbCanBinaryState.Off else MbCanBinaryState.Unknown
             _hvacPm25State.value = decoded
             MbCanDiagnostics.log("DEBUG", "refreshHvacPm25 raw=$raw state=$decoded")
         }
     }
 
-    private suspend fun refreshWirelessCharging() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyWirelessChargingCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
+    private suspend fun refreshWirelessCharging() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH,
+        logName = "refreshWirelessCharging",
+        decode = MbCanSignalStateEngine::decodeWirelessChargingRaw,
+        applyCandidate = stateEngine::applyWirelessChargingCandidate,
+        currentState = { _wirelessChargingState.value }
+    )
 
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshWirelessCharging unavailable=$availability")
-                stateEngine.applyWirelessChargingCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.CHG_WIRELESS_SWITCH)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeWirelessChargingRaw(raw)
-            }
-            stateEngine.applyWirelessChargingCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshWirelessCharging raw=$raw state=${_wirelessChargingState.value}"
-            )
-        }
-    }
-
-    private suspend fun refreshTjaIca() {
-        withContext(stateApplyDispatcher) {
-            if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                stateEngine.applyTjaIcaCandidate(MbCanBinaryState.Unknown)
-                return@withContext
-            }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
-                MbCanDiagnostics.log("WARN", "refreshTjaIca unavailable=$availability")
-                stateEngine.applyTjaIcaCandidate(
-                    MbCanBinaryState.Unavailable(
-                        reason = (availability as? MbCanAvailability.Unavailable)?.reason ?: "Unavailable"
-                    )
-                )
-                return@withContext
-            }
-            val raw = MbCanEngineFacade.canGetVehicleParam(MbCanKnownVehiclePropertyId.TJA_ICA)
-            val decoded = if (raw == null) {
-                MbCanBinaryState.Unknown
-            } else {
-                MbCanSignalStateEngine.decodeTjaIcaRaw(raw)
-            }
-            stateEngine.applyTjaIcaCandidate(decoded)
-            MbCanDiagnostics.log(
-                "DEBUG",
-                "refreshTjaIca raw=$raw state=${_tjaIcaState.value}"
-            )
-        }
-    }
+    private suspend fun refreshTjaIca() = refreshBinaryVehicleParam(
+        propertyId = MbCanKnownVehiclePropertyId.TJA_ICA,
+        logName = "refreshTjaIca",
+        decode = MbCanSignalStateEngine::decodeTjaIcaRaw,
+        applyCandidate = stateEngine::applyTjaIcaCandidate,
+        currentState = { _tjaIcaState.value }
+    )
 
     private suspend fun refreshAudioVolumeSpeed() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.canGetAudioParam(MbCanKnownAudioPropertyId.VOLUME_SPEED)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
+            }
+        }
+        withContext(stateApplyDispatcher) {
+            _availability.value = availability
+            if (!initialized) {
                 _audioVolumeSpeedModeState.value = null
                 stateEngine.applyVolumeSpeedCandidate(MbCanBinaryState.Unknown)
                 return@withContext
             }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
             if (availability !is MbCanAvailability.Available) {
                 MbCanDiagnostics.log("WARN", "refreshAudioVolumeSpeed unavailable=$availability")
                 _audioVolumeSpeedModeState.value = null
@@ -1370,7 +1147,6 @@ object MbCanRepository {
                 )
                 return@withContext
             }
-            val raw = MbCanEngineFacade.canGetAudioParam(MbCanKnownAudioPropertyId.VOLUME_SPEED)
             val decoded = if (raw == null) {
                 MbCanBinaryState.Unknown
             } else {
@@ -1387,21 +1163,30 @@ object MbCanRepository {
     }
 
     private suspend fun refreshAudioVolume() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.canGetAudioParam(MbCanKnownAudioPropertyId.VOLUME)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
+            }
+        }
+        withContext(stateApplyDispatcher) {
+            _availability.value = availability
+            if (!initialized) {
                 _audioVolumeState.value = null
                 return@withContext
             }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
             if (availability !is MbCanAvailability.Available) {
                 MbCanDiagnostics.log("WARN", "refreshAudioVolume unavailable=$availability")
                 _audioVolumeState.value = null
                 return@withContext
             }
-            val raw = MbCanEngineFacade.canGetAudioParam(MbCanKnownAudioPropertyId.VOLUME)
             applyAudioVolumeRaw(raw)
             MbCanDiagnostics.log(
                 "DEBUG",
@@ -1411,53 +1196,73 @@ object MbCanRepository {
     }
 
     private suspend fun refreshEngineRpm() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, rpm) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                _engineRpmState.value = null
-                return@withContext
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.readVehicleEngineRpm()?.coerceAtLeast(0f)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
             }
-            val availability = MbCanEngineFacade.availability
+        }
+        withContext(stateApplyDispatcher) {
             _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
+            if (!initialized || availability !is MbCanAvailability.Available) {
                 _engineRpmState.value = null
                 return@withContext
             }
-            _engineRpmState.value = MbCanEngineFacade.readVehicleEngineRpm()?.coerceAtLeast(0f)
+            _engineRpmState.value = rpm
         }
     }
 
     private suspend fun refreshEngineTemperature() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, temp) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                _engineTemperatureState.value = null
-                return@withContext
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.readVehicleEngineTemperature()
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
             }
-            val availability = MbCanEngineFacade.availability
+        }
+        withContext(stateApplyDispatcher) {
             _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
+            if (!initialized || availability !is MbCanAvailability.Available) {
                 _engineTemperatureState.value = null
                 return@withContext
             }
-            _engineTemperatureState.value = MbCanEngineFacade.readVehicleEngineTemperature()
+            _engineTemperatureState.value = temp
         }
     }
 
     private suspend fun refreshCarSpeed() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, newSpeed) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
-                _carSpeedState.value = null
-                return@withContext
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.readVehicleSpeed()?.coerceAtLeast(0f)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
             }
-            val availability = MbCanEngineFacade.availability
+        }
+        withContext(stateApplyDispatcher) {
             _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
+            if (!initialized || availability !is MbCanAvailability.Available) {
                 _carSpeedState.value = null
                 return@withContext
             }
-            val newSpeed = MbCanEngineFacade.readVehicleSpeed()?.coerceAtLeast(0f)
             val current = _carSpeedState.value
             if (current == null || newSpeed == null || kotlin.math.abs(current - newSpeed) >= 0.5f || (newSpeed == 0f && current != 0f)) {
                 _carSpeedState.value = newSpeed
@@ -1508,16 +1313,26 @@ object MbCanRepository {
     }
 
     private suspend fun refreshSeatSlot(slot: MbCanSeatSlot) {
-        withContext(stateApplyDispatcher) {
-            val propertyId = slot.propertyId
+        val propertyId = slot.propertyId
+        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                val value = if (avail is MbCanAvailability.Available) {
+                    MbCanEngineFacade.canGetVehicleParam(propertyId)
+                } else {
+                    null
+                }
+                Triple(true, avail, value)
+            }
+        }
+        withContext(stateApplyDispatcher) {
+            _availability.value = availability
+            if (!initialized) {
                 stateEngine.applySeatCandidate(slot, MbCanSeatModeState.Unknown)
                 return@withContext
             }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
             if (availability !is MbCanAvailability.Available) {
                 stateEngine.applySeatCandidate(
                     slot,
@@ -1527,7 +1342,6 @@ object MbCanRepository {
                 )
                 return@withContext
             }
-            val raw = MbCanEngineFacade.canGetVehicleParam(propertyId)
             val decoded = if (raw == null) {
                 MbCanSeatModeState.Unknown
             } else {
@@ -1545,7 +1359,7 @@ object MbCanRepository {
 
     private suspend fun ensureMbCanReadyIfNeeded() {
         if (MbCanEngineFacade.isInitialized()) return
-        val availability = MbCanEngineFacade.ensureInitialized()
+        val availability = withContext(Dispatchers.IO) { MbCanEngineFacade.ensureInitialized() }
         _availability.value = availability
         MbCanDiagnostics.log("DEBUG", "ensureMbCanReadyIfNeeded availability=$availability")
         if (availability is MbCanAvailability.Available) {
@@ -1556,11 +1370,11 @@ object MbCanRepository {
 
     private fun scheduleReapplyAllInterests() {
         val scope = boundScope ?: return
-        reapplyJob?.cancel()
-        reapplyJob = scope.launch {
+        val nextJob = scope.launch {
             delay(INTERESTS_DEBOUNCE_MS)
             reapplyAllInterests()
         }
+        reapplyJobRef.getAndSet(nextJob)?.cancel()
     }
 
     private suspend fun reapplyAllInterests() {
@@ -1624,31 +1438,39 @@ object MbCanRepository {
     }
 
     private suspend fun refreshCarSettingsVehicleParams() {
-        withContext(stateApplyDispatcher) {
+        val (initialized, availability, values) = withContext(Dispatchers.IO) {
             if (!MbCanEngineFacade.isInitialized()) {
-                _availability.value = MbCanEngineFacade.probeAvailability()
+                Triple(false, MbCanEngineFacade.probeAvailability(), null)
+            } else {
+                val avail = MbCanEngineFacade.availability
+                if (avail !is MbCanAvailability.Available) {
+                    Triple(true, avail, null)
+                } else {
+                    fun readInt(id: Int): Int? =
+                        MbCanEngineFacade.canGetVehicleParam(id)?.let { decodeCarSettingsIntZeroToSix(it) }
+                    val eps = readInt(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_EPS_MODE)
+                    val drive = readInt(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE)
+                    val driveWet = readInt(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET)
+                    Triple(true, avail, Triple(eps, drive, driveWet))
+                }
+            }
+        }
+        withContext(stateApplyDispatcher) {
+            _availability.value = availability
+            if (!initialized) {
                 clearCarSettingsIntParamFlows()
                 return@withContext
             }
-
-            val availability = MbCanEngineFacade.availability
-            _availability.value = availability
-            if (availability !is MbCanAvailability.Available) {
+            if (availability !is MbCanAvailability.Available || values == null) {
                 if (MbCanDiagnostics.enabled.value) {
                     MbCanDiagnostics.log("WARN", "refreshCarSettingsVehicleParams unavailable=$availability")
                 }
                 clearCarSettingsIntParamFlows()
                 return@withContext
             }
-
-            fun readInt(id: Int): Int? =
-                MbCanEngineFacade.canGetVehicleParam(id)?.let { decodeCarSettingsIntZeroToSix(it) }
-
-            _carSettingsEpsMode.value = readInt(MbCanKnownVehiclePropertyId.VEHICLE_PROPERTY_EPS_MODE)
-            kotlinx.coroutines.yield()
-            _carSettingsDriveMode.value = readInt(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE)
-            kotlinx.coroutines.yield()
-            _carSettingsDriveMode6dctWet.value = readInt(MbCanKnownVehiclePropertyId.VEHICLE_DRIVEMODE_6DCT_WET)
+            _carSettingsEpsMode.value = values.first
+            _carSettingsDriveMode.value = values.second
+            _carSettingsDriveMode6dctWet.value = values.third
             if (MbCanDiagnostics.enabled.value) {
                 MbCanDiagnostics.log("DEBUG", "refreshCarSettingsVehicleParams refreshed")
             }

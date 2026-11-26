@@ -376,13 +376,14 @@ internal fun discoverAllMediaPlayerPackages(
             }
     }
 
-    return packages
-        .filter { isPackageInstalled(context, it) }
-        .sortedBy { pkg ->
-            runCatching {
-                pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().lowercase()
-            }.getOrDefault(pkg)
-        }
+    val installed = packages.filter { isPackageInstalled(context, it) }
+    val labelsByPkg = installed.associateWith { pkg ->
+        runCatching {
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().lowercase()
+        }.getOrDefault(pkg)
+    }
+    return installed
+        .sortedBy { pkg -> labelsByPkg[pkg] ?: pkg }
         .prioritize(preferredPackage)
 }
 

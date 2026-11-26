@@ -2,13 +2,20 @@ package vad.dashing.tbox.camd
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import vad.dashing.tbox.PackagePresenceCache
+import java.io.IOException
+import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
 
 /**
  * Representation of a preset exposed by the Camd service (camd >= 0.5.0).
@@ -70,16 +77,11 @@ object CamdSocketClient {
     const val HOST = "127.0.0.1"
     const val PORT = 8770
 
+    private class CamdConnectException(cause: Throwable) :
+        IOException("Camd connect failed: ${cause.message}", cause)
+
     fun isInstalled(context: Context): Boolean {
-        return try {
-            context.packageManager.getPackageInfo(CAMD_PACKAGE_NAME, 0)
-            true
-        } catch (_: PackageManager.NameNotFoundException) {
-            false
-        } catch (t: Throwable) {
-            Log.w(TAG, "isInstalled check failed", t)
-            false
-        }
+        return PackagePresenceCache.isInstalled(context, CAMD_PACKAGE_NAME)
     }
 
     /**
@@ -136,6 +138,7 @@ object CamdSocketClient {
 
     /**
      * Executes a single command session: connect -> send line -> read line -> close.
+     * Cooperatively cancellable: coroutine cancellation immediately closes the underlying socket.
      */
     suspend fun sendCommand(
         line: String,
@@ -143,20 +146,47 @@ object CamdSocketClient {
         readTimeoutMs: Int = 20_000,
         logToRecorder: Boolean = true,
     ): Result<String> = withContext(Dispatchers.IO) {
-        val result = runCatching {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(HOST, PORT), connectTimeoutMs)
-                socket.soTimeout = readTimeoutMs
-                socket.getOutputStream().apply {
-                    write("$line\n".toByteArray(Charsets.UTF_8))
-                    flush()
+        val socketRef = AtomicReference<Socket?>(null)
+        val result = try {
+            suspendCancellableCoroutine<Result<String>> { cont ->
+                cont.invokeOnCancellation {
+                    runCatching { socketRef.getAndSet(null)?.close() }
                 }
-                val response = socket.getInputStream().bufferedReader(Charsets.UTF_8).readLine().orEmpty()
-                if (logToRecorder) {
-                    Log.d(TAG, "Camd cmd='$line' -> resp='$response'")
+                val res = runCatching {
+                    val socket = Socket()
+                    socketRef.set(socket)
+                    if (!cont.isActive) {
+                        socketRef.set(null)
+                        runCatching { socket.close() }
+                        throw CancellationException("Camd command cancelled before connect")
+                    }
+                    socket.use { s ->
+                        try {
+                            s.connect(InetSocketAddress(HOST, PORT), connectTimeoutMs)
+                        } catch (e: Throwable) {
+                            if (!cont.isActive) throw CancellationException("Camd connect cancelled")
+                            throw CamdConnectException(e)
+                        }
+                        s.soTimeout = readTimeoutMs
+                        s.getOutputStream().apply {
+                            write("$line\n".toByteArray(Charsets.UTF_8))
+                            flush()
+                        }
+                        val response = s.getInputStream().bufferedReader(Charsets.UTF_8).readLine().orEmpty()
+                        if (logToRecorder) {
+                            Log.d(TAG, "Camd cmd='$line' -> resp='$response'")
+                        }
+                        response
+                    }
                 }
-                response
+                socketRef.set(null)
+                if (cont.isActive) {
+                    cont.resume(res)
+                }
             }
+        } catch (ce: CancellationException) {
+            runCatching { socketRef.getAndSet(null)?.close() }
+            throw ce
         }
         if (logToRecorder) {
             val response = result.getOrNull()
@@ -170,8 +200,13 @@ object CamdSocketClient {
         result
     }
 
+    private fun isConnectFailure(error: Throwable?): Boolean {
+        return error is CamdConnectException || error is ConnectException
+    }
+
     /**
      * Sends a command, waking up the service and retrying if initial connect fails.
+     * Does NOT retry on post-write read timeouts to avoid duplicating mutating commands.
      * Per spec §2, §5 & §6.1:
      * - connectMs = 1500..2000
      * - readMs = 20_000
@@ -189,6 +224,9 @@ object CamdSocketClient {
         if (firstAttempt.isSuccess) {
             return@withContext firstAttempt
         }
+        if (!isConnectFailure(firstAttempt.exceptionOrNull())) {
+            return@withContext firstAttempt
+        }
 
         if (!isInstalled(context)) {
             vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "sendCommandWithWakeup: Package $CAMD_PACKAGE_NAME not installed")
@@ -198,13 +236,16 @@ object CamdSocketClient {
         // Wake up service via broadcast per spec §2
         vad.dashing.tbox.DclLogRecorder.log("CamdSocketClient", "sendCommandWithWakeup: First attempt failed, waking up service for cmd='$line'...")
         wakeUpService(context)
-        val startTime = System.currentTimeMillis()
+        val startTime = SystemClock.elapsedRealtime()
         var lastError: Throwable? = firstAttempt.exceptionOrNull()
 
-        while (System.currentTimeMillis() - startTime < maxWaitMs) {
+        while (SystemClock.elapsedRealtime() - startTime < maxWaitMs) {
             delay(300L)
             val retry = sendCommand(line, connectTimeoutMs = 1500, readTimeoutMs = readTimeoutMs)
             if (retry.isSuccess) {
+                return@withContext retry
+            }
+            if (!isConnectFailure(retry.exceptionOrNull())) {
                 return@withContext retry
             }
             lastError = retry.exceptionOrNull()

@@ -1,23 +1,26 @@
 package vad.dashing.tbox
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import dashingineering.jetour.tboxcore.TBoxClient
 import dashingineering.jetour.tboxcore.types.LogType
 import dashingineering.jetour.tboxcore.types.TBoxClientCallback
-import java.net.DatagramPacket
-import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -39,9 +42,16 @@ class TboxLinkManager(
     private val packetDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread(r, "launcher-tbox-packets").apply { isDaemon = true }
     }.asCoroutineDispatcher()
+    private val packetChannel = Channel<ByteArray>(
+        capacity = Channel.BUFFERED,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
     private val sendMutex = Mutex()
+    private val clientLifecycleLock = Any()
 
+    @Volatile
     private var client: TBoxClient? = null
+    private var packetConsumerJob: Job? = null
     private var netPollJob: Job? = null
     private var canResubJob: Job? = null
     private var silenceWatchJob: Job? = null
@@ -50,7 +60,14 @@ class TboxLinkManager(
     private val packetSilenceChecks = AtomicInteger(0)
     private val netMisses = AtomicInteger(0)
 
+    private fun nowElapsedMs(): Long = try {
+        SystemClock.elapsedRealtime()
+    } catch (_: Throwable) {
+        System.currentTimeMillis()
+    }
+
     fun start() {
+        startPacketConsumer()
         connect()
         startNetPoll()
         startCanResubscribe()
@@ -63,80 +80,87 @@ class TboxLinkManager(
         netPollJob?.cancel()
         canResubJob?.cancel()
         silenceWatchJob?.cancel()
+        packetConsumerJob?.cancel()
+        packetChannel.close()
+        scope.cancel()
         disconnect()
         packetDispatcher.close()
-        scope.cancel()
+    }
+
+    private fun startPacketConsumer() {
+        if (packetConsumerJob?.isActive == true) return
+        packetConsumerJob = scope.launch(packetDispatcher) {
+            for (data in packetChannel) {
+                try {
+                    handlePacket(data)
+                    if (!TboxRepository.tboxConnected.value) {
+                        onConnected(true)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    TboxRepository.addLog("ERROR", "TBox Proxy", "Error handling incoming data")
+                    Log.e(TAG, "Error handling incoming data", e)
+                }
+            }
+        }
     }
 
     private fun connect() {
-        if (client != null) return
-        val remoteIp = DEFAULT_TBOX_IP
-        val remoteAddress = try {
-            InetAddress.getByName(remoteIp)
-        } catch (e: Exception) {
-            TboxRepository.addLog("ERROR", "TBox Proxy", "Invalid remote IP: $remoteIp")
-            Log.e(TAG, "Invalid remote IP", e)
-            return
-        }
-        val callback = object : TBoxClientCallback {
-            override fun onDataReceived(data: ByteArray) {
-                lastPacketAtMs = System.currentTimeMillis()
-                scope.launch(packetDispatcher) {
-                    try {
-                        val packet = DatagramPacket(data, data.size, remoteAddress, SERVER_PORT)
-                        handlePacket(packet)
-                        if (!TboxRepository.tboxConnected.value) {
-                            onConnected(true)
-                        }
-                    } catch (e: Exception) {
-                        TboxRepository.addLog("ERROR", "TBox Proxy", "Error handling incoming data")
-                        Log.e(TAG, "Error handling incoming data", e)
+        synchronized(clientLifecycleLock) {
+            if (client != null) return
+            val remoteIp = DEFAULT_TBOX_IP
+            val callback = object : TBoxClientCallback {
+                override fun onDataReceived(data: ByteArray) {
+                    lastPacketAtMs = nowElapsedMs()
+                    packetChannel.trySend(data)
+                }
+
+                override fun onLogMessage(type: LogType, tag: String, message: String) {
+                    when (type) {
+                        LogType.ERROR -> TboxRepository.addLog("ERROR", "TBox Proxy/$tag", message)
+                        LogType.WARN -> TboxRepository.addLog("WARN", "TBox Proxy/$tag", message)
+                        else -> Unit
+                    }
+                }
+
+                override fun onConnectionChanged(connected: Boolean) {
+                    TboxRepository.addLog(
+                        "INFO",
+                        "TBox Proxy",
+                        "Bridge connection state: ${if (connected) "connected" else "disconnected"}",
+                    )
+                    if (!connected && TboxRepository.tboxConnected.value) {
+                        onConnected(false)
                     }
                 }
             }
-
-            override fun onLogMessage(type: LogType, tag: String, message: String) {
-                when (type) {
-                    LogType.ERROR -> TboxRepository.addLog("ERROR", "TBox Proxy/$tag", message)
-                    LogType.WARN -> TboxRepository.addLog("WARN", "TBox Proxy/$tag", message)
-                    else -> Unit
-                }
+            try {
+                client = TBoxClient(
+                    context = appContext,
+                    remotePort = SERVER_PORT,
+                    remoteAddress = remoteIp,
+                    callback = callback,
+                ).also { it.initialize() }
+                lastPacketAtMs = nowElapsedMs()
+                TboxRepository.addLog("INFO", "TBox Proxy", "Client initialized for $remoteIp")
+            } catch (e: Exception) {
+                TboxRepository.addLog("ERROR", "TBox Proxy", "Failed to initialize client for $remoteIp")
+                Log.e(TAG, "Failed to initialize client", e)
+                client = null
             }
-
-            override fun onConnectionChanged(connected: Boolean) {
-                TboxRepository.addLog(
-                    "INFO",
-                    "TBox Proxy",
-                    "Bridge connection state: ${if (connected) "connected" else "disconnected"}",
-                )
-                if (!connected && TboxRepository.tboxConnected.value) {
-                    onConnected(false)
-                }
-            }
-        }
-        try {
-            client = TBoxClient(
-                context = appContext,
-                remotePort = SERVER_PORT,
-                remoteAddress = remoteIp,
-                callback = callback,
-            ).also { it.initialize() }
-            lastPacketAtMs = System.currentTimeMillis()
-            TboxRepository.addLog("INFO", "TBox Proxy", "Client initialized for $remoteIp")
-        } catch (e: Exception) {
-            TboxRepository.addLog("ERROR", "TBox Proxy", "Failed to initialize client for $remoteIp")
-            Log.e(TAG, "Failed to initialize client", e)
-            client = null
         }
     }
 
     private fun disconnect() {
-        try {
-            client?.destroy()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to destroy client", e)
-        } finally {
-            client = null
+        synchronized(clientLifecycleLock) {
+            try {
+                client?.destroy()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to destroy client", e)
+            } finally {
+                client = null
+            }
         }
     }
 
@@ -175,7 +199,7 @@ class TboxLinkManager(
             while (isActive) {
                 delay(NET_POLL_MS)
                 if (!TboxRepository.tboxConnected.value) continue
-                val silentFor = System.currentTimeMillis() - lastPacketAtMs
+                val silentFor = nowElapsedMs() - lastPacketAtMs
                 if (silentFor > NET_POLL_MS * 2) {
                     if (packetSilenceChecks.incrementAndGet() >= 3) {
                         onConnected(false)
@@ -197,7 +221,7 @@ class TboxLinkManager(
                     connect()
                 } else if (!TboxRepository.tboxConnected.value) {
                     // Soft bounce: destroy + recreate when bridge is up but TBox is silent.
-                    val silentFor = System.currentTimeMillis() - lastPacketAtMs
+                    val silentFor = nowElapsedMs() - lastPacketAtMs
                     if (silentFor > RECONNECT_MS) {
                         disconnect()
                         connect()
@@ -238,17 +262,25 @@ class TboxLinkManager(
         payload: ByteArray,
         needLog: Boolean = true,
     ): Boolean {
-        val c = client ?: return false
         return try {
             var data = fillHeader(payload.size, tid, SELF_CODE, cmd) + payload
             data += xorSum(data)
-            sendMutex.withLock {
+            val sent = sendMutex.withLock {
+                val c = client ?: return@withLock false
                 withTimeout(1_000) { c.sendRawMessage(data) }
+                true
             }
+            if (!sent) return false
             if (needLog) {
                 TboxRepository.addLog("DEBUG", "Proxy message send", toHexString(data))
             }
             true
+        } catch (e: TimeoutCancellationException) {
+            TboxRepository.addLog("ERROR", "Proxy message send", "Timeout sending message")
+            Log.w(TAG, "send timed out", e)
+            false
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             TboxRepository.addLog("ERROR", "Proxy message send", "Error send message")
             Log.e(TAG, "send failed", e)
@@ -256,12 +288,11 @@ class TboxLinkManager(
         }
     }
 
-    private fun handlePacket(packet: DatagramPacket) {
-        val raw = packet.data.copyOf(packet.length)
+    private fun handlePacket(raw: ByteArray) {
         if (!checkPacket(raw)) return
         val dataLength = extractDataLength(raw)
         if (!checkLength(raw, dataLength)) return
-        val payload = extractData(raw, dataLength)
+        val payload = extractData(raw, dataLength) ?: return
         if (payload.isEmpty()) return
 
         // Byte 9 = SID of response (= module that replied), same as Monitor BackgroundService.
@@ -382,7 +413,8 @@ class TboxLinkManager(
     }
 
     private fun parseCrtCanFrame(data: ByteArray) {
-        if (!data.copyOfRange(0, 4).contentEquals(byteArrayOf(0x00, 0x00, 0x00, 0x00))) return
+        if (data.size < 4) return
+        if (data[0] != 0.toByte() || data[1] != 0.toByte() || data[2] != 0.toByte() || data[3] != 0.toByte()) return
         try {
             CanFramesProcess.process(data, maxFrames = 20)
         } catch (e: Exception) {

@@ -1,7 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.util.Log
-import java.util.concurrent.TimeUnit
+import vad.dashing.tbox.ShellExecutor
 
 private const val TAG = "LauncherAmStack"
 
@@ -10,6 +10,17 @@ private const val TAG = "LauncherAmStack"
  * (`am stack list` / `am stack remove`). Binder [ActivityManager.removeTask] is unreliable here.
  */
 internal object LauncherAmStackShell {
+    private const val AM_SHELL_TIMEOUT_MS = 1_000L
+
+    private val STACK_ID_REGEX = Regex("""Stack id=(\d+)""")
+    private val WINDOWING_MODE_REGEX = Regex("""mWindowingMode=(\w+)""")
+    private val TASK_ID_PKG_REGEX = Regex("""taskId=(\d+):\s*([^/\s]+)""")
+    private val TOP_ACTIVITY_REGEX = Regex("""topActivity=ComponentInfo\{[^/]+/([^}\s]+)""")
+    private val VISIBLE_REGEX = Regex("""visible=(true|false)""")
+    private val BOUNDS_RECT_REGEX = Regex("""bounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)""")
+    private val MBOUNDS_RECT_REGEX = Regex("""mBounds=Rect\((-?\d+),\s*(-?\d+)\s*-\s*(-?\d+),\s*(-?\d+)\)""")
+    private val BOUNDS_BRACKETS_REGEX = Regex("""bounds=\[(-?\d+),\s*(-?\d+)]\[(-?\d+),\s*(-?\d+)]""")
+
     data class StackRow(
         val stackId: Int,
         val windowingMode: String,
@@ -46,28 +57,28 @@ internal object LauncherAmStackShell {
 
         for (raw in out.lineSequence()) {
             val line = raw.trim()
-            val stackMatch = Regex("""Stack id=(\d+)""").find(line)
+            val stackMatch = STACK_ID_REGEX.find(line)
             if (stackMatch != null) {
                 flush()
                 stackId = stackMatch.groupValues[1].toInt()
                 continue
             }
-            Regex("""mWindowingMode=(\w+)""").find(line)?.let {
+            WINDOWING_MODE_REGEX.find(line)?.let {
                 mode = it.groupValues[1]
             }
-            Regex("""taskId=(\d+):\s*([^/\s]+)""").find(line)?.let {
+            TASK_ID_PKG_REGEX.find(line)?.let {
                 taskId = it.groupValues[1].toInt()
                 pkg = it.groupValues[2]
             }
-            Regex("""topActivity=ComponentInfo\{[^/]+/([^}\s]+)""").find(line)?.let {
+            TOP_ACTIVITY_REGEX.find(line)?.let {
                 topClass = it.groupValues[1]
             }
-            Regex("""visible=(true|false)""").find(line)?.let {
+            VISIBLE_REGEX.find(line)?.let {
                 visible = it.groupValues[1] == "true"
             }
-            val boundsMatch = Regex("""bounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)""").find(line)
-                ?: Regex("""mBounds=Rect\((\d+),\s*(\d+)\s*-\s*(\d+),\s*(\d+)\)""").find(line)
-                ?: Regex("""bounds=\[(\d+),\s*(\d+)]\[(\d+),\s*(\d+)]""").find(line)
+            val boundsMatch = BOUNDS_RECT_REGEX.find(line)
+                ?: MBOUNDS_RECT_REGEX.find(line)
+                ?: BOUNDS_BRACKETS_REGEX.find(line)
             if (boundsMatch != null) {
                 val l = boundsMatch.groupValues[1].toInt()
                 val t = boundsMatch.groupValues[2].toInt()
@@ -160,36 +171,28 @@ internal object LauncherAmStackShell {
         return removed
     }
 
-    private fun runAm(vararg args: String): String? =
-        runCatching {
-            val cmd = ArrayList<String>(args.size + 1).apply {
-                add("am")
-                addAll(args)
-            }
-            val proc = ProcessBuilder(cmd)
-                .redirectErrorStream(true)
-                .start()
-            var text = ""
-            val thread = Thread {
-                runCatching {
-                    text = proc.inputStream.bufferedReader().readText()
-                }
-            }
-            thread.start()
-            thread.join(200L)
-            if (thread.isAlive) {
-                runCatching { proc.destroy() }
-                Log.w(TAG, "am ${args.joinToString(" ")} timed out")
-                return null
-            }
-            runCatching { proc.waitFor(200L, TimeUnit.MILLISECONDS) }
-            runCatching { proc.destroy() }
-            if (text.contains("Security exception", ignoreCase = true) || text.contains("Error", ignoreCase = true)) {
-                Log.w(TAG, "am ${args.joinToString(" ")} denied: $text")
-                return null
-            }
-            text
-        }.onFailure {
-            Log.w(TAG, "am ${args.joinToString(" ")} failed", it)
-        }.getOrNull()
+    private fun runAm(vararg args: String): String? {
+        val cmd = ArrayList<String>(args.size + 1).apply {
+            add("am")
+            addAll(args)
+        }
+        val res = ShellExecutor.exec(cmd, timeoutMs = AM_SHELL_TIMEOUT_MS)
+        if (res.timedOut) {
+            Log.w(TAG, "am ${args.joinToString(" ")} timed out")
+            return null
+        }
+        val text = res.output
+        val hasError = text.lineSequence().any { line ->
+            val trimmed = line.trim()
+            trimmed.startsWith("SecurityException", ignoreCase = true) ||
+                trimmed.startsWith("java.lang.SecurityException", ignoreCase = true) ||
+                trimmed.startsWith("Error:", ignoreCase = true) ||
+                trimmed.contains("Security exception", ignoreCase = true)
+        }
+        if (hasError) {
+            Log.w(TAG, "am ${args.joinToString(" ")} denied: ${text.take(200)}")
+            return null
+        }
+        return text
+    }
 }

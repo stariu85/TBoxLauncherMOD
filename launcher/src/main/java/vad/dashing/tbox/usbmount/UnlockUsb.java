@@ -7,7 +7,8 @@ package vad.dashing.tbox.usbmount;
  */
 public class UnlockUsb {
     public static void main(String[] args) {
-        unlock();
+        boolean ok = unlock();
+        System.exit(ok ? 0 : 1);
     }
 
     public static boolean unlock() {

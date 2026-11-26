@@ -3,6 +3,7 @@ package vad.dashing.dclwm;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -15,6 +16,7 @@ import java.util.List;
 public final class Client {
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final int LINE_LIMIT = 400;
+    private static final int SOCKET_TIMEOUT_MS = 3000;
 
     public void ping() throws Exception {
         String response = command("PING");
@@ -169,10 +171,11 @@ public final class Client {
         LocalSocket socket = new LocalSocket();
         try {
             socket.connect(new LocalSocketAddress(Protocol.SOCKET, LocalSocketAddress.Namespace.ABSTRACT));
+            socket.setSoTimeout(SOCKET_TIMEOUT_MS);
             OutputStream out = socket.getOutputStream();
             out.write((line + "\n").getBytes(UTF8));
             out.flush();
-            return readMessage(socket.getInputStream(), line.startsWith("LIST"));
+            return readMessage(new BufferedInputStream(socket.getInputStream()), line.startsWith("LIST"));
         } finally {
             try {
                 socket.close();
@@ -206,19 +209,32 @@ public final class Client {
     /** @return the line without newline, or null on EOF before any byte */
     private static String readLine(InputStream in) throws Exception {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        boolean sawNewline = false;
         while (buf.size() < LINE_LIMIT) {
             int b = in.read();
             if (b < 0) {
                 if (buf.size() == 0) {
                     return null;
                 }
+                sawNewline = true;
                 break;
             }
             if (b == '\n') {
+                sawNewline = true;
                 break;
             }
             if (b != '\r') {
                 buf.write(b);
+            }
+        }
+        if (!sawNewline) {
+            int drained = 0;
+            while (drained < 4096) {
+                int b = in.read();
+                if (b < 0 || b == '\n') {
+                    break;
+                }
+                drained++;
             }
         }
         return new String(buf.toByteArray(), UTF8);

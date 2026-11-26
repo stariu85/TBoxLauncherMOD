@@ -231,48 +231,64 @@ internal object MinimapLightThemeConverter {
 }
 
 /**
- * Reusable double-buffered converter so background frame conversion never mutates a [Bitmap]
+ * Reusable triple-buffered converter so background frame conversion never mutates a [Bitmap]
  * currently being read by Compose's RenderThread and avoids per-frame heap allocations.
  */
 internal class MinimapLightThemeBuffer {
     private var pixelBuffer: IntArray = IntArray(0)
-    private val slots = arrayOfNulls<Bitmap>(2)
+    private val slots = arrayOfNulls<Bitmap>(3)
     private var nextSlot = 0
 
     @Synchronized
     fun convert(source: Bitmap): ImageBitmap? {
         if (source.isRecycled) return null
-        val readable = if (source.config == Bitmap.Config.HARDWARE) {
+        val isHardwareCopy = source.config == Bitmap.Config.HARDWARE
+        val readable = if (isHardwareCopy) {
             source.copy(Bitmap.Config.ARGB_8888, false) ?: return null
         } else {
             source
         }
-        val width = readable.width
-        val height = readable.height
-        if (width <= 0 || height <= 0) return null
-
-        val pixelCount = width * height
-        if (pixelBuffer.size < pixelCount) {
-            pixelBuffer = IntArray(pixelCount)
-        }
-        val pixels = pixelBuffer
         try {
-            readable.getPixels(pixels, 0, width, 0, 0, width, height)
-        } catch (_: IllegalStateException) {
-            return null
-        }
+            val width = readable.width
+            val height = readable.height
+            if (width <= 0 || height <= 0) return null
 
-        MinimapLightThemeConverter.remapPixelsInPlace(pixels, pixelCount)
+            val pixelCount = width * height
+            if (pixelBuffer.size < pixelCount) {
+                pixelBuffer = IntArray(pixelCount)
+            }
+            val pixels = pixelBuffer
+            try {
+                readable.getPixels(pixels, 0, width, 0, 0, width, height)
+            } catch (_: IllegalStateException) {
+                return null
+            }
 
-        val slotIndex = nextSlot
-        nextSlot = slotIndex xor 1
-        var target = slots[slotIndex]
-        if (target == null || target.isRecycled || target.width != width || target.height != height) {
-            target = createBitmap(width, height)
-            slots[slotIndex] = target
+            MinimapLightThemeConverter.remapPixelsInPlace(pixels, pixelCount)
+
+            val slotIndex = nextSlot
+            nextSlot = (slotIndex + 1) % slots.size
+            var target = slots[slotIndex]
+            if (target == null || target.isRecycled || target.width != width || target.height != height) {
+                target = createBitmap(width, height)
+                slots[slotIndex] = target
+            }
+            target.setPixels(pixels, 0, width, 0, 0, width, height)
+            target.prepareToDraw()
+            return target.asImageBitmap()
+        } finally {
+            if (isHardwareCopy && !readable.isRecycled) {
+                readable.recycle()
+            }
         }
-        target.setPixels(pixels, 0, width, 0, 0, width, height)
-        target.prepareToDraw()
-        return target.asImageBitmap()
+    }
+
+    @Synchronized
+    fun release() {
+        for (i in slots.indices) {
+            slots[i] = null
+        }
+        pixelBuffer = IntArray(0)
+        nextSlot = 0
     }
 }

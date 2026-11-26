@@ -3,11 +3,19 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import vad.dashing.tbox.mbcan.MbCanEngineFacade
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import vad.dashing.tbox.ShellExecutor
+import java.util.concurrent.atomic.AtomicBoolean
 
-/** Cached SoftAP credentials (mbCAN string properties 62/63/116, WifiManager fallback). */
+/** Cached SoftAP credentials (WifiManager hidden API + AIService logcat fallback). */
 internal data class LauncherWifiApInfo(
     val ssid: String,
     val password: String,
@@ -15,17 +23,14 @@ internal data class LauncherWifiApInfo(
 )
 
 /**
- * AIService publishes SoftAP params into mbCAN only for a short window (≈10–30 s) after
+ * AIService publishes SoftAP params only for a short window (≈10–30 s) after
  * tethering starts, so [pollStartupWindow] reads aggressively right after process start.
- * Last non-empty snapshot is persisted and restored on next launch. When mbCAN returns
- * nothing, values are read straight from [WifiManager.getWifiApConfiguration] via
- * reflection — the same source AIService uses.
+ * Last non-empty snapshot is persisted and restored on next launch (same boot only).
+ * Values are read from [WifiManager.getWifiApConfiguration] via reflection, with a
+ * bounded logcat fallback (`chitin` tag).
  */
 internal object LauncherWifiApRepository {
     private const val TAG = "LauncherWifiAp"
-    private const val PROP_WIFI_SSID = 62 // eCFG_WIFI_NAME
-    private const val PROP_WIFI_PASSWORD = 63 // eCFG_WIFI_PASSWORD
-    private const val PROP_WIFI_MAC = 116 // eCFG_WIFI_ADRESS
     private const val PREFS = "tbox_launcher_wifi_ap"
     private const val KEY_SSID = "ssid"
     private const val KEY_PASSWORD = "password"
@@ -38,11 +43,13 @@ internal object LauncherWifiApRepository {
     private val SEND_TO_CAN_REGEX = Regex("SSID: ([^,]+), PASSWORD: (\\S+)")
     private val GET_SOFT_AP_REGEX = Regex("getSoftAp ssid: ([^,]+), strPasd: (\\S+)")
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val readMutex = Mutex()
+    private val pollStarted = AtomicBoolean(false)
+    private val cacheRestored = AtomicBoolean(false)
+
     private val _state = MutableStateFlow<LauncherWifiApInfo?>(null)
     val state: StateFlow<LauncherWifiApInfo?> = _state
-
-    @Volatile
-    private var pollStarted = false
 
     @Volatile
     private var wifiManagerFallbackUsable = true
@@ -55,10 +62,22 @@ internal object LauncherWifiApRepository {
         java.io.File("/proc/sys/kernel/random/boot_id").readText().trim()
     }.getOrDefault("")
 
-    /** Restores the persisted snapshot (same boot only) and starts the boot-time poll. */
+    /** Restores the persisted snapshot (same boot only, on IO) and starts the boot-time poll. */
     fun init(context: Context) {
         val appContext = context.applicationContext
-        if (_state.value == null) {
+        if (cacheRestored.compareAndSet(false, true)) {
+            scope.launch {
+                restoreCachedSnapshot(appContext)
+                pollStartupWindow(appContext)
+            }
+        } else {
+            pollStartupWindow(appContext)
+        }
+    }
+
+    private suspend fun restoreCachedSnapshot(appContext: Context) {
+        readMutex.withLock {
+            if (_state.value != null) return
             val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val bootId = currentBootId()
             val cached = LauncherWifiApInfo(
@@ -73,30 +92,33 @@ internal object LauncherWifiApRepository {
                 prefs.edit().clear().apply()
             }
         }
-        pollStartupWindow(appContext)
     }
 
     /** Single read (used when the vehicle settings open). */
     fun refresh(context: Context) {
-        Thread({ readOnce(context.applicationContext, allowLogcat = true) }, "launcher-wifi-ap")
-            .apply { isDaemon = true }
-            .start()
+        val appContext = context.applicationContext
+        scope.launch {
+            readMutex.withLock {
+                readOnce(appContext, allowLogcat = true)
+            }
+        }
     }
 
     /** Aggressive boot-window polling until SSID+password are captured or the window expires. */
     fun pollStartupWindow(context: Context) {
-        if (pollStarted) return
-        pollStarted = true
-        Thread({
-            val appContext = context.applicationContext
+        if (!pollStarted.compareAndSet(false, true)) return
+        val appContext = context.applicationContext
+        scope.launch {
             val deadline = System.currentTimeMillis() + POLL_WINDOW_MS
             var attempt = 0
             while (System.currentTimeMillis() < deadline) {
                 attempt++
                 val current = _state.value
-                val complete = readOnce(appContext, allowLogcat = attempt % LOGCAT_EVERY_N_ATTEMPTS == 1)
+                val complete = readMutex.withLock {
+                    readOnce(appContext, allowLogcat = attempt % LOGCAT_EVERY_N_ATTEMPTS == 1)
+                }
                 if (complete) {
-                    Log.w(TAG, "wifi ap captured after $attempt attempts")
+                    Log.d(TAG, "wifi ap captured after $attempt attempts")
                     break
                 }
                 // MAC may lag behind SSID/PSK — keep polling a little if only MAC is missing.
@@ -105,13 +127,9 @@ internal object LauncherWifiApRepository {
                 ) {
                     break
                 }
-                try {
-                    Thread.sleep(POLL_INTERVAL_MS)
-                } catch (_: InterruptedException) {
-                    break
-                }
+                delay(POLL_INTERVAL_MS)
             }
-        }, "launcher-wifi-ap-poll").apply { isDaemon = true }.start()
+        }
     }
 
     /** Returns true when both SSID and password were captured. */
@@ -133,7 +151,7 @@ internal object LauncherWifiApRepository {
                 if (password.isEmpty()) password = p
             }
         }
-        Log.w(TAG, "wifi ap read ssid='$ssid' pass_len=${password.length} mac='$mac'")
+        Log.d(TAG, "wifi ap read ssid='$ssid' pass_len=${password.length} mac='$mac'")
         if (ssid.isEmpty() && password.isEmpty() && mac.isEmpty()) return false
         // Merge with the previous snapshot so a late-arriving field is not dropped.
         val prev = _state.value
@@ -162,11 +180,11 @@ internal object LauncherWifiApRepository {
             val ssid = config.javaClass.getField("SSID").get(config) as? String
             val psk = config.javaClass.getField("preSharedKey").get(config) as? String
             unquote(ssid) to unquote(psk)
-        }.onFailure {
-            // WifiServiceImpl on this ROM throws RemoteException while SoftAP is off —
-            // no point retrying within the same poll session.
-            wifiManagerFallbackUsable = false
-            val root = generateSequence<Throwable>(it) { t -> t.cause }.last()
+        }.onFailure { err ->
+            val root = generateSequence<Throwable>(err) { t -> t.cause }.last()
+            if (root is NoSuchMethodException || root is SecurityException || root is NoSuchFieldException) {
+                wifiManagerFallbackUsable = false
+            }
             Log.w(TAG, "getWifiApConfiguration failed: ${root.javaClass.name}: ${root.message}")
         }.getOrNull()
 
@@ -189,11 +207,15 @@ internal object LauncherWifiApRepository {
             return null
         }
         return runCatching {
-            val process = Runtime.getRuntime().exec(
-                arrayOf("logcat", "-d", "-v", "brief", "-t", "4000", "chitin:D", "*:S"),
+            val shellResult = ShellExecutor.exec(
+                command = listOf("logcat", "-d", "-v", "brief", "-t", "4000", "chitin:D", "*:S"),
+                timeoutMs = 3_000L,
             )
-            val text = process.inputStream.bufferedReader().readText()
-            process.waitFor()
+            if (shellResult.timedOut) {
+                Log.w(TAG, "logcat read timed out")
+                return null
+            }
+            val text = shellResult.output
             var result: Pair<String, String>? = null
             text.lineSequence().forEach { line ->
                 SEND_TO_CAN_REGEX.find(line)?.let { m ->
@@ -204,7 +226,7 @@ internal object LauncherWifiApRepository {
                 }
             }
             if (result != null) {
-                Log.w(TAG, "wifi ap from logcat ssid='${result?.first}' pass_len=${result?.second?.length}")
+                Log.d(TAG, "wifi ap from logcat ssid='${result?.first}' pass_len=${result?.second?.length}")
             }
             result
         }.onFailure {

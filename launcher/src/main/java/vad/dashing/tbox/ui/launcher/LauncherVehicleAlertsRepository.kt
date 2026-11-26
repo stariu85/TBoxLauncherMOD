@@ -26,11 +26,20 @@ object LauncherVehicleAlertsRepository {
     private const val ENGINE_CLASS = "com.mengbo.mbCan.MBCanEngine"
     private const val POLL_MS = 1_200L
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var pollJob: Job? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val stateLock = Any()
+    @Volatile private var pollJob: Job? = null
     private var chimeProxy: Any? = null
     private var seatBeltProxy: Any? = null
-    private var active = false
+    @Volatile private var active = false
+
+    private val engineClass: Class<*>? by lazy { runCatching { Class.forName(ENGINE_CLASS) }.getOrNull() }
+    private val icmFaultInfoClass: Class<*>? by lazy { runCatching { Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmFaultInfo") }.getOrNull() }
+    private val icmDriverInfoClass: Class<*>? by lazy { runCatching { Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmDriverInfo") }.getOrNull() }
+    private val chimeClass: Class<*>? by lazy { runCatching { Class.forName("com.mengbo.mbCan.entity.MBCanChime") }.getOrNull() }
+    private val seatBeltWarningClass: Class<*>? by lazy { runCatching { Class.forName("com.mengbo.mbCan.entity.MBCanSeatBeltWarning") }.getOrNull() }
+    private val seatBeltDriverMethod: Method? by lazy { runCatching { seatBeltWarningClass?.getMethod("getDriverWarning") }.getOrNull() }
+    private val seatBeltPassengerMethod: Method? by lazy { runCatching { seatBeltWarningClass?.getMethod("getPassengerWarning") }.getOrNull() }
 
     private var driverBelt = false
     private var passengerBelt = false
@@ -100,17 +109,30 @@ object LauncherVehicleAlertsRepository {
 
     fun applyIcmFaultInfo(fault: Any?) {
         if (fault == null) return
-        pressBrake = byteActive(fault, "getICM_BrkPsd")
-        hvFaultStop = byteActive(fault, "getICM_HvSysFltStopReq")
-        chargeFault = byteActive(fault, "getICM_ChargeFault")
-        sysFault = byteActive(fault, "getICM_SysFault")
-        battFault = byteActive(fault, "getICM_BattFaultLampSts")
-        lowSoc = byteActive(fault, "getICM_LowSOC") || byteActive(fault, "getICM_SOCDisp")
-        packThermal = byteActive(fault, "getICM_PackThermalRunawayLight")
-        speeding = byteActive(fault, "getICM_Speeding")
-        highTemp = byteActive(fault, "getICM_HighTemperature")
-        lowFuel = byteActive(fault, "getICM_Fuel")
-        powerModeFail = byteActive(fault, "getICM_PowerModeChangeFail")
+        val pb = byteActive(fault, "getICM_BrkPsd")
+        val hv = byteActive(fault, "getICM_HvSysFltStopReq")
+        val ch = byteActive(fault, "getICM_ChargeFault")
+        val sf = byteActive(fault, "getICM_SysFault")
+        val bf = byteActive(fault, "getICM_BattFaultLampSts")
+        val ls = byteActive(fault, "getICM_LowSOC") || byteActive(fault, "getICM_SOCDisp")
+        val pt = byteActive(fault, "getICM_PackThermalRunawayLight")
+        val sp = byteActive(fault, "getICM_Speeding")
+        val ht = byteActive(fault, "getICM_HighTemperature")
+        val lf = byteActive(fault, "getICM_Fuel")
+        val pm = byteActive(fault, "getICM_PowerModeChangeFail")
+        synchronized(stateLock) {
+            pressBrake = pb
+            hvFaultStop = hv
+            chargeFault = ch
+            sysFault = sf
+            battFault = bf
+            lowSoc = ls
+            packThermal = pt
+            speeding = sp
+            highTemp = ht
+            lowFuel = lf
+            powerModeFail = pm
+        }
         publish()
     }
 
@@ -172,9 +194,11 @@ object LauncherVehicleAlertsRepository {
         if (status == null) return
         val d = byteActive(status, "getDriverWarning")
         val p = byteActive(status, "getPassengerWarning")
-        driverBelt = d
-        passengerBelt = p
-        checkDoorsAndClearBelts()
+        synchronized(stateLock) {
+            driverBelt = d
+            passengerBelt = p
+            checkDoorsAndClearBeltsLocked()
+        }
         publish()
     }
 
@@ -185,12 +209,14 @@ object LauncherVehicleAlertsRepository {
         val rl = byteActive(chime, "getICM_2_RLSeatBeltWarningSts")
         val rm = byteActive(chime, "getICM_2_RMSeatBeltWarningSts")
         val rr = byteActive(chime, "getICM_2_RRSeatBeltWarningSts")
-        driverBelt = d
-        passengerBelt = p
-        rearLeftBelt = rl
-        rearMidBelt = rm
-        rearRightBelt = rr
-        checkDoorsAndClearBelts()
+        synchronized(stateLock) {
+            driverBelt = d
+            passengerBelt = p
+            rearLeftBelt = rl
+            rearMidBelt = rm
+            rearRightBelt = rr
+            checkDoorsAndClearBeltsLocked()
+        }
         publish()
     }
 
@@ -221,16 +247,17 @@ object LauncherVehicleAlertsRepository {
                 p = snap.second
             }
         }
-        driverBelt = d
-        passengerBelt = p
-        rearLeftBelt = rl
-        rearMidBelt = rm
-        rearRightBelt = rr
-
-        checkDoorsAndClearBelts()
+        synchronized(stateLock) {
+            driverBelt = d
+            passengerBelt = p
+            rearLeftBelt = rl
+            rearMidBelt = rm
+            rearRightBelt = rr
+            checkDoorsAndClearBeltsLocked()
+        }
     }
 
-    private fun checkDoorsAndClearBelts() {
+    private fun checkDoorsAndClearBeltsLocked() {
         val body = effectiveBody()
         if (body.doorFlOpen) driverBelt = false
         if (body.doorFrOpen) passengerBelt = false
@@ -246,56 +273,74 @@ object LauncherVehicleAlertsRepository {
 
     private fun pollIcmFaultInfoCache() {
         val fault = readCachedIcmFaultInfo() ?: return
-        pressBrake = byteActive(fault, "getICM_BrkPsd")
-        hvFaultStop = byteActive(fault, "getICM_HvSysFltStopReq")
-        chargeFault = byteActive(fault, "getICM_ChargeFault")
-        sysFault = byteActive(fault, "getICM_SysFault")
-        battFault = byteActive(fault, "getICM_BattFaultLampSts")
-        lowSoc = byteActive(fault, "getICM_LowSOC") || byteActive(fault, "getICM_SOCDisp")
-        packThermal = byteActive(fault, "getICM_PackThermalRunawayLight")
-        speeding = byteActive(fault, "getICM_Speeding")
-        highTemp = byteActive(fault, "getICM_HighTemperature")
-        lowFuel = byteActive(fault, "getICM_Fuel")
-        powerModeFail = byteActive(fault, "getICM_PowerModeChangeFail")
+        val pb = byteActive(fault, "getICM_BrkPsd")
+        val hv = byteActive(fault, "getICM_HvSysFltStopReq")
+        val ch = byteActive(fault, "getICM_ChargeFault")
+        val sf = byteActive(fault, "getICM_SysFault")
+        val bf = byteActive(fault, "getICM_BattFaultLampSts")
+        val ls = byteActive(fault, "getICM_LowSOC") || byteActive(fault, "getICM_SOCDisp")
+        val pt = byteActive(fault, "getICM_PackThermalRunawayLight")
+        val sp = byteActive(fault, "getICM_Speeding")
+        val ht = byteActive(fault, "getICM_HighTemperature")
+        val lf = byteActive(fault, "getICM_Fuel")
+        val pm = byteActive(fault, "getICM_PowerModeChangeFail")
+        synchronized(stateLock) {
+            pressBrake = pb
+            hvFaultStop = hv
+            chargeFault = ch
+            sysFault = sf
+            battFault = bf
+            lowSoc = ls
+            packThermal = pt
+            speeding = sp
+            highTemp = ht
+            lowFuel = lf
+            powerModeFail = pm
+        }
     }
 
     private fun pollIcmDriverInfoCache() {
         val driverInfo = readCachedIcmDriverInfo() ?: return
-        keyBatteryLow = byteActive(driverInfo, "getnICM_SmartSystemWarning3_1") ||
-                byteActive(driverInfo, "nICM_SmartSystemWarning3_1")
+        val kb = byteActive(driverInfo, "getnICM_SmartSystemWarning3_1") ||
+            byteActive(driverInfo, "nICM_SmartSystemWarning3_1")
+        synchronized(stateLock) {
+            keyBatteryLow = kb
+        }
     }
 
     private fun readCachedIcmFaultInfo(): Any? {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
+        val cls = icmFaultInfoClass ?: return null
         return runCatching {
-            val cls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmFaultInfo")
             MbCanEngineFacade.getMbCanData(43, cls)
         }.getOrNull()
     }
 
     private fun readCachedIcmDriverInfo(): Any? {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
+        val cls = icmDriverInfoClass ?: return null
         return runCatching {
-            val cls = Class.forName("com.mengbo.mbCan.entity.MBCanVehicleIcmDriverInfo")
             MbCanEngineFacade.getMbCanData(44, cls)
         }.getOrNull()
     }
 
     private fun readCachedChime(): Any? {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
+        val cls = chimeClass ?: return null
         return runCatching {
-            val cls = Class.forName("com.mengbo.mbCan.entity.MBCanChime")
             MbCanEngineFacade.getMbCanData(18, cls)
         }.getOrNull()
     }
 
     private fun readSeatBeltWarning(): Pair<Boolean, Boolean>? {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return null
+        val cls = seatBeltWarningClass ?: return null
+        val driverMethod = seatBeltDriverMethod ?: return null
+        val passengerMethod = seatBeltPassengerMethod ?: return null
         return runCatching {
-            val cls = Class.forName("com.mengbo.mbCan.entity.MBCanSeatBeltWarning")
             val obj = MbCanEngineFacade.getMbCanData(15, cls) ?: return null
-            val d = (cls.getMethod("getDriverWarning").invoke(obj) as? Number)?.toInt() ?: 0
-            val p = (cls.getMethod("getPassengerWarning").invoke(obj) as? Number)?.toInt() ?: 0
+            val d = (driverMethod.invoke(obj) as? Number)?.toInt() ?: 0
+            val p = (passengerMethod.invoke(obj) as? Number)?.toInt() ?: 0
             (d != 0) to (p != 0)
         }.getOrNull()
     }
@@ -314,52 +359,54 @@ object LauncherVehicleAlertsRepository {
         val fuelPct = vad.dashing.tbox.CanDataRepository.fuelLevelPercentageFiltered.value
             ?: vad.dashing.tbox.CanDataRepository.fuelLevelPercentage.value
         val range = vad.dashing.tbox.CanDataRepository.distanceToFuelEmpty.value
-        val isLowFuel = lowFuel || (fuelPct != null && fuelPct <= 10u) || (range != null && range in 1u..50u)
 
-        val list = buildList {
-            fun add(id: LauncherAlertId, on: Boolean, severity: LauncherAlertSeverity) {
-                if (on) add(LauncherVehicleAlert(id, severity))
-            }
-            if (LauncherDevVehicleState.showAllIndicators) {
-                LauncherAlertId.entries.forEach { id ->
-                    val severity = when (id) {
-                        LauncherAlertId.SeatBeltDriver,
-                        LauncherAlertId.SeatBeltPassenger,
-                        LauncherAlertId.TirePressure,
-                        LauncherAlertId.HighTemperature,
-                        LauncherAlertId.SysFault,
-                        LauncherAlertId.BattFault,
-                        LauncherAlertId.ChargeFault,
-                        LauncherAlertId.HvFaultStop -> LauncherAlertSeverity.Critical
-                        else -> LauncherAlertSeverity.Warning
-                    }
-                    add(LauncherVehicleAlert(id, severity))
+        val list = synchronized(stateLock) {
+            val isLowFuel = lowFuel || (fuelPct != null && fuelPct <= 10u) || (range != null && range in 1u..50u)
+            buildList {
+                fun add(id: LauncherAlertId, on: Boolean, severity: LauncherAlertSeverity) {
+                    if (on) add(LauncherVehicleAlert(id, severity))
                 }
-            } else {
-                add(LauncherAlertId.SeatBeltDriver, driverBelt || LauncherDevVehicleState.seatBeltDriver, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.SeatBeltPassenger, passengerBelt || LauncherDevVehicleState.seatBeltPassenger, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.SeatBeltRearLeft, rearLeftBelt, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.SeatBeltRearMid, rearMidBelt, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.SeatBeltRearRight, rearRightBelt, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.DoorDriver, body.doorFlOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.DoorPassenger, body.doorFrOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.DoorRearLeft, body.doorRlOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.DoorRearRight, body.doorRrOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.TirePressure, tires.hasLowPressure(threshold), LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.TireTemperature, allowLowTemp && tires.hasLowTemperature(), LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.LowFuel, isLowFuel, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.PressBrake, pressBrake, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.SysFault, sysFault, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.BattFault, battFault || packThermal, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.ChargeFault, chargeFault, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.HvFaultStop, hvFaultStop, LauncherAlertSeverity.Critical)
-                add(LauncherAlertId.PowerModeFail, powerModeFail, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.LowBatterySoc, lowSoc, LauncherAlertSeverity.Warning)
-                add(LauncherAlertId.KeyBatteryLow, keyBatteryLow || LauncherDevVehicleState.keyBatteryLow, LauncherAlertSeverity.Warning)
+                if (LauncherDevVehicleState.showAllIndicators) {
+                    LauncherAlertId.entries.forEach { id ->
+                        val severity = when (id) {
+                            LauncherAlertId.SeatBeltDriver,
+                            LauncherAlertId.SeatBeltPassenger,
+                            LauncherAlertId.TirePressure,
+                            LauncherAlertId.HighTemperature,
+                            LauncherAlertId.SysFault,
+                            LauncherAlertId.BattFault,
+                            LauncherAlertId.ChargeFault,
+                            LauncherAlertId.HvFaultStop -> LauncherAlertSeverity.Critical
+                            else -> LauncherAlertSeverity.Warning
+                        }
+                        add(LauncherVehicleAlert(id, severity))
+                    }
+                } else {
+                    add(LauncherAlertId.SeatBeltDriver, driverBelt || LauncherDevVehicleState.seatBeltDriver, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.SeatBeltPassenger, passengerBelt || LauncherDevVehicleState.seatBeltPassenger, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.SeatBeltRearLeft, rearLeftBelt, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.SeatBeltRearMid, rearMidBelt, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.SeatBeltRearRight, rearRightBelt, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.DoorDriver, body.doorFlOpen, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.DoorPassenger, body.doorFrOpen, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.DoorRearLeft, body.doorRlOpen, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.DoorRearRight, body.doorRrOpen, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.HoodOpen, body.hoodOpen, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.TrunkOpen, body.tailgateOpen, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.TirePressure, tires.hasLowPressure(threshold), LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.TireTemperature, allowLowTemp && tires.hasLowTemperature(), LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.LowFuel, isLowFuel, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.Speeding, speeding, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.HighTemperature, highTemp, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.PressBrake, pressBrake, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.SysFault, sysFault, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.BattFault, battFault || packThermal, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.ChargeFault, chargeFault, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.HvFaultStop, hvFaultStop, LauncherAlertSeverity.Critical)
+                    add(LauncherAlertId.PowerModeFail, powerModeFail, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.LowBatterySoc, lowSoc, LauncherAlertSeverity.Warning)
+                    add(LauncherAlertId.KeyBatteryLow, keyBatteryLow || LauncherDevVehicleState.keyBatteryLow, LauncherAlertSeverity.Warning)
+                }
             }
         }
         _state.value = LauncherVehicleAlertsState(list)
@@ -374,30 +421,33 @@ object LauncherVehicleAlertsRepository {
     }
 
     private fun clearSignals() {
-        driverBelt = false
-        passengerBelt = false
-        rearLeftBelt = false
-        rearMidBelt = false
-        rearRightBelt = false
-        pressBrake = false
-        hvFaultStop = false
-        chargeFault = false
-        sysFault = false
-        battFault = false
-        lowSoc = false
-        packThermal = false
-        speeding = false
-        highTemp = false
-        lowFuel = false
-        powerModeFail = false
-        keyBatteryLow = false
+        synchronized(stateLock) {
+            driverBelt = false
+            passengerBelt = false
+            rearLeftBelt = false
+            rearMidBelt = false
+            rearRightBelt = false
+            pressBrake = false
+            hvFaultStop = false
+            chargeFault = false
+            sysFault = false
+            battFault = false
+            lowSoc = false
+            packThermal = false
+            speeding = false
+            highTemp = false
+            lowFuel = false
+            powerModeFail = false
+            keyBatteryLow = false
+        }
     }
 
     private fun engineInstance(): Any? = runCatching {
-        Class.forName(ENGINE_CLASS).getMethod("getInstance").invoke(null)
+        engineClass?.getMethod("getInstance")?.invoke(null)
     }.getOrNull()
 
-    private val memberCache = java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, java.lang.reflect.AccessibleObject>()
+    private val missingMemberSentinel = Any()
+    private val memberCache = java.util.concurrent.ConcurrentHashMap<Pair<Class<*>, String>, Any>()
 
     private fun byteActive(obj: Any, getterOrField: String): Boolean =
         runCatching {
@@ -406,8 +456,11 @@ object LauncherVehicleAlertsRepository {
             val member = memberCache.getOrPut(key) {
                 runCatching {
                     clazz.getMethod(getterOrField)
-                }.getOrNull() ?: clazz.getDeclaredField(getterOrField).apply { isAccessible = true }
+                }.getOrNull() ?: runCatching {
+                    clazz.getDeclaredField(getterOrField).apply { isAccessible = true }
+                }.getOrNull() ?: missingMemberSentinel
             }
+            if (member === missingMemberSentinel) return false
             val num = when (member) {
                 is Method -> member.invoke(obj) as? Number
                 is java.lang.reflect.Field -> member.get(obj) as? Number

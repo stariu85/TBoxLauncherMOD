@@ -2,7 +2,9 @@ package vad.dashing.tbox.tbm
 
 import android.content.Context
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -22,6 +24,16 @@ data class LocalAccessResult(
 object LocalAccessClient {
     private const val TAG = "LocalAccessClient"
 
+    private fun nowElapsedMs(): Long = try {
+        SystemClock.elapsedRealtime()
+    } catch (_: Throwable) {
+        System.currentTimeMillis()
+    }
+
+    private fun isWaitingStatus(status: String): Boolean =
+        status == LocalAccessContract.STATUS_PENDING ||
+            status == LocalAccessContract.STATUS_CONSENT_REQUIRED
+
     suspend fun getAccess(context: Context, interactive: Boolean = false): LocalAccessResult = withContext(Dispatchers.IO) {
         try {
             val uri = LocalAccessContract.AUTHORITY_URI
@@ -36,6 +48,8 @@ object LocalAccessClient {
                 } finally {
                     client?.close()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Unstable ContentResolver call failed, TBox Monitor might be missing or unsupported", e)
                 null
@@ -56,6 +70,8 @@ object LocalAccessClient {
                 port = port,
                 serverEnabled = serverEnabled,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error getting local access via ContentResolver call", e)
             LocalAccessResult(status = LocalAccessContract.STATUS_NOT_SUPPORTED, message = e.message)
@@ -63,17 +79,17 @@ object LocalAccessClient {
     }
 
     /**
-     * Awaits access consent by periodically calling the provider (up to 120 seconds) while status is pending.
+     * Awaits access consent by periodically calling the provider (up to 120 seconds) while status is pending or consent required.
      */
     suspend fun awaitAccess(context: Context, timeoutMs: Long = 120_000L, pollIntervalMs: Long = 2_000L): LocalAccessResult = withContext(Dispatchers.IO) {
         var result = getAccess(context, interactive = true)
-        if (!result.isPending && !result.isGranted) {
+        if (result.isGranted || !isWaitingStatus(result.status)) {
             return@withContext result
         }
 
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            if (result.isGranted || !result.isPending) {
+        val startTime = nowElapsedMs()
+        while (nowElapsedMs() - startTime < timeoutMs) {
+            if (result.isGranted || !isWaitingStatus(result.status)) {
                 break
             }
             delay(pollIntervalMs)

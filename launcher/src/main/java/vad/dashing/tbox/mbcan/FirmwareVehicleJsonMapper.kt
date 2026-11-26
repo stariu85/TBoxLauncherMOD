@@ -31,6 +31,7 @@ object FirmwareVehicleJsonMapper {
 
     @Volatile
     private var cached: Tables? = null
+    private val emptyTables = Tables(sendIds = emptySet(), receiveIds = emptySet())
 
     /**
      * Explicit verified translations between legacy mbCAN ids and firmware ids.
@@ -152,7 +153,8 @@ object FirmwareVehicleJsonMapper {
             val receiveFile = File(RECEIVE_JSON_PATH)
             if (!sendFile.isFile || !receiveFile.isFile) {
                 Log.w(TAG, "Vehicle json files not found: $SEND_JSON_PATH / $RECEIVE_JSON_PATH")
-                return null
+                cached = emptyTables
+                return emptyTables
             }
             val sendIds = runCatching { parseSendIds(sendFile.readText()) }.getOrElse {
                 Log.e(TAG, "Failed to parse send.json: ${it.message}")

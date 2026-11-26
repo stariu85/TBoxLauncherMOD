@@ -9,10 +9,11 @@ public final class LauncherUid {
         if (text == null || packageName == null) {
             return -1;
         }
+        String prefix = "package:" + packageName + " ";
         String[] lines = text.split("\n");
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
-            if (!line.contains(packageName)) {
+            if (!line.startsWith(prefix)) {
                 continue;
             }
             int marker = line.indexOf("uid:");

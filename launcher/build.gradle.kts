@@ -89,7 +89,9 @@ val validateLauncherCarRigAssets by tasks.registering {
     description = "Verifies that launcher GLB and pivot metadata contain required rig nodes."
     val glb = layout.projectDirectory.file("src/main/assets/models/jetour_new.glb")
     val pivots = layout.projectDirectory.file("src/main/assets/models/jetour_car_pivots.json")
+    val stampFile = layout.buildDirectory.file("intermediates/validateLauncherCarRigAssets.stamp")
     inputs.files(glb, pivots)
+    outputs.file(stampFile)
 
     doLast {
         val requiredNodes = listOf(
@@ -106,6 +108,10 @@ val validateLauncherCarRigAssets by tasks.registering {
         check(missingGlb.isEmpty() && missingPivots.isEmpty()) {
             "Launcher car rig asset contract broken. " +
                 "Missing GLB nodes=$missingGlb, missing pivot references=$missingPivots"
+        }
+        stampFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("ok\n")
         }
     }
 }

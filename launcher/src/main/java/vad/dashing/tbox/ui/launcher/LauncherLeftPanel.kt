@@ -54,11 +54,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -158,18 +160,16 @@ fun LauncherLeftPanel(
         speedLimitXRatio = LauncherAppConfigStore.speedLimitXRatio(context)
         speedLimitYRatio = LauncherAppConfigStore.speedLimitYRatio(context)
     }
-    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
     val compassWidgetRevision by LauncherAppConfigStore.adasCompassWidgetRevisionFlow.collectAsStateWithLifecycle()
     val compassWidgetEnabled = remember(context, compassWidgetRevision) {
         LauncherAppConfigStore.adasCompassWidgetEnabled(context)
     }
 
-    // Keep GPS compass updated at panel level (retains heading across traffic lights / stops)
-    LaunchedEffect(compassWidgetEnabled, locValues.latitude, locValues.longitude, locValues.hasGpsFix) {
-        if (compassWidgetEnabled) {
-            LauncherGpsCompassTracker.onLocationUpdate(locValues)
-        }
-    }
+    // Isolated GPS compass tracker so T-Box location ticks do not recompose the entire left panel
+    LauncherLeftPanelGpsTracker(
+        tboxViewModel = tboxViewModel,
+        compassWidgetEnabled = compassWidgetEnabled,
+    )
 
     // Fallback: listen to Android LocationManager when T-Box has no GPS fix
     @Suppress("MissingPermission")
@@ -215,9 +215,6 @@ fun LauncherLeftPanel(
     val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
-    val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
-    val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
-    val wheelsTemperature by canViewModel.wheelsTemperature.collectAsStateWithLifecycle()
     val tirePressureConfigRevision by LauncherAppConfigStore.tirePressureConfigRevisionFlow.collectAsStateWithLifecycle()
     val tirePressureOnlyLow = remember(context, tirePressureConfigRevision) {
         LauncherAppConfigStore.tirePressureOnlyLow(context)
@@ -250,7 +247,6 @@ fun LauncherLeftPanel(
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)
 
     val racing = LauncherEggRace.active
-    val raceSprites = rememberRaceOncomingSprites()
     val raceLane = LauncherEggRace.playerLane
     val raceCars = LauncherEggRace.cars
     LauncherEggRaceTicker()
@@ -265,20 +261,12 @@ fun LauncherLeftPanel(
     } else {
         vehicleBody
     }
-    val mergedTires = remember(tires, wheelsPressure, wheelsTemperature) {
-        mergeTireStateWithCanData(tires, wheelsPressure, wheelsTemperature)
-    }
-    LaunchedEffect(mergedTires, context) {
-        if (mergedTires.hasAvailableData) {
-            LauncherAppConfigStore.saveTirePressures(context, mergedTires)
-        }
-    }
-    // Simulation overrides (hidden settings tab) take precedence over live TPMS.
-    val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: mergedTires
     // Same for ADAS: cruise/BSD/PDC sim replaces the live mbCAN state.
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val headlightBeams = rememberHeadlightBeams()
-    LauncherAdasRepository.updateMotion(effectiveSpeed)
+    LaunchedEffect(effectiveSpeed) {
+        LauncherAdasRepository.updateMotion(effectiveSpeed)
+    }
 
     val rigState = LauncherCarRigState(
         doorFlOpen = effectiveBody.doorFlOpen,
@@ -322,7 +310,6 @@ fun LauncherLeftPanel(
         }
         lastTrackedGear = activeGear
     }
-    val cruiseSpeed by canViewModel.cruiseSetSpeed.collectAsStateWithLifecycle()
     val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
         .collectAsStateWithLifecycle()
     val miniPlayerVisible = remember(context, miniPlayerRevision) {
@@ -365,7 +352,6 @@ fun LauncherLeftPanel(
     val navTrafficLightVisible = remember(context, navTrafficLightRevision) {
         LauncherAppConfigStore.navTrafficLightVisible(context)
     }
-    val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
 
     val navSpeedPositionRevision by LauncherAppConfigStore.navSpeedPositionRevisionFlow.collectAsStateWithLifecycle()
     var navSpeedXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navSpeedXRatio(context)) }
@@ -577,6 +563,15 @@ fun LauncherLeftPanel(
     }
     var smartDriveViewActive by remember { mutableStateOf(false) }
     var trunkParkWarningUntilMs by remember { mutableLongStateOf(0L) }
+    var showTrunkParkWarning by remember { mutableStateOf(false) }
+    LaunchedEffect(trunkParkWarningUntilMs) {
+        val remaining = trunkParkWarningUntilMs - SystemClock.uptimeMillis()
+        if (remaining > 0L) {
+            showTrunkParkWarning = true
+            delay(remaining)
+        }
+        showTrunkParkWarning = false
+    }
     val hasBodyOpen = effectiveBody.anyDoorOpen()
 
     val startupTopViewDone by LauncherCar3DModelTrigger.startupTopViewDone.collectAsStateWithLifecycle()
@@ -960,17 +955,29 @@ fun LauncherLeftPanel(
             }
             val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow.collectAsStateWithLifecycle()
             val isReverseCamerasOpen by CamdCameraRepository.isReverseCamerasOpen.collectAsStateWithLifecycle()
+            val isVehicleSettingsOverlayShowing by LauncherVehicleSettingsOverlayWindow.isShowingFlow.collectAsStateWithLifecycle()
+            val isVehicleSettingsActivityOpen by vad.dashing.tbox.LauncherVehicleSettingsActivity.isOpenFlow.collectAsStateWithLifecycle()
+            val isAboutSettingsOpen by LauncherAboutOverlayWindow.isShowingFlow.collectAsStateWithLifecycle()
             val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
             val isVehicleSettingsOpen = !useNewSettingsView && (
                 LauncherVehicleSettingsUiState.open ||
                     settingsProgress > 0.001f ||
-                    LauncherVehicleSettingsOverlayWindow.isShowing() ||
-                    vad.dashing.tbox.LauncherVehicleSettingsActivity.isOpen()
+                    isVehicleSettingsOverlayShowing ||
+                    isVehicleSettingsActivityOpen
             )
-            val isAboutSettingsOpen = LauncherAboutOverlayWindow.isShowing()
             val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
             val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-            val isParkEngageRecent = (SystemClock.uptimeMillis() - parkEngagedEvent) < 2000L
+            var isParkEngageRecent by remember { mutableStateOf(false) }
+            LaunchedEffect(parkEngagedEvent) {
+                if (parkEngagedEvent > 0L) {
+                    val remaining = 2_000L - (SystemClock.uptimeMillis() - parkEngagedEvent)
+                    if (remaining > 0L) {
+                        isParkEngageRecent = true
+                        delay(remaining)
+                    }
+                }
+                isParkEngageRecent = false
+            }
             val showCarInComposition = carModelVisible && !isVehicleSettingsOpen && (cameraAnimEnabled || !carHidden || isParkEngageRecent)
             val showTireBadgesAdas = !tirePressureOnlyTopView || !showDriveView
             if (!carHidden && !racing && carOverlayAlpha > 0.001f) {
@@ -987,16 +994,13 @@ fun LauncherLeftPanel(
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (showTireBadgesAdas) {
-                        LauncherTireBadges(
-                            state = effectiveTires,
-                            // ADAS strip shows a small pressure-only pill next to the wheel.
-                            compact = true,
+                        LauncherLeftPanelTireBadgesSlot(
+                            canViewModel = canViewModel,
                             wheelAnchorsPx = wheelAnchors,
                             showAll = !tirePressureOnlyLow,
                             lowPressureThreshold = tirePressureLowThreshold,
                             allowLowTempNotification = tireLowTempAlertEnabled,
                             speedKmh = effectiveSpeed,
-                            steerAngleDeg = 0f,
                             isRearView = showDriveView,
                             inertiaEnabled = tirePressureInertiaEnabled,
                             badgeShape = tirePressureBadgeShape,
@@ -1181,6 +1185,7 @@ fun LauncherLeftPanel(
 
                         // Freely Movable Navigation Overlay 3: Current Speed & Speed Limit
                         if (navSpeedVisible) {
+                            val navState by YandexNavRepository.state.collectAsStateWithLifecycle()
                             val isYandexOpen by YandexNavWindowTracker.isWindowOpen.collectAsStateWithLifecycle()
                             val yandexLimit = navState.speedLimit?.filter { it.isDigit() }?.takeIf { it.isNotEmpty() }
                             val cameraLimitRaw = (adas.speedLimitKmh ?: adas.tsr.speedLimitKmh.takeIf { adas.tsr.valid })?.toString()
@@ -1257,8 +1262,8 @@ fun LauncherLeftPanel(
                                 .coerceIn(0f, (containerHeightPx - compassHeightPx).coerceAtLeast(0f))
                             val topDp = with(density) { topPx.toDp() }
 
-                            LauncherCompassOverlay(
-                                locValues = locValues,
+                            LauncherLeftPanelCompassSlot(
+                                tboxViewModel = tboxViewModel,
                                 onDragY = { deltaY ->
                                     if (containerHeightPx > 0f) {
                                         val currentCenterY = containerHeightPx * compassYRatio
@@ -1503,9 +1508,8 @@ fun LauncherLeftPanel(
                     }
                 }
 
-                val nowMs = SystemClock.uptimeMillis()
                 LauncherTrunkGearWarningBanner(
-                    showWarning = nowMs < trunkParkWarningUntilMs,
+                    showWarning = showTrunkParkWarning,
                 )
 
                 LauncherCriticalCollisionWarningBanner(
@@ -1574,21 +1578,23 @@ fun LauncherLeftPanel(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     activeTopPanels.forEach { panelId ->
-                        DraggableAdasPanel(
-                            panelId = panelId,
-                            containerHeightPx = leftPanelHeightPx,
-                            containerWindowTopPx = leftPanelWindowTopPx,
-                            topPanels = adasTopPanels,
-                            bottomPanels = adasBottomPanels,
-                            showBadges = showAdasBadges,
-                            onDragStarted = onAdasDragStarted,
-                            onDragEnded = onAdasDragEnded,
-                            onLayoutChanged = { top, bottom ->
-                                LauncherAppConfigStore.setAdasPanelsLayout(context, top, bottom)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            renderPanel(panelId)
+                        key(panelId) {
+                            DraggableAdasPanel(
+                                panelId = panelId,
+                                containerHeightPx = leftPanelHeightPx,
+                                containerWindowTopPx = leftPanelWindowTopPx,
+                                topPanels = adasTopPanels,
+                                bottomPanels = adasBottomPanels,
+                                showBadges = showAdasBadges,
+                                onDragStarted = onAdasDragStarted,
+                                onDragEnded = onAdasDragEnded,
+                                onLayoutChanged = { top, bottom ->
+                                    LauncherAppConfigStore.setAdasPanelsLayout(context, top, bottom)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                renderPanel(panelId)
+                            }
                         }
                     }
                 }
@@ -1611,27 +1617,30 @@ fun LauncherLeftPanel(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     activeBottomPanels.forEach { panelId ->
-                        DraggableAdasPanel(
-                            panelId = panelId,
-                            containerHeightPx = leftPanelHeightPx,
-                            containerWindowTopPx = leftPanelWindowTopPx,
-                            topPanels = adasTopPanels,
-                            bottomPanels = adasBottomPanels,
-                            showBadges = showAdasBadges,
-                            onDragStarted = onAdasDragStarted,
-                            onDragEnded = onAdasDragEnded,
-                            onLayoutChanged = { top, bottom ->
-                                LauncherAppConfigStore.setAdasPanelsLayout(context, top, bottom)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            renderPanel(panelId)
+                        key(panelId) {
+                            DraggableAdasPanel(
+                                panelId = panelId,
+                                containerHeightPx = leftPanelHeightPx,
+                                containerWindowTopPx = leftPanelWindowTopPx,
+                                topPanels = adasTopPanels,
+                                bottomPanels = adasBottomPanels,
+                                showBadges = showAdasBadges,
+                                onDragStarted = onAdasDragStarted,
+                                onDragEnded = onAdasDragEnded,
+                                onLayoutChanged = { top, bottom ->
+                                    LauncherAppConfigStore.setAdasPanelsLayout(context, top, bottom)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                renderPanel(panelId)
+                            }
                         }
                     }
                 }
             }
         }
         if (racing) {
+            val raceSprites = rememberRaceOncomingSprites()
             LauncherEggRaceCarsLayer(
                 cars = raceCars,
                 sprites = raceSprites,
@@ -1640,6 +1649,80 @@ fun LauncherLeftPanel(
             )
         }
     }
+}
+
+@Composable
+private fun LauncherLeftPanelGpsTracker(
+    tboxViewModel: TboxViewModel,
+    compassWidgetEnabled: Boolean,
+) {
+    if (!compassWidgetEnabled) return
+    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
+    LaunchedEffect(locValues.latitude, locValues.longitude, locValues.hasGpsFix) {
+        LauncherGpsCompassTracker.onLocationUpdate(locValues)
+    }
+}
+
+@Composable
+private fun LauncherLeftPanelCompassSlot(
+    tboxViewModel: TboxViewModel,
+    onDragY: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val locValues by tboxViewModel.locValues.collectAsStateWithLifecycle()
+    LauncherCompassOverlay(
+        locValues = locValues,
+        onDragY = onDragY,
+        onDragEnd = onDragEnd,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun LauncherLeftPanelTireBadgesSlot(
+    canViewModel: CanDataViewModel,
+    wheelAnchorsPx: Map<LauncherWheelCorner, Offset>,
+    showAll: Boolean,
+    lowPressureThreshold: Float,
+    allowLowTempNotification: Boolean,
+    speedKmh: Float,
+    isRearView: Boolean,
+    inertiaEnabled: Boolean,
+    badgeShape: LauncherTireBadgeShape,
+    showHundredths: Boolean,
+    showTemperature: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
+    val wheelsPressure by canViewModel.wheelsPressure.collectAsStateWithLifecycle()
+    val wheelsTemperature by canViewModel.wheelsTemperature.collectAsStateWithLifecycle()
+    val mergedTires = remember(tires, wheelsPressure, wheelsTemperature) {
+        mergeTireStateWithCanData(tires, wheelsPressure, wheelsTemperature)
+    }
+    LaunchedEffect(mergedTires, context) {
+        if (mergedTires.hasAvailableData) {
+            LauncherAppConfigStore.saveTirePressures(context, mergedTires)
+        }
+    }
+    val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: mergedTires
+    LauncherTireBadges(
+        state = effectiveTires,
+        compact = true,
+        wheelAnchorsPx = wheelAnchorsPx,
+        showAll = showAll,
+        lowPressureThreshold = lowPressureThreshold,
+        allowLowTempNotification = allowLowTempNotification,
+        speedKmh = speedKmh,
+        steerAngleDeg = 0f,
+        isRearView = isRearView,
+        inertiaEnabled = inertiaEnabled,
+        badgeShape = badgeShape,
+        showHundredths = showHundredths,
+        showTemperature = showTemperature,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -1855,6 +1938,8 @@ internal fun LauncherAssistAndPresetsPanel(
         prevEngaged = isCruiseEngaged
     }
 
+    val latestIsConventional by rememberUpdatedState(isConventional)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1872,7 +1957,7 @@ internal fun LauncherAssistAndPresetsPanel(
                             // Swipe Left -> next page
                             activeTab = when (activeTab) {
                                 AssistPresetsTab.Main -> AssistPresetsTab.Presets
-                                AssistPresetsTab.Presets -> if (isConventional) AssistPresetsTab.Cameras else AssistPresetsTab.SmartControl
+                                AssistPresetsTab.Presets -> if (latestIsConventional) AssistPresetsTab.Cameras else AssistPresetsTab.SmartControl
                                 AssistPresetsTab.SmartControl -> AssistPresetsTab.Cameras
                                 AssistPresetsTab.Cameras -> AssistPresetsTab.Dvr
                                 AssistPresetsTab.Dvr -> AssistPresetsTab.Dvr
@@ -1881,7 +1966,7 @@ internal fun LauncherAssistAndPresetsPanel(
                             // Swipe Right -> previous page
                             activeTab = when (activeTab) {
                                 AssistPresetsTab.Dvr -> AssistPresetsTab.Cameras
-                                AssistPresetsTab.Cameras -> if (isConventional) AssistPresetsTab.Presets else AssistPresetsTab.SmartControl
+                                AssistPresetsTab.Cameras -> if (latestIsConventional) AssistPresetsTab.Presets else AssistPresetsTab.SmartControl
                                 AssistPresetsTab.SmartControl -> AssistPresetsTab.Presets
                                 AssistPresetsTab.Presets -> AssistPresetsTab.Main
                                 AssistPresetsTab.Main -> AssistPresetsTab.Main

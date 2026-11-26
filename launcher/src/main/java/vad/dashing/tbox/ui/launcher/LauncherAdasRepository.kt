@@ -31,7 +31,9 @@ object LauncherAdasRepository {
     private const val FRM_INFO_CLASS = "com.mengbo.mbCan.entity.MBCanVehicleFrmDectInfo"
     private const val LKA_STATUS_CLASS = "com.mengbo.mbCan.entity.MBCanVehicleLkaSlaStatus"
 
-    private var active = false
+    private val stateLock = Any()
+
+    @Volatile private var active = false
     private var frmInfoListenerProxy: Any? = null
     private var lkaStatusListenerProxy: Any? = null
     private var bsdListenerProxy: Any? = null
@@ -39,16 +41,14 @@ object LauncherAdasRepository {
     private var dowListenerProxy: Any? = null
     private var radarListenerProxy: Any? = null
     // Startup garbage filter: vendor stack emits transient radar frames right after
-    // registration — ignore the first frames and require two consecutive identical
-    // frames before a reading becomes visible.
+    // registration — ignore frames during the initial 500ms grace window.
     private var radarGraceUntilMs = 0L
-    private var radarPending: LauncherPdcZones? = null
     private var lastRadarMs = 0L
     private var pdcActive = false
     @Volatile private var lastSpeedKmh = 0f
     private val adasScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var pdcWatchdogJob: Job? = null
-    private var lasModeJob: Job? = null
+    @Volatile private var pdcWatchdogJob: Job? = null
+    @Volatile private var lasModeJob: Job? = null
     @Volatile private var cachedLasMode: Int = -1
     private const val PDC_STALE_MS = 1_200L
     private const val PDC_DRIVE_CLEAR_KMH = 18f
@@ -86,7 +86,9 @@ object LauncherAdasRepository {
     private var pdcZones: LauncherPdcZones = LauncherPdcZones()
 
     private val tsrWatchdog = TsrStaleWatchdog {
-        tsrSign = LauncherAdasTsrSign()
+        synchronized(stateLock) {
+            tsrSign = LauncherAdasTsrSign()
+        }
         publish()
     }
 
@@ -129,7 +131,6 @@ object LauncherAdasRepository {
     }
 
     fun stop() {
-        if (!active) return
         unregisterFrmListener()
         unregisterLkaListener()
         unregisterBsdListener()
@@ -143,17 +144,18 @@ object LauncherAdasRepository {
         cachedLasMode = -1
         MbAdasTsrFacade.stop()
         tsrWatchdog.cancel()
+        synchronized(publishLock) {
+            mainHandler.removeCallbacks(publishRunnable)
+            publishScheduled = false
+        }
         active = false
-        pdcZones = LauncherPdcZones()
-        radarPending = null
-        lastRadarMs = 0L
-        _state.value = LauncherAdasState()
         clearSnapshots()
+        _state.value = LauncherAdasState()
     }
 
     private fun registerTsrListener() {
         MbAdasTsrFacade.ensureListening { raw ->
-            tsrSign = decodeTsrSign(
+            val decoded = decodeTsrSign(
                 valueRaw = raw.valueRaw,
                 unitRaw = raw.unitRaw,
                 confidence = raw.confidence,
@@ -161,7 +163,10 @@ object LauncherAdasRepository {
                 posX = raw.posX,
                 posY = raw.posY,
             )
-            if (tsrSign.valid) {
+            synchronized(stateLock) {
+                tsrSign = decoded
+            }
+            if (decoded.valid) {
                 tsrWatchdog.kick()
             } else {
                 tsrWatchdog.cancel()
@@ -252,11 +257,16 @@ object LauncherAdasRepository {
         val handler = InvocationHandler { _, method, args ->
             if (method.name == "onBsdAlarm" && args?.isNotEmpty() == true) {
                 val alarm = args[0] ?: return@InvocationHandler null
-                srrSystemState = byteField(alarm, "getSRR_1_SystemState")
-                rearThreats = rearThreats.copy(
-                    bsdLeft = decodeRearThreatLevel(byteField(alarm, "getLeftSts")),
-                    bsdRight = decodeRearThreatLevel(byteField(alarm, "getRightSts")),
-                )
+                val srr = byteField(alarm, "getSRR_1_SystemState")
+                val left = decodeRearThreatLevel(byteField(alarm, "getLeftSts"))
+                val right = decodeRearThreatLevel(byteField(alarm, "getRightSts"))
+                synchronized(stateLock) {
+                    srrSystemState = srr
+                    rearThreats = rearThreats.copy(
+                        bsdLeft = left,
+                        bsdRight = right,
+                    )
+                }
                 publish()
             }
             null
@@ -291,11 +301,16 @@ object LauncherAdasRepository {
             if (method.name == "onRctaAlarmChange" && args?.isNotEmpty() == true) {
                 val alarm = args[0] ?: return@InvocationHandler null
                 // OEM adascard shows RCTA car only at hard (==2); RCW uses 1/2.
-                rearThreats = rearThreats.copy(
-                    rctaLeft = decodeRearThreatLevel(byteField(alarm, "getLeftSts"), hardOnly = true),
-                    rctaRight = decodeRearThreatLevel(byteField(alarm, "getRightSts"), hardOnly = true),
-                    rcw = decodeRearThreatLevel(byteField(alarm, "getRCWWarning")),
-                )
+                val left = decodeRearThreatLevel(byteField(alarm, "getLeftSts"), hardOnly = true)
+                val right = decodeRearThreatLevel(byteField(alarm, "getRightSts"), hardOnly = true)
+                val rcwLevel = decodeRearThreatLevel(byteField(alarm, "getRCWWarning"))
+                synchronized(stateLock) {
+                    rearThreats = rearThreats.copy(
+                        rctaLeft = left,
+                        rctaRight = right,
+                        rcw = rcwLevel,
+                    )
+                }
                 publish()
             }
             null
@@ -329,10 +344,14 @@ object LauncherAdasRepository {
         val handler = InvocationHandler { _, method, args ->
             if (method.name == "onDowAlarm" && args?.isNotEmpty() == true) {
                 val alarm = args[0] ?: return@InvocationHandler null
-                rearThreats = rearThreats.copy(
-                    dowLeft = decodeRearThreatLevel(byteField(alarm, "getLeftSts")),
-                    dowRight = decodeRearThreatLevel(byteField(alarm, "getRightSts")),
-                )
+                val left = decodeRearThreatLevel(byteField(alarm, "getLeftSts"))
+                val right = decodeRearThreatLevel(byteField(alarm, "getRightSts"))
+                synchronized(stateLock) {
+                    rearThreats = rearThreats.copy(
+                        dowLeft = left,
+                        dowRight = right,
+                    )
+                }
                 publish()
             }
             null
@@ -367,12 +386,18 @@ object LauncherAdasRepository {
             if (method.name == "onRadarSensorChange" && args?.isNotEmpty() == true) {
                 parseRadarSensor(args[0])?.let { zones ->
                     val now = android.os.SystemClock.uptimeMillis()
-                    lastRadarMs = now
-                    if (now >= radarGraceUntilMs) {
-                        pdcActive = true
-                        if (zones != pdcZones) {
-                            pdcZones = zones
+                    var shouldPublish = false
+                    synchronized(stateLock) {
+                        lastRadarMs = now
+                        if (now >= radarGraceUntilMs) {
+                            pdcActive = true
+                            if (zones != pdcZones) {
+                                pdcZones = zones
+                            }
+                            shouldPublish = true
                         }
+                    }
+                    if (shouldPublish) {
                         publish()
                     }
                 }
@@ -385,8 +410,9 @@ object LauncherAdasRepository {
                 .getMethod("registRadarSensorListener", iface)
                 .invoke(inst, proxy)
             radarListenerProxy = proxy
-            radarGraceUntilMs = android.os.SystemClock.uptimeMillis() + 500L
-            radarPending = null
+            synchronized(stateLock) {
+                radarGraceUntilMs = android.os.SystemClock.uptimeMillis() + 500L
+            }
         }
     }
 
@@ -398,8 +424,9 @@ object LauncherAdasRepository {
             }
         }
         radarListenerProxy = null
-        radarGraceUntilMs = 0L
-        radarPending = null
+        synchronized(stateLock) {
+            radarGraceUntilMs = 0L
+        }
     }
 
     private fun intField(obj: Any, getter: String): Int =
@@ -413,10 +440,11 @@ object LauncherAdasRepository {
             launch {
                 UniversalCanRepository.parkingRadarState.collect { radarState ->
                     if (radarState !is MbCanBinaryState.On && !LauncherDevVehicleState.simulateEnabledFlow.value) {
-                        pdcActive = false
-                        if (pdcZones.hasAny) {
-                            pdcZones = LauncherPdcZones()
-                            radarPending = null
+                        synchronized(stateLock) {
+                            pdcActive = false
+                            if (pdcZones.hasAny) {
+                                pdcZones = LauncherPdcZones()
+                            }
                         }
                         publish()
                     }
@@ -425,15 +453,18 @@ object LauncherAdasRepository {
             while (isActive) {
                 delay(300)
                 val now = android.os.SystemClock.uptimeMillis()
-                val stale = lastRadarMs > 0L && now - lastRadarMs > PDC_STALE_MS
                 val drivingAway = lastSpeedKmh > PDC_DRIVE_CLEAR_KMH
-                if (stale || drivingAway) {
-                    if (pdcActive || pdcZones.hasAny) {
+                var shouldPublish = false
+                synchronized(stateLock) {
+                    val stale = lastRadarMs > 0L && now - lastRadarMs > PDC_STALE_MS
+                    if ((stale || drivingAway) && (pdcActive || pdcZones.hasAny)) {
                         pdcActive = false
                         pdcZones = LauncherPdcZones()
-                        radarPending = null
-                        publish()
+                        shouldPublish = true
                     }
+                }
+                if (shouldPublish) {
+                    publish()
                 }
             }
         }
@@ -527,43 +558,51 @@ object LauncherAdasRepository {
     }.getOrNull()
 
     private fun onFrmInfo(snapshot: FrmSnapshot) {
-        frmAccMode = snapshot.accMode
-        frmVSetDis = snapshot.vSetDis
-        frmDxTarObj = snapshot.dxTarObj
-        frmObjValid = snapshot.objValid
-        frmFrontObjectType = snapshot.frontObjectType
-        frmTextInfo = snapshot.textInfo
-        frmTakeOverReq = snapshot.takeOverReq
-        frmObjectDx = snapshot.objectDx
-        frmFcwPreWarning = snapshot.fcwPreWarning
-        frmDistanceWarning = snapshot.distanceWarning
-        val newGap = snapshot.timeGap
-        val now = android.os.SystemClock.uptimeMillis()
-        val newGapCode = byteToUnsigned(newGap)
-        val lastGapCode = byteToUnsigned(frmTimeGapLastSeenValid)
-        val gapValid = newGapCode in 0..2
-        val lastValid = lastGapCode in 0..2
-        if (gapValid && lastValid && newGapCode != lastGapCode) {
-            timeGapFlashUntilMs = now + TIME_GAP_FLASH_MS
+        var scheduleGapClear = false
+        synchronized(stateLock) {
+            frmAccMode = snapshot.accMode
+            frmVSetDis = snapshot.vSetDis
+            frmDxTarObj = snapshot.dxTarObj
+            frmObjValid = snapshot.objValid
+            frmFrontObjectType = snapshot.frontObjectType
+            frmTextInfo = snapshot.textInfo
+            frmTakeOverReq = snapshot.takeOverReq
+            frmObjectDx = snapshot.objectDx
+            frmFcwPreWarning = snapshot.fcwPreWarning
+            frmDistanceWarning = snapshot.distanceWarning
+            val newGap = snapshot.timeGap
+            val now = android.os.SystemClock.uptimeMillis()
+            val newGapCode = byteToUnsigned(newGap)
+            val lastGapCode = byteToUnsigned(frmTimeGapLastSeenValid)
+            val gapValid = newGapCode in 0..2
+            val lastValid = lastGapCode in 0..2
+            if (gapValid && lastValid && newGapCode != lastGapCode) {
+                timeGapFlashUntilMs = now + TIME_GAP_FLASH_MS
+                scheduleGapClear = true
+            }
+            if (gapValid) {
+                frmTimeGapLastSeenValid = newGap
+            }
+            frmTimeGap = newGap
+        }
+        if (scheduleGapClear) {
             mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
             mainHandler.postDelayed(clearTimeGapFlashRunnable, TIME_GAP_FLASH_MS + 50L)
         }
-        if (gapValid) {
-            frmTimeGapLastSeenValid = newGap
-        }
-        frmTimeGap = newGap
         publish()
     }
 
     private fun onLkaStatus(snapshot: LkaSnapshot) {
-        lkaLeft = snapshot.leftVisualization
-        lkaRight = snapshot.rightVisualization
-        lkaStatus = snapshot.lkaStatus
-        lkaAdasTakeOver = snapshot.adasTakeOverReq
-        lkaSlaSpdLimit = snapshot.slaSpdLimit
-        lkaSlaSpdLimitWarning = snapshot.slaSpdLimitWarning
-        lkaHma = snapshot.hmaStatus
-        lkaTja = snapshot.tjaMode
+        synchronized(stateLock) {
+            lkaLeft = snapshot.leftVisualization
+            lkaRight = snapshot.rightVisualization
+            lkaStatus = snapshot.lkaStatus
+            lkaAdasTakeOver = snapshot.adasTakeOverReq
+            lkaSlaSpdLimit = snapshot.slaSpdLimit
+            lkaSlaSpdLimitWarning = snapshot.slaSpdLimitWarning
+            lkaHma = snapshot.hmaStatus
+            lkaTja = snapshot.tjaMode
+        }
         publish()
     }
 
@@ -573,15 +612,17 @@ object LauncherAdasRepository {
     @Volatile private var publishScheduled = false
 
     private val clearTimeGapFlashRunnable = Runnable {
-        timeGapFlashUntilMs = 0L
+        synchronized(stateLock) {
+            timeGapFlashUntilMs = 0L
+        }
         publish()
     }
 
     private val publishRunnable = Runnable {
         synchronized(publishLock) {
             publishScheduled = false
-            doPublish()
         }
+        doPublish()
     }
 
     private fun publish(immediate: Boolean = false) {
@@ -589,8 +630,8 @@ object LauncherAdasRepository {
             synchronized(publishLock) {
                 mainHandler.removeCallbacks(publishRunnable)
                 publishScheduled = false
-                doPublish()
             }
+            doPublish()
             return
         }
         synchronized(publishLock) {
@@ -602,41 +643,45 @@ object LauncherAdasRepository {
 
     private fun doPublish() {
         val lasMode = cachedLasMode
-        val newState = buildLauncherAdasState(
-            accModeRaw = frmAccMode,
-            vSetDisRaw = frmVSetDis,
-            objValidRaw = frmObjValid,
-            frontObjectTypeRaw = frmFrontObjectType,
-            dxTarObjRaw = frmDxTarObj,
-            objectDxRaw = frmObjectDx,
-            takeOverRaw = frmTakeOverReq,
-            textInfoRaw = frmTextInfo,
-            fcwPreWarningRaw = frmFcwPreWarning,
-            distanceWarningRaw = frmDistanceWarning,
-            timeGapRaw = frmTimeGap,
-            leftLaneRaw = lkaLeft,
-            rightLaneRaw = lkaRight,
-            lkaStatusRaw = lkaStatus,
-            lasModeRaw = lasMode,
-            adasTakeOverRaw = lkaAdasTakeOver,
-            slaSpdLimitRaw = lkaSlaSpdLimit,
-            slaSpdLimitWarningRaw = lkaSlaSpdLimitWarning,
-            timeGapFlashUntilMs = timeGapFlashUntilMs,
-            tsr = tsrSign,
-            rearThreats = rearThreats,
-            pdc = pdcZones,
-            pdcActive = pdcActive && (android.os.SystemClock.uptimeMillis() - lastRadarMs < PDC_STALE_MS),
-            hmaRaw = lkaHma,
-            tjaRaw = lkaTja,
-            srrSystemRaw = srrSystemState,
-        )
+        val newState = synchronized(stateLock) {
+            buildLauncherAdasState(
+                accModeRaw = frmAccMode,
+                vSetDisRaw = frmVSetDis,
+                objValidRaw = frmObjValid,
+                frontObjectTypeRaw = frmFrontObjectType,
+                dxTarObjRaw = frmDxTarObj,
+                objectDxRaw = frmObjectDx,
+                takeOverRaw = frmTakeOverReq,
+                textInfoRaw = frmTextInfo,
+                fcwPreWarningRaw = frmFcwPreWarning,
+                distanceWarningRaw = frmDistanceWarning,
+                timeGapRaw = frmTimeGap,
+                leftLaneRaw = lkaLeft,
+                rightLaneRaw = lkaRight,
+                lkaStatusRaw = lkaStatus,
+                lasModeRaw = lasMode,
+                adasTakeOverRaw = lkaAdasTakeOver,
+                slaSpdLimitRaw = lkaSlaSpdLimit,
+                slaSpdLimitWarningRaw = lkaSlaSpdLimitWarning,
+                timeGapFlashUntilMs = timeGapFlashUntilMs,
+                tsr = tsrSign,
+                rearThreats = rearThreats,
+                pdc = pdcZones,
+                pdcActive = pdcActive && (android.os.SystemClock.uptimeMillis() - lastRadarMs < PDC_STALE_MS),
+                hmaRaw = lkaHma,
+                tjaRaw = lkaTja,
+                srrSystemRaw = srrSystemState,
+            )
+        }
         if (newState != _state.value) {
             _state.value = newState
         }
     }
 
     fun triggerTimeGapFlash(ms: Long = 3000L) {
-        timeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
+        synchronized(stateLock) {
+            timeGapFlashUntilMs = android.os.SystemClock.uptimeMillis() + ms
+        }
         mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
         mainHandler.postDelayed(clearTimeGapFlashRunnable, ms + 50L)
         publish()
@@ -644,38 +689,42 @@ object LauncherAdasRepository {
 
     fun clearTimeGapFlash() {
         mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
-        timeGapFlashUntilMs = 0L
+        synchronized(stateLock) {
+            timeGapFlashUntilMs = 0L
+        }
         publish()
     }
 
     private fun clearSnapshots() {
-        frmAccMode = 0
-        frmVSetDis = 0
-        frmDxTarObj = 0
-        frmObjValid = 0
-        frmFrontObjectType = 0
-        frmTextInfo = 0
-        frmTakeOverReq = 0
-        frmObjectDx = 0
-        frmFcwPreWarning = 0
-        frmDistanceWarning = 0
-        frmTimeGap = 0
-        frmTimeGapLastSeenValid = 0
         mainHandler.removeCallbacks(clearTimeGapFlashRunnable)
-        timeGapFlashUntilMs = 0L
-        lkaLeft = 0
-        lkaRight = 0
-        lkaStatus = 0
-        lkaAdasTakeOver = 0
-        lkaSlaSpdLimit = 0
-        lkaSlaSpdLimitWarning = 0
-        lkaHma = 0
-        lkaTja = 0
-        srrSystemState = 0
-        tsrSign = LauncherAdasTsrSign()
-        rearThreats = LauncherRearThreats()
-        pdcZones = LauncherPdcZones()
-        lastRadarMs = 0L
-        radarPending = null
+        synchronized(stateLock) {
+            frmAccMode = 0
+            frmVSetDis = 0
+            frmDxTarObj = 0
+            frmObjValid = 0
+            frmFrontObjectType = 0
+            frmTextInfo = 0
+            frmTakeOverReq = 0
+            frmObjectDx = 0
+            frmFcwPreWarning = 0
+            frmDistanceWarning = 0
+            frmTimeGap = 0
+            frmTimeGapLastSeenValid = 0
+            timeGapFlashUntilMs = 0L
+            lkaLeft = 0
+            lkaRight = 0
+            lkaStatus = 0
+            lkaAdasTakeOver = 0
+            lkaSlaSpdLimit = 0
+            lkaSlaSpdLimitWarning = 0
+            lkaHma = 0
+            lkaTja = 0
+            srrSystemState = 0
+            tsrSign = LauncherAdasTsrSign()
+            rearThreats = LauncherRearThreats()
+            pdcZones = LauncherPdcZones()
+            pdcActive = false
+            lastRadarMs = 0L
+        }
     }
 }

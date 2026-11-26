@@ -2,8 +2,7 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.graphics.PixelFormat
-import android.provider.Settings
-import android.util.Log
+import android.os.Build
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -12,8 +11,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -22,25 +21,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.camd.CamdCameraRepository
 import vad.dashing.tbox.camd.CamdSocketClient
 import vad.dashing.tbox.camd.SideCameraWindowBounds
-import vad.dashing.tbox.ui.MyLifecycleOwner
 import vad.dashing.tbox.ui.ProvideUiClickSounds
 
 /**
@@ -97,7 +94,8 @@ fun LauncherBsdAlertOverlay(
         rectCorners = rectCorners,
     )
 
-    val pulse by rememberInfiniteTransition(label = "bsdOverlayPulse").animateFloat(
+    // Keep State<Float> reference so pulse is read exclusively inside the draw phase
+    val pulseState = rememberInfiniteTransition(label = "bsdOverlayPulse").animateFloat(
         initialValue = 0.35f,
         targetValue = 0.95f,
         animationSpec = infiniteRepeatable(
@@ -110,108 +108,154 @@ fun LauncherBsdAlertOverlay(
     val alertRed = Color(0xFFFF1744)
 
     if (useCameraWindowBorder) {
-        val leftBounds = CamdCameraRepository.calculateSideCameraWindowBounds(
-            context = context,
-            isRightSide = false,
-            shapeCircleOverride = shapeCircle,
-            rectCornersOverride = rectCorners,
-        )
-        val rightBounds = CamdCameraRepository.calculateSideCameraWindowBounds(
-            context = context,
-            isRightSide = true,
-            shapeCircleOverride = shapeCircle,
-            rectCornersOverride = rectCorners,
-        )
+        val leftBounds = remember(context, camdConfigRev, shapeCircle, rectCorners) {
+            CamdCameraRepository.calculateSideCameraWindowBounds(
+                context = context,
+                isRightSide = false,
+                shapeCircleOverride = shapeCircle,
+                rectCornersOverride = rectCorners,
+            )
+        }
+        val rightBounds = remember(context, camdConfigRev, shapeCircle, rectCorners) {
+            CamdCameraRepository.calculateSideCameraWindowBounds(
+                context = context,
+                isRightSide = true,
+                shapeCircleOverride = shapeCircle,
+                rectCornersOverride = rectCorners,
+            )
+        }
 
         Box(modifier = modifier.fillMaxSize()) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                if (bsdLeftAlert && (leftBounds != null)) {
-                    drawCameraWindowAlert(leftBounds, alertRed, pulse)
-                }
-                if (bsdRightAlert && (rightBounds != null)) {
-                    drawCameraWindowAlert(rightBounds, alertRed, pulse)
-                }
-            }
+            Spacer(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawWithCache {
+                        val strokeWidthPx = 80.dp.toPx()
+                        val leftCache = leftBounds?.let { buildCameraWindowBrushCache(it, alertRed, strokeWidthPx) }
+                        val rightCache = rightBounds?.let { buildCameraWindowBrushCache(it, alertRed, strokeWidthPx) }
+                        onDrawBehind {
+                            val pulse = pulseState.value
+                            if (bsdLeftAlert && leftCache != null) {
+                                drawCameraWindowAlert(leftCache, pulse)
+                            }
+                            if (bsdRightAlert && rightCache != null) {
+                                drawCameraWindowAlert(rightCache, pulse)
+                            }
+                        }
+                    },
+            )
         }
     } else {
         Box(modifier = modifier.fillMaxSize()) {
             // Left 150.dp bar (solid red at x=0 -> transparent at x=150dp)
             if (bsdLeftAlert) {
-                Canvas(
+                Spacer(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .width(150.dp)
-                        .fillMaxHeight(),
-                ) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            0.00f to alertRed.copy(alpha = 0.85f * pulse),
-                            0.30f to alertRed.copy(alpha = 0.55f * pulse),
-                            0.70f to alertRed.copy(alpha = 0.20f * pulse),
-                            1.00f to alertRed.copy(alpha = 0f),
-                            startX = 0f,
-                            endX = size.width,
-                        ),
-                        topLeft = Offset.Zero,
-                        size = Size(size.width, size.height),
-                    )
-                }
+                        .fillMaxHeight()
+                        .drawWithCache {
+                            val brush = Brush.horizontalGradient(
+                                0.00f to alertRed.copy(alpha = 0.85f),
+                                0.30f to alertRed.copy(alpha = 0.55f),
+                                0.70f to alertRed.copy(alpha = 0.20f),
+                                1.00f to alertRed.copy(alpha = 0f),
+                                startX = 0f,
+                                endX = size.width,
+                            )
+                            val rectSize = Size(size.width, size.height)
+                            onDrawBehind {
+                                drawRect(
+                                    brush = brush,
+                                    topLeft = Offset.Zero,
+                                    size = rectSize,
+                                    alpha = pulseState.value,
+                                )
+                            }
+                        },
+                )
             }
 
             // Right 150.dp bar (transparent at x=0 -> solid red at x=150dp)
             if (bsdRightAlert) {
-                Canvas(
+                Spacer(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .width(150.dp)
-                        .fillMaxHeight(),
-                ) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            0.00f to alertRed.copy(alpha = 0f),
-                            0.30f to alertRed.copy(alpha = 0.20f * pulse),
-                            0.70f to alertRed.copy(alpha = 0.55f * pulse),
-                            1.00f to alertRed.copy(alpha = 0.85f * pulse),
-                            startX = 0f,
-                            endX = size.width,
-                        ),
-                        topLeft = Offset.Zero,
-                        size = Size(size.width, size.height),
-                    )
-                }
+                        .fillMaxHeight()
+                        .drawWithCache {
+                            val brush = Brush.horizontalGradient(
+                                0.00f to alertRed.copy(alpha = 0f),
+                                0.30f to alertRed.copy(alpha = 0.20f),
+                                0.70f to alertRed.copy(alpha = 0.55f),
+                                1.00f to alertRed.copy(alpha = 0.85f),
+                                startX = 0f,
+                                endX = size.width,
+                            )
+                            val rectSize = Size(size.width, size.height)
+                            onDrawBehind {
+                                drawRect(
+                                    brush = brush,
+                                    topLeft = Offset.Zero,
+                                    size = rectSize,
+                                    alpha = pulseState.value,
+                                )
+                            }
+                        },
+                )
             }
         }
     }
 }
 
-private fun DrawScope.drawCameraWindowAlert(
+private sealed class CameraWindowBrushCache {
+    class Circle(
+        val brush: Brush,
+        val center: Offset,
+        val radius: Float,
+    ) : CameraWindowBrushCache()
+
+    class Rect(
+        val topBrush: Brush,
+        val topPos: Offset,
+        val topSize: Size,
+        val bottomBrush: Brush,
+        val bottomPos: Offset,
+        val bottomSize: Size,
+        val leftBrush: Brush,
+        val leftPos: Offset,
+        val leftSize: Size,
+        val rightBrush: Brush,
+        val rightPos: Offset,
+        val rightSize: Size,
+    ) : CameraWindowBrushCache()
+}
+
+private fun buildCameraWindowBrushCache(
     bounds: SideCameraWindowBounds,
     color: Color,
-    pulse: Float,
-) {
-    val strokeWidth = 80.dp.toPx()
-
-    if (bounds.isCircle) {
+    strokeWidth: Float,
+): CameraWindowBrushCache {
+    return if (bounds.isCircle) {
         val center = Offset(bounds.xPx + (bounds.widthPx / 2f), bounds.yPx + (bounds.heightPx / 2f))
         val radius = bounds.widthPx / 2f
         val effectiveStroke = strokeWidth.coerceAtMost(radius)
         val innerRadius = (radius - effectiveStroke).coerceAtLeast(0f)
-        val startRatio = (innerRadius / radius).coerceIn(0f, 1f)
-
-        drawCircle(
+        val startRatio = if (radius > 0f) (innerRadius / radius).coerceIn(0f, 1f) else 0f
+        CameraWindowBrushCache.Circle(
             brush = Brush.radialGradient(
                 colorStops = arrayOf(
                     0.00f to Color.Transparent,
                     startRatio to Color.Transparent,
-                    (startRatio + ((1f - startRatio) * 0.30f)) to color.copy(alpha = 0.20f * pulse),
-                    (startRatio + ((1f - startRatio) * 0.70f)) to color.copy(alpha = 0.55f * pulse),
-                    1.00f to color.copy(alpha = 0.85f * pulse),
+                    (startRatio + ((1f - startRatio) * 0.30f)) to color.copy(alpha = 0.20f),
+                    (startRatio + ((1f - startRatio) * 0.70f)) to color.copy(alpha = 0.55f),
+                    1.00f to color.copy(alpha = 0.85f),
                 ),
                 center = center,
-                radius = radius,
+                radius = radius.coerceAtLeast(1f),
             ),
-            radius = radius,
             center = center,
+            radius = radius,
         )
     } else {
         val left = bounds.xPx
@@ -222,61 +266,70 @@ private fun DrawScope.drawCameraWindowAlert(
         val bottom = top + height
         val effectiveStroke = strokeWidth.coerceAtMost(minOf(width, height) / 2f)
 
-        // Top edge: vertical gradient fading downwards
-        drawRect(
-            brush = Brush.verticalGradient(
-                0.00f to color.copy(alpha = 0.85f * pulse),
-                0.30f to color.copy(alpha = 0.55f * pulse),
-                0.70f to color.copy(alpha = 0.20f * pulse),
+        CameraWindowBrushCache.Rect(
+            topBrush = Brush.verticalGradient(
+                0.00f to color.copy(alpha = 0.85f),
+                0.30f to color.copy(alpha = 0.55f),
+                0.70f to color.copy(alpha = 0.20f),
                 1.00f to color.copy(alpha = 0f),
                 startY = top,
                 endY = top + effectiveStroke,
             ),
-            topLeft = Offset(left, top),
-            size = Size(width, effectiveStroke),
-        )
-
-        // Bottom edge: vertical gradient fading upwards
-        drawRect(
-            brush = Brush.verticalGradient(
+            topPos = Offset(left, top),
+            topSize = Size(width, effectiveStroke),
+            bottomBrush = Brush.verticalGradient(
                 0.00f to color.copy(alpha = 0f),
-                0.30f to color.copy(alpha = 0.20f * pulse),
-                0.70f to color.copy(alpha = 0.55f * pulse),
-                1.00f to color.copy(alpha = 0.85f * pulse),
+                0.30f to color.copy(alpha = 0.20f),
+                0.70f to color.copy(alpha = 0.55f),
+                1.00f to color.copy(alpha = 0.85f),
                 startY = bottom - effectiveStroke,
                 endY = bottom,
             ),
-            topLeft = Offset(left, bottom - effectiveStroke),
-            size = Size(width, effectiveStroke),
-        )
-
-        // Left edge: horizontal gradient fading to the right
-        drawRect(
-            brush = Brush.horizontalGradient(
-                0.00f to color.copy(alpha = 0.85f * pulse),
-                0.30f to color.copy(alpha = 0.55f * pulse),
-                0.70f to color.copy(alpha = 0.20f * pulse),
+            bottomPos = Offset(left, bottom - effectiveStroke),
+            bottomSize = Size(width, effectiveStroke),
+            leftBrush = Brush.horizontalGradient(
+                0.00f to color.copy(alpha = 0.85f),
+                0.30f to color.copy(alpha = 0.55f),
+                0.70f to color.copy(alpha = 0.20f),
                 1.00f to color.copy(alpha = 0f),
                 startX = left,
                 endX = left + effectiveStroke,
             ),
-            topLeft = Offset(left, top),
-            size = Size(effectiveStroke, height),
-        )
-
-        // Right edge: horizontal gradient fading to the left
-        drawRect(
-            brush = Brush.horizontalGradient(
+            leftPos = Offset(left, top),
+            leftSize = Size(effectiveStroke, height),
+            rightBrush = Brush.horizontalGradient(
                 0.00f to color.copy(alpha = 0f),
-                0.30f to color.copy(alpha = 0.20f * pulse),
-                0.70f to color.copy(alpha = 0.55f * pulse),
-                1.00f to color.copy(alpha = 0.85f * pulse),
+                0.30f to color.copy(alpha = 0.20f),
+                0.70f to color.copy(alpha = 0.55f),
+                1.00f to color.copy(alpha = 0.85f),
                 startX = right - effectiveStroke,
                 endX = right,
             ),
-            topLeft = Offset(right - effectiveStroke, top),
-            size = Size(effectiveStroke, height),
+            rightPos = Offset(right - effectiveStroke, top),
+            rightSize = Size(effectiveStroke, height),
         )
+    }
+}
+
+private fun DrawScope.drawCameraWindowAlert(
+    cache: CameraWindowBrushCache,
+    pulse: Float,
+) {
+    when (cache) {
+        is CameraWindowBrushCache.Circle -> {
+            drawCircle(
+                brush = cache.brush,
+                radius = cache.radius,
+                center = cache.center,
+                alpha = pulse,
+            )
+        }
+        is CameraWindowBrushCache.Rect -> {
+            drawRect(brush = cache.topBrush, topLeft = cache.topPos, size = cache.topSize, alpha = pulse)
+            drawRect(brush = cache.bottomBrush, topLeft = cache.bottomPos, size = cache.bottomSize, alpha = pulse)
+            drawRect(brush = cache.leftBrush, topLeft = cache.leftPos, size = cache.leftSize, alpha = pulse)
+            drawRect(brush = cache.rightBrush, topLeft = cache.rightPos, size = cache.rightSize, alpha = pulse)
+        }
     }
 }
 
@@ -287,11 +340,11 @@ private fun DrawScope.drawCameraWindowAlert(
 internal object LauncherBsdAlertOverlayWindow {
     private const val TAG = "LauncherBsdAlertOverlayWindow"
 
-    @Volatile
-    private var composeView: ComposeView? = null
-    private var lifecycleOwner: MyLifecycleOwner? = null
+    private val overlayWindow = ManagedComposeOverlayWindow(TAG)
+    private val _isShowingFlow = MutableStateFlow(false)
+    val isShowingFlow: StateFlow<Boolean> = _isShowingFlow.asStateFlow()
 
-    fun isShowing(): Boolean = composeView != null
+    fun isShowing(): Boolean = overlayWindow.isShowing
 
     fun update(context: Context, adas: LauncherAdasState) {
         if (!LauncherAppConfigStore.adasBsdAlertOverlayEnabled(context)) {
@@ -312,15 +365,13 @@ internal object LauncherBsdAlertOverlayWindow {
         val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
             ?: return
         if (activity.isFinishing || activity.isDestroyed) return
-        if (!Settings.canDrawOverlays(activity)) return
 
-        val owner = MyLifecycleOwner().also {
-            it.setCurrentState(Lifecycle.State.CREATED)
-            it.setCurrentState(Lifecycle.State.STARTED)
-            it.setCurrentState(Lifecycle.State.RESUMED)
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
         }
-        val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -337,41 +388,22 @@ internal object LauncherBsdAlertOverlayWindow {
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
-        val view = ComposeView(activity).apply {
-            setViewTreeLifecycleOwner(owner)
-            setViewTreeSavedStateRegistryOwner(owner)
-            setViewTreeViewModelStoreOwner(activity)
-            setContent {
-                ProvideUiClickSounds {
-                    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
-                    val currentAdas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
-                    LauncherBsdAlertOverlay(adas = currentAdas)
-                }
+        val shown = overlayWindow.show(
+            context = activity,
+            params = params,
+            viewModelStoreOwner = activity,
+        ) {
+            ProvideUiClickSounds {
+                val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+                val currentAdas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+                LauncherBsdAlertOverlay(adas = currentAdas)
             }
         }
-
-        lifecycleOwner = owner
-        composeView = view
-        runCatching {
-            wm.addView(view, params)
-        }.onFailure {
-            Log.e(TAG, "Failed to add BSD Alert overlay window", it)
-            composeView = null
-            lifecycleOwner = null
-        }
+        _isShowingFlow.value = shown
     }
 
     fun hide() {
-        val view = composeView ?: return
-        composeView = null
-        val owner = lifecycleOwner
-        lifecycleOwner = null
-
-        val activity = LauncherHomeActivityHolder.instance ?: return
-        runCatching {
-            val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            wm.removeViewImmediate(view)
-        }
-        owner?.setCurrentState(Lifecycle.State.DESTROYED)
+        overlayWindow.hide()
+        _isShowingFlow.value = false
     }
 }

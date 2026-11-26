@@ -75,26 +75,36 @@ public final class Starter {
             vad.dashing.tbox.DclLogRecorder.log("DCLWM", "Starting dclwm: copying dex and writing autorun.sh");
             File dex = new File(context.getFilesDir(), Protocol.DEX_ASSET);
             copyAsset(context, dex);
-            String script = ArmScript.text(dex.getAbsolutePath(), upgradeRunning);
-            File autorun = new File(Protocol.AUTORUN);
-            writeLf(autorun, script);
-            exec("chmod", "777", autorun.getAbsolutePath());
-            new File(Protocol.AUTORUN_FLAG).createNewFile();
-            exec("chmod", "666", Protocol.AUTORUN_FLAG);
+
+            File marker = new File(Protocol.ARM_MARKER);
+            // Best-effort clear of stale marker before triggering; nonce guarantees freshness even if root-owned.
+            marker.delete();
+            String nonce = Long.toHexString(System.nanoTime());
+            String script = ArmScript.text(dex.getAbsolutePath(), upgradeRunning, nonce);
+
+            // Clear prop and settle BEFORE writing /sdcard/autorun.sh to minimize TOCTOU window.
             exec("setprop", Protocol.AUTORUN_PROP, "");
             Thread.sleep(300);
+
+            File autorun = new File(Protocol.AUTORUN);
+            writeLf(autorun, script);
+            exec("chmod", "700", autorun.getAbsolutePath());
+            flagFile.createNewFile();
+            exec("chmod", "600", Protocol.AUTORUN_FLAG);
             exec("setprop", Protocol.AUTORUN_PROP, Protocol.AUTORUN_FLAG);
+
             long deadline = System.currentTimeMillis() + WAIT_MS;
-            File marker = new File(Protocol.ARM_MARKER);
             while (System.currentTimeMillis() < deadline) {
                 String text = readIfAny(marker);
-                if (text.contains("started") || text.contains("already")) {
-                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm started successfully: marker=" + text);
-                    return;
-                }
-                if (text.contains("missing") || text.contains("failed")) {
-                    vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm failed to stay up: marker=" + text);
-                    throw new IllegalStateException("dclwm did not stay up, see " + Protocol.LOG_FILE);
+                if (text.contains(nonce)) {
+                    if (text.contains("started") || text.contains("already")) {
+                        vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm started successfully: marker=" + text.trim());
+                        return;
+                    }
+                    if (text.contains("missing") || text.contains("failed")) {
+                        vad.dashing.tbox.DclLogRecorder.log("DCLWM", "dclwm failed to stay up: marker=" + text.trim());
+                        throw new IllegalStateException("dclwm did not stay up, see " + Protocol.LOG_FILE);
+                    }
                 }
                 Thread.sleep(200);
             }
@@ -123,11 +133,21 @@ public final class Starter {
                 return;
             }
         }
-        FileOutputStream out = new FileOutputStream(dest);
+        // Write to a sibling temp file and atomically rename so an active Helper mmap never sees partial bytes.
+        File tmp = new File(dest.getParentFile(), dest.getName() + ".tmp");
+        FileOutputStream out = new FileOutputStream(tmp);
         try {
             out.write(assetBytes);
+            out.getFD().sync();
         } finally {
             out.close();
+        }
+        tmp.setReadable(true, false);
+        if (!tmp.renameTo(dest)) {
+            if (!dest.delete() || !tmp.renameTo(dest)) {
+                tmp.delete();
+                throw new java.io.IOException("Failed to atomically replace " + dest.getAbsolutePath());
+            }
         }
     }
 
@@ -180,8 +200,7 @@ public final class Starter {
         }
     }
 
-    private static void exec(String... args) throws Exception {
-        Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
-        process.waitFor();
+    private static void exec(String... args) {
+        vad.dashing.tbox.ShellExecutor.INSTANCE.exec(Arrays.asList(args), 5000L, 64 * 1024);
     }
 }

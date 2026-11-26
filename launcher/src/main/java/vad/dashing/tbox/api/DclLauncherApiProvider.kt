@@ -38,8 +38,11 @@ class DclLauncherApiProvider : ContentProvider() {
     companion object {
         private const val TAG = "DclLauncherApiProvider"
         private const val TARGET_PACKAGE = "vad.dashing.tbox"
+        private val mainHandler = Handler(Looper.getMainLooper())
+        private val smartAccLock = Any()
         private val processedRequestIds = ConcurrentHashMap<String, Long>()
         private const val REQUEST_ID_EXPIRE_MS = 2000L
+        private const val MAX_PROCESSED_REQUEST_IDS = 256
     }
 
     override fun onCreate(): Boolean = true
@@ -109,10 +112,20 @@ class DclLauncherApiProvider : ContentProvider() {
 
         // Idempotency check
         if (!requestId.isNullOrBlank()) {
-            cleanExpiredRequestIds()
             val now = System.currentTimeMillis()
-            val prevTime = processedRequestIds.putIfAbsent(requestId, now)
-            if (prevTime != null && (now - prevTime) < REQUEST_ID_EXPIRE_MS) {
+            if (processedRequestIds.size >= MAX_PROCESSED_REQUEST_IDS) {
+                cleanExpiredRequestIds(now)
+            }
+            var isDuplicate = false
+            processedRequestIds.compute(requestId) { _, prevTime ->
+                if (prevTime != null && (now - prevTime) < REQUEST_ID_EXPIRE_MS) {
+                    isDuplicate = true
+                    prevTime
+                } else {
+                    now
+                }
+            }
+            if (isDuplicate) {
                 Log.d(TAG, "Duplicate launch request ignored for requestId=$requestId")
                 return Bundle().apply {
                     putString("status", "accepted")
@@ -120,6 +133,9 @@ class DclLauncherApiProvider : ContentProvider() {
                     putString("packageName", pkg)
                     putString("message", "Duplicate request ignored")
                 }
+            }
+            if (processedRequestIds.size > MAX_PROCESSED_REQUEST_IDS) {
+                evictOldestRequestIds(now)
             }
         }
 
@@ -129,7 +145,7 @@ class DclLauncherApiProvider : ContentProvider() {
             putString("message", "Application context is null")
         }
 
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
             try {
                 val launchMode = when {
                     isFullscreen -> LauncherAppLaunchMode.FULLSCREEN
@@ -181,15 +197,30 @@ class DclLauncherApiProvider : ContentProvider() {
         }
 
         val targetSpeed = extras?.getInt("targetSpeed")?.takeIf { it in 30..160 }
+        val hasExplicitConfigEnabled = extras?.containsKey("configEnabled") == true
+        val explicitConfigEnabled = if (hasExplicitConfigEnabled) extras!!.getBoolean("configEnabled") else false
+        val disableSetting = extras?.getBoolean("disableSetting") == true || arg == "disable_setting"
 
-        if (extras?.containsKey("configEnabled") == true) {
-            LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, extras.getBoolean("configEnabled"))
+        val resultingConfigEnabled: Boolean
+        synchronized(smartAccLock) {
+            if (hasExplicitConfigEnabled) {
+                LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, explicitConfigEnabled)
+            }
+            if (enabled) {
+                LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, true)
+                LauncherCruisePresetController.setSmartSpeedLimitActive(true)
+            } else {
+                LauncherCruisePresetController.setSmartSpeedLimitActive(false)
+                if (disableSetting) {
+                    LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, false)
+                }
+            }
+            resultingConfigEnabled = LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx)
         }
 
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
             try {
                 if (enabled) {
-                    LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, true)
                     if (targetSpeed != null) {
                         LauncherCruisePresetController.applySpeedLimitPreset(appCtx, targetSpeed)
                     } else {
@@ -197,14 +228,7 @@ class DclLauncherApiProvider : ContentProvider() {
                         val offset = LauncherAppConfigStore.adasAccSpeedOffset(appCtx)
                         if (limit != null) {
                             LauncherCruisePresetController.applySpeedLimitPreset(appCtx, limit + offset)
-                        } else {
-                            LauncherCruisePresetController.setSmartSpeedLimitActive(true)
                         }
-                    }
-                } else {
-                    LauncherCruisePresetController.setSmartSpeedLimitActive(false)
-                    if (extras?.getBoolean("disableSetting") == true || arg == "disable_setting") {
-                        LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, false)
                     }
                 }
                 DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
@@ -217,7 +241,7 @@ class DclLauncherApiProvider : ContentProvider() {
             putString("status", "ok")
             putBoolean("requestedEnabled", enabled)
             putBoolean("smartAccActive", enabled)
-            putBoolean("smartAccConfigEnabled", LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx))
+            putBoolean("smartAccConfigEnabled", resultingConfigEnabled)
         }
     }
 
@@ -228,21 +252,27 @@ class DclLauncherApiProvider : ContentProvider() {
             putString("message", "Application context is null")
         }
 
-        val wasActive = LauncherCruisePresetController.isSmartSpeedLimitActive.value
-        val willBeActive = !wasActive
+        val willBeActive: Boolean
+        val resultingConfigEnabled: Boolean
+        synchronized(smartAccLock) {
+            val wasActive = LauncherCruisePresetController.isSmartSpeedLimitActive.value
+            willBeActive = !wasActive
+            if (willBeActive) {
+                LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, true)
+                LauncherCruisePresetController.setSmartSpeedLimitActive(true)
+            } else {
+                LauncherCruisePresetController.setSmartSpeedLimitActive(false)
+            }
+            resultingConfigEnabled = LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx)
+        }
 
-        Handler(Looper.getMainLooper()).post {
+        mainHandler.post {
             try {
-                if (wasActive) {
-                    LauncherCruisePresetController.setSmartSpeedLimitActive(false)
-                } else {
-                    LauncherAppConfigStore.setAdasAccBySpeedLimitEnabled(appCtx, true)
+                if (willBeActive) {
                     val limit = LauncherCruisePresetController.currentEffectiveSpeedLimit(appCtx)
                     val offset = LauncherAppConfigStore.adasAccSpeedOffset(appCtx)
                     if (limit != null) {
                         LauncherCruisePresetController.applySpeedLimitPreset(appCtx, limit + offset)
-                    } else {
-                        LauncherCruisePresetController.setSmartSpeedLimitActive(true)
                     }
                 }
                 DclUiStateNotifier.notifyUiStateChanged(appCtx, immediate = true)
@@ -254,7 +284,7 @@ class DclLauncherApiProvider : ContentProvider() {
         return Bundle().apply {
             putString("status", "ok")
             putBoolean("smartAccActive", willBeActive)
-            putBoolean("smartAccConfigEnabled", LauncherAppConfigStore.adasAccBySpeedLimitEnabled(appCtx))
+            putBoolean("smartAccConfigEnabled", resultingConfigEnabled)
         }
     }
 
@@ -303,15 +333,24 @@ class DclLauncherApiProvider : ContentProvider() {
         }
     }
 
-    private fun cleanExpiredRequestIds() {
-        val now = System.currentTimeMillis()
+    private fun cleanExpiredRequestIds(now: Long = System.currentTimeMillis()) {
         val iterator = processedRequestIds.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            if (now - entry.value > REQUEST_ID_EXPIRE_MS) {
+            if (now - entry.value >= REQUEST_ID_EXPIRE_MS) {
                 iterator.remove()
             }
         }
+    }
+
+    private fun evictOldestRequestIds(now: Long) {
+        cleanExpiredRequestIds(now)
+        val overflow = processedRequestIds.size - MAX_PROCESSED_REQUEST_IDS
+        if (overflow <= 0) return
+        processedRequestIds.entries
+            .sortedBy { it.value }
+            .take(overflow)
+            .forEach { processedRequestIds.remove(it.key, it.value) }
     }
 
     override fun query(uri: Uri, p1: Array<out String>?, p2: String?, p3: Array<out String>?, p4: String?): Cursor? = null

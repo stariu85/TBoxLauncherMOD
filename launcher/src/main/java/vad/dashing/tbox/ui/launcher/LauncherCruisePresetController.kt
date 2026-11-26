@@ -5,6 +5,7 @@ import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -839,14 +840,22 @@ internal object LauncherCruisePresetController {
 
     private suspend fun pulse(propertyId: Int) = withContext(Dispatchers.IO) {
         val holdMs = if (isConventionalCruise()) CONVENTIONAL_PULSE_HOLD_MS else PULSE_HOLD_MS
-        if (UniversalCanRepository.mode.value == HeadUnitCanMode.Android10Vhal) {
-            Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 1))
+        val isAndroid10Vhal = UniversalCanRepository.mode.value == HeadUnitCanMode.Android10Vhal
+        try {
+            if (isAndroid10Vhal) {
+                Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 1))
+            } else {
+                MbCanEngineFacade.canSetVehicleParam(propertyId, 1)
+            }
             delay(holdMs)
-            Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 0))
-        } else {
-            MbCanEngineFacade.canSetVehicleParam(propertyId, 1)
-            delay(holdMs)
-            MbCanEngineFacade.canSetVehicleParam(propertyId, 0)
+        } finally {
+            withContext(NonCancellable) {
+                if (isAndroid10Vhal) {
+                    Android10VhalRepository.execute(MbCanCommand.SetProperty(propertyId, 0))
+                } else {
+                    MbCanEngineFacade.canSetVehicleParam(propertyId, 0)
+                }
+            }
         }
     }
 }

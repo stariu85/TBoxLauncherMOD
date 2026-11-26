@@ -25,8 +25,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -40,7 +42,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.backup.LauncherBackupManager
@@ -238,12 +242,22 @@ fun RestoreBackupDialog(
     val scope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Quick location shortcuts
-    val defaultDclDir = remember { LauncherBackupManager.getBackupsDir() }
+    // Quick location shortcuts (mkdirs & directory scans stay off Main composition thread)
     val downloadsDir = remember { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) }
     val rootStorageDir = remember { Environment.getExternalStorageDirectory() }
+    val defaultDclDir by produceState(initialValue = File(downloadsDir, "DCLbackups")) {
+        value = withContext(Dispatchers.IO) { LauncherBackupManager.getBackupsDir() }
+    }
 
-    var currentDir by remember { mutableStateOf(if (defaultDclDir.exists()) defaultDclDir else downloadsDir) }
+    var currentDir by remember { mutableStateOf(File(downloadsDir, "DCLbackups")) }
+    var initializedDir by remember { mutableStateOf(false) }
+    LaunchedEffect(defaultDclDir) {
+        if (!initializedDir) {
+            val exists = withContext(Dispatchers.IO) { defaultDclDir.exists() }
+            currentDir = if (exists) defaultDclDir else downloadsDir
+            initializedDir = true
+        }
+    }
 
     val safLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -257,17 +271,19 @@ fun RestoreBackupDialog(
         }
     }
 
-    // Directory listing (Directories first, then .json files, then others)
-    val filesList = remember(currentDir) {
-        runCatching {
-            val list = currentDir.listFiles()?.toList().orEmpty()
-            val dirs = list.filter { it.isDirectory && !it.name.startsWith(".") }.sortedBy { it.name.lowercase() }
-            val jsonFiles = list.filter { it.isFile && it.name.endsWith(".json", ignoreCase = true) }
-                .sortedByDescending { it.lastModified() }
-            val otherFiles = list.filter { it.isFile && !it.name.endsWith(".json", ignoreCase = true) && !it.name.startsWith(".") }
-                .sortedBy { it.name.lowercase() }
-            dirs + jsonFiles + otherFiles
-        }.getOrDefault(emptyList())
+    // Directory listing off Main thread (Directories first, then .json files, then others)
+    val filesList by produceState<List<File>>(initialValue = emptyList(), key1 = currentDir, key2 = initializedDir) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val list = currentDir.listFiles()?.toList().orEmpty()
+                val dirs = list.filter { it.isDirectory && !it.name.startsWith(".") }.sortedBy { it.name.lowercase() }
+                val jsonFiles = list.filter { it.isFile && it.name.endsWith(".json", ignoreCase = true) }
+                    .sortedByDescending { it.lastModified() }
+                val otherFiles = list.filter { it.isFile && !it.name.endsWith(".json", ignoreCase = true) && !it.name.startsWith(".") }
+                    .sortedBy { it.name.lowercase() }
+                dirs + jsonFiles + otherFiles
+            }.getOrDefault(emptyList())
+        }
     }
 
     val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }

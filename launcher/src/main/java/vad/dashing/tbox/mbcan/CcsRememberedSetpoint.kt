@@ -1,10 +1,13 @@
 package vad.dashing.tbox.mbcan
 
+import android.os.SystemClock
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,18 +64,29 @@ object CcsRememberedSetpoint {
     const val RECONCILE_MIN_DELTA_KMH = 2
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val startLock = Any()
+    private val stateLock = Any()
     private var started = false
+
+    @Volatile
+    internal var clockMs: () -> Long = {
+        try {
+            SystemClock.elapsedRealtime()
+        } catch (_: Throwable) {
+            System.currentTimeMillis()
+        }
+    }
+
+    private fun nowElapsedMs(): Long = clockMs()
 
     private val _kmh = MutableStateFlow<Int?>(null)
     val kmh: StateFlow<Int?> = _kmh.asStateFlow()
 
-    @Volatile
     private var ourPulseUntilElapsed: Long = 0L
 
     private var lastStatus: Int? = null
     private var pendingNudgeKmh: Int? = null
     private var pendingNudgeSinceElapsed: Long = 0L
+    private var nudgeTimerJob: Job? = null
 
     /** Hardkey already explained the next Standby→Active transition. */
     private var hardkeyOwnedEnterActive = false
@@ -82,11 +96,12 @@ object CcsRememberedSetpoint {
 
     private var stabilityAnchorKmh: Float? = null
     private var stabilitySinceElapsed: Long = 0L
+    private var stabilityTimerJob: Job? = null
 
     fun hasSetpoint(): Boolean = _kmh.value != null
 
     fun ensureStarted() {
-        synchronized(startLock) {
+        synchronized(stateLock) {
             if (started) return
             started = true
         }
@@ -97,7 +112,15 @@ object CcsRememberedSetpoint {
         }
         scope.launch {
             CanDataRepository.carSpeed.collectLatest { speed ->
-                onSpeedWhileActive(speed)
+                val effective = CanDataRepository.carSpeedAccurate.value ?: speed
+                onSpeedWhileActive(effective)
+            }
+        }
+        scope.launch {
+            CanDataRepository.carSpeedAccurate.collectLatest { speed ->
+                if (speed != null) {
+                    onSpeedWhileActive(speed)
+                }
             }
         }
     }
@@ -107,30 +130,38 @@ object CcsRememberedSetpoint {
     /** Mark that we just sent an MFS pulse so stalk inference yields to controller updates. */
     fun markOurPulse(windowMs: Long = OUR_PULSE_WINDOW_MS) {
         ensureStarted()
-        ourPulseUntilElapsed = System.currentTimeMillis() + windowMs
-        resetStability("our_pulse")
+        synchronized(stateLock) {
+            ourPulseUntilElapsed = nowElapsedMs() + windowMs
+            cancelNudgeLocked()
+            resetStabilityLocked("our_pulse")
+        }
     }
 
-    fun isWithinOurPulseWindow(nowElapsed: Long = System.currentTimeMillis()): Boolean =
+    fun isWithinOurPulseWindow(nowElapsed: Long = nowElapsedMs()): Boolean = synchronized(stateLock) {
         nowElapsed < ourPulseUntilElapsed
+    }
 
     fun clear(reason: String = "manual") {
-        if (_kmh.value == null) return
-        debug("clear reason=$reason was=${_kmh.value}")
-        _kmh.value = null
-        pendingNudgeKmh = null
-        hardkeyOwnedEnterActive = false
-        resetStability(reason)
+        synchronized(stateLock) {
+            if (_kmh.value == null) return
+            debug("clear reason=$reason was=${_kmh.value}")
+            _kmh.value = null
+            cancelNudgeLocked()
+            hardkeyOwnedEnterActive = false
+            resetStabilityLocked(reason)
+        }
     }
 
     fun remember(kmh: Int, reason: String) {
         ensureStarted()
         val normalized = normalizeTargetKmh(kmh)
-        if (_kmh.value == normalized) return
-        debug("set reason=$reason kmh=$normalized was=${_kmh.value}")
-        _kmh.value = normalized
-        pendingNudgeKmh = null
-        resetStability(reason)
+        synchronized(stateLock) {
+            if (_kmh.value == normalized) return
+            debug("set reason=$reason kmh=$normalized was=${_kmh.value}")
+            _kmh.value = normalized
+            cancelNudgeLocked()
+            resetStabilityLocked(reason)
+        }
     }
 
     /** Capture rounded vehicle speed as remembered setpoint. */
@@ -157,22 +188,25 @@ object CcsRememberedSetpoint {
     fun onHardKey(keyCode: Int, keyStatus: Int, keyType: Int) {
         if (keyStatus != HARDKEY_STATUS_PRESSED) return
         val key = parseHardkeyCruiseKey(keyCode) ?: return
-        val now = System.currentTimeMillis()
-        if (lastHardkeyCode == keyCode && now - lastHardkeyElapsed < HARDKEY_DEBOUNCE_MS) {
-            return
-        }
-        lastHardkeyCode = keyCode
-        lastHardkeyElapsed = now
+        val decision = synchronized(stateLock) {
+            val now = nowElapsedMs()
+            if (lastHardkeyCode == keyCode && now - lastHardkeyElapsed < HARDKEY_DEBOUNCE_MS) {
+                return
+            }
+            lastHardkeyCode = keyCode
+            lastHardkeyElapsed = now
 
-        val status = lastStatus ?: CanDataRepository.ccsCruiseStatus.value
-        val decision = decideHardkey(
-            key = key,
-            ccsStatus = status,
-        )
-        debug(
-            "hardkey key=$key status=$status decision=$decision " +
-                "keyType=$keyType remembered=${_kmh.value}",
-        )
+            val status = lastStatus ?: CanDataRepository.ccsCruiseStatus.value
+            val d = decideHardkey(
+                key = key,
+                ccsStatus = status,
+            )
+            debug(
+                "hardkey key=$key status=$status decision=$d " +
+                    "keyType=$keyType remembered=${_kmh.value}",
+            )
+            d
+        }
         applyHardkeyDecision(decision)
     }
 
@@ -180,10 +214,14 @@ object CcsRememberedSetpoint {
         when (decision) {
             HardkeySetpointDecision.Ignore -> Unit
             HardkeySetpointDecision.KeepRemembered -> {
-                hardkeyOwnedEnterActive = true
+                synchronized(stateLock) {
+                    hardkeyOwnedEnterActive = true
+                }
             }
             is HardkeySetpointDecision.CaptureSpeed -> {
-                hardkeyOwnedEnterActive = true
+                synchronized(stateLock) {
+                    hardkeyOwnedEnterActive = true
+                }
                 if (!captureFromVehicleSpeed(decision.reason) && _kmh.value == null) {
                     debug("hardkey capture_pending_no_speed reason=${decision.reason}")
                 }
@@ -267,125 +305,199 @@ object CcsRememberedSetpoint {
     }
 
     private fun onStatus(status: Int?) {
-        val previous = lastStatus
-        lastStatus = status
-        when {
-            status == null -> {
-                clear("status_null")
-                pendingNudgeKmh = null
+        val enteredActive = synchronized(stateLock) {
+            val previous = lastStatus
+            lastStatus = status
+            when {
+                status == null -> {
+                    clearLocked("status_null")
+                    return
+                }
+                status == 0 -> {
+                    clearLocked("status_off")
+                    return
+                }
+            }
+            if (status != 1) { // Not Active (i.e. Standby = 2)
+                cancelNudgeLocked()
+                resetStabilityLocked("not_active")
                 return
             }
-            status == 0 -> {
-                clear("status_off")
-                pendingNudgeKmh = null
-                return
-            }
+            previous != 1
         }
-        if (status != 1) { // Not Active (i.e. Standby = 2)
-            pendingNudgeKmh = null
-            resetStability("not_active")
-            return
-        }
-        // Entered Active
-        if (previous != 1) {
+        if (enteredActive) {
             onEnteredActive()
         }
     }
 
+    private fun clearLocked(reason: String) {
+        if (_kmh.value != null) {
+            debug("clear reason=$reason was=${_kmh.value}")
+            _kmh.value = null
+        }
+        cancelNudgeLocked()
+        hardkeyOwnedEnterActive = false
+        resetStabilityLocked(reason)
+    }
+
     private fun onEnteredActive() {
-        if (isWithinOurPulseWindow()) {
-            if (_kmh.value == null) {
-                captureFromVehicleSpeed("our_pulse_enter_active")
-            }
-            hardkeyOwnedEnterActive = false
-            return
-        }
-        if (hardkeyOwnedEnterActive) {
-            hardkeyOwnedEnterActive = false
-            if (_kmh.value == null) {
-                captureFromVehicleSpeed("hardkey_enter_active_fallback")
-            } else {
-                debug("hardkey_enter_active keep remembered=${_kmh.value}")
-            }
-            return
-        }
         val currentSpeed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
-        when (val decision = decideStalkEnterActive(_kmh.value, currentSpeed)) {
-            StalkEnterActiveDecision.Keep ->
-                debug("stalk_enter_active keep remembered=${_kmh.value}")
-            is StalkEnterActiveDecision.Capture ->
-                remember(decision.kmh, "stalk_enter_active")
+        synchronized(stateLock) {
+            val now = nowElapsedMs()
+            if (now < ourPulseUntilElapsed) {
+                if (_kmh.value == null) {
+                    roundSpeedKmh(currentSpeed)?.let { rememberLocked(it, "our_pulse_enter_active") }
+                }
+                hardkeyOwnedEnterActive = false
+                return
+            }
+            if (hardkeyOwnedEnterActive) {
+                hardkeyOwnedEnterActive = false
+                if (_kmh.value == null) {
+                    roundSpeedKmh(currentSpeed)?.let { rememberLocked(it, "hardkey_enter_active_fallback") }
+                } else {
+                    debug("hardkey_enter_active keep remembered=${_kmh.value}")
+                }
+                return
+            }
+            when (val decision = decideStalkEnterActive(_kmh.value, currentSpeed)) {
+                StalkEnterActiveDecision.Keep ->
+                    debug("stalk_enter_active keep remembered=${_kmh.value}")
+                is StalkEnterActiveDecision.Capture ->
+                    rememberLocked(decision.kmh, "stalk_enter_active")
+            }
         }
+    }
+
+    private fun rememberLocked(kmh: Int, reason: String) {
+        val normalized = normalizeTargetKmh(kmh)
+        if (_kmh.value == normalized) return
+        debug("set reason=$reason kmh=$normalized was=${_kmh.value}")
+        _kmh.value = normalized
+        cancelNudgeLocked()
+        resetStabilityLocked(reason)
     }
 
     private fun onSpeedWhileActive(speed: Float?) {
-        if (lastStatus != 1) {
-            pendingNudgeKmh = null
-            resetStability("not_active")
-            return
-        }
-        if (isWithinOurPulseWindow()) {
-            pendingNudgeKmh = null
-            resetStability("our_pulse")
-            return
-        }
-        val remembered = _kmh.value
-        val rounded = roundSpeedKmh(speed)
-        if (remembered == null || rounded == null || speed == null || !speed.isFinite()) {
-            pendingNudgeKmh = null
-            resetStability("no_speed")
-            return
-        }
+        synchronized(stateLock) {
+            val now = nowElapsedMs()
+            if (lastStatus != 1) {
+                cancelNudgeLocked()
+                resetStabilityLocked("not_active")
+                return
+            }
+            if (now < ourPulseUntilElapsed) {
+                cancelNudgeLocked()
+                resetStabilityLocked("our_pulse")
+                return
+            }
+            val remembered = _kmh.value
+            val rounded = roundSpeedKmh(speed)
+            if (remembered == null || rounded == null || speed == null || !speed.isFinite()) {
+                cancelNudgeLocked()
+                resetStabilityLocked("no_speed")
+                return
+            }
 
-        val delta = abs(rounded - remembered)
-        when {
-            delta == 0 -> {
-                pendingNudgeKmh = null
-                updateStability(speed)
-            }
-            delta == 1 -> {
-                val now = System.currentTimeMillis()
-                if (pendingNudgeKmh != rounded) {
-                    pendingNudgeKmh = rounded
-                    pendingNudgeSinceElapsed = now
-                } else if (now - pendingNudgeSinceElapsed >= NUDGE_SETTLE_MS) {
-                    remember(rounded, "stalk_nudge")
-                    return
+            val delta = abs(rounded - remembered)
+            when {
+                delta == 0 -> {
+                    cancelNudgeLocked()
+                    updateStabilityLocked(speed, now)
                 }
-                updateStability(speed)
-            }
-            else -> {
-                pendingNudgeKmh = null
-                updateStability(speed)
-                val stableFor = currentStableDurationMs()
-                if (shouldReconcileStableSpeed(remembered, rounded, stableFor, false)) {
-                    remember(rounded, "stable_reconcile")
+                delta == 1 -> {
+                    if (pendingNudgeKmh != rounded) {
+                        pendingNudgeKmh = rounded
+                        pendingNudgeSinceElapsed = now
+                        scheduleNudgeSettleLocked(rounded)
+                    } else if (now - pendingNudgeSinceElapsed >= NUDGE_SETTLE_MS) {
+                        rememberLocked(rounded, "stalk_nudge")
+                        return
+                    }
+                    updateStabilityLocked(speed, now)
+                }
+                else -> {
+                    cancelNudgeLocked()
+                    updateStabilityLocked(speed, now)
+                    val stableFor = currentStableDurationMsLocked(now)
+                    if (shouldReconcileStableSpeed(remembered, rounded, stableFor, false)) {
+                        rememberLocked(rounded, "stable_reconcile")
+                    }
                 }
             }
         }
     }
 
-    private fun updateStability(speed: Float) {
-        val now = System.currentTimeMillis()
+    private fun cancelNudgeLocked() {
+        pendingNudgeKmh = null
+        pendingNudgeSinceElapsed = 0L
+        nudgeTimerJob?.cancel()
+        nudgeTimerJob = null
+    }
+
+    private fun scheduleNudgeSettleLocked(targetRounded: Int) {
+        nudgeTimerJob?.cancel()
+        nudgeTimerJob = scope.launch {
+            delay(NUDGE_SETTLE_MS)
+            synchronized(stateLock) {
+                val now = nowElapsedMs()
+                if (lastStatus != 1 || now < ourPulseUntilElapsed) return@synchronized
+                if (pendingNudgeKmh != targetRounded) return@synchronized
+                if (now - pendingNudgeSinceElapsed < NUDGE_SETTLE_MS) return@synchronized
+                val liveSpeed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
+                val liveRounded = roundSpeedKmh(liveSpeed) ?: return@synchronized
+                val remembered = _kmh.value ?: return@synchronized
+                if (liveRounded == targetRounded && abs(liveRounded - remembered) == 1) {
+                    rememberLocked(targetRounded, "stalk_nudge")
+                }
+            }
+        }
+    }
+
+    private fun updateStabilityLocked(speed: Float, now: Long) {
         val anchor = stabilityAnchorKmh
         if (anchor == null || abs(speed - anchor) > STABLE_SPEED_BAND_KMH) {
             stabilityAnchorKmh = speed
             stabilitySinceElapsed = now
+            scheduleStabilityReconcileLocked(speed)
             return
         }
     }
 
-    private fun currentStableDurationMs(now: Long = System.currentTimeMillis()): Long {
+    private fun scheduleStabilityReconcileLocked(anchorSpeed: Float) {
+        stabilityTimerJob?.cancel()
+        stabilityTimerJob = scope.launch {
+            delay(STABLE_RECONCILE_MS)
+            synchronized(stateLock) {
+                val now = nowElapsedMs()
+                if (lastStatus != 1 || now < ourPulseUntilElapsed) return@synchronized
+                val anchor = stabilityAnchorKmh ?: return@synchronized
+                if (anchor != anchorSpeed) return@synchronized
+                val liveSpeed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
+                if (liveSpeed == null || !liveSpeed.isFinite()) return@synchronized
+                if (abs(liveSpeed - anchor) > STABLE_SPEED_BAND_KMH) return@synchronized
+                val rounded = roundSpeedKmh(liveSpeed) ?: return@synchronized
+                val stableFor = currentStableDurationMsLocked(now)
+                if (shouldReconcileStableSpeed(_kmh.value, rounded, stableFor, false)) {
+                    rememberLocked(rounded, "stable_reconcile")
+                }
+            }
+        }
+    }
+
+    private fun currentStableDurationMsLocked(now: Long): Long {
         if (stabilityAnchorKmh == null) return 0L
         return (now - stabilitySinceElapsed).coerceAtLeast(0L)
     }
 
-    private fun resetStability(reason: String) {
+    private fun resetStabilityLocked(reason: String) {
         if (stabilityAnchorKmh != null) {
             debug("stability_reset reason=$reason")
         }
         stabilityAnchorKmh = null
         stabilitySinceElapsed = 0L
+        stabilityTimerJob?.cancel()
+        stabilityTimerJob = null
     }
 
     private fun roundSpeedKmh(speed: Float?): Int? {

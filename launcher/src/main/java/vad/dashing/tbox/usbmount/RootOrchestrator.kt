@@ -7,9 +7,10 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.DclLogRecorder
+import vad.dashing.tbox.ShellExecutor
 import java.io.File
 import java.io.FileOutputStream
-import java.util.concurrent.TimeUnit
+import java.security.MessageDigest
 
 /**
  * Unified coordinator for root tasks executed via mb_daemon (/sdcard/autorun.sh).
@@ -30,6 +31,55 @@ object RootOrchestrator {
 
     fun isStorageMounted(): Boolean {
         return Environment.MEDIA_MOUNTED == Environment.getExternalStorageState()
+    }
+
+    /** Safely single-quotes a string for POSIX /system/bin/sh. */
+    fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
+
+    /**
+     * Centralized root script runner via mb_daemon (/sdcard/autorun.sh).
+     * Acquires [ROOT_LOCK], waits for any existing [AUTORUN_FLAG] to clear,
+     * clears [AUTORUN_PROP] and sleeps 300ms BEFORE writing [AUTORUN] to minimize TOCTOU,
+     * avoids world-writable permissions (uses chmod 700 / 600), and triggers mb_daemon.
+     * [onTriggered] runs while still holding [ROOT_LOCK] so callers can wait for completion.
+     */
+    fun runAutorunScript(
+        scriptBody: String,
+        waitPriorFlagMs: Long = 3_000L,
+        onTriggered: (() -> Boolean)? = null,
+    ): Boolean {
+        if (!isStorageMounted()) {
+            Log.w(TAG, "Storage is not mounted yet, cannot write autorun script")
+            return false
+        }
+        synchronized(ROOT_LOCK) {
+            val flagFile = File(AUTORUN_FLAG)
+            if (flagFile.exists()) {
+                Log.i(TAG, "Waiting for previous autorun.flag to clear...")
+                val waitDeadline = System.currentTimeMillis() + waitPriorFlagMs
+                while (flagFile.exists() && System.currentTimeMillis() < waitDeadline) {
+                    Thread.sleep(200)
+                }
+                if (flagFile.exists()) {
+                    Log.w(TAG, "Previous autorun.flag still present after ${waitPriorFlagMs}ms, proceeding")
+                }
+            }
+
+            // Reset prop and settle BEFORE writing /sdcard/autorun.sh to minimize TOCTOU window.
+            exec("setprop", AUTORUN_PROP, "")
+            Thread.sleep(300)
+
+            val normalizedScript = scriptBody.replace("\r\n", "\n").replace('\r', '\n')
+            val autorunFile = File(AUTORUN)
+            FileOutputStream(autorunFile).use { it.write(normalizedScript.toByteArray(Charsets.UTF_8)) }
+            exec("chmod", "700", autorunFile.absolutePath)
+
+            flagFile.createNewFile()
+            exec("chmod", "600", flagFile.absolutePath)
+
+            exec("setprop", AUTORUN_PROP, AUTORUN_FLAG)
+            return onTriggered?.invoke() ?: true
+        }
     }
 
     /**
@@ -60,105 +110,103 @@ object RootOrchestrator {
     }
 
     suspend fun runUnlockUsb(context: Context): Boolean = withContext(Dispatchers.IO) {
+        runUnlockUsbSync(context)
+    }
+
+    internal fun runUnlockUsbSync(context: Context): Boolean {
         if (!isStorageMounted()) {
             Log.w(TAG, "Storage is not mounted yet, cannot write autorun script")
             DclLogRecorder.log("USBMNT", "Storage not mounted, skipping runUnlockUsb")
-            return@withContext false
+            return false
         }
 
         if (!UsbMountManager.isUsbHandlerDisabledOrHidden(context)) {
             Log.w(TAG, "android.car.usb.handler is not hidden! Refusing to run unlockusb")
             DclLogRecorder.log("USBMNT", "BLOCKED: android.car.usb.handler is active")
-            return@withContext false
+            return false
         }
 
         synchronized(ROOT_LOCK) {
             try {
-                // Wait for any prior autorun task (e.g. camd or dclwm) to finish
-                val flagFile = File(AUTORUN_FLAG)
-                if (flagFile.exists()) {
-                    Log.i(TAG, "Waiting for previous autorun.flag to clear...")
-                    val waitDeadline = System.currentTimeMillis() + 3000L
-                    while (flagFile.exists() && System.currentTimeMillis() < waitDeadline) {
-                        Thread.sleep(200)
-                    }
-                    if (flagFile.exists()) {
-                        Log.w(TAG, "Previous autorun.flag still present after 3s, proceeding")
-                    }
-                }
-
                 val dexFile = File(context.filesDir, UNLOCK_USB_DEX_ASSET)
                 copyAsset(context, UNLOCK_USB_DEX_ASSET, dexFile)
 
                 val logFile = File(UNLOCK_USB_LOG)
+                val markerFile = File(GATE_DONE_MARKER)
                 runCatching { logFile.delete() }
+                runCatching { markerFile.delete() }
 
+                val quotedDex = shellQuote(dexFile.absolutePath)
                 val script = "#!/system/bin/sh\n" +
-                        "CLASSPATH='" + dexFile.absolutePath + "' app_process /system/bin UnlockUsb > " + UNLOCK_USB_LOG + " 2>&1\n" +
-                        "chmod 666 " + UNLOCK_USB_LOG + "\n" +
-                        "echo OK > " + GATE_DONE_MARKER + "\n" +
-                        "chmod 666 " + GATE_DONE_MARKER + "\n" +
-                        "rm -f \"$0\" " + AUTORUN_FLAG + "\n" +
+                        "rm -f " + UNLOCK_USB_LOG + " " + GATE_DONE_MARKER + "\n" +
+                        "CLASSPATH=" + quotedDex + " app_process /system/bin UnlockUsb > " + UNLOCK_USB_LOG + " 2>&1 && echo OK > " + GATE_DONE_MARKER + "\n" +
+                        "chmod 644 " + UNLOCK_USB_LOG + "\n" +
+                        "[ -f " + GATE_DONE_MARKER + " ] && chmod 644 " + GATE_DONE_MARKER + "\n" +
+                        "rm -f \"\$0\" " + AUTORUN_FLAG + "\n" +
                         "setprop " + AUTORUN_PROP + " ''\n"
 
-                val autorunFile = File(AUTORUN)
-                FileOutputStream(autorunFile).use { it.write(script.toByteArray(Charsets.UTF_8)) }
-                exec("chmod", "777", autorunFile.absolutePath)
-
-                flagFile.createNewFile()
-                exec("chmod", "666", flagFile.absolutePath)
-
-                exec("setprop", AUTORUN_PROP, "")
-                Thread.sleep(300)
-                exec("setprop", AUTORUN_PROP, AUTORUN_FLAG)
-
-                val deadline = System.currentTimeMillis() + 5000L
-                var logOutput = ""
-                val markerFile = File(GATE_DONE_MARKER)
-                while (System.currentTimeMillis() < deadline) {
-                    if (logFile.exists() && logFile.length() > 0) {
-                        logOutput = runCatching { logFile.readText(Charsets.UTF_8) }.getOrDefault("")
-                        if (logOutput.contains("ok") || logOutput.contains("FAIL")) {
+                return runAutorunScript(script) {
+                    val flagFile = File(AUTORUN_FLAG)
+                    val deadline = System.currentTimeMillis() + 5000L
+                    var logOutput = ""
+                    while (System.currentTimeMillis() < deadline) {
+                        if (logFile.exists() && logFile.length() > 0) {
+                            logOutput = runCatching { logFile.readText(Charsets.UTF_8) }.getOrDefault("")
+                            if (logOutput.contains("ok") || logOutput.contains("FAIL")) {
+                                break
+                            }
+                        }
+                        if (markerFile.exists() && markerFile.length() > 0 && !flagFile.exists()) {
                             break
                         }
+                        Thread.sleep(200)
                     }
-                    if (markerFile.exists() && markerFile.length() > 0 && !flagFile.exists()) {
-                        break
+
+                    if (logFile.exists() && logFile.length() > 0) {
+                        logOutput = runCatching { logFile.readText(Charsets.UTF_8) }.getOrDefault("")
                     }
-                    Thread.sleep(200)
+
+                    val success = !logOutput.contains("FAIL") &&
+                            (logOutput.contains("ok") || (markerFile.exists() && markerFile.length() > 0))
+
+                    DclLogRecorder.log("USBMNT", "unlockUsb completed: success=$success, log=${logOutput.trim()}")
+                    Log.i(TAG, "unlockUsb completed: success=$success, log=${logOutput.trim()}")
+                    success
                 }
-
-                val success = (logOutput.contains("ok") && !logOutput.contains("FAIL")) ||
-                        (markerFile.exists() && markerFile.length() > 0) ||
-                        !flagFile.exists()
-
-                DclLogRecorder.log("USBMNT", "unlockUsb completed: success=$success, log=${logOutput.trim()}")
-                Log.i(TAG, "unlockUsb completed: success=$success, log=${logOutput.trim()}")
-                return@withContext success
             } catch (e: Exception) {
                 Log.e(TAG, "runUnlockUsb failed", e)
                 DclLogRecorder.log("USBMNT", "runUnlockUsb exception: ${e.message}")
-                return@withContext false
+                return false
             }
         }
     }
 
     private fun copyAsset(context: Context, assetName: String, dest: File) {
-        if (dest.exists() && dest.length() > 0) return
-        context.assets.open(assetName).use { input ->
-            dest.outputStream().use { output ->
-                input.copyTo(output)
+        val assetBytes = context.assets.open(assetName).use { it.readBytes() }
+        if (dest.exists() && dest.length() == assetBytes.size.toLong()) {
+            val existingHash = runCatching { sha256(dest.readBytes()) }.getOrNull()
+            if (existingHash != null && existingHash.contentEquals(sha256(assetBytes))) {
+                dest.setReadable(true, false)
+                return
             }
         }
-        dest.setReadable(true, false)
+        val tmp = File(dest.parentFile, "${dest.name}.tmp")
+        FileOutputStream(tmp).use { it.write(assetBytes) }
+        tmp.setReadable(true, false)
+        if (!tmp.renameTo(dest)) {
+            FileOutputStream(dest).use { it.write(assetBytes) }
+            tmp.delete()
+            dest.setReadable(true, false)
+        }
     }
 
+    private fun sha256(bytes: ByteArray): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(bytes)
+
     private fun exec(vararg args: String) {
-        try {
-            val process = ProcessBuilder(*args).redirectErrorStream(true).start()
-            process.waitFor(5, TimeUnit.SECONDS)
-        } catch (e: Exception) {
-            Log.w(TAG, "exec failed for ${args.firstOrNull()}", e)
+        val result = ShellExecutor.exec(args.toList(), timeoutMs = 5_000L)
+        if (!result.isSuccess) {
+            Log.w(TAG, "exec failed for ${args.firstOrNull()} (exit=${result.exitCode}, timedOut=${result.timedOut}): ${result.output.trim()}")
         }
     }
 }

@@ -1,11 +1,14 @@
 package vad.dashing.tbox.mbcan
 
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.HeadUnitCanMode
 import vad.dashing.tbox.SettingsManager
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * One entry point for car-control/CAN behavior across HU platforms.
@@ -31,10 +35,33 @@ object UniversalCanRepository {
     private const val AUTO_BIND_ATTEMPTS_PER_MODE = 3
     private const val AUTO_BIND_ATTEMPT_TIMEOUT_MS = 3_500L
     private const val AUTO_BIND_ATTEMPT_PAUSE_MS = 1_200L
+    private const val CLEAR_SOURCE_DEBOUNCE_MS = 3 * 60_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Application-level canonical scope for CAN bindings (independent of Activity lifecycles). */
+    val appScope: CoroutineScope
+        get() = scope
+
+    @Volatile
     private var boundScope: CoroutineScope? = null
     private val modeSwitchMutex = Mutex()
+    private val sourcesLock = Any()
+    private val canonicalSourceWidgetKeys = mutableMapOf<String, Set<String>>()
+    private val canonicalSourceSignals = mutableMapOf<String, Set<MbCanSignal>>()
+    private val pendingCanonicalClearJobs = ConcurrentHashMap<String, Job>()
+
+    private fun nowElapsedMs(): Long = try {
+        SystemClock.elapsedRealtime()
+    } catch (_: Throwable) {
+        System.currentTimeMillis()
+    }
+
+    private fun currentBackendAvailability(): MbCanAvailability =
+        if (_mode.value == HeadUnitCanMode.Android9MbCan) {
+            MbCanRepository.availability.value
+        } else {
+            Android10VhalRepository.availability.value
+        }
 
     private val _mode = MutableStateFlow(HeadUnitCanMode.Android9MbCan)
     val mode: StateFlow<HeadUnitCanMode> = _mode.asStateFlow()
@@ -47,7 +74,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.availability
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanAvailability.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanAvailability.Unknown)
 
     val steeringWheelHeatState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -57,7 +84,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.steeringWheelHeatState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val wiperMaintenanceState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -67,7 +94,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.wiperMaintenanceState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val parkingRadarState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -77,7 +104,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.parkingRadarState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val frontWindscreenHeatState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -87,7 +114,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.frontWindscreenHeatState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val tjaIcaState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -97,7 +124,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.tjaIcaState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val lasModeRaw: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -107,7 +134,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.lasModeRaw
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val bcmLowBeamState: StateFlow<Boolean?> = mode
         .flatMapLatest { activeMode ->
@@ -117,7 +144,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.bcmLowBeamState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val bcmHighBeamState: StateFlow<Boolean?> = mode
         .flatMapLatest { activeMode ->
@@ -127,7 +154,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.bcmHighBeamState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val bcmWiperStatusState: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -137,7 +164,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.bcmWiperStatusState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val hvacDefrosterState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -147,7 +174,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacDefrosterState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val hvacAirRecirculationState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -157,7 +184,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacAirRecirculationState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val hvacAcPowerState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -167,7 +194,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacAcPowerState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val hvacAutoState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -177,7 +204,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacAutoState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val hvacSyncState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -187,7 +214,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacSyncState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val hvacPm25State: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -197,7 +224,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacPm25State
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val hvacDefrosterFrontState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -207,7 +234,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.hvacDefrosterFrontState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     private val _hvacFanDirectionRaw = MutableStateFlow<Int?>(null)
     val hvacFanDirectionRawState: StateFlow<Int?> = _hvacFanDirectionRaw.asStateFlow()
@@ -231,7 +258,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.frontLeftSeatModeState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanSeatModeState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanSeatModeState.Unknown)
 
     val frontRightSeatModeState: StateFlow<MbCanSeatModeState> = mode
         .flatMapLatest { activeMode ->
@@ -241,7 +268,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.frontRightSeatModeState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanSeatModeState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanSeatModeState.Unknown)
 
     val rearLeftSeatModeState: StateFlow<MbCanSeatModeState> = mode
         .flatMapLatest { activeMode ->
@@ -251,7 +278,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.rearLeftSeatModeState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanSeatModeState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanSeatModeState.Unknown)
 
     val rearRightSeatModeState: StateFlow<MbCanSeatModeState> = mode
         .flatMapLatest { activeMode ->
@@ -261,7 +288,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.rearRightSeatModeState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanSeatModeState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanSeatModeState.Unknown)
 
     val audioVolumeState: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -271,7 +298,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.audioVolumeState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val audioVolumeSpeedState: StateFlow<MbCanBinaryState> = mode
         .flatMapLatest { activeMode ->
@@ -281,7 +308,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.audioVolumeSpeedState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, MbCanBinaryState.Unknown)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), MbCanBinaryState.Unknown)
 
     val audioVolumeSpeedModeState: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -291,7 +318,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.audioVolumeSpeedModeState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val carSettingsEpsMode: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -301,7 +328,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.carSettingsEpsMode
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val carSettingsDriveMode: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -311,7 +338,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.carSettingsDriveMode
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val carSettingsDriveMode6dctWet: StateFlow<Int?> = mode
         .flatMapLatest { activeMode ->
@@ -321,7 +348,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.carSettingsDriveMode6dctWet
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val engineRpmState: StateFlow<Float?> = mode
         .flatMapLatest { activeMode ->
@@ -331,7 +358,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.engineRpmState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val engineTemperatureState: StateFlow<Float?> = mode
         .flatMapLatest { activeMode ->
@@ -341,7 +368,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.engineTemperatureState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     val carSpeedState: StateFlow<Float?> = mode
         .flatMapLatest { activeMode ->
@@ -351,7 +378,7 @@ object UniversalCanRepository {
                 Android10VhalRepository.carSpeedState
             }
         }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), null)
 
     suspend fun setMode(mode: HeadUnitCanMode) {
         modeSwitchMutex.withLock {
@@ -359,9 +386,9 @@ object UniversalCanRepository {
         }
     }
 
-    suspend fun bind(scope: CoroutineScope) {
+    suspend fun bind(scope: CoroutineScope = this.scope) {
         modeSwitchMutex.withLock {
-            bindLocked(scope)
+            bindLocked(this.scope)
         }
     }
 
@@ -378,6 +405,15 @@ object UniversalCanRepository {
     }
 
     suspend fun setSourceWidgetKeys(sourceId: String, widgetKeys: Set<String>) {
+        pendingCanonicalClearJobs.remove(sourceId)?.cancel()
+        synchronized(sourcesLock) {
+            canonicalSourceSignals.remove(sourceId)
+            if (widgetKeys.isEmpty()) {
+                canonicalSourceWidgetKeys.remove(sourceId)
+            } else {
+                canonicalSourceWidgetKeys[sourceId] = widgetKeys.toSet()
+            }
+        }
         if (_mode.value == HeadUnitCanMode.Android9MbCan) {
             MbCanRepository.setSourceWidgetKeys(sourceId, widgetKeys)
         } else {
@@ -386,6 +422,15 @@ object UniversalCanRepository {
     }
 
     suspend fun setSourceSignals(sourceId: String, signals: Set<MbCanSignal>) {
+        pendingCanonicalClearJobs.remove(sourceId)?.cancel()
+        synchronized(sourcesLock) {
+            canonicalSourceWidgetKeys.remove(sourceId)
+            if (signals.isEmpty()) {
+                canonicalSourceSignals.remove(sourceId)
+            } else {
+                canonicalSourceSignals[sourceId] = signals.toSet()
+            }
+        }
         if (_mode.value == HeadUnitCanMode.Android9MbCan) {
             MbCanRepository.setSourceSignals(sourceId, signals)
         } else {
@@ -394,6 +439,17 @@ object UniversalCanRepository {
     }
 
     fun enqueueClearSource(sourceId: String) {
+        pendingCanonicalClearJobs.remove(sourceId)?.cancel()
+        val clearJob = scope.launch {
+            delay(CLEAR_SOURCE_DEBOUNCE_MS)
+            if (pendingCanonicalClearJobs.remove(sourceId, coroutineContext.job)) {
+                synchronized(sourcesLock) {
+                    canonicalSourceWidgetKeys.remove(sourceId)
+                    canonicalSourceSignals.remove(sourceId)
+                }
+            }
+        }
+        pendingCanonicalClearJobs[sourceId] = clearJob
         if (_mode.value == HeadUnitCanMode.Android9MbCan) {
             MbCanRepository.enqueueClearSource(sourceId)
         } else {
@@ -455,15 +511,16 @@ object UniversalCanRepository {
 
     fun triggerStartupCanAutoBind(
         settingsManager: SettingsManager,
-        scope: CoroutineScope,
+        scope: CoroutineScope = this.scope,
     ) {
         synchronized(this) {
             if (startupAutoBindStarted) return
             startupAutoBindStarted = true
         }
-        scope.launch {
+        val canonicalScope = this.scope
+        canonicalScope.launch {
             runCatching {
-                autoResolveModeOnStartup(settingsManager, scope)
+                autoResolveModeOnStartup(settingsManager, canonicalScope)
             }.onFailure {
                 Log.w("UniversalCanRepository", "CAN auto-bind failed", it)
             }
@@ -472,8 +529,9 @@ object UniversalCanRepository {
 
     suspend fun autoResolveModeOnStartup(
         settingsManager: SettingsManager,
-        scope: CoroutineScope,
+        scope: CoroutineScope = this.scope,
     ) {
+        val canonicalScope = this.scope
         modeSwitchMutex.withLock {
             if (!settingsManager.canAutoBindEnabledFlow.first()) {
                 MbCanDiagnostics.log("INFO", "AUTO_CAN startup skipped: disabled")
@@ -488,7 +546,7 @@ object UniversalCanRepository {
             settingsManager.saveCanAutoBindLastPrimaryMode(primaryMode)
 
             // If CAN is already bound and Available on primaryMode, avoid disruptive unbind/rebind
-            if (_mode.value == primaryMode && boundScope != null && availability.value is MbCanAvailability.Available) {
+            if (_mode.value == primaryMode && boundScope != null && currentBackendAvailability() is MbCanAvailability.Available) {
                 MbCanDiagnostics.log(
                     "INFO",
                     "AUTO_CAN startup skipped: already bound and available on ${primaryMode.storageValue}"
@@ -504,7 +562,7 @@ object UniversalCanRepository {
 
             val primaryResult = bindModeWithRetries(
                 mode = primaryMode,
-                scope = scope,
+                scope = canonicalScope,
                 attemptLabel = "primary"
             )
             if (primaryResult.success) {
@@ -522,11 +580,11 @@ object UniversalCanRepository {
                 "AUTO_CAN primary failed mode=${primaryMode.storageValue} reason=${primaryResult.reason}"
             )
 
-            setMode(alternativeMode)
+            setModeLocked(alternativeMode, rebindIfBound = false)
             settingsManager.saveHeadUnitCanMode(alternativeMode)
             val alternativeResult = bindModeWithRetries(
                 mode = alternativeMode,
-                scope = scope,
+                scope = canonicalScope,
                 attemptLabel = "alternative"
             )
             if (alternativeResult.success) {
@@ -550,7 +608,7 @@ object UniversalCanRepository {
             settingsManager.saveCanAutoBindLastResult(
                 "locked_after_fail:${primaryMode.storageValue}|${alternativeMode.storageValue}"
             )
-            bindLocked(scope)
+            bindLocked(canonicalScope)
             MbCanDiagnostics.log(
                 "WARN",
                 "AUTO_CAN locked after failed retries; reverted to ${primaryMode.storageValue}"
@@ -588,7 +646,7 @@ object UniversalCanRepository {
         return AutoBindAttemptResult(
             success = false,
             attempt = AUTO_BIND_ATTEMPTS_PER_MODE,
-            reason = (availability.value as? MbCanAvailability.Unavailable)?.reason
+            reason = (currentBackendAvailability() as? MbCanAvailability.Unavailable)?.reason
                 ?: "timeout_unknown"
         )
     }
@@ -597,9 +655,9 @@ object UniversalCanRepository {
         timeoutMs: Long,
         onTimeoutProbe: suspend () -> Unit,
     ): AvailabilityAttemptResult {
-        val startedAt = System.currentTimeMillis()
-        while ((System.currentTimeMillis() - startedAt) < timeoutMs) {
-            when (val current = availability.value) {
+        val startedAt = nowElapsedMs()
+        while ((nowElapsedMs() - startedAt) < timeoutMs) {
+            when (val current = currentBackendAvailability()) {
                 MbCanAvailability.Available -> return AvailabilityAttemptResult(
                     success = true,
                     summary = "available"
@@ -615,7 +673,7 @@ object UniversalCanRepository {
             delay(120L)
         }
         onTimeoutProbe()
-        return when (val current = availability.value) {
+        return when (val current = currentBackendAvailability()) {
             MbCanAvailability.Available -> AvailabilityAttemptResult(
                 success = true,
                 summary = "available_after_timeout_probe"
@@ -657,9 +715,34 @@ object UniversalCanRepository {
         return key.isNotBlank() && key != "null"
     }
 
+    private suspend fun replayCanonicalSourcesToBackend(targetMode: HeadUnitCanMode) {
+        val widgetSnapshot: Map<String, Set<String>>
+        val signalSnapshot: Map<String, Set<MbCanSignal>>
+        synchronized(sourcesLock) {
+            widgetSnapshot = canonicalSourceWidgetKeys.toMap()
+            signalSnapshot = canonicalSourceSignals.toMap()
+        }
+        if (targetMode == HeadUnitCanMode.Android9MbCan) {
+            widgetSnapshot.forEach { (sourceId, keys) ->
+                MbCanRepository.setSourceWidgetKeys(sourceId, keys)
+            }
+            signalSnapshot.forEach { (sourceId, signals) ->
+                MbCanRepository.setSourceSignals(sourceId, signals)
+            }
+        } else {
+            widgetSnapshot.forEach { (sourceId, keys) ->
+                Android10VhalRepository.setSourceWidgetKeys(sourceId, keys)
+            }
+            signalSnapshot.forEach { (sourceId, signals) ->
+                Android10VhalRepository.setSourceSignals(sourceId, signals)
+            }
+        }
+    }
+
     private suspend fun setModeLocked(mode: HeadUnitCanMode, rebindIfBound: Boolean) {
         if (_mode.value == mode) return
         _mode.value = mode
+        replayCanonicalSourcesToBackend(mode)
         if (!rebindIfBound) return
         val scopeToRebind = boundScope ?: return
         when (mode) {
@@ -676,6 +759,7 @@ object UniversalCanRepository {
 
     private suspend fun bindLocked(scope: CoroutineScope) {
         boundScope = scope
+        replayCanonicalSourcesToBackend(_mode.value)
         if (_mode.value == HeadUnitCanMode.Android9MbCan) {
             MbCanRepository.bind(scope)
         } else {

@@ -35,7 +35,7 @@ javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -d "$BUILD_DIR/check" 
 java -cp "$BUILD_DIR/check" vad.dashing.dclwm.SessionTest
 
 echo "2. Compiling full dclwm source against android-28..."
-SOURCES=$(find "$DIR/src" -name "*.java")
+SOURCES=$(find "$DIR/src" -name "*.java" ! -name "Starter.java")
 javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" -d "$BUILD_DIR/classes" $SOURCES
 
 echo "3. Building DEX with d8..."

@@ -36,6 +36,23 @@ data class BackupFileInfo(
 object LauncherBackupManager {
 
     private const val BACKUP_DIR_NAME = "DCLbackups"
+    private const val MAX_BACKUP_JSON_BYTES = 5L * 1024L * 1024L
+
+    private val EXCLUDED_PREF_NAMES = setOf(
+        "tbox_launcher_wifi_ap",
+    )
+
+    private val ALLOWED_PREF_PREFIXES = listOf(
+        "tbox_launcher_",
+        "tbox_mirror_",
+        "tbox_can_",
+        "launcher_",
+    )
+
+    private val ALLOWED_WALLPAPER_EXTENSIONS = setOf(
+        "jpg", "jpeg", "png", "webp", "bmp", "gif",
+        "mp4", "mkv", "webm", "mov", "3gp",
+    )
 
     /**
      * Target directory: Downloads/DCLbackups.
@@ -96,7 +113,7 @@ object LauncherBackupManager {
         if (autoJsonFiles.size > 5) {
             val toDelete = autoJsonFiles.drop(5)
             for (file in toDelete) {
-                val baseName = file.name.removeSuffix(".json")
+                val baseName = file.name.substringBeforeLast('.')
                 file.delete()
                 dir.listFiles()?.forEach { candidate ->
                     if (candidate.isFile && (
@@ -152,111 +169,117 @@ object LauncherBackupManager {
                 }
             }
 
-            val rootJson = JSONObject().apply {
-                put("version", 1)
-                put("app", "TBox Launcher")
-                put("packageName", context.packageName)
-                put("timestamp", System.currentTimeMillis())
-                put("createdAt", dateStr)
+            try {
+                val rootJson = JSONObject().apply {
+                    put("version", 1)
+                    put("app", "TBox Launcher")
+                    put("packageName", context.packageName)
+                    put("timestamp", System.currentTimeMillis())
+                    put("createdAt", dateStr)
 
-                // 1. Export all SharedPreferences
-                val sharedPrefsJson = JSONObject()
-                val prefNames = mutableSetOf(
-                    "tbox_launcher_app_config",
-                    "tbox_launcher_home",
-                    "tbox_launcher_theme",
-                    "tbox_launcher_state",
-                    "tbox_launcher_solar",
-                    "tbox_launcher_split_preset",
-                    "tbox_launcher_split_presets",
-                    "tbox_mirror_fold_store",
-                    "launcher_top_shade_prefs",
-                    "tbox_launcher_wifi_ap",
-                    "tbox_launcher_history",
-                    "tbox_can_data_persistence",
-                )
+                    // 1. Export all SharedPreferences (excluding sensitive SoftAP Wi-Fi credentials)
+                    val sharedPrefsJson = JSONObject()
+                    val prefNames = mutableSetOf(
+                        "tbox_launcher_app_config",
+                        "tbox_launcher_home",
+                        "tbox_launcher_theme",
+                        "tbox_launcher_state",
+                        "tbox_launcher_solar",
+                        "tbox_launcher_split_preset",
+                        "tbox_launcher_split_presets",
+                        "tbox_mirror_fold_store",
+                        "launcher_top_shade_prefs",
+                        "tbox_launcher_history",
+                        "tbox_can_data_persistence",
+                    )
 
-                val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-                if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
-                    sharedPrefsDir.listFiles()?.forEach { file ->
-                        if (file.isFile && file.name.endsWith(".xml")) {
-                            prefNames.add(file.name.removeSuffix(".xml"))
-                        }
-                    }
-                }
-
-                for (prefName in prefNames) {
-                    val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
-                    val allEntries = prefs.all
-                    if (allEntries.isNotEmpty()) {
-                        val fileJson = JSONObject()
-                        for ((key, value) in allEntries) {
-                            if (value != null) {
-                                fileJson.put(key, serializeTypedValue(value))
+                    val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+                    if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
+                        sharedPrefsDir.listFiles()?.forEach { file ->
+                            if (file.isFile && file.name.endsWith(".xml")) {
+                                val prefName = file.name.removeSuffix(".xml")
+                                if (prefName !in EXCLUDED_PREF_NAMES) {
+                                    prefNames.add(prefName)
+                                }
                             }
                         }
-                        sharedPrefsJson.put(prefName, fileJson)
+                    }
+
+                    for (prefName in prefNames) {
+                        if (prefName in EXCLUDED_PREF_NAMES) continue
+                        val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+                        val allEntries = prefs.all
+                        if (allEntries.isNotEmpty()) {
+                            val fileJson = JSONObject()
+                            for ((key, value) in allEntries) {
+                                if (value != null) {
+                                    fileJson.put(key, serializeTypedValue(value))
+                                }
+                            }
+                            sharedPrefsJson.put(prefName, fileJson)
+                        }
+                    }
+                    put("shared_prefs", sharedPrefsJson)
+
+                    // 2. Export DataStore
+                    val dataStoreJson = JSONObject()
+                    val dsPrefs = context.settingsDataStore.data.first()
+                    for ((key, value) in dsPrefs.asMap()) {
+                        if (value != null) {
+                            dataStoreJson.put(key.name, serializeTypedValue(value))
+                        }
+                    }
+                    val defaultDataStoreValues = mapOf<String, Any>(
+                        "auto_backup_enabled" to true,
+                        "update_check_enabled" to false,
+                        "ui_click_sounds_enabled" to true,
+                        "can_auto_bind_enabled" to true,
+                        "can_auto_bind_locked" to false,
+                        "head_unit_can_mode" to "android9_mbcan",
+                        "update_channel" to "release",
+                        "tbm_api_port" to 8765,
+                    )
+                    for ((keyName, defaultVal) in defaultDataStoreValues) {
+                        if (!dataStoreJson.has(keyName)) {
+                            dataStoreJson.put(keyName, serializeTypedValue(defaultVal))
+                        }
+                    }
+                    put("datastore", dataStoreJson)
+
+                    // 3. Backup Wallpaper background files if customized by user
+                    // Skip very large video files in auto-backups to avoid filling storage.
+                    val maxBackupWallpaperBytes = if (isAuto) 25L * 1024L * 1024L else 50L * 1024L * 1024L
+                    val wallpapersJson = JSONObject()
+
+                    val darkUriStr = LauncherAppConfigStore.wallpaperDarkUri(context)
+                    val darkSourceFile = findWallpaperSourceFile(context, darkUriStr, isDark = true)
+                    if (darkSourceFile != null && darkSourceFile.exists() && darkSourceFile.length() in 1L..maxBackupWallpaperBytes) {
+                        val darkExt = darkSourceFile.extension.lowercase().takeIf { it in ALLOWED_WALLPAPER_EXTENSIONS } ?: "jpg"
+                        val darkTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_dark.$darkExt"
+                        darkSourceFile.copyTo(File(dir, darkTargetName), overwrite = true)
+                        wallpapersJson.put("dark", darkTargetName)
+                    }
+
+                    val lightUriStr = LauncherAppConfigStore.wallpaperLightUri(context)
+                    val lightSourceFile = findWallpaperSourceFile(context, lightUriStr, isDark = false)
+                    if (lightSourceFile != null && lightSourceFile.exists() && lightSourceFile.length() in 1L..maxBackupWallpaperBytes) {
+                        val lightExt = lightSourceFile.extension.lowercase().takeIf { it in ALLOWED_WALLPAPER_EXTENSIONS } ?: "jpg"
+                        val lightTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_light.$lightExt"
+                        lightSourceFile.copyTo(File(dir, lightTargetName), overwrite = true)
+                        wallpapersJson.put("light", lightTargetName)
+                    }
+
+                    if (wallpapersJson.length() > 0) {
+                        put("wallpapers", wallpapersJson)
                     }
                 }
-                put("shared_prefs", sharedPrefsJson)
 
-                // 2. Export DataStore
-                val dataStoreJson = JSONObject()
-                val dsPrefs = context.settingsDataStore.data.first()
-                for ((key, value) in dsPrefs.asMap()) {
-                    if (value != null) {
-                        dataStoreJson.put(key.name, serializeTypedValue(value))
-                    }
-                }
-                val defaultDataStoreValues = mapOf<String, Any>(
-                    "auto_backup_enabled" to true,
-                    "update_check_enabled" to false,
-                    "ui_click_sounds_enabled" to true,
-                    "can_auto_bind_enabled" to true,
-                    "can_auto_bind_locked" to false,
-                    "head_unit_can_mode" to "android9_mbcan",
-                    "update_channel" to "release",
-                    "tbm_api_port" to 8765,
-                )
-                for ((keyName, defaultVal) in defaultDataStoreValues) {
-                    if (!dataStoreJson.has(keyName)) {
-                        dataStoreJson.put(keyName, serializeTypedValue(defaultVal))
-                    }
-                }
-                put("datastore", dataStoreJson)
-
-                // 3. Backup Wallpaper background files if customized by user
-                // Skip very large video files in auto-backups to avoid filling storage.
-                val maxBackupWallpaperBytes = if (isAuto) 25L * 1024L * 1024L else 50L * 1024L * 1024L
-                val wallpapersJson = JSONObject()
-
-                val darkUriStr = LauncherAppConfigStore.wallpaperDarkUri(context)
-                val darkSourceFile = findWallpaperSourceFile(context, darkUriStr, isDark = true)
-                if (darkSourceFile != null && darkSourceFile.exists() && darkSourceFile.length() in 1L..maxBackupWallpaperBytes) {
-                    val darkExt = darkSourceFile.extension.lowercase().ifBlank { "jpg" }
-                    val darkTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_dark.$darkExt"
-                    darkSourceFile.copyTo(File(dir, darkTargetName), overwrite = true)
-                    darkSourceFile.copyTo(File(dir, "dcl_wallpaper_dark.$darkExt"), overwrite = true)
-                    wallpapersJson.put("dark", darkTargetName)
-                }
-
-                val lightUriStr = LauncherAppConfigStore.wallpaperLightUri(context)
-                val lightSourceFile = findWallpaperSourceFile(context, lightUriStr, isDark = false)
-                if (lightSourceFile != null && lightSourceFile.exists() && lightSourceFile.length() in 1L..maxBackupWallpaperBytes) {
-                    val lightExt = lightSourceFile.extension.lowercase().ifBlank { "jpg" }
-                    val lightTargetName = "${if (isAuto) "AUTO_" else ""}dcl_backup_${timeStamp}_wallpaper_light.$lightExt"
-                    lightSourceFile.copyTo(File(dir, lightTargetName), overwrite = true)
-                    lightSourceFile.copyTo(File(dir, "dcl_wallpaper_light.$lightExt"), overwrite = true)
-                    wallpapersJson.put("light", lightTargetName)
-                }
-
-                if (wallpapersJson.length() > 0) {
-                    put("wallpapers", wallpapersJson)
-                }
+                backupFile.writeText(rootJson.toString(2), Charsets.UTF_8)
+                backupFile
+            } finally {
+                runCatching { File(context.cacheDir, "temp_wp_dark.jpg").delete() }
+                runCatching { File(context.cacheDir, "temp_wp_light.jpg").delete() }
             }
-
-            backupFile.writeText(rootJson.toString(2), Charsets.UTF_8)
-            backupFile
         }
     }
 
@@ -266,7 +289,7 @@ object LauncherBackupManager {
     suspend fun restoreBackupFromUri(context: Context, uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val jsonText = context.contentResolver.openInputStream(uri)?.use { stream ->
-                stream.bufferedReader(Charsets.UTF_8).readText()
+                readBoundedUtf8(stream, MAX_BACKUP_JSON_BYTES)
             } ?: throw IllegalArgumentException("Не удалось открыть файл: $uri")
             val backupFile = if (uri.scheme == "file") uri.path?.let { File(it) } else null
             restoreBackupFromJsonText(context, jsonText, backupFile).getOrThrow()
@@ -278,9 +301,40 @@ object LauncherBackupManager {
      */
     suspend fun restoreBackupFromFile(context: Context, file: File): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val jsonText = file.readText(Charsets.UTF_8)
+            if (file.length() > MAX_BACKUP_JSON_BYTES) {
+                throw IllegalArgumentException("Файл бэкапа слишком большой (макс. 5 МБ)")
+            }
+            val jsonText = file.inputStream().use { stream ->
+                readBoundedUtf8(stream, MAX_BACKUP_JSON_BYTES)
+            }
             restoreBackupFromJsonText(context, jsonText, file).getOrThrow()
         }
+    }
+
+    private fun readBoundedUtf8(stream: java.io.InputStream, maxBytes: Long): String {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            val read = stream.read(buf)
+            if (read <= 0) break
+            total += read
+            if (total > maxBytes) {
+                throw IllegalArgumentException("Файл бэкапа превышает допустимый размер (${maxBytes / (1024 * 1024)} МБ)")
+            }
+            out.write(buf, 0, read)
+        }
+        return out.toString(Charsets.UTF_8.name())
+    }
+
+    private fun isAllowedRestorePrefName(context: Context, prefName: String): Boolean {
+        if (prefName.isBlank()) return false
+        if (prefName in EXCLUDED_PREF_NAMES) return false
+        if (prefName.contains('/') || prefName.contains('\\') || prefName.contains("..") || prefName.contains('\u0000')) {
+            return false
+        }
+        if (prefName == "${context.packageName}_preferences") return true
+        return ALLOWED_PREF_PREFIXES.any { prefName.startsWith(it) }
     }
 
     private suspend fun restoreBackupFromJsonText(
@@ -297,6 +351,10 @@ object LauncherBackupManager {
                 val keys = sharedPrefsJson.keys()
                 while (keys.hasNext()) {
                     val prefName = keys.next()
+                    if (!isAllowedRestorePrefName(context, prefName)) {
+                        android.util.Log.w("LauncherBackupManager", "Skipping disallowed prefName during restore: $prefName")
+                        continue
+                    }
                     val fileJson = sharedPrefsJson.getJSONObject(prefName)
                     val prefs = context.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                     val editor = prefs.edit()
@@ -368,6 +426,23 @@ object LauncherBackupManager {
         return null
     }
 
+    private fun resolveSafeWallpaperFile(baseDir: File, fileName: String): File? {
+        if (fileName.isBlank()) return null
+        if (fileName.contains('/') || fileName.contains('\\') || fileName.contains("..") || fileName.contains('\u0000')) {
+            return null
+        }
+        val candidate = File(baseDir, fileName)
+        if (candidate.name != fileName) return null
+        val ext = candidate.extension.lowercase()
+        if (ext !in ALLOWED_WALLPAPER_EXTENSIONS) return null
+        return runCatching {
+            val canonicalBase = baseDir.canonicalFile
+            val canonicalCandidate = candidate.canonicalFile
+            if (canonicalCandidate.parentFile != canonicalBase) return@runCatching null
+            if (canonicalCandidate.isFile && canonicalCandidate.length() > 0L) canonicalCandidate else null
+        }.getOrNull()
+    }
+
     private fun restoreWallpapersIfNeeded(context: Context, rootJson: JSONObject, backupFile: File?) {
         val wallpapersDir = File(context.filesDir, "wallpapers").apply { mkdirs() }
         val dclDir = getBackupsDir()
@@ -378,14 +453,14 @@ object LauncherBackupManager {
         // 1. Dark theme wallpaper restore
         val darkFilename = wallpapersJson?.optString("dark")?.takeIf { it.isNotBlank() }
         val darkCandidates = listOfNotNull(
-            darkFilename?.let { File(parentDir, it) },
-            darkFilename?.let { File(dclDir, it) },
-            File(parentDir, "dcl_wallpaper_dark.jpg"),
-            File(dclDir, "dcl_wallpaper_dark.jpg"),
+            darkFilename?.let { resolveSafeWallpaperFile(parentDir, it) },
+            darkFilename?.let { resolveSafeWallpaperFile(dclDir, it) },
+            resolveSafeWallpaperFile(parentDir, "dcl_wallpaper_dark.jpg"),
+            resolveSafeWallpaperFile(dclDir, "dcl_wallpaper_dark.jpg"),
         )
-        val darkSource = darkCandidates.firstOrNull { it.exists() && it.length() > 0 }
+        val darkSource = darkCandidates.firstOrNull()
         if (darkSource != null) {
-            val darkExt = darkSource.extension.lowercase().ifBlank { "jpg" }
+            val darkExt = darkSource.extension.lowercase().takeIf { it in ALLOWED_WALLPAPER_EXTENSIONS } ?: "jpg"
             wallpapersDir.listFiles()?.forEach { existing ->
                 if (existing.isFile && existing.name.startsWith("wallpaper_dark.")) {
                     runCatching { existing.delete() }
@@ -399,14 +474,14 @@ object LauncherBackupManager {
         // 2. Light theme wallpaper restore
         val lightFilename = wallpapersJson?.optString("light")?.takeIf { it.isNotBlank() }
         val lightCandidates = listOfNotNull(
-            lightFilename?.let { File(parentDir, it) },
-            lightFilename?.let { File(dclDir, it) },
-            File(parentDir, "dcl_wallpaper_light.jpg"),
-            File(dclDir, "dcl_wallpaper_light.jpg"),
+            lightFilename?.let { resolveSafeWallpaperFile(parentDir, it) },
+            lightFilename?.let { resolveSafeWallpaperFile(dclDir, it) },
+            resolveSafeWallpaperFile(parentDir, "dcl_wallpaper_light.jpg"),
+            resolveSafeWallpaperFile(dclDir, "dcl_wallpaper_light.jpg"),
         )
-        val lightSource = lightCandidates.firstOrNull { it.exists() && it.length() > 0 }
+        val lightSource = lightCandidates.firstOrNull()
         if (lightSource != null) {
-            val lightExt = lightSource.extension.lowercase().ifBlank { "jpg" }
+            val lightExt = lightSource.extension.lowercase().takeIf { it in ALLOWED_WALLPAPER_EXTENSIONS } ?: "jpg"
             wallpapersDir.listFiles()?.forEach { existing ->
                 if (existing.isFile && existing.name.startsWith("wallpaper_light.")) {
                     runCatching { existing.delete() }

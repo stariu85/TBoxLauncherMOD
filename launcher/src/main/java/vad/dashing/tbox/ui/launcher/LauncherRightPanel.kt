@@ -56,6 +56,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +64,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
@@ -422,7 +422,7 @@ fun LauncherRightPanel(
         )
     }
 
-    val settingsItem = homeItems.firstOrNull { it.slotIndex == settingsIndex } as? LauncherHomeItem.App
+    val settingsItem = if (settingsIndex >= 0) homeItems.firstOrNull { it.slotIndex == settingsIndex } as? LauncherHomeItem.App else null
     if (settingsItem != null) {
         var currentMode by remember(settingsItem.packageName, settingsIndex) {
             mutableStateOf(LauncherAppConfigStore.appLaunchMode(context, settingsItem.packageName))
@@ -991,7 +991,7 @@ fun LauncherRightPanel(
             Spacer(modifier = Modifier.height(10.dp))
 
             val hasShortcuts = remember(dockEntries) {
-                dockEntries.any { it is HomeDockEntry.App || it is HomeDockEntry.Split }
+                dockEntries.any { it is HomeDockEntry.App || it is HomeDockEntry.Split || it is HomeDockEntry.TbmAuto }
             }
 
             Box(
@@ -1104,6 +1104,7 @@ fun LauncherRightPanel(
 
         if (LauncherThemeState.themeButtonVisible) {
             val isDark = LauncherThemeState.darkTheme
+            val latestIsDark by rememberUpdatedState(isDark)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -1139,7 +1140,7 @@ fun LauncherRightPanel(
                             )
                         } else {
                             detectTapGestures(
-                                onTap = { LauncherThemeState.setDarkTheme(context, !isDark) },
+                                onTap = { LauncherThemeState.setDarkTheme(context, !latestIsDark) },
                                 onLongPress = { isDragMode = true },
                             )
                         }
@@ -1157,165 +1158,6 @@ fun LauncherRightPanel(
                     ),
                 )
             }
-        }
-
-        LauncherSplitPresetCreateDialog(
-            visible = splitCreateVisible,
-            apps = pickerApps,
-            initialPreset = splitEditPreset,
-            pinToHomeOnSave = false,
-            onDismiss = {
-                splitCreateVisible = false
-                splitEditPreset = null
-            },
-            onSaved = {
-                if (splitEditPreset == null) {
-                    val latestPreset = LauncherSplitPresetStore.loadPresets(context).lastOrNull()
-                    if (latestPreset != null) {
-                        LauncherHomeStore.addSplit(context, latestPreset.id, targetSlot = pickerSlotIndex)
-                    }
-                }
-                onConfigChanged()
-                pickerSlotIndex = -1
-            },
-        )
-
-        LauncherAppPickerDialog(
-            visible = appPickerVisible || replaceIndex >= 0,
-            title = stringResource(R.string.launcher_grid_pick_app),
-            apps = pickerApps,
-            onDismiss = {
-                appPickerVisible = false
-                replaceIndex = -1
-                pickerSlotIndex = -1
-            },
-            onPick = { app ->
-                if (replaceIndex >= 0) {
-                    LauncherHomeStore.replaceAtSlot(context, replaceIndex, LauncherHomeItem.App(app.packageName, replaceIndex))
-                } else {
-                    LauncherHomeStore.addApp(context, app.packageName, targetSlot = pickerSlotIndex)
-                }
-                onConfigChanged()
-                appPickerVisible = false
-                replaceIndex = -1
-                pickerSlotIndex = -1
-            },
-        )
-
-        LauncherTbmAutomationPickerDialog(
-            visible = tbmAutomationPickerVisible,
-            isLoading = tbmAutomationLoading,
-            automations = tbmAutomations,
-            errorMessage = tbmAutomationError,
-            onDismiss = {
-                tbmAutomationPickerVisible = false
-            },
-            onPick = { automation ->
-                selectedTbmAutomation = automation
-                tbmAutomationPickerVisible = false
-                tbmIconPickerVisible = true
-            },
-        )
-
-        LauncherTbmAutomationEditDialog(
-            visible = tbmIconPickerVisible || changeIconSlotIndex >= 0,
-            initialAutomationName = if (changeIconSlotIndex >= 0) {
-                (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.automationName ?: ""
-            } else {
-                selectedTbmAutomation?.name ?: ""
-            },
-            initialIconName = if (changeIconSlotIndex >= 0) {
-                (homeItems.firstOrNull { it.slotIndex == changeIconSlotIndex } as? LauncherHomeItem.TbmAutomation)?.iconName ?: "play"
-            } else "play",
-            onDismiss = {
-                tbmIconPickerVisible = false
-                changeIconSlotIndex = -1
-                selectedTbmAutomation = null
-            },
-            onSave = { iconName, customTitle ->
-                if (changeIconSlotIndex >= 0) {
-                    LauncherHomeStore.updateTbmAutomation(context, changeIconSlotIndex, iconName, customTitle)
-                } else {
-                    selectedTbmAutomation?.let { auto ->
-                        LauncherHomeStore.addTbmAutomation(
-                            context = context,
-                            automationId = auto.id,
-                            automationName = customTitle,
-                            iconName = iconName,
-                            targetSlot = pickerSlotIndex,
-                        )
-                    }
-                }
-                onConfigChanged()
-                tbmIconPickerVisible = false
-                changeIconSlotIndex = -1
-                selectedTbmAutomation = null
-                pickerSlotIndex = -1
-            },
-        )
-
-        if (addMenuVisible) {
-            LauncherDarkAlertDialog(
-                onDismissRequest = { addMenuVisible = false },
-                title = { Text(stringResource(R.string.launcher_home_add_title)) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = stringResource(R.string.launcher_home_add_app),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    addMenuVisible = false
-                                    appPickerVisible = true
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                        Text(
-                            text = stringResource(R.string.launcher_home_add_split),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    addMenuVisible = false
-                                    splitEditPreset = null
-                                    splitCreateVisible = true
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                        val notConnectedMsg = stringResource(R.string.launcher_tbm_automations_not_connected)
-                        Text(
-                            text = stringResource(R.string.launcher_home_add_tbm_automation),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    addMenuVisible = false
-                                    tbmAutomationPickerVisible = true
-                                    tbmAutomationLoading = true
-                                    tbmAutomationError = null
-                                    scope.launch {
-                                        val res = tbmRepository.refreshAutomations()
-                                        tbmAutomationLoading = false
-                                        if (res.isFailure) {
-                                            val errText = res.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: notConnectedMsg
-                                            tbmAutomationError = errText
-                                        }
-                                    }
-                                }
-                                .padding(12.dp),
-                            color = LauncherColors.TextPrimary,
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { addMenuVisible = false }) {
-                        Text(stringResource(R.string.action_cancel))
-                    }
-                },
-            )
         }
 
         if (contextMenuIndex >= 0) {
@@ -1417,228 +1259,6 @@ fun LauncherRightPanel(
                 },
             )
         }
-
-        val settingsItem = if (settingsIndex >= 0) homeItems.firstOrNull { it.slotIndex == settingsIndex } as? LauncherHomeItem.App else null
-        if (settingsItem != null) {
-            var currentMode by remember(settingsItem.packageName, settingsIndex) {
-                mutableStateOf(LauncherAppConfigStore.appLaunchMode(context, settingsItem.packageName))
-            }
-            val appLabel = appsByPackage[settingsItem.packageName]?.label
-                ?: settingsItem.packageName.substringAfterLast('.')
-            LauncherDarkAlertDialog(
-                onDismissRequest = { settingsIndex = -1 },
-                title = { Text(stringResource(R.string.launcher_icon_settings_title)) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = appLabel,
-                            color = LauncherColors.TextSecondary,
-                            fontSize = 14.sp,
-                        )
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_mode_title),
-                            color = LauncherColors.TextMuted,
-                            fontSize = 12.sp,
-                        )
-
-                        val modes = listOf(
-                            LauncherAppLaunchMode.EMBEDDED to (
-                                stringResource(R.string.launcher_icon_menu_mode_embedded) to
-                                    stringResource(R.string.launcher_icon_menu_mode_embedded_desc)
-                            ),
-                            LauncherAppLaunchMode.FULL_WIDTH to (
-                                stringResource(R.string.launcher_icon_menu_mode_full_width) to
-                                    stringResource(R.string.launcher_icon_menu_mode_full_width_desc)
-                            ),
-                            LauncherAppLaunchMode.FULLSCREEN to (
-                                stringResource(R.string.launcher_icon_menu_mode_fullscreen) to
-                                    stringResource(R.string.launcher_icon_menu_mode_fullscreen_desc)
-                            ),
-                        )
-
-                        modes.forEach { (mode, titles) ->
-                            val selected = currentMode == mode
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (selected) LauncherColors.AccentCyan.copy(alpha = 0.15f)
-                                        else Color(0xFF1E222A),
-                                    )
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (selected) LauncherColors.AccentCyan else Color.Transparent,
-                                        shape = RoundedCornerShape(10.dp),
-                                    )
-                                    .clickable {
-                                        currentMode = mode
-                                        LauncherAppConfigStore.setAppLaunchMode(
-                                            context,
-                                            settingsItem.packageName,
-                                            mode,
-                                        )
-                                        onConfigChanged()
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = titles.first,
-                                        color = if (selected) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                    )
-                                    Text(
-                                        text = titles.second,
-                                        color = LauncherColors.TextMuted,
-                                        fontSize = 11.sp,
-                                    )
-                                }
-                                RadioButton(
-                                    selected = selected,
-                                    onClick = {
-                                        currentMode = mode
-                                        LauncherAppConfigStore.setAppLaunchMode(
-                                            context,
-                                            settingsItem.packageName,
-                                            mode,
-                                        )
-                                        onConfigChanged()
-                                    },
-                                    colors = RadioButtonDefaults.colors(
-                                        selectedColor = LauncherColors.AccentCyan,
-                                        unselectedColor = LauncherColors.TextMuted,
-                                    ),
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = stringResource(R.string.launcher_icon_menu_change_app),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    replaceIndex = settingsIndex
-                                    settingsIndex = -1
-                                }
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                            color = LauncherColors.AccentCyan,
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { settingsIndex = -1 }) {
-                        Text(stringResource(R.string.action_close))
-                    }
-                },
-            )
-        }
-
-        if (showHiddenDialogVisible) {
-            val hiddenApps = remember(rawApps, hidden) { rawApps.filter { it.packageName in hidden } }
-            LauncherDarkAlertDialog(
-                onDismissRequest = { showHiddenDialogVisible = false },
-                title = { Text("Скрытые приложения") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (hiddenApps.isEmpty() && hidden.isEmpty()) {
-                            Text(
-                                text = "Нет скрытых приложений",
-                                color = LauncherColors.TextMuted,
-                                fontSize = 13.sp,
-                            )
-                        } else {
-                            val scrollState = rememberScrollState()
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 280.dp)
-                                    .verticalScroll(scrollState),
-                            ) {
-                                hidden.forEach { pkg ->
-                                    val app = hiddenApps.firstOrNull { it.packageName == pkg }
-                                    val label = app?.label ?: pkg.substringAfterLast('.')
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(LauncherColors.CardDark)
-                                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.weight(1f),
-                                        ) {
-                                            if (app?.icon != null) {
-                                                Image(
-                                                    bitmap = app.icon,
-                                                    contentDescription = label,
-                                                    modifier = Modifier.size(24.dp),
-                                                    contentScale = ContentScale.Fit,
-                                                )
-                                            }
-                                            Text(
-                                                text = label,
-                                                color = LauncherColors.TextPrimary,
-                                                fontSize = 13.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                            )
-                                        }
-                                        TextButton(
-                                            onClick = {
-                                                LauncherAppConfigStore.showPackage(context, pkg)
-                                                onConfigChanged()
-                                            },
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        ) {
-                                            Text(
-                                                text = "Показать",
-                                                color = LauncherColors.AccentCyan,
-                                                fontSize = 12.sp,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            TextButton(
-                                onClick = {
-                                    LauncherAppConfigStore.unhideAllPackages(context)
-                                    onConfigChanged()
-                                    showHiddenDialogVisible = false
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(
-                                    text = "Показать все скрытые",
-                                    color = LauncherColors.AccentCyan,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showHiddenDialogVisible = false }) {
-                        Text(stringResource(R.string.action_close))
-                    }
-                },
-            )
-        }
-
-        if (vehicleStatusDialogVisible) {
-            LauncherVehicleStatusDialog(
-                onDismissRequest = { LauncherVehicleStatusDialogState.hide() },
-            )
-        }
     }
 }
 
@@ -1667,6 +1287,7 @@ private fun LauncherDraggableHomeDockEntry(
     activeDraggingKey: String?,
     onConfigChanged: () -> Unit = {},
 ) {
+    val scope = rememberCoroutineScope()
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
 
@@ -1803,7 +1424,7 @@ private fun LauncherDraggableHomeDockEntry(
                         val tbmRepo = TbmRepositoryProvider.get(context)
                         val execMsg = context.getString(R.string.launcher_tbm_automation_executed, entry.name)
                         val failMsg = context.getString(R.string.launcher_tbm_automation_failed, entry.name, "Error")
-                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                        scope.launch {
                             val res = tbmRepo.runAutomation(entry.automationId)
                             if (res.getOrDefault(false)) {
                                 Toast.makeText(context, execMsg, Toast.LENGTH_SHORT).show()

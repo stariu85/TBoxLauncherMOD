@@ -212,7 +212,7 @@ fun LauncherVehicleSettingsOverlay(
                         Icon(Icons.Filled.Close, null, tint = LauncherColors.TextSecondary)
                     }
                 }
-                Spacer(modifier.height(10.dp))
+                Spacer(Modifier.height(10.dp))
                 LauncherVehicleSettingsContent(
                     canViewModel = canViewModel,
                     tboxViewModel = tboxViewModel,

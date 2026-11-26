@@ -31,7 +31,56 @@ class LauncherCarRigController private constructor(
     private val workTransform = FloatArray(16)
     private val multiplyScratch = FloatArray(16)
     private val rotationTransform = FloatArray(16)
+    private val anchorWorldScratch = FloatArray(16)
+    private val chassisScratch = FloatArray(16)
+    private val wheelSingleScratch = FloatArray(16)
+    private val wheelFlScratch = FloatArray(16)
+    private val wheelFrScratch = FloatArray(16)
+    private val wheelRlScratch = FloatArray(16)
+    private val wheelRrScratch = FloatArray(16)
+    private val ringOffsetsM = floatArrayOf(0.16f, 0.30f, 0.44f)
     private val lastAppliedRadians = mutableMapOf<String, Float>()
+
+    private data class ProjectionSnapshot(
+        val camPosX: Float,
+        val camPosY: Float,
+        val camPosZ: Float,
+        val camFwdX: Float,
+        val camFwdY: Float,
+        val camFwdZ: Float,
+        val viewportW: Int,
+        val viewportH: Int,
+        val driveBlend: Float,
+        val flX: Float,
+        val flY: Float,
+        val flZ: Float,
+        val rrX: Float,
+        val rrY: Float,
+        val rrZ: Float,
+    ) {
+        fun matches(other: ProjectionSnapshot): Boolean {
+            if (viewportW != other.viewportW || viewportH != other.viewportH) return false
+            val eps = 1e-4f
+            return kotlin.math.abs(camPosX - other.camPosX) < eps &&
+                kotlin.math.abs(camPosY - other.camPosY) < eps &&
+                kotlin.math.abs(camPosZ - other.camPosZ) < eps &&
+                kotlin.math.abs(camFwdX - other.camFwdX) < eps &&
+                kotlin.math.abs(camFwdY - other.camFwdY) < eps &&
+                kotlin.math.abs(camFwdZ - other.camFwdZ) < eps &&
+                kotlin.math.abs(driveBlend - other.driveBlend) < eps &&
+                kotlin.math.abs(flX - other.flX) < eps &&
+                kotlin.math.abs(flY - other.flY) < eps &&
+                kotlin.math.abs(flZ - other.flZ) < eps &&
+                kotlin.math.abs(rrX - other.rrX) < eps &&
+                kotlin.math.abs(rrY - other.rrY) < eps &&
+                kotlin.math.abs(rrZ - other.rrZ) < eps
+        }
+    }
+
+    private var lastPdcSnapshot: ProjectionSnapshot? = null
+    private var cachedPdcFrame: LauncherPdcRingFrame? = null
+    private var lastHeadlightSnapshot: ProjectionSnapshot? = null
+    private var cachedHeadlightFrame: LauncherHeadlightFrame? = null
 
     fun update(state: LauncherCarRigState, @Suppress("UNUSED_PARAMETER") dtSec: Float) {
         transformManager.openLocalTransformTransaction()
@@ -94,7 +143,7 @@ class LauncherCarRigController private constructor(
 
         return buildMap {
             WHEEL_CORNERS.forEach { (corner, wheelName) ->
-                val world = getWheelWorldTransform(wheelName) ?: return@forEach
+                val world = getWheelWorldTransform(wheelName, wheelSingleScratch) ?: return@forEach
                 val wx = world[12]
                 val wy = world[13]
                 val wz = world[14]
@@ -140,10 +189,12 @@ class LauncherCarRigController private constructor(
         localOffsetZ: Float = 0f,
     ): Map<K, Offset> {
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return emptyMap()
+        val cameraPosition = cameraNode.worldPosition
+        val cameraForward = cameraNode.forwardDirection
+        val world = anchorWorldScratch
         return buildMap {
             nodeNames.forEach { (corner, nodeName) ->
                 val node = boundNodes[nodeName] ?: return@forEach
-                val world = FloatArray(16)
                 transformManager.getWorldTransform(node.instance, world)
                 val anchorX =
                     world[12] +
@@ -160,8 +211,6 @@ class LauncherCarRigController private constructor(
                         world[2] * localOffsetX +
                         world[6] * localOffsetY +
                         world[10] * localOffsetZ
-                val cameraPosition = cameraNode.worldPosition
-                val cameraForward = cameraNode.forwardDirection
                 val cameraDepth =
                     (anchorX - cameraPosition.x) * cameraForward.x +
                         (anchorY - cameraPosition.y) * cameraForward.y +
@@ -181,22 +230,21 @@ class LauncherCarRigController private constructor(
         }
     }
 
-    private fun getWheelWorldTransform(name: String): FloatArray? {
+    private fun getWheelWorldTransform(name: String, out: FloatArray): FloatArray? {
         val node = boundNodes[name]
         if (node != null) {
-            val world = FloatArray(16)
-            transformManager.getWorldTransform(node.instance, world)
-            return world
+            transformManager.getWorldTransform(node.instance, out)
+            return out
         }
         val chassisNode = boundNodes[CHASSIS] ?: return null
         val offset = DEFAULT_WHEEL_OFFSETS[name] ?: return null
-        val chassisWorld = FloatArray(16)
+        val chassisWorld = chassisScratch
         transformManager.getWorldTransform(chassisNode.instance, chassisWorld)
-        val world = chassisWorld.clone()
-        world[12] = chassisWorld[0] * offset[0] + chassisWorld[4] * offset[1] + chassisWorld[8] * offset[2] + chassisWorld[12]
-        world[13] = chassisWorld[1] * offset[0] + chassisWorld[5] * offset[1] + chassisWorld[9] * offset[2] + chassisWorld[13]
-        world[14] = chassisWorld[2] * offset[0] + chassisWorld[6] * offset[1] + chassisWorld[10] * offset[2] + chassisWorld[14]
-        return world
+        chassisWorld.copyInto(out)
+        out[12] = chassisWorld[0] * offset[0] + chassisWorld[4] * offset[1] + chassisWorld[8] * offset[2] + chassisWorld[12]
+        out[13] = chassisWorld[1] * offset[0] + chassisWorld[5] * offset[1] + chassisWorld[9] * offset[2] + chassisWorld[13]
+        out[14] = chassisWorld[2] * offset[0] + chassisWorld[6] * offset[1] + chassisWorld[10] * offset[2] + chassisWorld[14]
+        return out
     }
 
     /**
@@ -212,10 +260,34 @@ class LauncherCarRigController private constructor(
         driveBlend: Float = 0f,
     ): LauncherPdcRingFrame? {
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
-        val fl = getWheelWorldTransform(WHEEL_FL) ?: return null
-        val fr = getWheelWorldTransform(WHEEL_FR) ?: return null
-        val rl = getWheelWorldTransform(WHEEL_RL) ?: return null
-        val rr = getWheelWorldTransform(WHEEL_RR) ?: return null
+        val fl = getWheelWorldTransform(WHEEL_FL, wheelFlScratch) ?: return null
+        val fr = getWheelWorldTransform(WHEEL_FR, wheelFrScratch) ?: return null
+        val rl = getWheelWorldTransform(WHEEL_RL, wheelRlScratch) ?: return null
+        val rr = getWheelWorldTransform(WHEEL_RR, wheelRrScratch) ?: return null
+
+        val cameraPosition = cameraNode.worldPosition
+        val cameraForward = cameraNode.forwardDirection
+        val snapshot = ProjectionSnapshot(
+            camPosX = cameraPosition.x,
+            camPosY = cameraPosition.y,
+            camPosZ = cameraPosition.z,
+            camFwdX = cameraForward.x,
+            camFwdY = cameraForward.y,
+            camFwdZ = cameraForward.z,
+            viewportW = viewportWidthPx,
+            viewportH = viewportHeightPx,
+            driveBlend = driveBlend,
+            flX = fl[12],
+            flY = fl[13],
+            flZ = fl[14],
+            rrX = rr[12],
+            rrY = rr[13],
+            rrZ = rr[14],
+        )
+        val prevSnapshot = lastPdcSnapshot
+        if (prevSnapshot != null && prevSnapshot.matches(snapshot)) {
+            return cachedPdcFrame
+        }
 
         val frontX = (fl[12] + fr[12]) / 2f
         val frontZ = (fl[14] + fr[14]) / 2f
@@ -243,11 +315,7 @@ class LauncherCarRigController private constructor(
         val semiLen = wheelbase * 0.98f * 1.1f
         val semiWidBody = halfTrack * 1.55f * 1.1f
         val semiWid = semiWidBody + (semiLen - semiWidBody) * 0.95f
-        val ringOffsetsM = floatArrayOf(0.16f, 0.30f, 0.44f)
         val rearBoostMax = 0.45f
-
-        val cameraPosition = cameraNode.worldPosition
-        val cameraForward = cameraNode.forwardDirection
 
         fun project(wx: Float, wy: Float, wz: Float): Offset? {
             val depth =
@@ -381,7 +449,9 @@ class LauncherCarRigController private constructor(
             channelAngles = channelAngles,
             pxPerMeterFront = pxFront,
             pxPerMeterRear = pxRear,
-        ).also {
+        ).also { frame ->
+            lastPdcSnapshot = snapshot
+            cachedPdcFrame = frame
             logPdcOk(rings.minOf { it.size })
             logPdcBasis(
                 frontScreenY = frontScreen?.y,
@@ -403,10 +473,34 @@ class LauncherCarRigController private constructor(
         driveBlend: Float = 0f,
     ): LauncherHeadlightFrame? {
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
-        val fl = getWheelWorldTransform(WHEEL_FL) ?: return null
-        val fr = getWheelWorldTransform(WHEEL_FR) ?: return null
-        val rl = getWheelWorldTransform(WHEEL_RL) ?: return null
-        val rr = getWheelWorldTransform(WHEEL_RR) ?: return null
+        val fl = getWheelWorldTransform(WHEEL_FL, wheelFlScratch) ?: return null
+        val fr = getWheelWorldTransform(WHEEL_FR, wheelFrScratch) ?: return null
+        val rl = getWheelWorldTransform(WHEEL_RL, wheelRlScratch) ?: return null
+        val rr = getWheelWorldTransform(WHEEL_RR, wheelRrScratch) ?: return null
+
+        val cameraPosition = cameraNode.worldPosition
+        val cameraForward = cameraNode.forwardDirection
+        val snapshot = ProjectionSnapshot(
+            camPosX = cameraPosition.x,
+            camPosY = cameraPosition.y,
+            camPosZ = cameraPosition.z,
+            camFwdX = cameraForward.x,
+            camFwdY = cameraForward.y,
+            camFwdZ = cameraForward.z,
+            viewportW = viewportWidthPx,
+            viewportH = viewportHeightPx,
+            driveBlend = driveBlend,
+            flX = fl[12],
+            flY = fl[13],
+            flZ = fl[14],
+            rrX = rr[12],
+            rrY = rr[13],
+            rrZ = rr[14],
+        )
+        val prevSnapshot = lastHeadlightSnapshot
+        if (prevSnapshot != null && prevSnapshot.matches(snapshot)) {
+            return cachedHeadlightFrame
+        }
 
         val frontX = (fl[12] + fr[12]) / 2f
         val frontZ = (fl[14] + fr[14]) / 2f
@@ -429,8 +523,6 @@ class LauncherCarRigController private constructor(
         if (halfTrack < 0.05f) return null
         val worldPerMeter = wheelbase / 2.72f
 
-        val cameraPosition = cameraNode.worldPosition
-        val cameraForward = cameraNode.forwardDirection
         fun project(wx: Float, wy: Float, wz: Float): Offset? {
             val depth =
                 (wx - cameraPosition.x) * cameraForward.x +
@@ -496,7 +588,10 @@ class LauncherCarRigController private constructor(
             rightHighFan = finalRightHigh,
             leftShortFan = finalLeftShort,
             rightShortFan = finalRightShort,
-        )
+        ).also { frame ->
+            lastHeadlightSnapshot = snapshot
+            cachedHeadlightFrame = frame
+        }
     }
 
     private fun pdcAngularDiffDeg(a: Float, b: Float): Float {

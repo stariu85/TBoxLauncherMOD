@@ -45,11 +45,12 @@ def main() -> int:
         print("disk_info_FAIL:", error)
         return 2
 
-    for path in (
-        props.get("yandex.disk.launcher.devPath", "/launcher-dev").strip() or "/launcher-dev",
-        props.get("yandex.disk.launcher.releasePath", "/launcher-release").strip()
-        or "/launcher-release",
-    ):
+    default_dev_path = "/dashing/launcher-dev"
+    default_release_path = "/dashing/launcher-release"
+    dev_path = props.get("yandex.disk.launcher.devPath", default_dev_path).strip() or default_dev_path
+    release_path = props.get("yandex.disk.launcher.releasePath", default_release_path).strip() or default_release_path
+
+    for path in (dev_path, release_path):
         if not path.startswith("/"):
             path = f"/{path}"
         query = urllib.parse.urlencode({"path": path})
@@ -65,14 +66,21 @@ def main() -> int:
         except YandexDiskError as error:
             print(f"folder_MISS {path}:", str(error)[:240])
 
-    probe = Path(tempfile.gettempdir()) / "tbox_ota_write_probe.txt"
-    probe.write_text("ota-write-probe", encoding="utf-8")
-    dev_path = props.get("yandex.disk.launcher.devPath", "/launcher-dev").strip() or "/launcher-dev"
     if not dev_path.startswith("/"):
         dev_path = f"/{dev_path}"
     remote = f"{dev_path.rstrip('/')}/tbox_ota_write_probe.txt"
+    probe_path: Path | None = None
     try:
-        upload_file(token, probe, remote, overwrite=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="tbox_ota_write_probe_",
+            suffix=".txt",
+            delete=False,
+        ) as tmp:
+            tmp.write("ota-write-probe")
+            probe_path = Path(tmp.name)
+        upload_file(token, probe_path, remote, overwrite=True)
         print("write_ok:", remote)
         query = urllib.parse.urlencode({"path": remote, "permanently": "true"})
         _request("DELETE", f"{API_BASE}/resources?{query}", token=token)
@@ -80,6 +88,9 @@ def main() -> int:
     except (YandexDiskError, OSError, urllib.error.URLError) as error:
         print("write_FAIL:", error)
         return 3
+    finally:
+        if probe_path is not None:
+            probe_path.unlink(missing_ok=True)
 
     print("RESULT: write access to", dev_path, "works")
     return 0

@@ -5,16 +5,25 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.AdayoSettingsService
 import vad.dashing.tbox.AppContextHolder
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.PlatformAudioDomain
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownAudioPropertyId
+import java.lang.reflect.Method
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 enum class PlatformVolumeChannel(
@@ -79,27 +88,28 @@ internal object PlatformAudioRepository {
     val headrestMode: StateFlow<Int> = _headrestMode.asStateFlow()
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var isObserving = false
-    private var appContext: Context? = null
+    private val pollScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var pollJob: Job? = null
+    @Volatile private var isObserving = false
+    @Volatile private var appContext: Context? = null
 
     fun startObserving(context: Context) {
         appContext = context.applicationContext
-        if (isObserving) return
+        if (isObserving && pollJob?.isActive == true) return
         isObserving = true
-        pollRunnable.run()
+        pollJob?.cancel()
+        pollJob = pollScope.launch {
+            while (isActive && isObserving) {
+                runCatching { updateAllVolumes() }
+                delay(VOLUME_POLL_MS)
+            }
+        }
     }
 
     fun stopObserving() {
         isObserving = false
-        mainHandler.removeCallbacks(pollRunnable)
-    }
-
-    private val pollRunnable = object : Runnable {
-        override fun run() {
-            if (!isObserving) return
-            updateAllVolumes()
-            mainHandler.postDelayed(this, VOLUME_POLL_MS)
-        }
+        pollJob?.cancel()
+        pollJob = null
     }
 
     fun updateAllVolumes() {
@@ -250,24 +260,26 @@ internal object PlatformAudioRepository {
         @Volatile
         private var probeCompleted = false
 
+        @Volatile
+        private var getGroupVolumeMethod: Method? = null
+        @Volatile
+        private var getVolumeGroupIdForUsageMethod: Method? = null
+        @Volatile
+        private var setGroupVolumeMethod: Method? = null
+        private val groupIdCache = ConcurrentHashMap<PlatformVolumeChannel, Int>()
+
         fun getVolume(channel: PlatformVolumeChannel): Int? = runCatching {
             val audio = manager() ?: return null
             val groupId = groupId(audio, channel) ?: return null
-            invokeInt(audio, "getGroupVolume", groupId)
+            val method = getGroupVolumeMethod ?: return null
+            (method.invoke(audio, groupId) as? Number)?.toInt()
         }.onFailure { Log.w(TAG, "OpenOS getVolume failed: ${it.javaClass.simpleName}: ${it.message}") }
             .getOrNull()
 
         fun setVolume(channel: PlatformVolumeChannel, value: Int): Boolean = runCatching {
             val audio = manager() ?: return false
             val groupId = groupId(audio, channel) ?: return false
-            val method = audio.javaClass.methods.firstOrNull { candidate ->
-                candidate.name == "setGroupVolume" &&
-                    candidate.parameterTypes.size == 3 &&
-                    candidate.parameterTypes.all { it == Int::class.javaPrimitiveType }
-            } ?: audio.javaClass.methods.firstOrNull {
-                it.name == "setGroupVolume" && it.parameterTypes.size == 2 &&
-                    it.parameterTypes.all { type -> type == Int::class.javaPrimitiveType }
-            } ?: return false
+            val method = setGroupVolumeMethod ?: return false
             if (method.parameterTypes.size == 3) {
                 method.invoke(audio, groupId, value, 0)
             } else {
@@ -277,14 +289,31 @@ internal object PlatformAudioRepository {
         }.onFailure { Log.w(TAG, "OpenOS setVolume failed: ${it.javaClass.simpleName}: ${it.message}") }
             .getOrDefault(false)
 
-        private fun groupId(audio: Any, channel: PlatformVolumeChannel): Int? =
-            invokeInt(audio, "getVolumeGroupIdForUsage", channel.a9Usage)
+        private fun groupId(audio: Any, channel: PlatformVolumeChannel): Int? {
+            groupIdCache[channel]?.let { return it }
+            val method = getVolumeGroupIdForUsageMethod ?: return null
+            val resolved = (method.invoke(audio, channel.a9Usage) as? Number)?.toInt() ?: return null
+            groupIdCache[channel] = resolved
+            return resolved
+        }
 
-        private fun invokeInt(target: Any, name: String, arg: Int): Int? {
-            val method = target.javaClass.methods.firstOrNull {
-                it.name == name && it.parameterTypes.contentEquals(arrayOf(Int::class.javaPrimitiveType))
-            } ?: return null
-            return (method.invoke(target, arg) as? Number)?.toInt()
+        private fun cacheMethods(audio: Any) {
+            val methods = audio.javaClass.methods
+            getGroupVolumeMethod = methods.firstOrNull {
+                it.name == "getGroupVolume" && it.parameterTypes.contentEquals(arrayOf(Int::class.javaPrimitiveType))
+            }
+            getVolumeGroupIdForUsageMethod = methods.firstOrNull {
+                it.name == "getVolumeGroupIdForUsage" && it.parameterTypes.contentEquals(arrayOf(Int::class.javaPrimitiveType))
+            }
+            setGroupVolumeMethod = methods.firstOrNull { candidate ->
+                candidate.name == "setGroupVolume" &&
+                    candidate.parameterTypes.size == 3 &&
+                    candidate.parameterTypes.all { it == Int::class.javaPrimitiveType }
+            } ?: methods.firstOrNull {
+                it.name == "setGroupVolume" &&
+                    it.parameterTypes.size == 2 &&
+                    it.parameterTypes.all { type -> type == Int::class.javaPrimitiveType }
+            }
         }
 
         private fun manager(): Any? {
@@ -311,6 +340,9 @@ internal object PlatformAudioRepository {
                         "OpenOS AudioManager unavailable (${e.javaClass.simpleName}); using AudioManager streams",
                     )
                 }.getOrNull()
+                if (created != null) {
+                    cacheMethods(created)
+                }
                 manager = created
                 probeCompleted = true
                 return created

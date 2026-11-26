@@ -29,7 +29,8 @@ fun ProvideUiClickSounds(
     context: Context = LocalContext.current,
     content: @Composable () -> Unit,
 ) {
-    val settingsManager = remember(context) { SettingsManager(context.applicationContext) }
+    val appContext = context.applicationContext
+    val settingsManager = remember(appContext) { SettingsManager(appContext) }
     val enabled by settingsManager.uiClickSoundsEnabledFlow.collectAsStateWithLifecycle(initialValue = true)
     CompositionLocalProvider(LocalClickSoundEnabled provides enabled) {
         content()
@@ -37,10 +38,10 @@ fun ProvideUiClickSounds(
 }
 
 @Composable
-fun rememberPlaySystemClickSound(): () -> Unit {
+private fun rememberPlaySystemClickSoundInternal(logClick: Boolean): () -> Unit {
     val enabled = LocalClickSoundEnabled.current
     val view = LocalView.current
-    return remember(enabled, view) {
+    return remember(enabled, view, logClick) {
         {
             if (enabled) {
                 runCatching {
@@ -48,14 +49,19 @@ fun rememberPlaySystemClickSound(): () -> Unit {
                     view.playSoundEffect(SoundEffectConstants.CLICK)
                 }
             }
-            DclLogRecorder.logUiClick("SystemClick")
+            if (logClick) {
+                DclLogRecorder.logUiClick("SystemClick")
+            }
         }
     }
 }
 
 @Composable
+fun rememberPlaySystemClickSound(): () -> Unit = rememberPlaySystemClickSoundInternal(logClick = true)
+
+@Composable
 fun rememberWrappedOnClick(onClick: () -> Unit): () -> Unit {
-    val play = rememberPlaySystemClickSound()
+    val play = rememberPlaySystemClickSoundInternal(logClick = false)
     return remember(onClick, play) {
         {
             play()
@@ -67,7 +73,7 @@ fun rememberWrappedOnClick(onClick: () -> Unit): () -> Unit {
 
 @Composable
 fun rememberWrappedOnCheckedChange(onCheckedChange: ((Boolean) -> Unit)?): (Boolean) -> Unit {
-    val play = rememberPlaySystemClickSound()
+    val play = rememberPlaySystemClickSoundInternal(logClick = false)
     return remember(onCheckedChange, play) {
         { value ->
             play()
@@ -121,7 +127,7 @@ fun Modifier.combinedClickableWithSound(
     onDoubleClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
-    val play = rememberPlaySystemClickSound()
+    val play = rememberPlaySystemClickSoundInternal(logClick = false)
     val wrappedOnClick = remember(onClick, play, onClickLabel) {
         {
             play()
@@ -172,7 +178,7 @@ fun Modifier.combinedClickableWithSound(
     onDoubleClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
-    val play = rememberPlaySystemClickSound()
+    val play = rememberPlaySystemClickSoundInternal(logClick = false)
     val wrappedOnClick = remember(onClick, play, onClickLabel) {
         {
             play()

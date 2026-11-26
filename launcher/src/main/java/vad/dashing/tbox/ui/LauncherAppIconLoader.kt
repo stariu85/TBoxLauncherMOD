@@ -18,8 +18,11 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.DisplayMetrics
 import android.util.Log
+import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import vad.dashing.tbox.ui.launcher.LauncherThemeState
+import java.lang.reflect.Field
 import java.util.zip.ZipFile
 
 /**
@@ -34,6 +37,35 @@ import java.util.zip.ZipFile
  */
 internal object LauncherAppIconLoader {
     private const val TAG = "LauncherIcons"
+    private const val ICON_CACHE_MAX_ENTRIES = 96
+
+    private val iconCache = LruCache<String, ImageBitmap>(ICON_CACHE_MAX_ENTRIES)
+
+    private val roundIconResourceField: Field? by lazy {
+        runCatching { ApplicationInfo::class.java.getField("roundIconResource") }.getOrNull()
+    }
+
+    fun clearCache() {
+        synchronized(iconCache) {
+            iconCache.evictAll()
+        }
+    }
+
+    private fun cacheKey(packageName: String, sizePx: Int): String {
+        val isDark = runCatching { LauncherThemeState.darkTheme }.getOrDefault(true)
+        return "$packageName:$sizePx:$isDark"
+    }
+
+    private fun getCached(key: String): ImageBitmap? = synchronized(iconCache) {
+        iconCache.get(key)
+    }
+
+    private fun putCached(key: String, bitmap: ImageBitmap): ImageBitmap {
+        synchronized(iconCache) {
+            iconCache.put(key, bitmap)
+        }
+        return bitmap
+    }
 
     /** Used by [OemThemeAppIcons] — skips robot/transparency rejection that theme art never needs. */
     fun rasterizeForTheme(drawable: Drawable?, sizePx: Int): ImageBitmap? = rasterize(drawable, sizePx)
@@ -72,25 +104,32 @@ internal object LauncherAppIconLoader {
         info: LauncherActivityInfo,
         sizePx: Int,
     ): ImageBitmap {
+        val pkg = info.componentName.packageName
+        val key = cacheKey(pkg, sizePx)
+        getCached(key)?.let { return it }
         val pm = context.packageManager
         val densities = densityCandidates(context)
-        val pkg = info.componentName.packageName
         val label = info.label?.toString().orEmpty().ifBlank { pkg }
-        OemThemeAppIcons.load(context, pkg, sizePx)?.let { return it }
-        for (dpi in densities) {
-            rasterizeReal(pm, runCatching { info.getBadgedIcon(dpi) }.getOrNull(), sizePx)?.let { return it }
-            rasterizeReal(pm, runCatching { info.getIcon(dpi) }.getOrNull(), sizePx)?.let { return it }
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            rasterizeReal(pm, runCatching { info.activityInfo.loadIcon(pm) }.getOrNull(), sizePx)?.let { return it }
-            rasterizeReal(pm, runCatching { info.activityInfo.loadUnbadgedIcon(pm) }.getOrNull(), sizePx)?.let { return it }
-        }
-        fromApplicationInfo(pm, info.applicationInfo, sizePx, densities)?.let { return it }
-        fromPackageResources(pm, pkg, sizePx, densities)?.let { return it }
-        fromApkPngFallback(pm, pkg, sizePx)?.let { return it }
-        rasterizeReal(pm, runCatching { pm.getActivityIcon(info.componentName) }.getOrNull(), sizePx)?.let { return it }
-        Log.w(TAG, "letter fallback for ${info.componentName.flattenToShortString()}")
-        return letterIcon(label, sizePx)
+        val resolved = OemThemeAppIcons.load(context, pkg, sizePx)
+            ?: run {
+                for (dpi in densities) {
+                    rasterizeReal(pm, runCatching { info.getBadgedIcon(dpi) }.getOrNull(), sizePx)?.let { return@run it }
+                    rasterizeReal(pm, runCatching { info.getIcon(dpi) }.getOrNull(), sizePx)?.let { return@run it }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    rasterizeReal(pm, runCatching { info.activityInfo.loadIcon(pm) }.getOrNull(), sizePx)?.let { return@run it }
+                    rasterizeReal(pm, runCatching { info.activityInfo.loadUnbadgedIcon(pm) }.getOrNull(), sizePx)?.let { return@run it }
+                }
+                fromApplicationInfo(pm, info.applicationInfo, sizePx, densities)
+                    ?: fromPackageResources(pm, pkg, sizePx, densities)
+                    ?: fromApkPngFallback(pm, pkg, sizePx)
+                    ?: rasterizeReal(pm, runCatching { pm.getActivityIcon(info.componentName) }.getOrNull(), sizePx)
+                    ?: run {
+                        Log.w(TAG, "letter fallback for ${info.componentName.flattenToShortString()}")
+                        letterIcon(label, sizePx)
+                    }
+            }
+        return putCached(key, resolved)
     }
 
     fun fromResolveInfo(
@@ -98,20 +137,23 @@ internal object LauncherAppIconLoader {
         ri: ResolveInfo,
         sizePx: Int,
     ): ImageBitmap {
+        val pkg = ri.activityInfo.packageName
+        val key = cacheKey(pkg, sizePx)
+        getCached(key)?.let { return it }
         val pm = context.packageManager
         val densities = densityCandidates(context)
-        val pkg = ri.activityInfo.packageName
         val label = runCatching { ri.loadLabel(pm).toString() }.getOrNull().orEmpty().ifBlank { pkg }
-        OemThemeAppIcons.load(context, pkg, sizePx)?.let { return it }
-        rasterizeReal(pm, runCatching { ri.loadIcon(pm) }.getOrNull(), sizePx)?.let { return it }
-        rasterizeReal(pm, runCatching { ri.activityInfo.loadIcon(pm) }.getOrNull(), sizePx)?.let { return it }
-        rasterizeReal(pm, runCatching { ri.activityInfo.loadUnbadgedIcon(pm) }.getOrNull(), sizePx)?.let { return it }
-        fromApplicationInfo(pm, ri.activityInfo.applicationInfo, sizePx, densities)?.let { return it }
-        fromPackageResources(pm, pkg, sizePx, densities)?.let { return it }
-        fromApkPngFallback(pm, pkg, sizePx)?.let { return it }
         val component = ComponentName(pkg, ri.activityInfo.name)
-        rasterizeReal(pm, runCatching { pm.getActivityIcon(component) }.getOrNull(), sizePx)?.let { return it }
-        return letterIcon(label, sizePx)
+        val resolved = OemThemeAppIcons.load(context, pkg, sizePx)
+            ?: rasterizeReal(pm, runCatching { ri.loadIcon(pm) }.getOrNull(), sizePx)
+            ?: rasterizeReal(pm, runCatching { ri.activityInfo.loadIcon(pm) }.getOrNull(), sizePx)
+            ?: rasterizeReal(pm, runCatching { ri.activityInfo.loadUnbadgedIcon(pm) }.getOrNull(), sizePx)
+            ?: fromApplicationInfo(pm, ri.activityInfo.applicationInfo, sizePx, densities)
+            ?: fromPackageResources(pm, pkg, sizePx, densities)
+            ?: fromApkPngFallback(pm, pkg, sizePx)
+            ?: rasterizeReal(pm, runCatching { pm.getActivityIcon(component) }.getOrNull(), sizePx)
+            ?: letterIcon(label, sizePx)
+        return putCached(key, resolved)
     }
 
     fun fromPackage(
@@ -119,19 +161,20 @@ internal object LauncherAppIconLoader {
         packageName: String,
         sizePx: Int,
     ): ImageBitmap {
+        val key = cacheKey(packageName, sizePx)
+        getCached(key)?.let { return it }
         val pm = context.packageManager
         val densities = densityCandidates(context)
         val ai = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
         val label = ai?.let { runCatching { pm.getApplicationLabel(it).toString() }.getOrNull() }
             .orEmpty().ifBlank { packageName }
-        OemThemeAppIcons.load(context, packageName, sizePx)?.let { return it }
-        if (ai != null) {
-            fromApplicationInfo(pm, ai, sizePx, densities)?.let { return it }
-        }
-        fromPackageResources(pm, packageName, sizePx, densities)?.let { return it }
-        fromApkPngFallback(pm, packageName, sizePx)?.let { return it }
-        return rasterizeReal(pm, runCatching { pm.getApplicationIcon(packageName) }.getOrNull(), sizePx)
+        val resolved = OemThemeAppIcons.load(context, packageName, sizePx)
+            ?: ai?.let { fromApplicationInfo(pm, it, sizePx, densities) }
+            ?: fromPackageResources(pm, packageName, sizePx, densities)
+            ?: fromApkPngFallback(pm, packageName, sizePx)
+            ?: rasterizeReal(pm, runCatching { pm.getApplicationIcon(packageName) }.getOrNull(), sizePx)
             ?: letterIcon(label, sizePx)
+        return putCached(key, resolved)
     }
 
     /** Rasterize only if the drawable is not the generic Android default icon. */
@@ -283,7 +326,7 @@ internal object LauncherAppIconLoader {
         val resIds = buildList {
             if (ai.icon != 0) add(ai.icon)
             val roundId = runCatching {
-                ApplicationInfo::class.java.getField("roundIconResource").getInt(ai)
+                roundIconResourceField?.getInt(ai) ?: 0
             }.getOrDefault(0)
             if (roundId != 0) add(roundId)
         }
@@ -336,37 +379,53 @@ internal object LauncherAppIconLoader {
         return null
     }
 
+    private data class SoftwareBitmapResult(
+        val bitmap: Bitmap,
+        val owned: Boolean,
+    )
+
     private fun rasterize(drawable: Drawable?, sizePx: Int): ImageBitmap? {
         if (drawable == null || sizePx <= 0) return null
         return runCatching {
-            val bmp = drawableToSoftwareBitmap(drawable.mutate(), sizePx) ?: return@runCatching null
-            if (isMostlyTransparent(bmp) || looksLikeDefaultAndroidRobot(bmp)) return@runCatching null
+            val result = drawableToSoftwareBitmap(drawable.mutate(), sizePx) ?: return@runCatching null
+            val bmp = result.bitmap
+            if (isMostlyTransparent(bmp) || looksLikeDefaultAndroidRobot(bmp)) {
+                if (result.owned && !bmp.isRecycled) {
+                    bmp.recycle()
+                }
+                return@runCatching null
+            }
             bmp.asImageBitmap()
         }.getOrNull()
     }
 
-    private fun drawableToSoftwareBitmap(drawable: Drawable, sizePx: Int): Bitmap? {
+    private fun drawableToSoftwareBitmap(drawable: Drawable, sizePx: Int): SoftwareBitmapResult? {
         if (drawable is BitmapDrawable) {
             val src = drawable.bitmap ?: return null
-            val soft = if (src.config == Bitmap.Config.HARDWARE) {
+            val copiedHardware = src.config == Bitmap.Config.HARDWARE
+            val soft = if (copiedHardware) {
                 src.copy(Bitmap.Config.ARGB_8888, false) ?: return null
             } else {
                 src
             }
             return if (soft.width == sizePx && soft.height == sizePx) {
-                soft
+                SoftwareBitmapResult(soft, owned = copiedHardware)
             } else {
-                Bitmap.createScaledBitmap(soft, sizePx, sizePx, true)
+                val scaled = Bitmap.createScaledBitmap(soft, sizePx, sizePx, true)
+                if (copiedHardware && scaled !== soft && !soft.isRecycled) {
+                    soft.recycle()
+                }
+                SoftwareBitmapResult(scaled, owned = scaled !== src)
             }
         }
         if (drawable is AdaptiveIconDrawable) {
-            adaptiveToBitmap(drawable, sizePx)?.let { return it }
+            adaptiveToBitmap(drawable, sizePx)?.let { return SoftwareBitmapResult(it, owned = true) }
         }
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, sizePx, sizePx)
         drawable.draw(canvas)
-        return bitmap
+        return SoftwareBitmapResult(bitmap, owned = true)
     }
 
     private fun adaptiveToBitmap(icon: AdaptiveIconDrawable, sizePx: Int): Bitmap? {
@@ -383,7 +442,12 @@ internal object LauncherAppIconLoader {
         bg?.draw(canvas)
         fg?.setBounds(0, 0, sizePx, sizePx)
         fg?.draw(canvas)
-        return if (isMostlyTransparent(full)) null else full
+        return if (isMostlyTransparent(full)) {
+            if (!full.isRecycled) full.recycle()
+            null
+        } else {
+            full
+        }
     }
 
     /** Sample the inner half — adaptive icons are transparent near the edges. */

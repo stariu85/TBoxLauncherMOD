@@ -3,6 +3,11 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import vad.dashing.tbox.LauncherHomeActivityHolder
@@ -42,6 +47,9 @@ object LauncherHistoryTracker {
         "com.android.systemui",
     )
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+
     @Volatile
     private var inMemoryHistory: MutableList<LaunchedTarget>? = null
 
@@ -73,80 +81,92 @@ object LauncherHistoryTracker {
         }
     }
 
-    @Synchronized
     fun recordLaunch(context: Context, target: LaunchedTarget, isExplicit: Boolean = false) {
-        lastLaunchFromHome = LauncherHomeActivityHolder.isResumed
-        when (target) {
-            is LaunchedTarget.SingleApp -> {
-                if (target.packageName.isBlank() || target.packageName in ignoredPackages) return
-                lastActivePackageName = target.packageName
+        val appCtx = context.applicationContext
+        var snapshotToSave: List<LaunchedTarget>? = null
+        var recordedTarget: LaunchedTarget? = null
+        var historySize = 0
+        synchronized(this) {
+            when (target) {
+                is LaunchedTarget.SingleApp -> {
+                    if (target.packageName.isBlank() || target.packageName in ignoredPackages) return
+                }
+                is LaunchedTarget.SplitPreset -> {
+                    if (target.leftPackage.isBlank() || target.rightPackage.isBlank()) return
+                }
             }
-            is LaunchedTarget.SplitPreset -> {
-                if (target.leftPackage.isBlank() || target.rightPackage.isBlank()) return
-                lastActivePackageName = target.leftPackage
-            }
-        }
 
-        val list = getHistoryMutable(context)
-        val last = list.lastOrNull()
+            val list = getHistoryMutable(appCtx)
+            val last = list.lastOrNull()
 
-        if (!isExplicit && target is LaunchedTarget.SingleApp) {
-            val now = SystemClock.uptimeMillis()
-            val isSplitProtected = (now - lastSplitLaunchMs) < SPLIT_PROTECTION_TIMEOUT_MS
+            if (!isExplicit && target is LaunchedTarget.SingleApp) {
+                val now = SystemClock.uptimeMillis()
+                val isSplitProtected = (now - lastSplitLaunchMs) < SPLIT_PROTECTION_TIMEOUT_MS
 
-            if (last is LaunchedTarget.SplitPreset) {
-                if (target.packageName == last.leftPackage || target.packageName == last.rightPackage) {
+                if (last is LaunchedTarget.SplitPreset) {
+                    if (target.packageName == last.leftPackage || target.packageName == last.rightPackage) {
+                        Log.d(
+                            TAG,
+                            "Ignored implicit single app launch ${target.packageName} because top is SplitPreset(${last.leftPackage}, ${last.rightPackage})",
+                        )
+                        return
+                    }
+                }
+
+                if (isSplitProtected && last is LaunchedTarget.SplitPreset) {
                     Log.d(
                         TAG,
-                        "Ignored implicit single app launch ${target.packageName} because top is SplitPreset(${last.leftPackage}, ${last.rightPackage})",
+                        "Ignored implicit single app launch ${target.packageName} due to recent split launch protection",
                     )
                     return
                 }
             }
 
-            if (isSplitProtected && last is LaunchedTarget.SplitPreset) {
-                Log.d(
-                    TAG,
-                    "Ignored implicit single app launch ${target.packageName} due to recent split launch protection",
-                )
-                return
+            lastLaunchFromHome = LauncherHomeActivityHolder.isResumed
+            lastActivePackageName = when (target) {
+                is LaunchedTarget.SingleApp -> target.packageName
+                is LaunchedTarget.SplitPreset -> target.leftPackage
             }
-        }
 
-        if (target is LaunchedTarget.SplitPreset) {
-            lastSplitLaunchMs = SystemClock.uptimeMillis()
-        }
+            if (target is LaunchedTarget.SplitPreset) {
+                lastSplitLaunchMs = SystemClock.uptimeMillis()
+            }
 
-        if (last != null && isSameTarget(last, target)) {
-            if (target is LaunchedTarget.SingleApp && last is LaunchedTarget.SingleApp) {
-                if (!target.activityName.isNullOrBlank() && last.activityName.isNullOrBlank()) {
-                    list[list.lastIndex] = target
-                    saveHistory(context, list)
+            if (last != null && isSameTarget(last, target)) {
+                if (target is LaunchedTarget.SingleApp && last is LaunchedTarget.SingleApp) {
+                    if (!target.activityName.isNullOrBlank() && last.activityName.isNullOrBlank()) {
+                        list[list.lastIndex] = target
+                        snapshotToSave = list.toList()
+                    }
                 }
-            }
-            return
-        }
-
-        val effectiveTarget = if (target is LaunchedTarget.SingleApp && target.activityName.isNullOrBlank()) {
-            val existingActivity = (list.firstOrNull { isSameTarget(it, target) } as? LaunchedTarget.SingleApp)?.activityName
-            if (!existingActivity.isNullOrBlank()) {
-                target.copy(activityName = existingActivity)
             } else {
-                target
+                val effectiveTarget = if (target is LaunchedTarget.SingleApp && target.activityName.isNullOrBlank()) {
+                    val existingActivity = (list.firstOrNull { isSameTarget(it, target) } as? LaunchedTarget.SingleApp)?.activityName
+                    if (!existingActivity.isNullOrBlank()) {
+                        target.copy(activityName = existingActivity)
+                    } else {
+                        target
+                    }
+                } else {
+                    target
+                }
+
+                list.removeAll { isSameTarget(it, target) }
+                list.add(effectiveTarget)
+
+                while (list.size > MAX_HISTORY_SIZE) {
+                    list.removeAt(0)
+                }
+
+                snapshotToSave = list.toList()
+                recordedTarget = effectiveTarget
+                historySize = list.size
             }
-        } else {
-            target
         }
-
-        list.removeAll { isSameTarget(it, target) }
-        list.add(effectiveTarget)
-
-        while (list.size > MAX_HISTORY_SIZE) {
-            list.removeAt(0)
+        snapshotToSave?.let { saveHistoryAsync(appCtx, it) }
+        recordedTarget?.let {
+            Log.d(TAG, "Recorded launch target: $it (isExplicit=$isExplicit, history size=$historySize)")
         }
-
-        saveHistory(context, list)
-        Log.d(TAG, "Recorded launch target: $effectiveTarget (isExplicit=$isExplicit, history size=${list.size})")
     }
 
     @Synchronized
@@ -192,49 +212,57 @@ object LauncherHistoryTracker {
         }.getOrDefault(emptyList())
     }
 
-    private fun saveHistory(context: Context, history: List<LaunchedTarget>) {
-        val array = JSONArray()
-        history.forEach { target ->
-            when (target) {
-                is LaunchedTarget.SingleApp -> {
-                    array.put(
-                        JSONObject()
-                            .put("type", "app")
-                            .put("package", target.packageName)
-                            .put("activity", target.activityName.orEmpty()),
-                    )
+    private fun saveHistoryAsync(context: Context, history: List<LaunchedTarget>) {
+        persistScope.launch {
+            runCatching {
+                val array = JSONArray()
+                history.forEach { target ->
+                    when (target) {
+                        is LaunchedTarget.SingleApp -> {
+                            array.put(
+                                JSONObject()
+                                    .put("type", "app")
+                                    .put("package", target.packageName)
+                                    .put("activity", target.activityName.orEmpty()),
+                            )
+                        }
+                        is LaunchedTarget.SplitPreset -> {
+                            array.put(
+                                JSONObject()
+                                    .put("type", "split")
+                                    .put("presetId", target.presetId.orEmpty())
+                                    .put("leftPackage", target.leftPackage)
+                                    .put("rightPackage", target.rightPackage)
+                                    .put("leftRatio", target.leftRatio.toDouble()),
+                            )
+                        }
+                    }
                 }
-                is LaunchedTarget.SplitPreset -> {
-                    array.put(
-                        JSONObject()
-                            .put("type", "split")
-                            .put("presetId", target.presetId.orEmpty())
-                            .put("leftPackage", target.leftPackage)
-                            .put("rightPackage", target.rightPackage)
-                            .put("leftRatio", target.leftRatio.toDouble()),
-                    )
-                }
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_HISTORY_JSON, array.toString())
+                    .apply()
             }
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_HISTORY_JSON, array.toString())
-            .apply()
     }
 
-    @Synchronized
     fun clearHistory(context: Context) {
-        inMemoryHistory = mutableListOf()
-        lastActivePackageName = null
-        lastLaunchFromHome = false
-        lastSplitLaunchMs = 0L
-        runCatching {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .remove(KEY_HISTORY_JSON)
-                .apply()
+        val appCtx = context.applicationContext
+        synchronized(this) {
+            inMemoryHistory = mutableListOf()
+            lastActivePackageName = null
+            lastLaunchFromHome = false
+            lastSplitLaunchMs = 0L
         }
-        vad.dashing.tbox.LauncherStateStore.clearLastLaunchedApp(context)
+        persistScope.launch {
+            runCatching {
+                appCtx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .remove(KEY_HISTORY_JSON)
+                    .apply()
+            }
+        }
+        vad.dashing.tbox.LauncherStateStore.clearLastLaunchedApp(appCtx)
         LauncherActiveAppTracker.clearAll()
         FreeformLaunchRegistry.clear()
         Log.w(TAG, "History and last app state cleared on system startup")
@@ -311,7 +339,7 @@ internal fun performUndoLaunch(context: Context, source: String = "unknown") {
         return
     }
 
-    val isHomeActive = settingsWereOpen || LauncherHomeActivityHolder.isResumed
+    val isHomeActive = settingsWereOpen || !LauncherActiveAppTracker.hasActiveApp()
 
     val targetToLaunch = if (isHomeActive) {
         history.last()

@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import vad.dashing.tbox.SettingsManager
 
 class UpdateViewModel(
@@ -93,6 +95,9 @@ class UpdateViewModel(
         downloadJob?.cancel()
         downloadJob = null
         repository.cancelDownload()
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearDownloadCacheOnIo()
+        }
     }
 
     fun installPreparedApk() {
@@ -119,7 +124,9 @@ class UpdateViewModel(
             val current = settingsManager.updateChannelFlow.first()
             if (current == channel) return@launch
             settingsManager.saveUpdateChannel(channel)
-            repository.resetAfterChannelChange()
+            withContext(Dispatchers.IO) {
+                repository.resetAfterChannelChange()
+            }
             repository.checkForUpdate(force = true)
         }
     }

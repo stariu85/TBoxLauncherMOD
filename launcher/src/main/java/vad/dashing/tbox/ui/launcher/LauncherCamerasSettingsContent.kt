@@ -142,13 +142,15 @@ fun LauncherCamerasSettingsContent(
     }
 
     val status by CamdCameraRepository.status.collectAsStateWithLifecycle()
+    var isTogglingManualAvm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         CamdCameraRepository.refreshStatus(context)
         CamdCameraRepository.startSideCamerasMonitor(context)
     }
 
-    LaunchedEffect(status) {
+    LaunchedEffect(status, isTogglingManualAvm) {
+        if (isTogglingManualAvm) return@LaunchedEffect
         val s = status
         if (s is CamdConnectionStatus.Connected) {
             if (s.keepAvm != disableStockAvm) {
@@ -224,9 +226,12 @@ fun LauncherCamerasSettingsContent(
                         onClick = {
                             scope.launch {
                                 isChecking = true
-                                CamdSocketClient.wakeUpService(context)
-                                CamdCameraRepository.refreshStatus(context)
-                                isChecking = false
+                                try {
+                                    CamdSocketClient.wakeUpService(context)
+                                    CamdCameraRepository.refreshStatusNow(context)
+                                } finally {
+                                    isChecking = false
+                                }
                             }
                         },
                     ) {
@@ -356,9 +361,14 @@ fun LauncherCamerasSettingsContent(
             onClick = if (canToggleManualAvm) {
                 {
                     val next = !disableStockAvm
+                    isTogglingManualAvm = true
                     LauncherAppConfigStore.setCamdDisableStockAvm(context, next)
                     scope.launch {
-                        CamdCameraRepository.setHoldStockAvm(context, next)
+                        try {
+                            CamdCameraRepository.setHoldStockAvm(context, next)
+                        } finally {
+                            isTogglingManualAvm = false
+                        }
                     }
                 }
             } else null,
@@ -372,6 +382,7 @@ fun LauncherCamerasSettingsContent(
         )
 
         val isStockAvmEnabled = isInstalled && !disableStockAvm
+        var stockAvmMinSpeedSlider by remember(stockAvmMinSpeed) { mutableStateOf(stockAvmMinSpeed.toFloat()) }
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -392,7 +403,7 @@ fun LauncherCamerasSettingsContent(
                     fontSize = 15.sp,
                 )
                 Text(
-                    text = "$stockAvmMinSpeed км/ч",
+                    text = "${stockAvmMinSpeedSlider.roundToInt()} км/ч",
                     color = if (isStockAvmEnabled) LauncherColors.AccentCyan else LauncherColors.TextMuted,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -404,9 +415,12 @@ fun LauncherCamerasSettingsContent(
                 fontSize = 12.sp,
             )
             Slider(
-                value = stockAvmMinSpeed.toFloat(),
+                value = stockAvmMinSpeedSlider,
                 onValueChange = { next ->
-                    LauncherAppConfigStore.setCamdStockAvmSideCamerasMinSpeed(context, next.roundToInt())
+                    stockAvmMinSpeedSlider = next
+                },
+                onValueChangeFinished = {
+                    LauncherAppConfigStore.setCamdStockAvmSideCamerasMinSpeed(context, stockAvmMinSpeedSlider.roundToInt())
                 },
                 valueRange = 1f..30f,
                 steps = 28,
@@ -486,6 +500,9 @@ fun LauncherCamerasSettingsContent(
 
         // Dual-thumb scale for auto AVM speed thresholds (activation & deactivation)
         val isAutoAvmActive = isInstalled && autoDisableStockAvm
+        var autoAvmSpeedRange by remember(autoAvmOnSpeed, autoAvmOffSpeed) {
+            mutableStateOf(autoAvmOnSpeed to autoAvmOffSpeed)
+        }
         Spacer(modifier = Modifier.height(2.dp))
 
         Column(
@@ -499,10 +516,10 @@ fun LauncherCamerasSettingsContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val onSpeedLabel = if (autoAvmOnSpeed == 0) {
+                val onSpeedLabel = if (autoAvmSpeedRange.first == 0) {
                     stringResource(R.string.camd_auto_avm_on_speed_reverse_label)
                 } else {
-                    stringResource(R.string.camd_auto_avm_on_speed_label, autoAvmOnSpeed)
+                    stringResource(R.string.camd_auto_avm_on_speed_label, autoAvmSpeedRange.first)
                 }
                 Text(
                     text = onSpeedLabel,
@@ -511,7 +528,7 @@ fun LauncherCamerasSettingsContent(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = stringResource(R.string.camd_auto_avm_off_speed_label, autoAvmOffSpeed),
+                    text = stringResource(R.string.camd_auto_avm_off_speed_label, autoAvmSpeedRange.second),
                     color = if (isAutoAvmActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -523,12 +540,12 @@ fun LauncherCamerasSettingsContent(
                 fontSize = 12.sp,
             )
             RangeSlider(
-                value = autoAvmOnSpeed.toFloat()..autoAvmOffSpeed.toFloat(),
+                value = autoAvmSpeedRange.first.toFloat()..autoAvmSpeedRange.second.toFloat(),
                 onValueChange = { range ->
                     var newOn = range.start.roundToInt().coerceIn(0, 29)
                     var newOff = range.endInclusive.roundToInt().coerceIn(1, 30)
                     if (newOff - newOn < 1) {
-                        if (newOn != autoAvmOnSpeed) {
+                        if (newOn != autoAvmSpeedRange.first) {
                             newOn = (newOff - 1).coerceAtLeast(0)
                         } else {
                             newOff = (newOn + 1).coerceAtMost(30)
@@ -537,7 +554,10 @@ fun LauncherCamerasSettingsContent(
                     if (newOff <= newOn) {
                         if (newOn < 30) newOff = newOn + 1 else newOn = newOff - 1
                     }
-                    LauncherAppConfigStore.setCamdAutoAvmSpeeds(context, newOn, newOff)
+                    autoAvmSpeedRange = newOn to newOff
+                },
+                onValueChangeFinished = {
+                    LauncherAppConfigStore.setCamdAutoAvmSpeeds(context, autoAvmSpeedRange.first, autoAvmSpeedRange.second)
                 },
                 valueRange = 0f..30f,
                 steps = 29,
@@ -620,6 +640,7 @@ fun LauncherCamerasSettingsContent(
 
             if (shapeCircle || rectCorners) {
                 Spacer(modifier = Modifier.height(4.dp))
+                var sizeAdjustmentSlider by remember(sizeAdjustment) { mutableStateOf(sizeAdjustment.toFloat()) }
 
                 Column(
                     modifier = Modifier
@@ -637,7 +658,8 @@ fun LauncherCamerasSettingsContent(
                             color = LauncherColors.TextPrimary,
                             fontSize = 15.sp,
                         )
-                        val formattedPercent = if (sizeAdjustment > 0) "+$sizeAdjustment%" else "$sizeAdjustment%"
+                        val displaySize = sizeAdjustmentSlider.roundToInt()
+                        val formattedPercent = if (displaySize > 0) "+$displaySize%" else "$displaySize%"
                         Text(
                             text = formattedPercent,
                             color = LauncherColors.AccentCyan,
@@ -651,9 +673,12 @@ fun LauncherCamerasSettingsContent(
                         fontSize = 12.sp,
                     )
                     Slider(
-                        value = sizeAdjustment.toFloat(),
+                        value = sizeAdjustmentSlider,
                         onValueChange = { next ->
-                            LauncherAppConfigStore.setCamdSideCamerasSizeAdjustment(context, next.roundToInt())
+                            sizeAdjustmentSlider = next
+                        },
+                        onValueChangeFinished = {
+                            LauncherAppConfigStore.setCamdSideCamerasSizeAdjustment(context, sizeAdjustmentSlider.roundToInt())
                         },
                         valueRange = -50f..100f,
                         steps = 29,
@@ -739,6 +764,9 @@ fun LauncherCamerasSettingsContent(
             // Steering wheel activation/deactivation angle dual-thumb slider
             val isSteerTriggerActive = isInstalled && lowSpeedSideCameras &&
                 (lowSpeedTrigger == CAMD_LOW_SPEED_TRIGGER_STEERING || lowSpeedTrigger == CAMD_LOW_SPEED_TRIGGER_BOTH)
+            var steerAngleRange by remember(lowSpeedSteerOffAngle, lowSpeedSteerOnAngle) {
+                mutableStateOf(lowSpeedSteerOffAngle to lowSpeedSteerOnAngle)
+            }
 
             Spacer(modifier = Modifier.height(2.dp))
 
@@ -754,13 +782,13 @@ fun LauncherCamerasSettingsContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(R.string.camd_low_speed_steer_off_angle_label, lowSpeedSteerOffAngle),
+                        text = stringResource(R.string.camd_low_speed_steer_off_angle_label, steerAngleRange.first),
                         color = if (isSteerTriggerActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = stringResource(R.string.camd_low_speed_steer_on_angle_label, lowSpeedSteerOnAngle),
+                        text = stringResource(R.string.camd_low_speed_steer_on_angle_label, steerAngleRange.second),
                         color = if (isSteerTriggerActive) LauncherColors.AccentCyan else LauncherColors.TextMuted,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -772,7 +800,7 @@ fun LauncherCamerasSettingsContent(
                     fontSize = 12.sp,
                 )
                 RangeSlider(
-                    value = lowSpeedSteerOffAngle.toFloat()..lowSpeedSteerOnAngle.toFloat(),
+                    value = steerAngleRange.first.toFloat()..steerAngleRange.second.toFloat(),
                     onValueChange = { range ->
                         val rawOff = (range.start / 5f).roundToInt() * 5
                         val rawOn = (range.endInclusive / 5f).roundToInt() * 5
@@ -780,7 +808,7 @@ fun LauncherCamerasSettingsContent(
                         var newOn = rawOn.coerceIn(10, 90)
 
                         if (newOn - newOff < 5) {
-                            if (newOff != lowSpeedSteerOffAngle) {
+                            if (newOff != steerAngleRange.first) {
                                 newOff = (newOn - 5).coerceAtLeast(5)
                             } else {
                                 newOn = (newOff + 5).coerceAtMost(90)
@@ -789,7 +817,10 @@ fun LauncherCamerasSettingsContent(
                         if (newOn <= newOff) {
                             if (newOff <= 85) newOn = newOff + 5 else newOff = newOn - 5
                         }
-                        LauncherAppConfigStore.setCamdLowSpeedSteerAngles(context, newOff, newOn)
+                        steerAngleRange = newOff to newOn
+                    },
+                    onValueChangeFinished = {
+                        LauncherAppConfigStore.setCamdLowSpeedSteerAngles(context, steerAngleRange.first, steerAngleRange.second)
                     },
                     valueRange = 5f..90f,
                     steps = 16,
@@ -808,6 +839,7 @@ fun LauncherCamerasSettingsContent(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Sub-option 3.2: Speed threshold slider (1..30 km/h)
+            var lowSpeedThresholdSlider by remember(lowSpeedThreshold) { mutableStateOf(lowSpeedThreshold.toFloat()) }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -825,7 +857,7 @@ fun LauncherCamerasSettingsContent(
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "$lowSpeedThreshold км/ч",
+                        text = "${lowSpeedThresholdSlider.roundToInt()} км/ч",
                         color = LauncherColors.AccentCyan,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -837,9 +869,12 @@ fun LauncherCamerasSettingsContent(
                     fontSize = 12.sp,
                 )
                 Slider(
-                    value = lowSpeedThreshold.toFloat(),
+                    value = lowSpeedThresholdSlider,
                     onValueChange = { next ->
-                        LauncherAppConfigStore.setCamdLowSpeedThreshold(context, next.roundToInt())
+                        lowSpeedThresholdSlider = next
+                    },
+                    onValueChangeFinished = {
+                        LauncherAppConfigStore.setCamdLowSpeedThreshold(context, lowSpeedThresholdSlider.roundToInt())
                     },
                     valueRange = 1f..30f,
                     steps = 28,
@@ -854,6 +889,7 @@ fun LauncherCamerasSettingsContent(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Sub-option 3.3: Width adjustment slider (10%..50%, step 5%)
+            var lowSpeedWidthSlider by remember(lowSpeedWidthPercent) { mutableStateOf(lowSpeedWidthPercent.toFloat()) }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -871,7 +907,7 @@ fun LauncherCamerasSettingsContent(
                         fontSize = 15.sp,
                     )
                     Text(
-                        text = "$lowSpeedWidthPercent%",
+                        text = "${(lowSpeedWidthSlider / 5f).roundToInt() * 5}%",
                         color = LauncherColors.AccentCyan,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -883,9 +919,12 @@ fun LauncherCamerasSettingsContent(
                     fontSize = 12.sp,
                 )
                 Slider(
-                    value = lowSpeedWidthPercent.toFloat(),
+                    value = lowSpeedWidthSlider,
                     onValueChange = { next ->
-                        val rounded5 = (next / 5f).roundToInt() * 5
+                        lowSpeedWidthSlider = next
+                    },
+                    onValueChangeFinished = {
+                        val rounded5 = (lowSpeedWidthSlider / 5f).roundToInt() * 5
                         LauncherAppConfigStore.setCamdLowSpeedSideWidthPercent(context, rounded5)
                     },
                     valueRange = 10f..50f,

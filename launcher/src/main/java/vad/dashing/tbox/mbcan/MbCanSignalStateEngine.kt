@@ -63,41 +63,16 @@ internal class MbCanSignalStateEngine(
     private val rearLeftSeatFlow: MutableStateFlow<MbCanSeatModeState>,
     private val rearRightSeatFlow: MutableStateFlow<MbCanSeatModeState>,
     private val requiredConsecutiveProblems: Int = 3,
+    private val onBurstRequest: suspend (MbCanSignal) -> Unit = { MbCanJobManager.requestBurst(it) },
 ) {
-    private var steeringUnknownStreak = 0
-    private var steeringUnavailableStreak = 0
-    private var wiperMaintenanceUnknownStreak = 0
-    private var wiperMaintenanceUnavailableStreak = 0
-    private var parkingRadarUnknownStreak = 0
-    private var parkingRadarUnavailableStreak = 0
-    private var windshieldUnknownStreak = 0
-    private var windshieldUnavailableStreak = 0
-    private var hvacDefrosterUnknownStreak = 0
-    private var hvacDefrosterUnavailableStreak = 0
-    private var hvacAirRecirculationUnknownStreak = 0
-    private var hvacAirRecirculationUnavailableStreak = 0
-    private var hvacAcPowerUnknownStreak = 0
-    private var hvacAcPowerUnavailableStreak = 0
-    private var hvacAutoStateUnknownStreak = 0
-    private var hvacAutoStateUnavailableStreak = 0
-    private var hvacSyncUnknownStreak = 0
-    private var hvacSyncUnavailableStreak = 0
-    private var hvacDefrosterFrontUnknownStreak = 0
-    private var hvacDefrosterFrontUnavailableStreak = 0
-    private var wirelessChargingUnknownStreak = 0
-    private var wirelessChargingUnavailableStreak = 0
-    private var tjaIcaUnknownStreak = 0
-    private var tjaIcaUnavailableStreak = 0
-    private var volumeSpeedUnknownStreak = 0
-    private var volumeSpeedUnavailableStreak = 0
-    private var frontLeftUnknownStreak = 0
-    private var frontLeftUnavailableStreak = 0
-    private var frontRightUnknownStreak = 0
-    private var frontRightUnavailableStreak = 0
-    private var rearLeftUnknownStreak = 0
-    private var rearLeftUnavailableStreak = 0
-    private var rearRightUnknownStreak = 0
-    private var rearRightUnavailableStreak = 0
+    private class ProblemStreak {
+        var unknown: Int = 0
+        var unavailable: Int = 0
+    }
+
+    private val stateLock = Any()
+    private val binaryStreaks = java.util.EnumMap<MbCanSignal, ProblemStreak>(MbCanSignal::class.java)
+    private val seatStreaks = java.util.EnumMap<MbCanSeatSlot, ProblemStreak>(MbCanSeatSlot::class.java)
 
     private fun MbCanBinaryState.isProblemState(): Boolean =
         this is MbCanBinaryState.Unknown || this is MbCanBinaryState.Unavailable
@@ -105,369 +80,81 @@ internal class MbCanSignalStateEngine(
     private fun MbCanSeatModeState.isProblemState(): Boolean =
         this is MbCanSeatModeState.Unknown || this is MbCanSeatModeState.Unavailable
 
-    suspend fun applySteeringCandidate(decoded: MbCanBinaryState) {
-        val published = steeringFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.SteeringWheelHeat)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                steeringUnknownStreak += 1
-                steeringUnavailableStreak = 0
-                if (steeringUnknownStreak >= requiredConsecutiveProblems) {
-                    steeringFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                steeringUnavailableStreak += 1
-                steeringUnknownStreak = 0
-                if (steeringUnavailableStreak >= requiredConsecutiveProblems) {
-                    steeringFlow.value = decoded
-                }
-            }
-            else -> {
-                steeringUnknownStreak = 0
-                steeringUnavailableStreak = 0
-                steeringFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyWiperMaintenanceCandidate(decoded: MbCanBinaryState) {
-        val published = wiperMaintenanceFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.WiperMaintenance)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                wiperMaintenanceUnknownStreak += 1
-                wiperMaintenanceUnavailableStreak = 0
-                if (wiperMaintenanceUnknownStreak >= requiredConsecutiveProblems) {
-                    wiperMaintenanceFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                wiperMaintenanceUnavailableStreak += 1
-                wiperMaintenanceUnknownStreak = 0
-                if (wiperMaintenanceUnavailableStreak >= requiredConsecutiveProblems) {
-                    wiperMaintenanceFlow.value = decoded
-                }
-            }
-            else -> {
-                wiperMaintenanceUnknownStreak = 0
-                wiperMaintenanceUnavailableStreak = 0
-                wiperMaintenanceFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyParkingRadarCandidate(decoded: MbCanBinaryState) {
-        val published = parkingRadarFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.ParkingRadar)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                parkingRadarUnknownStreak += 1
-                parkingRadarUnavailableStreak = 0
-                if (parkingRadarUnknownStreak >= requiredConsecutiveProblems) {
-                    parkingRadarFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                parkingRadarUnavailableStreak += 1
-                parkingRadarUnknownStreak = 0
-                if (parkingRadarUnavailableStreak >= requiredConsecutiveProblems) {
-                    parkingRadarFlow.value = decoded
-                }
-            }
-            else -> {
-                parkingRadarUnknownStreak = 0
-                parkingRadarUnavailableStreak = 0
-                parkingRadarFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyWindshieldHeatCandidate(decoded: MbCanBinaryState) {
-        val published = windshieldHeatFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.FrontWindscreenHeat)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                windshieldUnknownStreak += 1
-                windshieldUnavailableStreak = 0
-                if (windshieldUnknownStreak >= requiredConsecutiveProblems) {
-                    windshieldHeatFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                windshieldUnavailableStreak += 1
-                windshieldUnknownStreak = 0
-                if (windshieldUnavailableStreak >= requiredConsecutiveProblems) {
-                    windshieldHeatFlow.value = decoded
-                }
-            }
-            else -> {
-                windshieldUnknownStreak = 0
-                windshieldUnavailableStreak = 0
-                windshieldHeatFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyHvacDefrosterCandidate(decoded: MbCanBinaryState) {
-        val published = hvacDefrosterFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.HvacDefroster)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                hvacDefrosterUnknownStreak += 1
-                hvacDefrosterUnavailableStreak = 0
-                if (hvacDefrosterUnknownStreak >= requiredConsecutiveProblems) {
-                    hvacDefrosterFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                hvacDefrosterUnavailableStreak += 1
-                hvacDefrosterUnknownStreak = 0
-                if (hvacDefrosterUnavailableStreak >= requiredConsecutiveProblems) {
-                    hvacDefrosterFlow.value = decoded
-                }
-            }
-            else -> {
-                hvacDefrosterUnknownStreak = 0
-                hvacDefrosterUnavailableStreak = 0
-                hvacDefrosterFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyHvacAirRecirculationCandidate(decoded: MbCanBinaryState) {
-        val published = hvacAirRecirculationFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.HvacAirRecirculation)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                hvacAirRecirculationUnknownStreak += 1
-                hvacAirRecirculationUnavailableStreak = 0
-                if (hvacAirRecirculationUnknownStreak >= requiredConsecutiveProblems) {
-                    hvacAirRecirculationFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                hvacAirRecirculationUnavailableStreak += 1
-                hvacAirRecirculationUnknownStreak = 0
-                if (hvacAirRecirculationUnavailableStreak >= requiredConsecutiveProblems) {
-                    hvacAirRecirculationFlow.value = decoded
-                }
-            }
-            else -> {
-                hvacAirRecirculationUnknownStreak = 0
-                hvacAirRecirculationUnavailableStreak = 0
-                hvacAirRecirculationFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyHvacAcPowerCandidate(decoded: MbCanBinaryState) {
-        val published = hvacAcPowerFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.HvacAcPower)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                hvacAcPowerUnknownStreak += 1
-                hvacAcPowerUnavailableStreak = 0
-                if (hvacAcPowerUnknownStreak >= requiredConsecutiveProblems) {
-                    hvacAcPowerFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                hvacAcPowerUnavailableStreak += 1
-                hvacAcPowerUnknownStreak = 0
-                if (hvacAcPowerUnavailableStreak >= requiredConsecutiveProblems) {
-                    hvacAcPowerFlow.value = decoded
-                }
-            }
-            else -> {
-                hvacAcPowerUnknownStreak = 0
-                hvacAcPowerUnavailableStreak = 0
-                hvacAcPowerFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyHvacAutoStateCandidate(decoded: MbCanBinaryState) {
-        val published = hvacAutoStateFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.HvacAutoState)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                hvacAutoStateUnknownStreak += 1
-                hvacAutoStateUnavailableStreak = 0
-                if (hvacAutoStateUnknownStreak >= requiredConsecutiveProblems) {
-                    hvacAutoStateFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                hvacAutoStateUnavailableStreak += 1
-                hvacAutoStateUnknownStreak = 0
-                if (hvacAutoStateUnavailableStreak >= requiredConsecutiveProblems) {
-                    hvacAutoStateFlow.value = decoded
-                }
-            }
-            else -> {
-                hvacAutoStateUnknownStreak = 0
-                hvacAutoStateUnavailableStreak = 0
-                hvacAutoStateFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyHvacSyncCandidate(decoded: MbCanBinaryState) {
-        val published = hvacSyncFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.HvacSync)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                hvacSyncUnknownStreak += 1
-                hvacSyncUnavailableStreak = 0
-                if (hvacSyncUnknownStreak >= requiredConsecutiveProblems) {
-                    hvacSyncFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                hvacSyncUnavailableStreak += 1
-                hvacSyncUnknownStreak = 0
-                if (hvacSyncUnavailableStreak >= requiredConsecutiveProblems) {
-                    hvacSyncFlow.value = decoded
-                }
-            }
-            else -> {
-                hvacSyncUnknownStreak = 0
-                hvacSyncUnavailableStreak = 0
-                hvacSyncFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyHvacDefrosterFrontCandidate(decoded: MbCanBinaryState) {
-        val published = hvacDefrosterFrontFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.HvacDefrosterFront)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                hvacDefrosterFrontUnknownStreak += 1
-                hvacDefrosterFrontUnavailableStreak = 0
-                if (hvacDefrosterFrontUnknownStreak >= requiredConsecutiveProblems) {
-                    hvacDefrosterFrontFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                hvacDefrosterFrontUnavailableStreak += 1
-                hvacDefrosterFrontUnknownStreak = 0
-                if (hvacDefrosterFrontUnavailableStreak >= requiredConsecutiveProblems) {
-                    hvacDefrosterFrontFlow.value = decoded
-                }
-            }
-            else -> {
-                hvacDefrosterFrontUnknownStreak = 0
-                hvacDefrosterFrontUnavailableStreak = 0
-                hvacDefrosterFrontFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyWirelessChargingCandidate(decoded: MbCanBinaryState) {
-        val published = wirelessChargingFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.WirelessChargingSwitch)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                wirelessChargingUnknownStreak += 1
-                wirelessChargingUnavailableStreak = 0
-                if (wirelessChargingUnknownStreak >= requiredConsecutiveProblems) {
-                    wirelessChargingFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                wirelessChargingUnavailableStreak += 1
-                wirelessChargingUnknownStreak = 0
-                if (wirelessChargingUnavailableStreak >= requiredConsecutiveProblems) {
-                    wirelessChargingFlow.value = decoded
-                }
-            }
-            else -> {
-                wirelessChargingUnknownStreak = 0
-                wirelessChargingUnavailableStreak = 0
-                wirelessChargingFlow.value = decoded
-            }
-        }
-    }
-
-    suspend fun applyTjaIcaCandidate(decoded: MbCanBinaryState) {
-        val published = tjaIcaFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.TjaIca)
+    private suspend fun applyBinaryCandidate(
+        flow: MutableStateFlow<MbCanBinaryState>,
+        signal: MbCanSignal,
+        decoded: MbCanBinaryState,
+    ) {
+        val shouldBurst = synchronized(stateLock) {
+            val streak = binaryStreaks.getOrPut(signal) { ProblemStreak() }
+            val published = flow.value
+            val burst = decoded.isProblemState() && !published.isProblemState()
             when (decoded) {
                 is MbCanBinaryState.Unknown -> {
-                    tjaIcaUnknownStreak += 1
-                    tjaIcaUnavailableStreak = 0
-                    if (tjaIcaUnknownStreak >= requiredConsecutiveProblems) {
-                        tjaIcaFlow.value = MbCanBinaryState.Unknown
+                    streak.unknown += 1
+                    streak.unavailable = 0
+                    if (streak.unknown >= requiredConsecutiveProblems) {
+                        flow.value = MbCanBinaryState.Unknown
                     }
                 }
                 is MbCanBinaryState.Unavailable -> {
-                    tjaIcaUnavailableStreak += 1
-                    tjaIcaUnknownStreak = 0
-                    if (tjaIcaUnavailableStreak >= requiredConsecutiveProblems) {
-                        tjaIcaFlow.value = decoded
+                    streak.unavailable += 1
+                    streak.unknown = 0
+                    if (streak.unavailable >= requiredConsecutiveProblems) {
+                        flow.value = decoded
                     }
                 }
-                else -> {}
+                else -> {
+                    streak.unknown = 0
+                    streak.unavailable = 0
+                    flow.value = decoded
+                }
             }
-        } else {
-            tjaIcaUnknownStreak = 0
-            tjaIcaUnavailableStreak = 0
-            tjaIcaFlow.value = decoded
+            burst
+        }
+        if (shouldBurst) {
+            onBurstRequest(signal)
         }
     }
 
-    suspend fun applyVolumeSpeedCandidate(decoded: MbCanBinaryState) {
-        val published = volumeSpeedFlow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(MbCanSignal.AudioVolumeSpeed)
-        }
-        when (decoded) {
-            is MbCanBinaryState.Unknown -> {
-                volumeSpeedUnknownStreak += 1
-                volumeSpeedUnavailableStreak = 0
-                if (volumeSpeedUnknownStreak >= requiredConsecutiveProblems) {
-                    volumeSpeedFlow.value = MbCanBinaryState.Unknown
-                }
-            }
-            is MbCanBinaryState.Unavailable -> {
-                volumeSpeedUnavailableStreak += 1
-                volumeSpeedUnknownStreak = 0
-                if (volumeSpeedUnavailableStreak >= requiredConsecutiveProblems) {
-                    volumeSpeedFlow.value = decoded
-                }
-            }
-            else -> {
-                volumeSpeedUnknownStreak = 0
-                volumeSpeedUnavailableStreak = 0
-                volumeSpeedFlow.value = decoded
-            }
-        }
-    }
+    suspend fun applySteeringCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(steeringFlow, MbCanSignal.SteeringWheelHeat, decoded)
+
+    suspend fun applyWiperMaintenanceCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(wiperMaintenanceFlow, MbCanSignal.WiperMaintenance, decoded)
+
+    suspend fun applyParkingRadarCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(parkingRadarFlow, MbCanSignal.ParkingRadar, decoded)
+
+    suspend fun applyWindshieldHeatCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(windshieldHeatFlow, MbCanSignal.FrontWindscreenHeat, decoded)
+
+    suspend fun applyHvacDefrosterCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(hvacDefrosterFlow, MbCanSignal.HvacDefroster, decoded)
+
+    suspend fun applyHvacAirRecirculationCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(hvacAirRecirculationFlow, MbCanSignal.HvacAirRecirculation, decoded)
+
+    suspend fun applyHvacAcPowerCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(hvacAcPowerFlow, MbCanSignal.HvacAcPower, decoded)
+
+    suspend fun applyHvacAutoStateCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(hvacAutoStateFlow, MbCanSignal.HvacAutoState, decoded)
+
+    suspend fun applyHvacSyncCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(hvacSyncFlow, MbCanSignal.HvacSync, decoded)
+
+    suspend fun applyHvacDefrosterFrontCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(hvacDefrosterFrontFlow, MbCanSignal.HvacDefrosterFront, decoded)
+
+    suspend fun applyWirelessChargingCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(wirelessChargingFlow, MbCanSignal.WirelessChargingSwitch, decoded)
+
+    suspend fun applyTjaIcaCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(tjaIcaFlow, MbCanSignal.TjaIca, decoded)
+
+    suspend fun applyVolumeSpeedCandidate(decoded: MbCanBinaryState) =
+        applyBinaryCandidate(volumeSpeedFlow, MbCanSignal.AudioVolumeSpeed, decoded)
 
     suspend fun applySeatCandidate(slot: MbCanSeatSlot, decoded: MbCanSeatModeState) {
         val flow = slot.stateFlow(
@@ -476,60 +163,35 @@ internal class MbCanSignalStateEngine(
             rearLeftSeatFlow,
             rearRightSeatFlow
         )
-        val published = flow.value
-        if (decoded.isProblemState() && !published.isProblemState()) {
-            MbCanJobManager.requestBurst(slot.signal)
-        }
-        var unknown = when (slot) {
-            MbCanSeatSlot.FrontLeft -> frontLeftUnknownStreak
-            MbCanSeatSlot.FrontRight -> frontRightUnknownStreak
-            MbCanSeatSlot.RearLeft -> rearLeftUnknownStreak
-            MbCanSeatSlot.RearRight -> rearRightUnknownStreak
-        }
-        var unavailable = when (slot) {
-            MbCanSeatSlot.FrontLeft -> frontLeftUnavailableStreak
-            MbCanSeatSlot.FrontRight -> frontRightUnavailableStreak
-            MbCanSeatSlot.RearLeft -> rearLeftUnavailableStreak
-            MbCanSeatSlot.RearRight -> rearRightUnavailableStreak
-        }
-        when (decoded) {
-            is MbCanSeatModeState.Unknown -> {
-                unknown += 1
-                unavailable = 0
-                if (unknown >= requiredConsecutiveProblems) {
-                    flow.value = MbCanSeatModeState.Unknown
+        val shouldBurst = synchronized(stateLock) {
+            val streak = seatStreaks.getOrPut(slot) { ProblemStreak() }
+            val published = flow.value
+            val burst = decoded.isProblemState() && !published.isProblemState()
+            when (decoded) {
+                is MbCanSeatModeState.Unknown -> {
+                    streak.unknown += 1
+                    streak.unavailable = 0
+                    if (streak.unknown >= requiredConsecutiveProblems) {
+                        flow.value = MbCanSeatModeState.Unknown
+                    }
                 }
-            }
-            is MbCanSeatModeState.Unavailable -> {
-                unavailable += 1
-                unknown = 0
-                if (unavailable >= requiredConsecutiveProblems) {
+                is MbCanSeatModeState.Unavailable -> {
+                    streak.unavailable += 1
+                    streak.unknown = 0
+                    if (streak.unavailable >= requiredConsecutiveProblems) {
+                        flow.value = decoded
+                    }
+                }
+                else -> {
+                    streak.unknown = 0
+                    streak.unavailable = 0
                     flow.value = decoded
                 }
             }
-            else -> {
-                unknown = 0
-                unavailable = 0
-                flow.value = decoded
-            }
+            burst
         }
-        when (slot) {
-            MbCanSeatSlot.FrontLeft -> {
-                frontLeftUnknownStreak = unknown
-                frontLeftUnavailableStreak = unavailable
-            }
-            MbCanSeatSlot.FrontRight -> {
-                frontRightUnknownStreak = unknown
-                frontRightUnavailableStreak = unavailable
-            }
-            MbCanSeatSlot.RearLeft -> {
-                rearLeftUnknownStreak = unknown
-                rearLeftUnavailableStreak = unavailable
-            }
-            MbCanSeatSlot.RearRight -> {
-                rearRightUnknownStreak = unknown
-                rearRightUnavailableStreak = unavailable
-            }
+        if (shouldBurst) {
+            onBurstRequest(slot.signal)
         }
     }
 

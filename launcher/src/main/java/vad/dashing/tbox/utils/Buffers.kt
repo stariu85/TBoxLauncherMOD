@@ -4,19 +4,16 @@ import android.os.SystemClock
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-class FuelLevelBuffer(private val bufferSize: Int = 15, private val alpha: Float = 0.05f) {
-    private val buffer = ArrayDeque<UInt>()
+class FuelLevelBuffer(
+    @Suppress("UNUSED_PARAMETER") private val bufferSize: Int = 15,
+    private val alpha: Float = 0.05f,
+) {
     private var smoothedValue: Float? = null
 
     /**
      * Добавляет новое сырое значение процента топлива и возвращает отфильтрованное значение (EMA).
      */
     fun addValue(newValue: UInt): UInt {
-        buffer.addLast(newValue)
-        if (buffer.size > bufferSize) {
-            buffer.removeFirst()
-        }
-
         val rawFloat = newValue.toFloat()
         val currentSmoothed = smoothedValue
         if (currentSmoothed == null) {
@@ -35,7 +32,6 @@ class FuelLevelBuffer(private val bufferSize: Int = 15, private val alpha: Float
     }
 
     fun reset(newValue: UInt? = null) {
-        buffer.clear()
         smoothedValue = newValue?.toFloat()
     }
 }

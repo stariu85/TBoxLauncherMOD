@@ -66,7 +66,8 @@ fun TeslaLauncherScreen(
         factory = SettingsViewModelFactory(settingsManager),
     )
 
-    val currentTheme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
+    val surfaceRecoveryEpoch by LauncherCarSurfaceRecovery.epoch.collectAsStateWithLifecycle()
+    val bsdOverlayWindowShowing by LauncherBsdAlertOverlayWindow.isShowingFlow.collectAsStateWithLifecycle()
     var appDrawerVisible by remember { mutableStateOf(false) }
     var drawerEditMode by remember { mutableStateOf(false) }
     var configRevision by remember { mutableIntStateOf(0) }
@@ -127,7 +128,6 @@ fun TeslaLauncherScreen(
     val isDraggingApp = LauncherDropTargetState.draggingPackage != null
 
     val onConfigChanged: () -> Unit = { configRevision++ }
-    val iconRevision by settingsViewModel.launcherAppIconRevision.collectAsStateWithLifecycle()
 
     val openVehicleSettings: () -> Unit = {
         launchVehicleSettingsWindow(context)
@@ -141,9 +141,6 @@ fun TeslaLauncherScreen(
             closeVehicleSettings()
         }
         LauncherOverlayElevator.setHoldSource("main_overlay", appDrawerVisible)
-    }
-
-    LaunchedEffect(configRevision, iconRevision) {
     }
 
     LaunchedEffect(context) {
@@ -229,7 +226,7 @@ fun TeslaLauncherScreen(
                                 tboxViewModel = tboxViewModel,
                                 canViewModel = canViewModel,
                                 onOpenVehicleSettings = openVehicleSettings,
-                                modelRevision = 0,
+                                modelRevision = surfaceRecoveryEpoch,
                                 paintId = carPaintId,
                                 paintRevision = carPaintRevision,
                                 onCarBoundsChanged = {},
@@ -379,11 +376,13 @@ fun TeslaLauncherScreen(
                 }
             }
 
-            LauncherBsdAlertOverlay(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(1000f),
-            )
+            if (!bsdOverlayWindowShowing) {
+                LauncherBsdAlertOverlay(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(1000f),
+                )
+            }
         }
 
         val currentVersionCode = remember(context) {

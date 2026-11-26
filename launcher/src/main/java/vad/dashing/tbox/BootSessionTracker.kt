@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +67,15 @@ object BootSessionTracker {
 
             val currentBootId = currentBootId()
             val currentUptime = SystemClock.elapsedRealtime()
+
+            // Persist current boot ID & initial flags immediately before SNTP wait
+            // so a reboot during the 45s time-sync window is still recorded.
+            prefs.edit()
+                .putString(KEY_BOOT_ID, currentBootId)
+                .putLong(KEY_START_REALTIME, currentUptime)
+                .putBoolean(KEY_5MIN_PASSED, false)
+                .putBoolean(KEY_CLEAN_SHUTDOWN, false)
+                .apply()
 
             // Wait for system time synchronization (or timeout) before checking wallDelta
             val timeSynchronized = awaitTimeSyncOrTimeout(appCtx, TIME_SYNC_TIMEOUT_MS)
@@ -141,9 +151,10 @@ object BootSessionTracker {
     private fun registerShutdownReceiver(context: Context) {
         if (shutdownReceiverRegistered) return
         val receiver = object : BroadcastReceiver() {
+            @SuppressLint("ApplySharedPref")
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 val prefs = ctx?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return
-                prefs.edit().putBoolean(KEY_CLEAN_SHUTDOWN, true).apply()
+                prefs.edit().putBoolean(KEY_CLEAN_SHUTDOWN, true).commit()
                 Log.i(TAG, "Clean shutdown received (${intent?.action}), recorded for next boot")
             }
         }
@@ -198,6 +209,8 @@ object BootSessionTracker {
             withTimeoutOrNull(timeoutMs) {
                 syncEvent.await()
             } ?: false
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Log.w(TAG, "Error while waiting for time synchronization", e)
             false

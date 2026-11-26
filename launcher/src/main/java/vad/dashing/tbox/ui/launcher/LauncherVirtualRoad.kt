@@ -25,7 +25,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -34,8 +33,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import androidx.compose.ui.geometry.Offset
@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.background
@@ -80,9 +81,6 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.R
 import kotlin.math.abs
@@ -109,6 +107,8 @@ private data class Raindrop(
 )
 
 private const val DASH_SPACING = 72f
+private val ROAD_DASH_SIDES = floatArrayOf(-1f, 1f, -3f, 3f)
+private val ROAD_DASH_WEIGHTS = floatArrayOf(1f, 1f, 0.55f, 0.55f)
 
 internal class VirtualRoadDrawCache {
     val roadSurfacePath = Path()
@@ -118,6 +118,186 @@ internal class VirtualRoadDrawCache {
     val stepPaths = Array(3) { Path() }
     val lanePaths = Array(2) { Path() }
     val cabinPath = Path()
+
+    val labelPaint = Paint().apply {
+        isAntiAlias = true
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+    }
+    val thinStroke2 = Stroke(width = 2f)
+
+    private var cachedStrokeDensity = -1f
+    var stepActiveStroke: Stroke = Stroke(width = 6.75f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        private set
+    var stepInactiveStroke: Stroke = Stroke(width = 3f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        private set
+    var warningLaneStroke: Stroke = Stroke(width = 5.25f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        private set
+    var lkaLaneStroke: Stroke = Stroke(width = 4.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        private set
+
+    fun ensureStrokes(density: Float) {
+        if (cachedStrokeDensity == density) return
+        cachedStrokeDensity = density
+        stepActiveStroke = Stroke(width = 4.5f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        stepInactiveStroke = Stroke(width = 2.0f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        warningLaneStroke = Stroke(width = 3.5f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        lkaLaneStroke = Stroke(width = 3.0f * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    }
+
+    private var surfaceHorizonY = Float.NaN
+    private var surfaceHeight = Float.NaN
+    private var surfaceDark = false
+    private var surfaceBrush: Brush? = null
+
+    fun roadSurfaceBrush(horizonY: Float, canvasHeight: Float, dark: Boolean): Brush {
+        val existing = surfaceBrush
+        if (existing != null && surfaceHorizonY == horizonY && surfaceHeight == canvasHeight && surfaceDark == dark) {
+            return existing
+        }
+        val startColor = if (dark) Color(0xFF1B2634).copy(alpha = 0f) else Color(0xFFE2E8F0).copy(alpha = 0f)
+        val midColor = if (dark) Color(0xFF1B2634).copy(alpha = 0.55f) else Color(0xFFCBD5E1).copy(alpha = 0.35f)
+        val endColor = if (dark) Color(0xFF232F3E).copy(alpha = 0.92f) else Color(0xFFD1D5DB).copy(alpha = 0.65f)
+        return Brush.verticalGradient(
+            0f to startColor,
+            0.35f to midColor,
+            1f to endColor,
+            startY = horizonY,
+            endY = canvasHeight,
+        ).also {
+            surfaceHorizonY = horizonY
+            surfaceHeight = canvasHeight
+            surfaceDark = dark
+            surfaceBrush = it
+        }
+    }
+
+    private var hazeHorizonY = Float.NaN
+    private var hazeHeight = Float.NaN
+    private var hazeBgArgb = 0
+    private var hazeBrush: Brush? = null
+
+    fun horizonHazeBrush(horizonY: Float, canvasHeight: Float, bg: Color): Brush {
+        val bgArgb = bg.toArgb()
+        val existing = hazeBrush
+        if (existing != null && hazeHorizonY == horizonY && hazeHeight == canvasHeight && hazeBgArgb == bgArgb) {
+            return existing
+        }
+        val hazeBottom = horizonY + (canvasHeight - horizonY) * 0.34f
+        return Brush.verticalGradient(
+            0f to bg,
+            0.45f to bg.copy(alpha = 0.72f),
+            1f to bg.copy(alpha = 0f),
+            startY = horizonY - canvasHeight * 0.06f,
+            endY = hazeBottom,
+        ).also {
+            hazeHorizonY = horizonY
+            hazeHeight = canvasHeight
+            hazeBgArgb = bgArgb
+            hazeBrush = it
+        }
+    }
+
+    private var laneStartY = Float.NaN
+    private var laneEndY = Float.NaN
+    private var warningLaneBrushCache: Brush? = null
+    private var lkaLaneBrushCache: Brush? = null
+
+    fun laneBrush(isWarning: Boolean, startY: Float, endY: Float): Brush {
+        if (laneStartY != startY || laneEndY != endY) {
+            laneStartY = startY
+            laneEndY = endY
+            warningLaneBrushCache = null
+            lkaLaneBrushCache = null
+        }
+        return if (isWarning) {
+            warningLaneBrushCache ?: createLaneBrush(
+                color = Color(0xFFEF4444),
+                maxAlpha = 0.95f,
+                coreFade = true,
+                startY = startY,
+                endY = endY,
+            ).also { warningLaneBrushCache = it }
+        } else {
+            lkaLaneBrushCache ?: createLaneBrush(
+                color = LkaBlueCore,
+                maxAlpha = 0.95f,
+                coreFade = true,
+                startY = startY,
+                endY = endY,
+            ).also { lkaLaneBrushCache = it }
+        }
+    }
+
+    private var accStartY = Float.NaN
+    private var accEndY = Float.NaN
+    private var accTintArgb = 0
+    private var accBrushCache: Brush? = null
+
+    fun accBeamBrush(tint: Color, startY: Float, endY: Float): Brush {
+        val argb = tint.toArgb()
+        val existing = accBrushCache
+        if (existing != null && accStartY == startY && accEndY == endY && accTintArgb == argb) {
+            return existing
+        }
+        return Brush.verticalGradient(
+            0.00f to tint.copy(alpha = 0f),
+            0.20f to tint.copy(alpha = 0.08f),
+            0.50f to tint.copy(alpha = 0.22f),
+            0.80f to tint.copy(alpha = 0.08f),
+            1.00f to tint.copy(alpha = 0f),
+            startY = startY,
+            endY = endY,
+        ).also {
+            accStartY = startY
+            accEndY = endY
+            accTintArgb = argb
+            accBrushCache = it
+        }
+    }
+
+    private var bsdStartY = Float.NaN
+    private var bsdEndY = Float.NaN
+    private var bsdAlertBrushCache: Brush? = null
+    private var bsdCautionBrushCache: Brush? = null
+
+    fun bsdBeamBrush(isAlert: Boolean, startY: Float, endY: Float): Brush {
+        if (bsdStartY != startY || bsdEndY != endY) {
+            bsdStartY = startY
+            bsdEndY = endY
+            bsdAlertBrushCache = null
+            bsdCautionBrushCache = null
+        }
+        return if (isAlert) {
+            bsdAlertBrushCache ?: run {
+                val tint = Color(0xFFFF1744)
+                val maxAlpha = 0.65f
+                Brush.verticalGradient(
+                    0.00f to tint.copy(alpha = 0f),
+                    0.20f to tint.copy(alpha = maxAlpha * 0.35f),
+                    0.55f to tint.copy(alpha = maxAlpha),
+                    0.85f to tint.copy(alpha = maxAlpha * 0.55f),
+                    1.00f to tint.copy(alpha = 0f),
+                    startY = startY,
+                    endY = endY,
+                ).also { bsdAlertBrushCache = it }
+            }
+        } else {
+            bsdCautionBrushCache ?: run {
+                val tint = Color(0xFFFFAB00)
+                val maxAlpha = 0.52f
+                Brush.verticalGradient(
+                    0.00f to tint.copy(alpha = 0f),
+                    0.20f to tint.copy(alpha = maxAlpha * 0.35f),
+                    0.55f to tint.copy(alpha = maxAlpha),
+                    0.85f to tint.copy(alpha = maxAlpha * 0.55f),
+                    1.00f to tint.copy(alpha = 0f),
+                    startY = startY,
+                    endY = endY,
+                ).also { bsdCautionBrushCache = it }
+            }
+        }
+    }
 }
 
 @Composable
@@ -198,18 +378,26 @@ fun LauncherVirtualRoad(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    var isLifecycleStarted by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            isLifecycleStarted = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow.collectAsStateWithLifecycle()
+    val canAnimate = isLifecycleStarted && !hiddenForExternalApp
+
     val weatherActive = effectiveIsSnow || effectiveIsRain
     val weatherPhaseState = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(weatherActive) {
-        if (!weatherActive) return@LaunchedEffect
+    LaunchedEffect(weatherActive, canAnimate) {
+        if (!weatherActive || !canAnimate) return@LaunchedEffect
         var lastWeatherFrameNs = 0L
         while (isActive) {
             withFrameNanos { frameNs ->
-                val started = lifecycleOwner.lifecycle.currentState
-                    .isAtLeast(Lifecycle.State.STARTED)
-                val hidden = LauncherWindowState.hiddenForExternalApp
-                if (!started || hidden) return@withFrameNanos
-
                 if (lastWeatherFrameNs == 0L) {
                     lastWeatherFrameNs = frameNs
                     return@withFrameNanos
@@ -281,30 +469,26 @@ fun LauncherVirtualRoad(
 
     val roadPhaseState = remember { mutableFloatStateOf(0f) }
     val currentDriveBlend by rememberUpdatedState(driveBlend)
-    var lastRoadFrameNs by remember { mutableLongStateOf(0L) }
+    val lastRoadFrameNs = remember { LongArray(1) }
 
     val isRoadAnimating = currentSpeedKmh > 0.5f && currentDriveBlend > 0.02f
 
-    LaunchedEffect(isRoadAnimating) {
-        if (!isRoadAnimating) {
-            lastRoadFrameNs = 0L
+    LaunchedEffect(isRoadAnimating, canAnimate) {
+        if (!isRoadAnimating || !canAnimate) {
+            lastRoadFrameNs[0] = 0L
             return@LaunchedEffect
         }
         while (isActive) {
             withFrameNanos { frameNs ->
-                val started = lifecycleOwner.lifecycle.currentState
-                    .isAtLeast(Lifecycle.State.STARTED)
-                val hidden = LauncherWindowState.hiddenForExternalApp
-                if (!started || hidden) return@withFrameNanos
-
-                if (lastRoadFrameNs == 0L) {
-                    lastRoadFrameNs = frameNs
+                val prevNs = lastRoadFrameNs[0]
+                if (prevNs == 0L) {
+                    lastRoadFrameNs[0] = frameNs
                     return@withFrameNanos
                 }
 
-                val deltaNs = frameNs - lastRoadFrameNs
+                val deltaNs = frameNs - prevNs
                 val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.05f)
-                lastRoadFrameNs = frameNs
+                lastRoadFrameNs[0] = frameNs
 
                 val spd = currentSpeedKmh
                 val current = roadPhaseState.floatValue
@@ -345,15 +529,20 @@ fun LauncherVirtualRoad(
         label = "cruiseBeamAnimProgress",
     )
 
-    val bsdRoadPulse by rememberInfiniteTransition(label = "bsdRoadPulse").animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "bsdRoadPulseValue",
-    )
+    val bsdPulseProvider: () -> Float = if (driveBlend > 0.01f && (bsdLeftActive || bsdRightActive)) {
+        val pulseState = rememberInfiniteTransition(label = "bsdRoadPulse").animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "bsdRoadPulseValue",
+        )
+        remember(pulseState) { { pulseState.value } }
+    } else {
+        remember { { 1f } }
+    }
 
     val drawCache = remember { VirtualRoadDrawCache() }
 
@@ -377,7 +566,7 @@ fun LauncherVirtualRoad(
             storedTimeGap = storedTimeGap,
             laneProgress = laneAnimProgress,
             beamProgress = cruiseBeamProgress,
-            bsdPulse = bsdRoadPulse,
+            bsdPulse = bsdPulseProvider(),
             bsdLeftProgress = bsdLeftProgress,
             bsdRightProgress = bsdRightProgress,
             isSnow = effectiveIsSnow,
@@ -649,12 +838,14 @@ private fun DrawScope.drawVirtualRoad(
     fun yAt(t: Float): Float = horizonY + (h - horizonY) * t
     fun centerXAt(t: Float): Float = vanishX
 
+    drawCache?.ensureStrokes(density)
+
     drawRoadSurface(
         horizonY = horizonY,
         centerXAt = ::centerXAt,
         halfWidthAt = ::halfWidthAt,
         yAt = ::yAt,
-        cachedPath = drawCache?.roadSurfacePath,
+        drawCache = drawCache,
     )
 
     drawAdasLaneAssist(
@@ -663,7 +854,7 @@ private fun DrawScope.drawVirtualRoad(
         centerXAt = ::centerXAt,
         laneOffsetAt = ::laneOffsetAt,
         yAt = ::yAt,
-        cachedLanePaths = drawCache?.lanePaths,
+        drawCache = drawCache,
     )
 
     val phase = roadPhase % DASH_SPACING
@@ -677,15 +868,12 @@ private fun DrawScope.drawVirtualRoad(
         // fading out again at the bottom edge (under the player).
         val fade = distanceFade(t) * bottomEdgeFade(t)
         // Ego lane borders plus the two neighbouring lanes, as on a real HMI.
-        listOf(
-            -1f to 1f,
-            1f to 1f,
-            -3f to 0.55f,
-            3f to 0.55f,
-        ).forEach { (side, weight) ->
+        for (i in ROAD_DASH_SIDES.indices) {
+            val side = ROAD_DASH_SIDES[i]
+            val weight = ROAD_DASH_WEIGHTS[i]
             val x1 = centerXAt(t) + side * laneOffsetAt(t)
             val x2 = centerXAt(nextT) + side * laneOffsetAt(nextT)
-            if (x1 < -w * 0.7f || x1 > w * 1.7f) return@forEach
+            if (x1 < -w * 0.7f || x1 > w * 1.7f) continue
             val isEgoLane = abs(side) in 0.5f..2.0f
             val baseAlpha = if (isEgoLane && laneProgress > 0f) 0.85f else 0.50f
 
@@ -700,7 +888,7 @@ private fun DrawScope.drawVirtualRoad(
             val activeAdasLane = isEgoLane && laneState != LauncherAdasLaneVisualization.Hidden
             val dashFade = if (activeAdasLane) adasLaneFade(t) else fade
             val alpha = baseAlpha * dashFade * weight
-            if (alpha < 0.02f) return@forEach
+            if (alpha < 0.02f) continue
 
             val baseDashColor = when {
                 !isEgoLane -> inactiveDashColor
@@ -740,8 +928,7 @@ private fun DrawScope.drawVirtualRoad(
         centerXAt = ::centerXAt,
         laneOffsetAt = ::laneOffsetAt,
         yAt = ::yAt,
-        cachedLeftPath = drawCache?.bsdLeftBeamPath,
-        cachedRightPath = drawCache?.bsdRightBeamPath,
+        drawCache = drawCache,
     )
 
     val now = android.os.SystemClock.uptimeMillis()
@@ -779,7 +966,7 @@ private fun DrawScope.drawVirtualRoad(
                 yAt = ::yAt,
                 alert = adas.fcwActive || adas.distanceWarning,
                 leadTargetDepth = targetLeadDepth,
-                cachedPath = drawCache?.accBeamPath,
+                drawCache = drawCache,
             )
         }
         if (showDistanceSteps) {
@@ -790,7 +977,7 @@ private fun DrawScope.drawVirtualRoad(
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 tint = if (adas.fcwActive || adas.distanceWarning) Color(0xFFEF4444) else LauncherColors.AccentCyan,
-                cachedStepPaths = drawCache?.stepPaths,
+                drawCache = drawCache,
             )
         }
         drawFrontObject(
@@ -804,7 +991,7 @@ private fun DrawScope.drawVirtualRoad(
             halfWidthAt = ::halfWidthAt,
             yAt = ::yAt,
             distanceTextSizeSp = distanceTextSizeSp,
-            cachedCabinPath = drawCache?.cabinPath,
+            drawCache = drawCache,
         )
     } else {
         if (beamProgress > 0.005f) {
@@ -817,7 +1004,7 @@ private fun DrawScope.drawVirtualRoad(
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 alert = false,
-                cachedPath = drawCache?.accBeamPath,
+                drawCache = drawCache,
             )
         }
         if (showDistanceSteps) {
@@ -827,11 +1014,12 @@ private fun DrawScope.drawVirtualRoad(
                 laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 tint = LauncherColors.AccentCyan,
+                drawCache = drawCache,
             )
         }
     }
 
-    drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
+    drawHorizonHaze(horizonY = horizonY, canvasHeight = h, drawCache = drawCache)
     drawSnowflakes(isSnow = isSnow, snowflakes = snowflakes)
     drawRaindrops(
         isRain = isRain,
@@ -940,9 +1128,9 @@ private fun DrawScope.drawRoadSurface(
     centerXAt: (Float) -> Float,
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
-    cachedPath: Path? = null,
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
-    val surface = (cachedPath ?: Path()).apply {
+    val surface = (drawCache?.roadSurfacePath ?: Path()).apply {
         reset()
         moveTo(centerXAt(0f) - halfWidthAt(0f), yAt(0f))
         lineTo(centerXAt(0f) + halfWidthAt(0f), yAt(0f))
@@ -957,34 +1145,42 @@ private fun DrawScope.drawRoadSurface(
         close()
     }
     val dark = LauncherThemeState.darkTheme
-    val startColor = if (dark) Color(0xFF1B2634).copy(alpha = 0f) else Color(0xFFE2E8F0).copy(alpha = 0f)
-    val midColor = if (dark) Color(0xFF1B2634).copy(alpha = 0.55f) else Color(0xFFCBD5E1).copy(alpha = 0.35f)
-    val endColor = if (dark) Color(0xFF232F3E).copy(alpha = 0.92f) else Color(0xFFD1D5DB).copy(alpha = 0.65f)
-
-    drawPath(
-        path = surface,
-        brush = Brush.verticalGradient(
+    val brush = drawCache?.roadSurfaceBrush(horizonY, size.height, dark) ?: run {
+        val startColor = if (dark) Color(0xFF1B2634).copy(alpha = 0f) else Color(0xFFE2E8F0).copy(alpha = 0f)
+        val midColor = if (dark) Color(0xFF1B2634).copy(alpha = 0.55f) else Color(0xFFCBD5E1).copy(alpha = 0.35f)
+        val endColor = if (dark) Color(0xFF232F3E).copy(alpha = 0.92f) else Color(0xFFD1D5DB).copy(alpha = 0.65f)
+        Brush.verticalGradient(
             0f to startColor,
             0.35f to midColor,
             1f to endColor,
             startY = horizonY,
             endY = size.height,
-        ),
+        )
+    }
+
+    drawPath(
+        path = surface,
+        brush = brush,
     )
 }
 
 /** Fog band at the horizon that swallows the road and the markings. */
-private fun DrawScope.drawHorizonHaze(horizonY: Float, canvasHeight: Float) {
+private fun DrawScope.drawHorizonHaze(
+    horizonY: Float,
+    canvasHeight: Float,
+    drawCache: VirtualRoadDrawCache? = null,
+) {
     val bg = LauncherColors.LeftPanelBg
     val hazeBottom = horizonY + (canvasHeight - horizonY) * 0.34f
+    val brush = drawCache?.horizonHazeBrush(horizonY, canvasHeight, bg) ?: Brush.verticalGradient(
+        0f to bg,
+        0.45f to bg.copy(alpha = 0.72f),
+        1f to bg.copy(alpha = 0f),
+        startY = horizonY - canvasHeight * 0.06f,
+        endY = hazeBottom,
+    )
     drawRect(
-        brush = Brush.verticalGradient(
-            0f to bg,
-            0.45f to bg.copy(alpha = 0.72f),
-            1f to bg.copy(alpha = 0f),
-            startY = horizonY - canvasHeight * 0.06f,
-            endY = hazeBottom,
-        ),
+        brush = brush,
         topLeft = Offset(0f, horizonY - canvasHeight * 0.06f),
         size = Size(size.width, hazeBottom - horizonY + canvasHeight * 0.06f),
     )
@@ -1002,27 +1198,23 @@ private fun DrawScope.drawBsdBeam(
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
-    cachedLeftPath: Path? = null,
-    cachedRightPath: Path? = null,
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
     if (leftProgress < 0.005f && rightProgress < 0.005f) return
 
     val farDepth = 0.62f // Start of BSD beam at 62% from horizon
     val nearDepth = 1.00f
+    val startY = yAt(farDepth)
+    val endY = yAt(nearDepth)
 
-    listOf(
-        Triple(threats.bsdLeft, -1f, leftProgress to cachedLeftPath),  // Lane to the left of the car model
-        Triple(threats.bsdRight, 1f, rightProgress to cachedRightPath),  // Lane to the right of the car model
-    ).forEach { (level, side, progressAndPath) ->
-        val (progress, cachedPath) = progressAndPath
-        if (progress < 0.005f) return@forEach
+    for (sideIdx in 0..1) {
+        val level = if (sideIdx == 0) threats.bsdLeft else threats.bsdRight
+        val side = if (sideIdx == 0) -1f else 1f
+        val progress = if (sideIdx == 0) leftProgress else rightProgress
+        val cachedPath = if (sideIdx == 0) drawCache?.bsdLeftBeamPath else drawCache?.bsdRightBeamPath
+        if (progress < 0.005f) continue
 
-        val (tint, isPulsing, maxAlpha) = when (level) {
-            LauncherRearThreatLevel.Alert -> Triple(Color(0xFFFF1744), true, 0.65f) // High-intensity bright red, pulsing
-            LauncherRearThreatLevel.Caution -> Triple(Color(0xFFFFAB00), false, 0.52f) // Saturated vibrant yellow/amber, steady
-            LauncherRearThreatLevel.Off -> Triple(Color(0xFFFFAB00), false, 0.52f) // Fade-out color
-        }
-
+        val isAlert = level == LauncherRearThreatLevel.Alert
         val farCenter = centerXAt(farDepth) + side * 2.0f * laneOffsetAt(farDepth)
         val farHalf = laneOffsetAt(farDepth) * 0.85f
 
@@ -1031,27 +1223,33 @@ private fun DrawScope.drawBsdBeam(
 
         val beam = (cachedPath ?: Path()).apply {
             reset()
-            moveTo(farCenter - farHalf, yAt(farDepth))
-            lineTo(farCenter + farHalf, yAt(farDepth))
-            lineTo(nearCenter + nearHalf, yAt(nearDepth))
-            lineTo(nearCenter - nearHalf, yAt(nearDepth))
+            moveTo(farCenter - farHalf, startY)
+            lineTo(farCenter + farHalf, startY)
+            lineTo(nearCenter + nearHalf, endY)
+            lineTo(nearCenter - nearHalf, endY)
             close()
         }
 
-        val pulseFactor = if (isPulsing) pulse.coerceIn(0.25f, 1f) else 1.0f
-        val effectiveMaxAlpha = maxAlpha * progress.coerceIn(0f, 1f) * pulseFactor
+        val pulseFactor = if (isAlert) pulse.coerceIn(0.25f, 1f) else 1.0f
+        val effectiveAlpha = (progress.coerceIn(0f, 1f) * pulseFactor).coerceIn(0f, 1f)
+        val brush = drawCache?.bsdBeamBrush(isAlert, startY, endY) ?: run {
+            val tint = if (isAlert) Color(0xFFFF1744) else Color(0xFFFFAB00)
+            val maxAlpha = if (isAlert) 0.65f else 0.52f
+            Brush.verticalGradient(
+                0.00f to tint.copy(alpha = 0f),
+                0.20f to tint.copy(alpha = maxAlpha * 0.35f),
+                0.55f to tint.copy(alpha = maxAlpha),
+                0.85f to tint.copy(alpha = maxAlpha * 0.55f),
+                1.00f to tint.copy(alpha = 0f),
+                startY = startY,
+                endY = endY,
+            )
+        }
 
         drawPath(
             path = beam,
-            brush = Brush.verticalGradient(
-                0.00f to tint.copy(alpha = 0f),
-                0.20f to tint.copy(alpha = effectiveMaxAlpha * 0.35f),
-                0.55f to tint.copy(alpha = effectiveMaxAlpha),
-                0.85f to tint.copy(alpha = effectiveMaxAlpha * 0.55f),
-                1.00f to tint.copy(alpha = 0f),
-                startY = yAt(farDepth),
-                endY = yAt(nearDepth),
-            ),
+            brush = brush,
+            alpha = effectiveAlpha,
         )
     }
 }
@@ -1067,7 +1265,7 @@ private fun DrawScope.drawAccBeam(
     alert: Boolean,
     toHorizon: Boolean = false,
     leadTargetDepth: Float? = null,
-    cachedPath: Path? = null,
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
     if (beamProgress < 0.005f) return
 
@@ -1082,27 +1280,31 @@ private fun DrawScope.drawAccBeam(
 
     val nearHalf = laneOffsetAt(egoDepth) * 0.85f
     val farHalf = laneOffsetAt(animatedTargetDepth) * 0.85f
-    val beam = (cachedPath ?: Path()).apply {
+    val startY = yAt(animatedTargetDepth)
+    val endY = yAt(egoDepth)
+    val beam = (drawCache?.accBeamPath ?: Path()).apply {
         reset()
-        moveTo(centerXAt(egoDepth) - nearHalf, yAt(egoDepth))
-        lineTo(centerXAt(animatedTargetDepth) - farHalf, yAt(animatedTargetDepth))
-        lineTo(centerXAt(animatedTargetDepth) + farHalf, yAt(animatedTargetDepth))
-        lineTo(centerXAt(egoDepth) + nearHalf, yAt(egoDepth))
+        moveTo(centerXAt(egoDepth) - nearHalf, endY)
+        lineTo(centerXAt(animatedTargetDepth) - farHalf, startY)
+        lineTo(centerXAt(animatedTargetDepth) + farHalf, startY)
+        lineTo(centerXAt(egoDepth) + nearHalf, endY)
         close()
     }
     val tint = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
     val alphaFactor = beamProgress.coerceIn(0f, 1f)
+    val brush = drawCache?.accBeamBrush(tint, startY, endY) ?: Brush.verticalGradient(
+        0.00f to tint.copy(alpha = 0f),
+        0.20f to tint.copy(alpha = 0.08f),
+        0.50f to tint.copy(alpha = 0.22f),
+        0.80f to tint.copy(alpha = 0.08f),
+        1.00f to tint.copy(alpha = 0f),
+        startY = startY,
+        endY = endY,
+    )
     drawPath(
         path = beam,
-        brush = Brush.verticalGradient(
-            0.00f to tint.copy(alpha = 0f),
-            0.20f to tint.copy(alpha = 0.08f * alphaFactor),
-            0.50f to tint.copy(alpha = 0.22f * alphaFactor),
-            0.80f to tint.copy(alpha = 0.08f * alphaFactor),
-            1.00f to tint.copy(alpha = 0f),
-            startY = yAt(animatedTargetDepth),
-            endY = yAt(egoDepth),
-        ),
+        brush = brush,
+        alpha = alphaFactor,
     )
 }
 
@@ -1113,22 +1315,41 @@ private fun DrawScope.drawAccDistanceSteps(
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
     tint: Color,
-    cachedStepPaths: Array<Path>? = null,
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
     // 3 steps in front of the car on the road ahead (1 = Near/Близко, 2 = Mid/Средне, 3 = Far/Далеко)
     val egoDepth = 0.72f
-    val depths = if (targetDepth != null) {
+    val d0: Float
+    val d1: Float
+    val d2: Float
+    if (targetDepth != null) {
         val startD = (egoDepth - 0.16f).coerceAtMost(0.54f)
         val endD = (targetDepth + 0.04f).coerceAtMost(startD - 0.06f)
-        floatArrayOf(
-            startD,
-            startD - (startD - endD) * 0.5f,
-            endD,
-        )
+        d0 = startD
+        d1 = startD - (startD - endD) * 0.5f
+        d2 = endD
     } else {
-        floatArrayOf(0.46f, 0.38f, 0.30f)
+        d0 = 0.46f
+        d1 = 0.38f
+        d2 = 0.30f
     }
-    depths.forEachIndexed { idx, t ->
+    val cachedStepPaths = drawCache?.stepPaths
+    val activeStroke = drawCache?.stepActiveStroke ?: Stroke(
+        width = 4.5.dp.toPx(),
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+    )
+    val inactiveStroke = drawCache?.stepInactiveStroke ?: Stroke(
+        width = 2.0.dp.toPx(),
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+    )
+    for (idx in 0..2) {
+        val t = when (idx) {
+            0 -> d0
+            1 -> d1
+            else -> d2
+        }
         val stepNumber = idx + 1
         val isActive = stepNumber <= (4 - activeLevel)
         val y = yAt(t) - 20.dp.toPx()
@@ -1144,11 +1365,7 @@ private fun DrawScope.drawAccDistanceSteps(
         drawPath(
             path = stepPath,
             color = if (isActive) tint.copy(alpha = 0.90f) else tint.copy(alpha = 0.20f),
-            style = Stroke(
-                width = if (isActive) 4.5.dp.toPx() else 2.0.dp.toPx(),
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round,
-            ),
+            style = if (isActive) activeStroke else inactiveStroke,
         )
     }
 }
@@ -1192,7 +1409,7 @@ private fun DrawScope.drawAdasLaneAssist(
     centerXAt: (Float) -> Float,
     laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
-    cachedLanePaths: Array<Path>? = null,
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
     if (laneProgress < 0.01f) return
 
@@ -1200,63 +1417,61 @@ private fun DrawScope.drawAdasLaneAssist(
     val alphaFactor = laneProgress.coerceIn(0f, 1f)
     val startY = yAt(0f)
     val endY = yAt(1f)
+    val cachedLanePaths = drawCache?.lanePaths
 
-    listOf(
-        adas.leftLane to -1f,
-        adas.rightLane to 1f,
-    ).forEachIndexed { laneIdx, (lane, side) ->
-        if (lane == LauncherAdasLaneVisualization.Hidden) return@forEachIndexed
+    for (laneIdx in 0..1) {
+        val lane = if (laneIdx == 0) adas.leftLane else adas.rightLane
+        val side = if (laneIdx == 0) -1f else 1f
+        if (lane == LauncherAdasLaneVisualization.Hidden) continue
         val isWarning = lane == LauncherAdasLaneVisualization.Warning
+        if (!isWarning && adas.lkaStatusCode != 2) continue
 
         val lanePath = (cachedLanePaths?.getOrNull(laneIdx) ?: Path()).apply {
             reset()
         }
-        var first = true
         val steps = 16
         for (i in 0..steps) {
             val fraction = i / steps.toFloat()
             val t = 1f - (1f - minT) * fraction
-            val pt = Offset(
-                centerXAt(t) + side * laneOffsetAt(t),
-                yAt(t),
-            )
-            if (first) {
-                lanePath.moveTo(pt.x, pt.y)
-                first = false
+            val px = centerXAt(t) + side * laneOffsetAt(t)
+            val py = yAt(t)
+            if (i == 0) {
+                lanePath.moveTo(px, py)
             } else {
-                lanePath.lineTo(pt.x, pt.y)
+                lanePath.lineTo(px, py)
             }
         }
 
         if (isWarning) {
-            val warningColor = Color(0xFFEF4444)
-            val lineBrush = createLaneBrush(
-                color = warningColor,
-                maxAlpha = 0.95f * alphaFactor,
-                coreFade = true,
-                startY = startY,
-                endY = endY,
-            )
-
+            val lineBrush = drawCache?.laneBrush(isWarning = true, startY = startY, endY = endY)
+                ?: createLaneBrush(
+                    color = Color(0xFFEF4444),
+                    maxAlpha = 0.95f,
+                    coreFade = true,
+                    startY = startY,
+                    endY = endY,
+                )
             drawPath(
                 path = lanePath,
                 brush = lineBrush,
-                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                alpha = alphaFactor,
+                style = drawCache?.warningLaneStroke ?: Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         } else if (adas.lkaStatusCode == 2) {
             // TJA / ICA / LKA active: Clean Solid Blue line with gradient fade towards ends (no outer glow)
-            val lineBrush = createLaneBrush(
-                color = LkaBlueCore,
-                maxAlpha = 0.95f * alphaFactor,
-                coreFade = true,
-                startY = startY,
-                endY = endY,
-            )
-
+            val lineBrush = drawCache?.laneBrush(isWarning = false, startY = startY, endY = endY)
+                ?: createLaneBrush(
+                    color = LkaBlueCore,
+                    maxAlpha = 0.95f,
+                    coreFade = true,
+                    startY = startY,
+                    endY = endY,
+                )
             drawPath(
                 path = lanePath,
                 brush = lineBrush,
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                alpha = alphaFactor,
+                style = drawCache?.lkaLaneStroke ?: Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
         // For green lane tracking (LDW / lasMode = 1), green dashes are rendered
@@ -1300,7 +1515,7 @@ private fun DrawScope.drawFrontObject(
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
     distanceTextSizeSp: Int = ADAS_DISTANCE_TEXT_SIZE_DEFAULT,
-    cachedCabinPath: Path? = null,
+    drawCache: VirtualRoadDrawCache? = null,
 ) {
     val fogFade = distanceFade(depth)
     val effectiveAlpha = objectAlpha * fogFade.coerceIn(0.15f, 1f)
@@ -1312,12 +1527,13 @@ private fun DrawScope.drawFrontObject(
 
     val text = "${distanceM} м"
     val baseSizeSp = distanceTextSizeSp.toFloat()
-    val paint = Paint().apply {
+    val paint = (drawCache?.labelPaint ?: Paint().apply {
         isAntiAlias = true
-        color = labelColor.toArgb()
         textAlign = Paint.Align.CENTER
-        textSize = (baseSizeSp * 1.0f).coerceIn(12f, 50f)
         typeface = Typeface.DEFAULT_BOLD
+    }).apply {
+        color = labelColor.toArgb()
+        textSize = (baseSizeSp * 1.0f).coerceIn(12f, 50f)
         setShadowLayer(6f, 0f, 2f, android.graphics.Color.argb((0xA0 * effectiveAlpha).toInt(), 0, 0, 0))
     }
 
@@ -1367,7 +1583,8 @@ private fun DrawScope.drawFrontObject(
                 objH = objH,
                 fill = fillColor,
                 stroke = strokeColor,
-                cachedCabinPath = cachedCabinPath,
+                cachedCabinPath = drawCache?.cabinPath,
+                thinStroke = drawCache?.thinStroke2 ?: Stroke(2f),
             )
         }
     }
@@ -1448,6 +1665,7 @@ private fun DrawScope.drawFrontObjectSilhouette(
     fill: Color,
     stroke: Color,
     cachedCabinPath: Path? = null,
+    thinStroke: Stroke = Stroke(2f),
 ) {
     when (type) {
         LauncherAdasFrontObjectType.Bus -> {
@@ -1455,7 +1673,7 @@ private fun DrawScope.drawFrontObjectSilhouette(
             val body = Size(objW, objH)
             val topLeft = Offset(cx - objW / 2f, cy - objH)
             drawRoundRect(fill, topLeft, body, CornerRadius(objW * 0.12f, objW * 0.12f))
-            drawRoundRect(stroke, topLeft, body, CornerRadius(objW * 0.12f, objW * 0.12f), Stroke(2f))
+            drawRoundRect(stroke, topLeft, body, CornerRadius(objW * 0.12f, objW * 0.12f), thinStroke)
             val winY = cy - objH * 0.72f
             drawRoundRect(
                 color = stroke.copy(alpha = 0.55f),
@@ -1487,14 +1705,14 @@ private fun DrawScope.drawFrontObjectSilhouette(
                 Offset(cx - boxW / 2f, cy - boxH),
                 Size(boxW, boxH),
                 CornerRadius(objW * 0.08f, objW * 0.08f),
-                Stroke(2f),
+                thinStroke,
             )
             drawRoundRect(
                 stroke,
                 Offset(cx - cabW / 2f, cy - objH),
                 Size(cabW, cabH),
                 CornerRadius(objW * 0.10f, objW * 0.10f),
-                Stroke(2f),
+                thinStroke,
             )
         }
         LauncherAdasFrontObjectType.Car -> {
@@ -1516,21 +1734,21 @@ private fun DrawScope.drawFrontObjectSilhouette(
                 close()
             }
             drawPath(cabinPath, color = fill)
-            drawPath(cabinPath, color = stroke, style = Stroke(width = 2f))
+            drawPath(cabinPath, color = stroke, style = thinStroke)
             drawRoundRect(
                 stroke,
                 Offset(cx - objW / 2f, cy - bodyH),
                 Size(objW, bodyH),
                 CornerRadius(objW * 0.22f, objW * 0.22f),
-                Stroke(2f),
+                thinStroke,
             )
         }
         LauncherAdasFrontObjectType.Motorcycle, LauncherAdasFrontObjectType.Bicycle -> {
             val wheelR = objW * 0.16f
             drawCircle(fill, wheelR, Offset(cx - objW * 0.28f, cy - wheelR))
             drawCircle(fill, wheelR, Offset(cx + objW * 0.28f, cy - wheelR))
-            drawCircle(stroke, wheelR, Offset(cx - objW * 0.28f, cy - wheelR), style = Stroke(2f))
-            drawCircle(stroke, wheelR, Offset(cx + objW * 0.28f, cy - wheelR), style = Stroke(2f))
+            drawCircle(stroke, wheelR, Offset(cx - objW * 0.28f, cy - wheelR), style = thinStroke)
+            drawCircle(stroke, wheelR, Offset(cx + objW * 0.28f, cy - wheelR), style = thinStroke)
             drawLine(
                 color = stroke,
                 start = Offset(cx - objW * 0.28f, cy - wheelR * 1.6f),
@@ -1541,7 +1759,7 @@ private fun DrawScope.drawFrontObjectSilhouette(
         }
         LauncherAdasFrontObjectType.Pedestrian -> {
             drawCircle(fill, objW * 0.22f, Offset(cx, cy - objH * 0.82f))
-            drawCircle(stroke, objW * 0.22f, Offset(cx, cy - objH * 0.82f), style = Stroke(2f))
+            drawCircle(stroke, objW * 0.22f, Offset(cx, cy - objH * 0.82f), style = thinStroke)
             drawLine(
                 color = stroke,
                 start = Offset(cx, cy - objH * 0.60f),
@@ -1575,7 +1793,7 @@ private fun DrawScope.drawFrontObjectSilhouette(
                 topLeft,
                 Size(objW, objH),
                 CornerRadius(objW * 0.18f, objW * 0.18f),
-                Stroke(2f),
+                thinStroke,
             )
         }
     }
@@ -1621,10 +1839,13 @@ fun LauncherSpeedLimitOverlay(
         LauncherAppConfigStore.adasAccSpeedOffset(context)
     }
 
-    val carSpeedState by CanDataRepository.carSpeed.collectAsStateWithLifecycle()
-    val currentSpeedKmh = (carSpeedState ?: 0f).roundToInt().coerceAtLeast(0)
-
-    val isExceeded = currentSpeedKmh > (limit + offset)
+    val isExceeded by remember(limit, offset) {
+        CanDataRepository.carSpeed
+            .map { ((it ?: 0f).roundToInt().coerceAtLeast(0)) > (limit + offset) }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(
+        initialValue = ((CanDataRepository.carSpeed.value ?: 0f).roundToInt().coerceAtLeast(0)) > (limit + offset),
+    )
 
     val warningSoundRevision by LauncherAppConfigStore.speedLimitWarningSoundRevisionFlow.collectAsStateWithLifecycle()
     val warningSoundEnabled = remember(context, warningSoundRevision) {
@@ -1682,6 +1903,17 @@ fun LauncherSpeedLimitOverlay(
     val currentOnDragStart by rememberUpdatedState(onDragStart)
     val currentOnDrag by rememberUpdatedState(onDrag)
     val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentEnabled by rememberUpdatedState(enabled)
+    val currentIsSmartActive by rememberUpdatedState(isSmartActive)
+    val currentLimit by rememberUpdatedState(limit)
+    val currentOffset by rememberUpdatedState(offset)
+    val signTextPaint = remember {
+        Paint().apply {
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+        }
+    }
 
     Box(
         modifier = modifier
@@ -1730,11 +1962,11 @@ fun LauncherSpeedLimitOverlay(
                         isDragging = false
                         currentOnDragEnd()
                     } else if (!isDragging) {
-                        if (enabled) {
-                            if (isSmartActive) {
+                        if (currentEnabled) {
+                            if (currentIsSmartActive) {
                                 LauncherCruisePresetController.setSmartSpeedLimitActive(false)
                             } else {
-                                val targetSpeed = limit + offset
+                                val targetSpeed = currentLimit + currentOffset
                                 LauncherCruisePresetController.applySpeedLimitPreset(context, targetSpeed)
                             }
                         }
@@ -1750,6 +1982,7 @@ fun LauncherSpeedLimitOverlay(
                 accent = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
                 active = showSmartUi,
                 isBlinkingRed = isBlinkingRed,
+                textPaint = signTextPaint,
             )
         }
         if (showSmartUi) {
@@ -1782,6 +2015,7 @@ private fun DrawScope.drawSpeedLimitSign(
     accent: Color = if (warning) Color(0xFFEF4444) else Color(0xFFE11D48),
     active: Boolean = false,
     isBlinkingRed: Boolean = false,
+    textPaint: Paint? = null,
 ) {
     val cx = size.width / 2f
     val cy = size.height / 2f
@@ -1805,12 +2039,13 @@ private fun DrawScope.drawSpeedLimitSign(
         )
     }
     val textColorArgb = if (isBlinkingRed) Color.White.toArgb() else Color(0xFF111827).toArgb()
-    val paint = Paint().apply {
+    val paint = (textPaint ?: Paint().apply {
         isAntiAlias = true
-        color = textColorArgb
         textAlign = Paint.Align.CENTER
-        textSize = radius * 0.95f
         typeface = Typeface.DEFAULT_BOLD
+    }).apply {
+        color = textColorArgb
+        textSize = radius * 0.95f
     }
     drawContext.canvas.nativeCanvas.drawText(
         limitKmh.toString(),

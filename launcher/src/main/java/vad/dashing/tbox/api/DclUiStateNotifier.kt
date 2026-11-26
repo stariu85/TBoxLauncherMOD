@@ -30,12 +30,30 @@ object DclUiStateNotifier {
     const val TARGET_PACKAGE = "vad.dashing.tbox"
 
     private val revisionCounter = AtomicLong(1L)
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var pendingNotifyRunnable: Runnable? = null
+    private const val MSG_NOTIFY_STATE = 1
+    private val notifyLock = Any()
+    private val mainHandler = Handler(Looper.getMainLooper()) { msg ->
+        if (msg.what == MSG_NOTIFY_STATE) {
+            val payload = msg.obj as? NotifyRequest
+            if (payload != null) {
+                dispatchBroadcast(payload.appContext, payload.immediate)
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    @Volatile
     private var lastSentStateHash: Int = 0
 
     @Volatile
     private var cachedUiStateBundle: Bundle? = null
+
+    private data class NotifyRequest(
+        val appContext: Context,
+        val immediate: Boolean,
+    )
 
     val currentRevision: Long
         get() = revisionCounter.get()
@@ -50,9 +68,11 @@ object DclUiStateNotifier {
     /**
      * Returns the cached UI state bundle or builds a fresh snapshot if none exists yet.
      * Guarantees consistency between getUiState query and broadcast pushes.
+     * Always returns a defensive copy so callers cannot mutate the cached instance.
      */
     fun getUiState(context: Context?): Bundle {
-        return cachedUiStateBundle ?: buildAndCacheUiStateBundle(context)
+        val snapshot = cachedUiStateBundle ?: buildAndCacheUiStateBundle(context)
+        return Bundle(snapshot)
     }
 
     /**
@@ -230,46 +250,53 @@ object DclUiStateNotifier {
     fun notifyUiStateChanged(context: Context, immediate: Boolean = true) {
         incrementRevision()
         val appCtx = context.applicationContext
+        // Invalidate cache immediately so concurrent getUiState() callers build a fresh snapshot
+        // rather than reading stale pre-change state during a debounce window.
+        cachedUiStateBundle = null
 
-        pendingNotifyRunnable?.let { mainHandler.removeCallbacks(it) }
-
-        val runnable = Runnable {
-            try {
-                val bundle = buildAndCacheUiStateBundle(appCtx)
-                val stateHash = computeStateHash(bundle)
-                if (stateHash == lastSentStateHash && !immediate) {
-                    return@Runnable
+        synchronized(notifyLock) {
+            mainHandler.removeMessages(MSG_NOTIFY_STATE)
+            if (immediate) {
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    dispatchBroadcast(appCtx, immediate = true)
+                } else {
+                    mainHandler.obtainMessage(MSG_NOTIFY_STATE, NotifyRequest(appCtx, immediate = true))
+                        .sendToTarget()
                 }
-                lastSentStateHash = stateHash
-
-                val broadcastIntent = Intent(ACTION_UI_STATE_CHANGED).apply {
-                    setPackage(TARGET_PACKAGE)
-                    putExtras(bundle)
-                }
-                appCtx.sendBroadcast(broadcastIntent)
-
-                // Secondary alias broadcast for compatibility
-                val aliasIntent = Intent(ACTION_UI_CHROME_CHANGED).apply {
-                    setPackage(TARGET_PACKAGE)
-                    putExtras(bundle)
-                }
-                appCtx.sendBroadcast(aliasIntent)
-
-                Log.d(TAG, "Sent UI_STATE_CHANGED broadcast to $TARGET_PACKAGE (rev=$currentRevision, mode=${bundle.getString("screenMode")}, adas=${bundle.getBoolean("adasPanelVisible")}, topBar=${bundle.getBoolean("topBarVisible")}, bottomBar=${bundle.getBoolean("bottomBarVisible")}, overlay=${bundle.getBoolean("overlayOpen")})")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to send UI_STATE_CHANGED broadcast", e)
+            } else {
+                val msg = mainHandler.obtainMessage(MSG_NOTIFY_STATE, NotifyRequest(appCtx, immediate = false))
+                mainHandler.sendMessageDelayed(msg, 150L)
             }
         }
+    }
 
-        if (immediate) {
-            if (Looper.myLooper() == Looper.getMainLooper()) {
-                runnable.run()
-            } else {
-                mainHandler.post(runnable)
+    private fun dispatchBroadcast(appCtx: Context, immediate: Boolean) {
+        try {
+            val bundle = buildAndCacheUiStateBundle(appCtx)
+            val stateHash = computeStateHash(bundle)
+            synchronized(notifyLock) {
+                if (stateHash == lastSentStateHash && !immediate) {
+                    return
+                }
+                lastSentStateHash = stateHash
             }
-        } else {
-            pendingNotifyRunnable = runnable
-            mainHandler.postDelayed(runnable, 150L)
+
+            val broadcastIntent = Intent(ACTION_UI_STATE_CHANGED).apply {
+                setPackage(TARGET_PACKAGE)
+                putExtras(bundle)
+            }
+            appCtx.sendBroadcast(broadcastIntent)
+
+            // Secondary alias broadcast for compatibility
+            val aliasIntent = Intent(ACTION_UI_CHROME_CHANGED).apply {
+                setPackage(TARGET_PACKAGE)
+                putExtras(bundle)
+            }
+            appCtx.sendBroadcast(aliasIntent)
+
+            Log.d(TAG, "Sent UI_STATE_CHANGED broadcast to $TARGET_PACKAGE (rev=$currentRevision, mode=${bundle.getString("screenMode")}, adas=${bundle.getBoolean("adasPanelVisible")}, topBar=${bundle.getBoolean("topBarVisible")}, bottomBar=${bundle.getBoolean("bottomBarVisible")}, overlay=${bundle.getBoolean("overlayOpen")})")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to send UI_STATE_CHANGED broadcast", e)
         }
     }
 

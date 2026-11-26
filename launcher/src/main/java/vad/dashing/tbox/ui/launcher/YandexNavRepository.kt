@@ -34,8 +34,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import vad.dashing.tbox.MediaControlNotificationListenerService
+import vad.dashing.tbox.ShellExecutor
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Live navigation & traffic light state:
@@ -92,70 +96,120 @@ object YandexNavRepository {
     private const val LANES_STALE_TIMEOUT_MS = 4_000L
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var timerStaleJob: Job? = null
-    private var trafficLightStaleJob: Job? = null
-    private var minimapWindowStateJob: Job? = null
-    private var lanesStaleJob: Job? = null
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val minimapDecodeDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val pendingMinimapJpeg = AtomicReference<Triple<ByteArray, Boolean, Long>?>(null)
+    private val minimapDecodeScheduled = AtomicBoolean(false)
+
+    private val jobLock = Any()
+    @Volatile private var timerStaleJob: Job? = null
+    @Volatile private var trafficLightStaleJob: Job? = null
+    @Volatile private var minimapWindowStateJob: Job? = null
+    @Volatile private var lanesStaleJob: Job? = null
 
     private fun cancelTimerStaleJob() {
-        timerStaleJob?.cancel()
-        timerStaleJob = null
+        synchronized(jobLock) {
+            timerStaleJob?.cancel()
+            timerStaleJob = null
+        }
     }
 
     private fun cancelTrafficLightStaleJob() {
-        trafficLightStaleJob?.cancel()
-        trafficLightStaleJob = null
+        synchronized(jobLock) {
+            trafficLightStaleJob?.cancel()
+            trafficLightStaleJob = null
+        }
     }
 
     private fun scheduleTrafficLightStaleJob() {
-        trafficLightStaleJob?.cancel()
-        trafficLightStaleJob = repositoryScope.launch {
-            delay(TRAFFIC_LIGHT_STALE_TIMEOUT_MS)
-            _state.update {
-                it.copy(
-                    trafficLightColor = null,
-                    trafficLightCountdownSeconds = null,
-                    trafficLightDistanceMeters = null,
-                    trafficLightArrow = null,
-                    trafficLightLastUpdateMs = 0L,
-                    trafficLightCountdownLastUpdateMs = 0L,
-                )
+        synchronized(jobLock) {
+            trafficLightStaleJob?.cancel()
+            trafficLightStaleJob = repositoryScope.launch {
+                delay(TRAFFIC_LIGHT_STALE_TIMEOUT_MS)
+                _state.update {
+                    it.copy(
+                        trafficLightColor = null,
+                        trafficLightCountdownSeconds = null,
+                        trafficLightDistanceMeters = null,
+                        trafficLightArrow = null,
+                        trafficLightLastUpdateMs = 0L,
+                        trafficLightCountdownLastUpdateMs = 0L,
+                    )
+                }
             }
         }
     }
 
     private fun scheduleTimerStaleJob(timestampMs: Long) {
-        timerStaleJob?.cancel()
-        timerStaleJob = repositoryScope.launch {
-            delay(TRAFFIC_LIGHT_TIMER_TIMEOUT_MS)
-            _state.update { current ->
-                if (current.trafficLightCountdownLastUpdateMs == timestampMs) {
-                    current.copy(
-                        trafficLightCountdownSeconds = null,
-                        trafficLightCountdownLastUpdateMs = 0L,
-                    )
-                } else {
-                    current
+        synchronized(jobLock) {
+            timerStaleJob?.cancel()
+            timerStaleJob = repositoryScope.launch {
+                delay(TRAFFIC_LIGHT_TIMER_TIMEOUT_MS)
+                _state.update { current ->
+                    if (current.trafficLightCountdownLastUpdateMs == timestampMs) {
+                        current.copy(
+                            trafficLightCountdownSeconds = null,
+                            trafficLightCountdownLastUpdateMs = 0L,
+                        )
+                    } else {
+                        current
+                    }
                 }
             }
         }
     }
 
     private fun cancelLanesStaleJob() {
-        lanesStaleJob?.cancel()
-        lanesStaleJob = null
+        synchronized(jobLock) {
+            lanesStaleJob?.cancel()
+            lanesStaleJob = null
+        }
     }
 
     private fun scheduleLanesStaleJob() {
-        lanesStaleJob?.cancel()
-        lanesStaleJob = repositoryScope.launch {
-            delay(LANES_STALE_TIMEOUT_MS)
-            _state.update {
-                it.copy(
-                    lanesBitmap = null,
-                    lanesBitmaps = emptyList(),
-                    lanesDistance = null,
-                )
+        synchronized(jobLock) {
+            lanesStaleJob?.cancel()
+            lanesStaleJob = repositoryScope.launch {
+                delay(LANES_STALE_TIMEOUT_MS)
+                _state.update {
+                    it.copy(
+                        lanesBitmap = null,
+                        lanesBitmaps = emptyList(),
+                        lanesDistance = null,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun enqueueMinimapDecode(jpeg: ByteArray, hasRoute: Boolean, timestampMs: Long) {
+        pendingMinimapJpeg.set(Triple(jpeg, hasRoute, timestampMs))
+        kickMinimapDecode()
+    }
+
+    private fun kickMinimapDecode() {
+        if (!minimapDecodeScheduled.compareAndSet(false, true)) return
+        repositoryScope.launch(minimapDecodeDispatcher) {
+            try {
+                while (true) {
+                    val item = pendingMinimapJpeg.getAndSet(null) ?: break
+                    val (bytes, routeFlag, ts) = item
+                    val bmp = runCatching {
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }.getOrNull()
+                    if (bmp != null) {
+                        _minimapFrame.value = MinimapFrame(
+                            bitmap = bmp,
+                            hasRoute = routeFlag,
+                            lastUpdateMs = ts,
+                        )
+                    }
+                }
+            } finally {
+                minimapDecodeScheduled.set(false)
+                if (pendingMinimapJpeg.get() != null) {
+                    kickMinimapDecode()
+                }
             }
         }
     }
@@ -171,21 +225,23 @@ object YandexNavRepository {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
-            Log.d(TAG, "Received nav broadcast: $action")
+            val verboseLogs = runCatching { Log.isLoggable(TAG, Log.VERBOSE) }.getOrDefault(false)
             val extras = intent.extras
-            if (extras != null) {
-                for (k in extras.keySet()) {
-                    @Suppress("DEPRECATION")
-                    Log.d(TAG, "   [$action] Extra: $k = ${extras.get(k)}")
+            if (verboseLogs) {
+                Log.v(TAG, "Received nav broadcast: $action")
+                if (extras != null) {
+                    for (k in extras.keySet()) {
+                        @Suppress("DEPRECATION")
+                        Log.v(TAG, "   [$action] Extra: $k = ${extras.get(k)}")
+                    }
                 }
             }
             val now = System.currentTimeMillis()
             val normAction = action.substringAfterLast('.').uppercase()
 
             // Only run generic heuristic extra scanning on general navigation/maneuver broadcasts.
-            // Specific broadcasts (TRAFFIC_LIGHT_UPDATE, LANE_DIST, LANES, DISTANCE, MINIMAP, etc.)
-            // carry their own "dist" / "tl_dist_m" / "lanes_bitmap" extras that must NOT overwrite
-            // maneuverDistance or broadcastManeuverDistance!
+            // Specific broadcasts (TRAFFIC_LIGHT_UPDATE, LANE_DIST, LANES, DISTANCE, MINIMAP, MANEUVER*, etc.)
+            // are handled directly below without double-processing.
             val isGenericNavAction = normAction !in SPECIFIC_NON_MANEUVER_ACTIONS
             if (extras != null && isGenericNavAction) {
                 var bitmap: Bitmap? = null
@@ -200,7 +256,9 @@ object YandexNavRepository {
                     @Suppress("DEPRECATION")
                     val value = extras.get(k) ?: continue
                     val valStr = value.toString().trim()
-                    Log.d(TAG, "   [$action] Extra: $k = $valStr (${value.javaClass.simpleName})")
+                    if (verboseLogs) {
+                        Log.v(TAG, "   [$action] Extra: $k = $valStr (${value.javaClass.simpleName})")
+                    }
 
                     if (value is Bitmap) {
                         val kLowerBmp = k.lowercase()
@@ -400,15 +458,8 @@ object YandexNavRepository {
                 "MINIMAP" -> {
                     val jpeg = intent.getByteArrayExtra("minimap_jpeg")
                     val hasRoute = intent.getBooleanExtra("minimap_has_route", false)
-                    val bmp = if (jpeg != null && jpeg.isNotEmpty()) {
-                        runCatching { BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) }.getOrNull()
-                    } else null
-                    if (bmp != null) {
-                        _minimapFrame.value = MinimapFrame(
-                            bitmap = bmp,
-                            hasRoute = hasRoute,
-                            lastUpdateMs = now,
-                        )
+                    if (jpeg != null && jpeg.isNotEmpty()) {
+                        enqueueMinimapDecode(jpeg, hasRoute, now)
                     }
                 }
                 "NIXT", "NEXT" -> {
@@ -625,20 +676,6 @@ object YandexNavRepository {
                 addAction("${prefix}TIME")
                 addAction("${prefix}ARRIVAL")
             }
-            addAction(ACTION_TRAFFIC_LIGHT_UPDATE)
-            addAction(ACTION_NAVIGATION_ENDED)
-            addAction("com.yandex.LANES")
-            addAction("com.yandex.LANES_BITMAP")
-            addAction("com.yandex.LANES_BITMAP_CLEAR")
-            addAction("com.yandex.LANE_DIST")
-            addAction("com.yandex.LANE_SIGN")
-            addAction("com.yandex.MINIMAP")
-            addAction("com.yandex.NIXT")
-            addAction("com.yandex.NEXT")
-            addAction("com.yandex.NEXTSTREET")
-            addAction("com.yandex.DISTANCE")
-            addAction("com.yandex.TIME")
-            addAction("com.yandex.ARRIVAL")
         }
 
         runCatching {
@@ -654,54 +691,62 @@ object YandexNavRepository {
             Log.e(TAG, "Failed to register YandexNavRepository broadcast receiver", it)
         }
         YandexNavWindowTracker.start(appContext)
-        minimapWindowStateJob?.cancel()
-        minimapWindowStateJob = repositoryScope.launch {
-            var wasOpen = false
-            YandexNavWindowTracker.isWindowOpen.collect { isOpen ->
-                if (!isOpen) {
-                    _minimapFrame.value = MinimapFrame()
-                    if (wasOpen) {
-                        cancelTimerStaleJob()
-                        cancelLanesStaleJob()
-                        _state.update { cur ->
-                            val hasNotificationData = cur.maneuverPrimaryIcon != null ||
-                                cur.maneuverDistance != null ||
-                                cur.remainingDistance != null ||
-                                cur.remainingTime != null ||
-                                cur.arrivalTime != null ||
-                                cur.notificationTrafficLightText != null ||
-                                cur.notificationTrafficLightBitmap != null
-                            cur.copy(
-                                isNavigating = if (hasNotificationData) cur.isNavigating else false,
-                                speedLimit = null,
-                                trafficLightColor = null,
-                                trafficLightCountdownSeconds = null,
-                                trafficLightDistanceMeters = null,
-                                trafficLightArrow = null,
-                                trafficLightLastUpdateMs = 0L,
-                                trafficLightCountdownLastUpdateMs = 0L,
-                                broadcastManeuverBitmap = null,
-                                broadcastManeuverDistance = null,
-                                nextText = null,
-                                lanesBitmap = null,
-                                lanesBitmaps = emptyList(),
-                                lanesDistance = null,
-                            )
+        synchronized(jobLock) {
+            minimapWindowStateJob?.cancel()
+            minimapWindowStateJob = repositoryScope.launch {
+                var wasOpen = false
+                YandexNavWindowTracker.isWindowOpen.collect { isOpen ->
+                    if (!isOpen) {
+                        _minimapFrame.value = MinimapFrame()
+                        if (wasOpen) {
+                            cancelTimerStaleJob()
+                            cancelTrafficLightStaleJob()
+                            cancelLanesStaleJob()
+                            _state.update { cur ->
+                                val hasNotificationData = cur.maneuverPrimaryIcon != null ||
+                                    cur.maneuverDistance != null ||
+                                    cur.remainingDistance != null ||
+                                    cur.remainingTime != null ||
+                                    cur.arrivalTime != null ||
+                                    cur.notificationTrafficLightText != null ||
+                                    cur.notificationTrafficLightBitmap != null
+                                cur.copy(
+                                    isNavigating = if (hasNotificationData) cur.isNavigating else false,
+                                    speedLimit = null,
+                                    trafficLightColor = null,
+                                    trafficLightCountdownSeconds = null,
+                                    trafficLightDistanceMeters = null,
+                                    trafficLightArrow = null,
+                                    trafficLightLastUpdateMs = 0L,
+                                    trafficLightCountdownLastUpdateMs = 0L,
+                                    broadcastManeuverBitmap = null,
+                                    broadcastManeuverDistance = null,
+                                    nextText = null,
+                                    lanesBitmap = null,
+                                    lanesBitmaps = emptyList(),
+                                    lanesDistance = null,
+                                )
+                            }
                         }
                     }
+                    wasOpen = isOpen
                 }
-                wasOpen = isOpen
             }
         }
     }
 
     fun stop(context: Context) {
-        if (!registered) return
         cancelTimerStaleJob()
-        minimapWindowStateJob?.cancel()
-        minimapWindowStateJob = null
+        cancelTrafficLightStaleJob()
+        cancelLanesStaleJob()
+        synchronized(jobLock) {
+            minimapWindowStateJob?.cancel()
+            minimapWindowStateJob = null
+        }
+        pendingMinimapJpeg.set(null)
         _minimapFrame.value = MinimapFrame()
         YandexNavWindowTracker.stop()
+        if (!registered) return
         runCatching {
             context.applicationContext.unregisterReceiver(receiver)
             registered = false
@@ -716,6 +761,8 @@ object YandexNavRepository {
     @VisibleForTesting
     internal fun resetForTest() {
         cancelTimerStaleJob()
+        cancelTrafficLightStaleJob()
+        cancelLanesStaleJob()
         _state.value = YandexNavState()
     }
 
@@ -767,11 +814,23 @@ object YandexNavRepository {
         "DISTANCE",
         "TIME",
         "ARRIVAL",
+        "MANEUVER",
+        "MANEUVER_UPDATE",
+        "MANEUVER_BITMAP",
+        "HUD_UPDATE",
+        "NAVIGATION_UPDATE",
+        "ROUTE_UPDATE",
+        "STREET_UPDATE",
+        "DISTANCE_UPDATE",
         "NAVIGATION_ENDED",
         "NAVIGATION_STOPPED",
         "MANEUVER_CLEAR",
         "MANEUVER_BITMAP_CLEAR",
     )
+
+    private val WHITESPACE_REGEX = Regex("\\s+")
+    private val LEADING_NUMBER_UNIT_REGEX = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$")
+    private val LEADING_MANEUVER_WORD_REGEX = Regex("(?i)^(поверните|держитесь|съезд|развернитесь|перестройтесь|прямо|двигайтесь|направо|налево|правее|левее|через|на|в|по)\\s+")
 
     /**
      * Normalizes raw distance strings from Yandex Navigator broadcasts.
@@ -780,13 +839,13 @@ object YandexNavRepository {
      */
     @VisibleForTesting
     internal fun formatBroadcastDistance(rawDist: String?, rawMetrics: String? = null): String? {
-        val cleaned = rawDist?.replace("\\s+".toRegex(), " ")?.trim()
+        val cleaned = rawDist?.replace(WHITESPACE_REGEX, " ")?.trim()
             ?.takeIf { it.isNotBlank() && it != "null" && it != "-1" }
             ?: return null
         val unitClean = rawMetrics?.trim()?.takeIf { it.isNotBlank() && it != "null" }
 
         // Split leading number and optional inline unit (e.g. "249.84375 м" or "249.84375")
-        val match = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$").find(cleaned)
+        val match = LEADING_NUMBER_UNIT_REGEX.find(cleaned)
         if (match != null) {
             val numStr = match.groupValues[1].replace(',', '.')
             val inlineUnit = match.groupValues[2].trim()
@@ -833,11 +892,11 @@ object YandexNavRepository {
      */
     @VisibleForTesting
     internal fun parseDistanceToMeters(rawDist: String?, rawMetrics: String? = null): Float? {
-        val cleaned = rawDist?.replace("\\s+".toRegex(), " ")?.trim()
+        val cleaned = rawDist?.replace(WHITESPACE_REGEX, " ")?.trim()
             ?.takeIf { it.isNotBlank() && it != "null" && it != "-1" }
             ?: return null
         val unitClean = rawMetrics?.trim()?.takeIf { it.isNotBlank() && it != "null" }
-        val match = Regex("^([0-9]+(?:[.,][0-9]+)?)\\s*(.*)$").find(cleaned) ?: return null
+        val match = LEADING_NUMBER_UNIT_REGEX.find(cleaned) ?: return null
         val numStr = match.groupValues[1].replace(',', '.')
         val inlineUnit = match.groupValues[2].trim()
         val effectiveUnit = inlineUnit.ifEmpty { unitClean ?: "" }.lowercase()
@@ -859,54 +918,69 @@ object YandexNavRepository {
         if (w < 20 || h < 2) return null
 
         return runCatching {
-            val midY = h / 2
-            var lastGrayCol = -1
-            var firstColoredCol = -1
-            var brightestMarkerCol = -1
-            var maxMarkerScore = 0
+            val isHardwareCopy = bmp.config == Bitmap.Config.HARDWARE
+            val readable = if (isHardwareCopy) {
+                bmp.copy(Bitmap.Config.ARGB_8888, false) ?: return@runCatching null
+            } else {
+                bmp
+            }
+            try {
+                val pixels = IntArray(w * h)
+                readable.getPixels(pixels, 0, w, 0, 0, w, h)
+                val midY = h / 2
+                val midRowOffset = midY * w
+                var lastGrayCol = -1
+                var firstColoredCol = -1
+                var brightestMarkerCol = -1
+                var maxMarkerScore = 0
 
-            for (x in 0 until w) {
-                // Check for a cursor/arrow marker protruding above or below the bar centerline, or bright white pin
-                for (y in 0 until h) {
-                    val px = bmp.getPixel(x, y)
-                    val a = px ushr 24
-                    if (a < 128) continue
-                    val r = (px ushr 16) and 0xFF
-                    val g = (px ushr 8) and 0xFF
-                    val b = px and 0xFF
-                    val luma = (54 * r + 183 * g + 19 * b) ushr 8
-                    val distFromCenter = kotlin.math.abs(y - midY)
-                    if (distFromCenter >= h / 3 && luma > 210) {
-                        val score = luma + distFromCenter * 15
-                        if (score > maxMarkerScore) {
-                            maxMarkerScore = score
-                            brightestMarkerCol = x
+                for (x in 0 until w) {
+                    // Check for a cursor/arrow marker protruding above or below the bar centerline, or bright white pin
+                    for (y in 0 until h) {
+                        val px = pixels[y * w + x]
+                        val a = px ushr 24
+                        if (a < 128) continue
+                        val r = (px ushr 16) and 0xFF
+                        val g = (px ushr 8) and 0xFF
+                        val b = px and 0xFF
+                        val luma = (54 * r + 183 * g + 19 * b) ushr 8
+                        val distFromCenter = kotlin.math.abs(y - midY)
+                        if (distFromCenter >= h / 3 && luma > 210) {
+                            val score = luma + distFromCenter * 15
+                            if (score > maxMarkerScore) {
+                                maxMarkerScore = score
+                                brightestMarkerCol = x
+                            }
+                        }
+                    }
+
+                    // Along the centerline, Yandex draws passed route as desaturated gray and upcoming route as colored (green/yellow/red)
+                    val midPx = pixels[midRowOffset + x]
+                    val a = midPx ushr 24
+                    if (a >= 100) {
+                        val r = (midPx ushr 16) and 0xFF
+                        val g = (midPx ushr 8) and 0xFF
+                        val b = midPx and 0xFF
+                        val maxC = maxOf(r, g, b)
+                        val minC = minOf(r, g, b)
+                        val chroma = maxC - minC
+                        if (chroma >= 45) {
+                            if (firstColoredCol == -1) firstColoredCol = x
+                        } else if (firstColoredCol == -1) {
+                            lastGrayCol = x
                         }
                     }
                 }
 
-                // Along the centerline, Yandex draws passed route as desaturated gray and upcoming route as colored (green/yellow/red)
-                val midPx = bmp.getPixel(x, midY)
-                val a = midPx ushr 24
-                if (a >= 100) {
-                    val r = (midPx ushr 16) and 0xFF
-                    val g = (midPx ushr 8) and 0xFF
-                    val b = midPx and 0xFF
-                    val maxC = maxOf(r, g, b)
-                    val minC = minOf(r, g, b)
-                    val chroma = maxC - minC
-                    if (chroma >= 45) {
-                        if (firstColoredCol == -1) firstColoredCol = x
-                    } else if (firstColoredCol == -1) {
-                        lastGrayCol = x
-                    }
+                when {
+                    brightestMarkerCol in 1 until (w - 1) -> (brightestMarkerCol.toFloat() / (w - 1).toFloat()).coerceIn(0f, 1f)
+                    firstColoredCol > 1 && lastGrayCol >= 0 -> (firstColoredCol.toFloat() / (w - 1).toFloat()).coerceIn(0f, 1f)
+                    else -> null
                 }
-            }
-
-            when {
-                brightestMarkerCol in 1 until (w - 1) -> (brightestMarkerCol.toFloat() / (w - 1).toFloat()).coerceIn(0f, 1f)
-                firstColoredCol > 1 && lastGrayCol >= 0 -> (firstColoredCol.toFloat() / (w - 1).toFloat()).coerceIn(0f, 1f)
-                else -> null
+            } finally {
+                if (isHardwareCopy && !readable.isRecycled) {
+                    readable.recycle()
+                }
             }
         }.getOrNull()
     }
@@ -1022,7 +1096,7 @@ object YandexNavRepository {
             .trim()
 
         cleaned = cleaned.replace(CLEAN_MANEUVER_REGEX, "").trim()
-        cleaned = cleaned.replace(Regex("(?i)^(поверните|держитесь|съезд|развернитесь|перестройтесь|прямо|двигайтесь|направо|налево|правее|левее|через|на|в|по)\\s+"), "").trim()
+        cleaned = cleaned.replace(LEADING_MANEUVER_WORD_REGEX, "").trim()
 
         if (cleaned.length >= 2 && !isIgnoredStreetName(cleaned) && !DISTANCE_REGEX.containsMatchIn(cleaned)) {
             return cleaned
@@ -1030,21 +1104,7 @@ object YandexNavRepository {
         return null
     }
 
-    private fun isYandexPackage(pkg: String): Boolean {
-        val lower = pkg.lowercase()
-        return lower == "ru.yandex.yandexnavi" ||
-                lower == "ru.yandex.yandexmaps" ||
-                lower == "ru.yandex.mobile.navigator" ||
-                lower == "com.yandex.navi" ||
-                lower == "ru.yandex.navi" ||
-                lower.startsWith("ru.yandex.yandexnavi") ||
-                lower.startsWith("ru.yandex.yandexmaps") ||
-                lower.startsWith("ru.yandex.mobile.navigator") ||
-                lower.startsWith("com.yandex.navi") ||
-                lower.contains("yandex.navi") ||
-                lower.contains("yandexnavi") ||
-                lower.contains("yandexmaps")
-    }
+    private fun isYandexPackage(pkg: String): Boolean = isYandexNavigationPackage(pkg)
 
     private fun extractAllNotificationStrings(notification: Notification, extras: Bundle): List<String> {
         val strings = mutableListOf<String>()
@@ -1091,29 +1151,41 @@ object YandexNavRepository {
     }
 
     fun ensureNotificationListenerEnabled(context: Context) {
-        val component = ComponentName(context, MediaControlNotificationListenerService::class.java)
+        val appCtx = context.applicationContext
+        val component = ComponentName(appCtx, MediaControlNotificationListenerService::class.java)
         val flatComponent = component.flattenToString()
-        runCatching {
-            val cr = context.contentResolver
-            val existing = Settings.Secure.getString(cr, "enabled_notification_listeners").orEmpty()
-            if (!existing.contains(flatComponent)) {
-                val updated = if (existing.isBlank()) flatComponent else "$existing:$flatComponent"
-                Settings.Secure.putString(cr, "enabled_notification_listeners", updated)
-                Log.i(TAG, "Granted NotificationListener permission to $flatComponent via Settings.Secure")
+        val existing = runCatching {
+            Settings.Secure.getString(appCtx.contentResolver, "enabled_notification_listeners").orEmpty()
+        }.getOrDefault("")
+        if (existing.split(':').any { it == flatComponent }) {
+            return
+        }
+        val updated = if (existing.isBlank()) flatComponent else "$existing:$flatComponent"
+        val wroteDirectly = runCatching {
+            Settings.Secure.putString(appCtx.contentResolver, "enabled_notification_listeners", updated)
+            Log.i(TAG, "Granted NotificationListener permission to $flatComponent via Settings.Secure")
+            true
+        }.getOrDefault(false)
+        if (wroteDirectly) {
+            runCatching {
+                NotificationListenerService.requestRebind(component)
+                Log.i(TAG, "Requested rebind for NotificationListenerService: $component")
             }
+            return
         }
-        runCatching {
-            Runtime.getRuntime().exec(arrayOf("cmd", "notification", "allow_listener", flatComponent))
-        }
-        runCatching {
-            val cr = context.contentResolver
-            val existing = Settings.Secure.getString(cr, "enabled_notification_listeners").orEmpty()
-            val updated = if (existing.isBlank()) flatComponent else "$existing:$flatComponent"
-            Runtime.getRuntime().exec(arrayOf("settings", "put", "secure", "enabled_notification_listeners", updated))
-        }
-        runCatching {
-            NotificationListenerService.requestRebind(component)
-            Log.i(TAG, "Requested rebind for NotificationListenerService: $component")
+        repositoryScope.launch(Dispatchers.IO) {
+            ShellExecutor.exec(listOf("cmd", "notification", "allow_listener", flatComponent))
+            val afterCmd = runCatching {
+                Settings.Secure.getString(appCtx.contentResolver, "enabled_notification_listeners").orEmpty()
+            }.getOrDefault("")
+            if (afterCmd.split(':').none { it == flatComponent }) {
+                val nextVal = if (afterCmd.isBlank()) flatComponent else "$afterCmd:$flatComponent"
+                ShellExecutor.exec(listOf("settings", "put", "secure", "enabled_notification_listeners", nextVal))
+            }
+            runCatching {
+                NotificationListenerService.requestRebind(component)
+                Log.i(TAG, "Requested rebind for NotificationListenerService: $component")
+            }
         }
     }
 
@@ -1202,10 +1274,10 @@ object YandexNavRepository {
             else -> null
         }
 
+        val remMeters = parseDistanceToMeters(remDist, null)
+        val etaBmp = rvData?.etaProgressBitmap
         _state.update {
-            val remMeters = parseDistanceToMeters(remDist, null)
-            val bmpRatio = detectProgressRatioFromEtaBitmap(rvData?.etaProgressBitmap)
-            val updatedProgress = updateRouteProgress(it, remMeters, bmpRatio)
+            val updatedProgress = updateRouteProgress(it, remMeters, bitmapDetectedRatio = null)
             updatedProgress.copy(
                 isNavigating = true,
                 maneuverBitmap = rvData?.primaryIcon ?: iconBitmap ?: it.maneuverBitmap,
@@ -1218,13 +1290,25 @@ object YandexNavRepository {
                 remainingDistance = remDist.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.remainingDistance,
                 remainingTime = remTime.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.remainingTime,
                 arrivalTime = arrTime.takeIf { s -> !s.isNullOrBlank() && s != "null" } ?: it.arrivalTime,
-                etaProgressBitmap = rvData?.etaProgressBitmap ?: it.etaProgressBitmap,
+                etaProgressBitmap = etaBmp ?: it.etaProgressBitmap,
                 lanesBitmap = rvData?.lanesBitmap ?: it.lanesBitmap,
                 lanesBitmaps = if (rvData != null && rvData.lanesBitmaps.isNotEmpty()) rvData.lanesBitmaps else it.lanesBitmaps,
                 notificationTrafficLightText = rvData?.trafficLightText ?: it.notificationTrafficLightText,
                 notificationTrafficLightBitmap = rvData?.trafficLightBitmap ?: it.notificationTrafficLightBitmap,
                 lastUpdateMs = now,
             )
+        }
+        if (etaBmp != null) {
+            repositoryScope.launch(Dispatchers.Default) {
+                val bmpRatio = detectProgressRatioFromEtaBitmap(etaBmp) ?: return@launch
+                _state.update { cur ->
+                    if (cur.etaProgressBitmap === etaBmp) {
+                        updateRouteProgress(cur, newRemainingMeters = null, bitmapDetectedRatio = bmpRatio)
+                    } else {
+                        cur
+                    }
+                }
+            }
         }
     }
 
