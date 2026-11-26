@@ -3,7 +3,6 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -46,7 +45,7 @@ internal object LauncherActiveAppTracker {
     @Volatile
     private var state = TrackerState()
 
-    private val resolveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val resolveScope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.lightPollersDispatcher)
     @Volatile
     private var resolveTaskIdJob: Job? = null
 

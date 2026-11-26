@@ -40,7 +40,14 @@ class TboxLinkManager(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val packetDispatcher = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "launcher-tbox-packets").apply { isDaemon = true }
+        Thread(
+            {
+                vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
+                    .applyOptionalServiceBackgroundAffinityOnCurrentThread("launcher-tbox-packets")
+                r.run()
+            },
+            "launcher-tbox-packets",
+        ).apply { isDaemon = true }
     }.asCoroutineDispatcher()
     private val packetChannel = Channel<ByteArray>(
         capacity = Channel.BUFFERED,

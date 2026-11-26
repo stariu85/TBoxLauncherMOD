@@ -32,6 +32,10 @@ private const val KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK = "exp_home_move_task_
 private const val KEY_EXPERIMENTAL_HOME_WINDOWING_MODE = "exp_home_windowing_mode"
 private const val KEY_EXPERIMENTAL_PIN_3D_RENDER_CPU45 = "exp_pin_3d_render_cpu45"
 private const val KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45 = "exp_pin_can_bus_cpu45"
+private const val KEY_EXPERIMENTAL_PIN_RENDER_THREAD_ALWAYS_CPU05 = "exp_pin_render_thread_always_cpu05"
+private const val KEY_EXPERIMENTAL_PIN_RENDER_THREAD_SMART_CPU05 = "exp_pin_render_thread_smart_cpu05"
+private const val KEY_EXPERIMENTAL_PIN_SERVICE_BG_THREADS_CPU05 = "exp_pin_service_bg_threads_cpu05"
+private const val KEY_EXPERIMENTAL_PIN_LIGHT_POLLERS_CPU05 = "exp_pin_light_pollers_cpu05"
 private const val KEY_USE_NEW_SETTINGS_VIEW = "use_new_settings_view"
 private const val KEY_BOOT_LOG_ENABLED = "boot_log_enabled"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
@@ -575,6 +579,12 @@ internal object LauncherAppConfigStore {
     internal val experimentalPin3dRenderCpu45RevisionFlow: StateFlow<Int> = experimentalPin3dRenderCpu45Revision
     private val experimentalPinCanBusCpu45Revision = registeredRevisionFlow()
     internal val experimentalPinCanBusCpu45RevisionFlow: StateFlow<Int> = experimentalPinCanBusCpu45Revision
+    private val experimentalPinRenderThreadRevision = registeredRevisionFlow()
+    internal val experimentalPinRenderThreadRevisionFlow: StateFlow<Int> = experimentalPinRenderThreadRevision
+    private val experimentalPinServiceBgThreadsCpu05Revision = registeredRevisionFlow()
+    internal val experimentalPinServiceBgThreadsCpu05RevisionFlow: StateFlow<Int> = experimentalPinServiceBgThreadsCpu05Revision
+    private val experimentalPinLightPollersCpu05Revision = registeredRevisionFlow()
+    internal val experimentalPinLightPollersCpu05RevisionFlow: StateFlow<Int> = experimentalPinLightPollersCpu05Revision
     private val useNewSettingsViewRevision = registeredRevisionFlow()
     internal val useNewSettingsViewRevisionFlow: StateFlow<Int> = useNewSettingsViewRevision
     private val bootLogRevision = registeredRevisionFlow()
@@ -1110,6 +1120,49 @@ internal object LauncherAppConfigStore {
     fun setExperimentalPinCanBusCpu45(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45, enabled).apply()
         experimentalPinCanBusCpu45Revision.value++
+    }
+
+    fun experimentalPinRenderThreadAlwaysCpu05(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_ALWAYS_CPU05, false)
+
+    fun setExperimentalPinRenderThreadAlwaysCpu05(context: Context, enabled: Boolean) {
+        prefs(context).edit().apply {
+            putBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_ALWAYS_CPU05, enabled)
+            if (enabled) {
+                putBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_SMART_CPU05, false)
+            }
+        }.apply()
+        experimentalPinRenderThreadRevision.value++
+    }
+
+    fun experimentalPinRenderThreadSmartCpu05(context: Context): Boolean =
+        !experimentalPinRenderThreadAlwaysCpu05(context) &&
+            prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_SMART_CPU05, false)
+
+    fun setExperimentalPinRenderThreadSmartCpu05(context: Context, enabled: Boolean) {
+        prefs(context).edit().apply {
+            putBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_SMART_CPU05, enabled)
+            if (enabled) {
+                putBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_ALWAYS_CPU05, false)
+            }
+        }.apply()
+        experimentalPinRenderThreadRevision.value++
+    }
+
+    fun experimentalPinServiceBgThreadsCpu05(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_SERVICE_BG_THREADS_CPU05, false)
+
+    fun setExperimentalPinServiceBgThreadsCpu05(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_SERVICE_BG_THREADS_CPU05, enabled).apply()
+        experimentalPinServiceBgThreadsCpu05Revision.value++
+    }
+
+    fun experimentalPinLightPollersCpu05(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_LIGHT_POLLERS_CPU05, false)
+
+    fun setExperimentalPinLightPollersCpu05(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_LIGHT_POLLERS_CPU05, enabled).apply()
+        experimentalPinLightPollersCpu05Revision.value++
     }
 
     fun experimentalPlayerLaunchMode(context: Context): ExperimentalPlayerLaunchMode =

@@ -29,7 +29,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -311,6 +310,7 @@ fun LauncherVirtualRoad(
     /** Show road only in Drive (D), not when the engine merely starts. */
     inDriveGear: Boolean = false,
     isSnow: Boolean = false,
+    syncedClock: LauncherSynced30FpsClock? = null,
 ) {
     val bsdLeftActive = inDriveGear && adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off
     val bsdRightActive = inDriveGear && adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off
@@ -389,7 +389,8 @@ fun LauncherVirtualRoad(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow.collectAsStateWithLifecycle()
+    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
     val canAnimate = isLifecycleStarted && !hiddenForExternalApp
 
     val weatherActive = effectiveIsSnow || effectiveIsRain
@@ -412,79 +413,70 @@ fun LauncherVirtualRoad(
     val currentWeatherActive by rememberUpdatedState(weatherActive)
     val currentRoadAnimating by rememberUpdatedState(isRoadAnimating)
     val isVirtualRoadTicking = weatherActive || isRoadAnimating
+    val activeClock = rememberSynced30FpsClock(syncedClock)
 
-    LaunchedEffect(isVirtualRoadTicking, canAnimate) {
-        if (!isVirtualRoadTicking || !canAnimate) return@LaunchedEffect
-        var lastTickFrameNs = 0L
-        while (isActive) {
-            withFrameNanos { frameNs ->
-                if (lastTickFrameNs == 0L) {
-                    lastTickFrameNs = frameNs
-                    return@withFrameNanos
-                }
-                val deltaNs = frameNs - lastTickFrameNs
-                if (deltaNs < VIRTUAL_ROAD_FRAME_INTERVAL_NS) {
-                    return@withFrameNanos
-                }
-                val dtSec = (deltaNs / 1_000_000_000f).coerceAtMost(0.1f)
-                lastTickFrameNs = frameNs
+    DisposableEffect(activeClock, isVirtualRoadTicking, canAnimate) {
+        if (!isVirtualRoadTicking || !canAnimate) {
+            return@DisposableEffect onDispose {}
+        }
+        val unregister = activeClock.registerListener { frameNs, deltaNs ->
+            val dtSec = (deltaNs / 1_000_000_000f).coerceIn(0f, 0.1f)
+            val spd = currentSpeedKmh
 
-                val spd = currentSpeedKmh
+            if (currentWeatherActive) {
+                val steer = currentSteerDeg
 
-                if (currentWeatherActive) {
-                    val steer = currentSteerDeg
-
-                    if (currentEffectiveIsSnow) {
-                        val speedMultiplier = when {
-                            spd <= 0f -> 0.15f
-                            spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
-                            spd <= 150f -> 1.0f + ((spd - 100f) / 50f) * 0.5f
-                            else -> 1.5f
-                        }
-                        // Turning left (steer < 0) -> drift right (steerDrift > 0)
-                        val steerDrift = (-steer * 0.0006f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
-
-                        snowflakes.forEach { flake ->
-                            flake.y += flake.speed * speedMultiplier * dtSec
-                            flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
-                            if (flake.y > 0.5f) {
-                                flake.y = 0f
-                                flake.x = kotlin.random.Random.nextFloat()
-                            }
-                            if (flake.x < 0f) flake.x += 1f
-                            if (flake.x > 1f) flake.x -= 1f
-                        }
+                if (currentEffectiveIsSnow) {
+                    val speedMultiplier = when {
+                        spd <= 0f -> 0.15f
+                        spd <= 100f -> 0.15f + (spd / 100f) * 0.85f
+                        spd <= 150f -> 1.0f + ((spd - 100f) / 50f) * 0.5f
+                        else -> 1.5f
                     }
+                    // Turning left (steer < 0) -> drift right (steerDrift > 0)
+                    val steerDrift = (-steer * 0.0006f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
 
-                    if (currentEffectiveIsRain) {
-                        val speedMultiplier = when {
-                            spd <= 0f -> 0.45f
-                            spd <= 100f -> 0.45f + (spd / 100f) * 0.95f
-                            else -> 1.4f + ((spd - 100f) / 100f) * 0.6f
+                    snowflakes.forEach { flake ->
+                        flake.y += flake.speed * speedMultiplier * dtSec
+                        flake.x += (steerDrift + kotlin.math.sin(frameNs / 300_000_000f * flake.driftFreq + flake.phase) * flake.driftAmplitude) * dtSec
+                        if (flake.y > 0.5f) {
+                            flake.y = 0f
+                            flake.x = kotlin.random.Random.nextFloat()
                         }
-                        val steerDrift = (-steer * 0.0010f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
-
-                        raindrops.forEach { drop ->
-                            drop.y += drop.speed * speedMultiplier * dtSec
-                            drop.x += steerDrift * dtSec
-                            if (drop.y > 0.55f) {
-                                drop.y = 0f
-                                drop.x = kotlin.random.Random.nextFloat()
-                            }
-                            if (drop.x < 0f) drop.x += 1f
-                            if (drop.x > 1f) drop.x -= 1f
-                        }
+                        if (flake.x < 0f) flake.x += 1f
+                        if (flake.x > 1f) flake.x -= 1f
                     }
-
-                    weatherPhaseState.floatValue += dtSec
                 }
 
-                if (currentRoadAnimating) {
-                    val current = roadPhaseState.floatValue
-                    roadPhaseState.floatValue = (current + spd * 1.8f * dtSec) % DASH_SPACING
+                if (currentEffectiveIsRain) {
+                    val speedMultiplier = when {
+                        spd <= 0f -> 0.45f
+                        spd <= 100f -> 0.45f + (spd / 100f) * 0.95f
+                        else -> 1.4f + ((spd - 100f) / 100f) * 0.6f
+                    }
+                    val steerDrift = (-steer * 0.0010f) * (spd.coerceAtLeast(5f) / 50f + 0.4f)
+
+                    raindrops.forEach { drop ->
+                        drop.y += drop.speed * speedMultiplier * dtSec
+                        drop.x += steerDrift * dtSec
+                        if (drop.y > 0.55f) {
+                            drop.y = 0f
+                            drop.x = kotlin.random.Random.nextFloat()
+                        }
+                        if (drop.x < 0f) drop.x += 1f
+                        if (drop.x > 1f) drop.x -= 1f
+                    }
                 }
+
+                weatherPhaseState.floatValue += dtSec
+            }
+
+            if (currentRoadAnimating) {
+                val current = roadPhaseState.floatValue
+                roadPhaseState.floatValue = (current + spd * 1.8f * dtSec) % DASH_SPACING
             }
         }
+        onDispose { unregister() }
     }
 
     val density = LocalDensity.current.density
@@ -540,7 +532,13 @@ fun LauncherVirtualRoad(
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = driveBlend },
+            .then(
+                if (driveBlend < 0.999f) {
+                    Modifier.graphicsLayer { alpha = driveBlend }
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         val currentWeatherPhase = weatherPhaseState.floatValue
         currentWeatherPhase.let {}

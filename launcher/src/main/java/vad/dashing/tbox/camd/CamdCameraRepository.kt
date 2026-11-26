@@ -167,7 +167,9 @@ object CamdCameraRepository {
         else -> false
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + vad.dashing.tbox.ui.launcher.LauncherCpuAffinity.lightPollersDispatcher,
+    )
 
     private val _status = MutableStateFlow<CamdConnectionStatus>(CamdConnectionStatus.NotInstalled)
     val status: StateFlow<CamdConnectionStatus> = _status.asStateFlow()

@@ -396,7 +396,14 @@ object Android10VhalRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val stateApplyDispatcher = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "vhal-state-apply").apply { isDaemon = true }
+        Thread(
+            {
+                vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
+                    .applyOptionalServiceBackgroundAffinityOnCurrentThread("vhal-state-apply")
+                runnable.run()
+            },
+            "vhal-state-apply",
+        ).apply { isDaemon = true }
     }.asCoroutineDispatcher()
     private val debouncedClearSourceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val pendingDebouncedClearJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()

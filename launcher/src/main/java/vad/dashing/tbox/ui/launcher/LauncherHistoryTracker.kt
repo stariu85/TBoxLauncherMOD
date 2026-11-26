@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -48,7 +47,7 @@ object LauncherHistoryTracker {
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+    private val persistScope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.lightPollersDispatcher.limitedParallelism(1))
 
     @Volatile
     private var inMemoryHistory: MutableList<LaunchedTarget>? = null

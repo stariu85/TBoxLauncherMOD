@@ -1,16 +1,15 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -22,14 +21,39 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import vad.dashing.tbox.LauncherWindowState
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+
+internal const val PDC_CLOCK_TICK_DIVISOR = 2 // ~15 FPS, phase-locked to every 2nd 30 FPS road tick
+internal const val PDC_PULSE_HALF_PERIOD_MS = 380f
+internal const val PDC_STANDBY_JITTER_PERIOD_MS = 1_100f
+// LCM(760, 1100) = 41_800 ms so wrapping elapsed time preserves both waveforms seamlessly.
+internal const val PDC_ANIM_WRAP_PERIOD_MS = 41_800f
+
+internal fun computePdcPulseValue(elapsedMs: Float): Float {
+    val fullPeriod = PDC_PULSE_HALF_PERIOD_MS * 2f
+    val mod = ((elapsedMs % fullPeriod) + fullPeriod) % fullPeriod
+    val linearFraction = if (mod <= PDC_PULSE_HALF_PERIOD_MS) {
+        mod / PDC_PULSE_HALF_PERIOD_MS
+    } else {
+        (fullPeriod - mod) / PDC_PULSE_HALF_PERIOD_MS
+    }
+    return 0.6f + 0.4f * FastOutSlowInEasing.transform(linearFraction.coerceIn(0f, 1f))
+}
+
+internal fun computePdcStandbyJitterPhase(elapsedMs: Float): Float {
+    val mod = ((elapsedMs % PDC_STANDBY_JITTER_PERIOD_MS) + PDC_STANDBY_JITTER_PERIOD_MS) % PDC_STANDBY_JITTER_PERIOD_MS
+    return (mod / PDC_STANDBY_JITTER_PERIOD_MS) * (2f * Math.PI).toFloat()
+}
 
 /**
  * Projected ground-plane PDC rings: body center plus ring polylines (inner→outer).
@@ -70,6 +94,9 @@ fun hasPhysicalPdcObstacle(pdc: LauncherPdcZones): Boolean =
  * and behind the car model. In standby mode, the arcs sit at 82.5dp from the car model bumper.
  * When an obstacle is detected, an elastic smoothstep curve bends the arc
  * inward towards the 3D car model body down to 5dp at 1cm, without dragging adjacent clear sections.
+ *
+ * Driven by [syncedClock] with [PDC_CLOCK_TICK_DIVISOR] (~15 FPS) so PDC ticks on
+ * every 2nd frame of [LauncherVirtualRoad] on the exact same VSYNC without staggering.
  */
 @Composable
 fun LauncherPdcOverlay(
@@ -79,6 +106,7 @@ fun LauncherPdcOverlay(
     pasOn: Boolean = false,
     @Suppress("UNUSED_PARAMETER") topView: Boolean = false,
     modifier: Modifier = Modifier,
+    syncedClock: LauncherSynced30FpsClock? = null,
 ) {
     val context = LocalContext.current
     val pdcModeRevision by LauncherAppConfigStore.pdcVisualModeRevisionFlow
@@ -100,29 +128,47 @@ fun LauncherPdcOverlay(
 
     if (!showOverlay && overlayAlphaState.value <= 0.001f) return
 
-    val infiniteTransition = rememberInfiniteTransition(label = "pdcAnim")
-    val pulseState = infiniteTransition.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(380), RepeatMode.Reverse),
-        label = "pdcPulseValue",
-    )
-
-    val standbyJitterState = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "standbyJitterValue",
-    )
-
     var lastValidFrame by remember { mutableStateOf<LauncherPdcRingFrame?>(null) }
     if (rings != null) {
         lastValidFrame = rings
     }
     val effectiveFrame = rings ?: lastValidFrame
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isLifecycleStarted by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            isLifecycleStarted = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val canAnimate = isLifecycleStarted && !hiddenForExternalApp
+    val needsPdcAnimation = when (visualMode) {
+        PDC_VISUAL_ARCS -> true
+        PDC_VISUAL_CLASSIC -> pdc.hasAny && effectiveFrame != null
+        else -> false
+    }
+    val shouldTickPdc = canAnimate && needsPdcAnimation
+    val activeClock = rememberSynced30FpsClock(syncedClock)
+    val pdcAnimElapsedMsState = remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(activeClock, shouldTickPdc) {
+        if (!shouldTickPdc) {
+            return@DisposableEffect onDispose {}
+        }
+        val unregister = activeClock.registerListener(tickDivisor = PDC_CLOCK_TICK_DIVISOR) { _, deltaNs ->
+            val dtMs = (deltaNs / 1_000_000f).coerceIn(0f, 150f)
+            pdcAnimElapsedMsState.floatValue =
+                (pdcAnimElapsedMsState.floatValue + dtMs) % PDC_ANIM_WRAP_PERIOD_MS
+        }
+        onDispose { unregister() }
+    }
+
     val cachedArcGeometry = remember(effectiveFrame) {
         effectiveFrame?.let { frame ->
             val ring0 = frame.rings.firstOrNull() ?: return@let null
@@ -153,12 +199,13 @@ fun LauncherPdcOverlay(
     val reusablePath = remember { Path() }
 
     Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .graphicsLayer { alpha = overlayAlphaState.value },
+        modifier = modifier.fillMaxSize(),
     ) {
-        val pulse = pulseState.value
-        val standbyJitter = standbyJitterState.value
+        val overlayAlpha = overlayAlphaState.value.coerceIn(0f, 1f)
+        if (overlayAlpha <= 0.001f) return@Canvas
+        val elapsedMs = pdcAnimElapsedMsState.floatValue
+        val pulse = computePdcPulseValue(elapsedMs)
+        val standbyJitter = computePdcStandbyJitterPhase(elapsedMs)
         when (visualMode) {
             PDC_VISUAL_ARCS -> {
                 drawBendingPdcArcs(
@@ -167,6 +214,7 @@ fun LauncherPdcOverlay(
                     cachedGeometry = cachedArcGeometry,
                     standbyJitter = standbyJitter,
                     pulse = pulse,
+                    overlayAlpha = overlayAlpha,
                 )
             }
             PDC_VISUAL_CLASSIC -> {
@@ -176,6 +224,7 @@ fun LauncherPdcOverlay(
                         frame = effectiveFrame,
                         driving = driving,
                         pulse = pulse,
+                        overlayAlpha = overlayAlpha,
                         reusablePath = reusablePath,
                     )
                 }
@@ -261,11 +310,12 @@ private fun computeArcColor(
     p: Float,
     lineIdx: Int,
     pulse: Float,
+    overlayAlpha: Float,
 ): Color {
     val baseAlpha = if (lineIdx == 0) 0.70f else 0.45f
 
     if (p <= 0.08f) {
-        return Color(0xFF38BDF8).copy(alpha = baseAlpha)
+        return Color(0xFF38BDF8).copy(alpha = (baseAlpha * overlayAlpha).coerceIn(0f, 1f))
     }
 
     val pEffective = ((p - 0.08f) / 0.92f).coerceIn(0f, 1f)
@@ -287,7 +337,7 @@ private fun computeArcColor(
         (baseAlpha + pEffective * 0.25f).coerceIn(0f, 1f)
     }
 
-    return blendedColor.copy(alpha = alpha)
+    return blendedColor.copy(alpha = (alpha * overlayAlpha).coerceIn(0f, 1f))
 }
 
 private fun DrawScope.computeArcPoint(
@@ -335,6 +385,7 @@ private fun DrawScope.drawBendingPdcArcs(
     cachedGeometry: CachedPdcArcGeometry?,
     standbyJitter: Float,
     pulse: Float,
+    overlayAlpha: Float,
 ) {
     val gap = 3.dp.toPx()
     val strokeWidth = 2.0.dp.toPx()
@@ -393,7 +444,7 @@ private fun DrawScope.drawBendingPdcArcs(
                         // Circular midpoint avoids wrap-around bug across 356° -> 0° at nose center.
                         val midTheta = circularMidAngleDeg(thetaA, thetaB)
                         val pMid = proximityAtAngle(midTheta, channels, pdc, channelAngles)
-                        val segmentColor = computeArcColor(pMid, lineIdx, pulse)
+                        val segmentColor = computeArcColor(pMid, lineIdx, pulse, overlayAlpha)
 
                         drawLine(
                             color = segmentColor,
@@ -411,6 +462,7 @@ private fun DrawScope.drawBendingPdcArcs(
                     pdc = pdc,
                     standbyJitter = standbyJitter,
                     pulse = pulse,
+                    overlayAlpha = overlayAlpha,
                     gapPx = gap,
                     strokeWidth = strokeWidth,
                     maxBendPx = maxBendPx,
@@ -422,7 +474,7 @@ private fun DrawScope.drawBendingPdcArcs(
         drawBumperGroup(cachedGeometry.frontPts, FRONT_CHANNELS, cachedGeometry.frontBumperRadius, isFront = true)
         drawBumperGroup(cachedGeometry.rearPts, REAR_CHANNELS, cachedGeometry.rearBumperRadius, isFront = false)
     } else {
-        drawFallbackBendingArcs(pdc, standbyJitter, pulse, gap, strokeWidth, maxBendPx, maxJitter)
+        drawFallbackBendingArcs(pdc, standbyJitter, pulse, overlayAlpha, gap, strokeWidth, maxBendPx, maxJitter)
     }
 }
 
@@ -431,6 +483,7 @@ private fun DrawScope.drawFallbackSingleBumperArc(
     pdc: LauncherPdcZones,
     standbyJitter: Float,
     pulse: Float,
+    overlayAlpha: Float,
     gapPx: Float,
     strokeWidth: Float,
     maxBendPx: Float,
@@ -488,7 +541,7 @@ private fun DrawScope.drawFallbackSingleBumperArc(
             val posB = if (isFront) Offset(cx + sin(angleRadB) * rB, cy - cos(angleRadB) * rB) else Offset(cx + sin(angleRadB) * rB, cy + cos(angleRadB) * rB)
 
             val pMid = (pA + pB) / 2f
-            val color = computeArcColor(pMid, lineIdx, pulse)
+            val color = computeArcColor(pMid, lineIdx, pulse, overlayAlpha)
 
             drawLine(color = color, start = posA, end = posB, strokeWidth = strokeWidth, cap = StrokeCap.Round)
         }
@@ -499,13 +552,14 @@ private fun DrawScope.drawFallbackBendingArcs(
     pdc: LauncherPdcZones,
     standbyJitter: Float,
     pulse: Float,
+    overlayAlpha: Float,
     gapPx: Float,
     strokeWidth: Float,
     maxBendPx: Float,
     maxJitter: Float,
 ) {
-    drawFallbackSingleBumperArc(true, pdc, standbyJitter, pulse, gapPx, strokeWidth, maxBendPx, maxJitter)
-    drawFallbackSingleBumperArc(false, pdc, standbyJitter, pulse, gapPx, strokeWidth, maxBendPx, maxJitter)
+    drawFallbackSingleBumperArc(true, pdc, standbyJitter, pulse, overlayAlpha, gapPx, strokeWidth, maxBendPx, maxJitter)
+    drawFallbackSingleBumperArc(false, pdc, standbyJitter, pulse, overlayAlpha, gapPx, strokeWidth, maxBendPx, maxJitter)
 }
 
 private class PdcSeg(
@@ -519,6 +573,7 @@ private fun DrawScope.drawPdcBands(
     frame: LauncherPdcRingFrame,
     driving: Boolean,
     pulse: Float,
+    overlayAlpha: Float,
     reusablePath: Path,
 ) {
     fun segsFor(channels: List<LauncherPdcChannel>, pxPerMeter: Float): List<PdcSeg> =
@@ -540,7 +595,7 @@ private fun DrawScope.drawPdcBands(
             val prevGap = if (i > 0) angularDiffDeg(seg.angleDeg, segs[i - 1].angleDeg) else 40f
             val nextGap = if (i < segs.lastIndex) angularDiffDeg(segs[i + 1].angleDeg, seg.angleDeg) else 40f
             val halfSpan = (minOf(prevGap, nextGap) / 2f - 0.75f).coerceIn(4f, maxHalfSpan)
-            drawPdcSegment(frame, seg, seg.angleDeg - halfSpan, halfSpan * 2f, driving, pulse, reusablePath)
+            drawPdcSegment(frame, seg, seg.angleDeg - halfSpan, halfSpan * 2f, driving, pulse, overlayAlpha, reusablePath)
         }
     }
 
@@ -557,6 +612,7 @@ private fun DrawScope.drawPdcSegment(
     sweep: Float,
     driving: Boolean,
     pulse: Float,
+    overlayAlpha: Float,
     reusablePath: Path,
     extraRadialBoost: Float? = null,
     forceAllRings: Boolean = false,
@@ -591,7 +647,7 @@ private fun DrawScope.drawPdcSegment(
             val y = frame.center.y + (pt.y - frame.center.y) * radialBoost
             if (index == 0) reusablePath.moveTo(x, y) else reusablePath.lineTo(x, y)
         }
-        val alpha = (1f - ring * 0.16f) * alphaScale
+        val alpha = ((1f - ring * 0.16f) * alphaScale * overlayAlpha).coerceIn(0f, 1f)
         drawPath(
             path = reusablePath,
             color = color.copy(alpha = alpha),

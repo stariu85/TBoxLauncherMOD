@@ -690,6 +690,8 @@ object LauncherBackupManager {
                 "top_bar_left_indicators_visible", "top_bar_indicators_border_enabled",
                 "media_mini_player_visible", "show_player_name_in_widget", "enable_media_text_animation",
                 "disable_media_card_cover_color", "exp_pin_3d_render_cpu45", "exp_pin_can_bus_cpu45",
+                "exp_pin_render_thread_always_cpu05", "exp_pin_render_thread_smart_cpu05",
+                "exp_pin_service_bg_threads_cpu05", "exp_pin_light_pollers_cpu05",
                 "nav_bg_minimap_hide_on_acc",
                 "floating_home_visible", "camera_animation_enabled", "trunk_long_press_enabled",
                 "edge_gestures_enabled", "nav_buttons_visible", "climate_controls_visible",

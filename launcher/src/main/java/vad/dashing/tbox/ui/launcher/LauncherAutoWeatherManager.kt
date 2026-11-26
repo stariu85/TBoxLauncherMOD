@@ -2,7 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -32,7 +31,7 @@ object LauncherAutoWeatherManager {
     private const val IDLE_ENABLED_TICK_MS = 2_000L
     private const val DISABLED_TICK_MS = 5_000L
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.lightPollersDispatcher)
     private val stateLock = Any()
     private val wakeChannel = Channel<Unit>(Channel.CONFLATED)
     private var job: Job? = null

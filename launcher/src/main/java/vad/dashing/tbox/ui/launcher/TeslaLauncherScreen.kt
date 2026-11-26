@@ -38,11 +38,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import vad.dashing.tbox.AppDataManager
 import vad.dashing.tbox.CanDataViewModel
+import vad.dashing.tbox.LauncherVehicleSettingsActivity
+import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.SettingsViewModel
@@ -153,6 +156,7 @@ fun TeslaLauncherScreen(
     // Standalone launcher is dark-first; TBox theme channel is idle without the proxy.
     ProvideUiClickSounds {
         TboxAppTheme(theme = 2) {
+        LauncherRenderThreadAffinityEffect()
         BackHandler(LauncherEggRace.active) {
             LauncherEggRace.stop()
         }
@@ -401,3 +405,85 @@ fun TeslaLauncherScreen(
     }
 }
 }
+
+@Composable
+private fun LauncherRenderThreadAffinityEffect() {
+    val context = LocalContext.current
+    val firstDrawComplete by LauncherHomeActivityHolder.firstDrawFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val renderThreadRevision by LauncherAppConfigStore.experimentalPinRenderThreadRevisionFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val mode = remember(context, renderThreadRevision) {
+        LauncherCpuAffinity.resolveRenderThreadAffinityMode(
+            alwaysEnabled = LauncherAppConfigStore.experimentalPinRenderThreadAlwaysCpu05(context),
+            smartEnabled = LauncherAppConfigStore.experimentalPinRenderThreadSmartCpu05(context),
+        )
+    }
+
+    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val activeAppPackage by LauncherActiveAppTracker.activeAppPackageFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isActiveAppFullscreen by LauncherActiveAppTracker.isFullscreenFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isWindowFocused by LauncherHomeActivityHolder.windowFocusedFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isTopShadeOpen by LauncherCar3DModelTrigger.topShadeOpen
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open
+    val isVehicleSettingsOverlayShowing by LauncherVehicleSettingsOverlayWindow.isShowingFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isVehicleSettingsActivityOpen by LauncherVehicleSettingsActivity.isOpenFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isAboutOverlayShowing by LauncherAboutOverlayWindow.isShowingFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+    val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow
+        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
+
+    val isLauncherOverlayOpen = isTopShadeOpen ||
+        isVehicleSettingsOpen ||
+        isVehicleSettingsOverlayShowing ||
+        isVehicleSettingsActivityOpen ||
+        isAboutOverlayShowing ||
+        isQuickSettingsOpen
+
+    val isExternalAppOpen = LauncherCpuAffinity.isExternalAppForegroundForRenderThread(
+        hiddenForExternalApp = hiddenForExternalApp,
+        activeAppPackage = activeAppPackage,
+        isActiveAppFullscreen = isActiveAppFullscreen,
+        isWindowFocused = isWindowFocused,
+        isLauncherOverlayOpen = isLauncherOverlayOpen,
+    )
+
+    val targetRenderPinned = LauncherCpuAffinity.shouldPinRenderThreadToLittleCores(
+        mode = mode,
+        isExternalAppOpen = isExternalAppOpen,
+    )
+    val targetArtPinned = LauncherCpuAffinity.shouldPinArtRuntimeToLittleCores(
+        mode = mode,
+        isExternalAppOpen = isExternalAppOpen,
+    )
+
+    var hasEverPinnedRender by remember { mutableStateOf(false) }
+    LaunchedEffect(firstDrawComplete, targetRenderPinned) {
+        if (!firstDrawComplete) return@LaunchedEffect
+        if (targetRenderPinned) {
+            hasEverPinnedRender = true
+            LauncherCpuAffinity.applyRenderThreadAffinityAsync(pinToLittleCores = true)
+        } else if (hasEverPinnedRender) {
+            LauncherCpuAffinity.applyRenderThreadAffinityAsync(pinToLittleCores = false)
+        }
+    }
+
+    var hasEverPinnedArt by remember { mutableStateOf(false) }
+    LaunchedEffect(firstDrawComplete, targetArtPinned) {
+        if (!firstDrawComplete) return@LaunchedEffect
+        if (targetArtPinned) {
+            hasEverPinnedArt = true
+            LauncherCpuAffinity.applyArtRuntimeAffinityAsync(pinToLittleCores = true)
+        } else if (hasEverPinnedArt) {
+            LauncherCpuAffinity.applyArtRuntimeAffinityAsync(pinToLittleCores = false)
+        }
+    }
+}
+

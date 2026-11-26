@@ -3,7 +3,6 @@ package vad.dashing.tbox.tbm
 import android.content.Context
 import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -37,7 +36,9 @@ object TbmRepositoryProvider {
 class TbmRepository(
     private val appContext: Context,
     private val settingsManager: SettingsManager,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val scope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + vad.dashing.tbox.ui.launcher.LauncherCpuAffinity.lightPollersDispatcher,
+    ),
 ) {
     @Volatile
     private var currentPort: Int = 8765

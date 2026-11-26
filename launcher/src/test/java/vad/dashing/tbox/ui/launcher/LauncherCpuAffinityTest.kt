@@ -87,8 +87,8 @@ class LauncherCpuAffinityTest {
     }
 
     @Test
-    fun resolveTargetCpuHexMask_returnsCpu45OrAllCores() {
-        assertEquals("30", LauncherCpuAffinity.resolveTargetCpuHexMask(pinToCpu45 = true, availableProcessors = 8))
+    fun resolveTargetCpuHexMask_returnsLittleClusterCpu05OrAllCores() {
+        assertEquals("3f", LauncherCpuAffinity.resolveTargetCpuHexMask(pinToCpu45 = true, availableProcessors = 8))
         assertEquals("ff", LauncherCpuAffinity.resolveTargetCpuHexMask(pinToCpu45 = false, availableProcessors = 8))
         assertEquals("f", LauncherCpuAffinity.resolveTargetCpuHexMask(pinToCpu45 = false, availableProcessors = 4))
     }
@@ -110,5 +110,172 @@ class LauncherCpuAffinityTest {
         assertFalse(LauncherCpuAffinity.isCanBusThreadName("FEngine::loop"))
         assertFalse(LauncherCpuAffinity.isCanBusThreadName("RenderThread"))
         assertFalse(LauncherCpuAffinity.isCanBusThreadName("main"))
+
+        assertTrue(LauncherCpuAffinity.isRenderThreadName("RenderThread"))
+        assertFalse(LauncherCpuAffinity.isRenderThreadName("main"))
+        assertFalse(LauncherCpuAffinity.isRenderThreadName("FEngine::loop"))
+
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("HeapTaskDaemon"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("Jit thread pool"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("Jit thread pool worker thread 0"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("FinalizerDaemon"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("FinalizerWatchd"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("FinalizerWatchdogDaemon"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("ReferenceQueueD"))
+        assertTrue(LauncherCpuAffinity.isArtRuntimeThreadName("ReferenceQueueDaemon"))
+        assertFalse(LauncherCpuAffinity.isArtRuntimeThreadName("RenderThread"))
+        assertFalse(LauncherCpuAffinity.isArtRuntimeThreadName("g.tbox.launcher"))
+
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-logger"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("tbox-diag-log"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("launcher-tbox-p"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("launcher-tbox-packets"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("vhal-state-appl"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("vhal-state-apply"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-shell-drain"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-affinity-ct"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-affinity-ctl"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-screencap"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("LiveWallpaperRe"))
+        assertTrue(LauncherCpuAffinity.isServiceBackgroundThreadName("LiveWallpaperRelease"))
+        assertFalse(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-can-poll-1"))
+        assertFalse(LauncherCpuAffinity.isServiceBackgroundThreadName("dcl-poll-1"))
+
+        assertTrue(LauncherCpuAffinity.isLightPollerThreadName("dcl-poll-1"))
+        assertTrue(LauncherCpuAffinity.isLightPollerThreadName("dcl-poll-8"))
+        assertFalse(LauncherCpuAffinity.isLightPollerThreadName("dcl-can-poll-1"))
+        assertFalse(LauncherCpuAffinity.isLightPollerThreadName("dcl-logger"))
+    }
+
+    @Test
+    fun renderThreadAffinityPolicy_handlesOffAlwaysAndSmartModes() {
+        // Mutual exclusion resolution (always takes precedence if both somehow set)
+        assertEquals(
+            LauncherCpuAffinity.RenderThreadAffinityMode.OFF,
+            LauncherCpuAffinity.resolveRenderThreadAffinityMode(alwaysEnabled = false, smartEnabled = false),
+        )
+        assertEquals(
+            LauncherCpuAffinity.RenderThreadAffinityMode.ALWAYS_LITTLE,
+            LauncherCpuAffinity.resolveRenderThreadAffinityMode(alwaysEnabled = true, smartEnabled = false),
+        )
+        assertEquals(
+            LauncherCpuAffinity.RenderThreadAffinityMode.ALWAYS_LITTLE,
+            LauncherCpuAffinity.resolveRenderThreadAffinityMode(alwaysEnabled = true, smartEnabled = true),
+        )
+        assertEquals(
+            LauncherCpuAffinity.RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP,
+            LauncherCpuAffinity.resolveRenderThreadAffinityMode(alwaysEnabled = false, smartEnabled = true),
+        )
+
+        // Pinning decision per mode (RenderThread)
+        assertFalse(
+            LauncherCpuAffinity.shouldPinRenderThreadToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.OFF,
+                isExternalAppOpen = true,
+            ),
+        )
+        assertTrue(
+            LauncherCpuAffinity.shouldPinRenderThreadToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.ALWAYS_LITTLE,
+                isExternalAppOpen = false,
+            ),
+        )
+        assertTrue(
+            LauncherCpuAffinity.shouldPinRenderThreadToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.ALWAYS_LITTLE,
+                isExternalAppOpen = true,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.shouldPinRenderThreadToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP,
+                isExternalAppOpen = false,
+            ),
+        )
+        assertTrue(
+            LauncherCpuAffinity.shouldPinRenderThreadToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP,
+                isExternalAppOpen = true,
+            ),
+        )
+
+        // Pinning decision per mode (ART Runtime — active ONLY in smart mode when external app is open)
+        assertFalse(
+            LauncherCpuAffinity.shouldPinArtRuntimeToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.OFF,
+                isExternalAppOpen = true,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.shouldPinArtRuntimeToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.ALWAYS_LITTLE,
+                isExternalAppOpen = false,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.shouldPinArtRuntimeToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.ALWAYS_LITTLE,
+                isExternalAppOpen = true,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.shouldPinArtRuntimeToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP,
+                isExternalAppOpen = false,
+            ),
+        )
+        assertTrue(
+            LauncherCpuAffinity.shouldPinArtRuntimeToLittleCores(
+                LauncherCpuAffinity.RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP,
+                isExternalAppOpen = true,
+            ),
+        )
+
+        // Smart external-app detection restores big cores when launcher overlays/settings are open
+        assertTrue(
+            LauncherCpuAffinity.isExternalAppForegroundForRenderThread(
+                hiddenForExternalApp = false,
+                activeAppPackage = "ru.yandex.yandexnavi",
+                isActiveAppFullscreen = false,
+                isWindowFocused = false,
+                isLauncherOverlayOpen = false,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.isExternalAppForegroundForRenderThread(
+                hiddenForExternalApp = false,
+                activeAppPackage = "ru.yandex.yandexnavi",
+                isActiveAppFullscreen = false,
+                isWindowFocused = false,
+                isLauncherOverlayOpen = true,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.isExternalAppForegroundForRenderThread(
+                hiddenForExternalApp = false,
+                activeAppPackage = null,
+                isActiveAppFullscreen = false,
+                isWindowFocused = true,
+                isLauncherOverlayOpen = false,
+            ),
+        )
+        assertFalse(
+            LauncherCpuAffinity.isExternalAppForegroundForRenderThread(
+                hiddenForExternalApp = false,
+                activeAppPackage = "ru.yandex.yandexnavi",
+                isActiveAppFullscreen = true,
+                isWindowFocused = true,
+                isLauncherOverlayOpen = false,
+            ),
+        )
+        assertTrue(
+            LauncherCpuAffinity.isExternalAppForegroundForRenderThread(
+                hiddenForExternalApp = true,
+                activeAppPackage = null,
+                isActiveAppFullscreen = false,
+                isWindowFocused = false,
+                isLauncherOverlayOpen = false,
+            ),
+        )
     }
 }

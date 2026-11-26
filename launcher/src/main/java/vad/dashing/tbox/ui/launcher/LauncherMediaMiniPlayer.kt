@@ -315,7 +315,7 @@ fun LauncherMediaMiniPlayer(
             value = baseCardColor
             return@produceState
         }
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        value = kotlinx.coroutines.withContext(LauncherCpuAffinity.lightPollersDispatcher) {
             runCatching {
                 val palette = Palette.from(albumArtBitmap.asAndroidBitmap()).generate()
                 if (isDark) {

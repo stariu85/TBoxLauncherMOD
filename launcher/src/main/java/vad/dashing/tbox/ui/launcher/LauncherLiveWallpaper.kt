@@ -341,7 +341,13 @@ internal fun extractVideoPosterBitmap(file: File): ImageBitmap? {
 }
 
 private val videoReleaseExecutor = Executors.newSingleThreadExecutor { runnable ->
-    Thread(runnable, "LiveWallpaperRelease").apply { isDaemon = true }
+    Thread(
+        {
+            LauncherCpuAffinity.applyOptionalServiceBackgroundAffinityOnCurrentThread("LiveWallpaperRelease")
+            runnable.run()
+        },
+        "LiveWallpaperRelease",
+    ).apply { isDaemon = true }
 }
 
 @Volatile

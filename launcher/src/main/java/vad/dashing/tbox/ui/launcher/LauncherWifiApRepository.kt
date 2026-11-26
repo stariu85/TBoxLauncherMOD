@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +42,7 @@ internal object LauncherWifiApRepository {
     private val SEND_TO_CAN_REGEX = Regex("SSID: ([^,]+), PASSWORD: (\\S+)")
     private val GET_SOFT_AP_REGEX = Regex("getSoftAp ssid: ([^,]+), strPasd: (\\S+)")
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.lightPollersDispatcher)
     private val readMutex = Mutex()
     private val pollStarted = AtomicBoolean(false)
     private val cacheRestored = AtomicBoolean(false)

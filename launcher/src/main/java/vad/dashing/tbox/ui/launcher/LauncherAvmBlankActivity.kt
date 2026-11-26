@@ -37,7 +37,13 @@ object LauncherHomeSnapshotHolder {
 
     private val snapshotScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val screencapExecutor = Executors.newCachedThreadPool { r ->
-        Thread(r, "dcl-screencap").apply { isDaemon = true }
+        Thread(
+            {
+                LauncherCpuAffinity.applyOptionalServiceBackgroundAffinityOnCurrentThread("dcl-screencap")
+                r.run()
+            },
+            "dcl-screencap",
+        ).apply { isDaemon = true }
     }
 
     @Volatile

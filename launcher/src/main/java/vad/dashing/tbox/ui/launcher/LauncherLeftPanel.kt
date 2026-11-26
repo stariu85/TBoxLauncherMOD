@@ -82,6 +82,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -747,6 +748,9 @@ fun LauncherLeftPanel(
         }
     }
 
+    val synced30FpsClock = remember { LauncherSynced30FpsClock() }
+    LauncherSynced30FpsClockHost(synced30FpsClock)
+
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -775,6 +779,7 @@ fun LauncherLeftPanel(
                 steerPreview = steerPreview,
                 inDriveGear = showDriveView,
                 isSnow = isSnow,
+                syncedClock = synced30FpsClock,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -991,7 +996,7 @@ fun LauncherLeftPanel(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { translationY = carOffsetDriveY.toPx() }
+                .offset { IntOffset(0, carOffsetDriveY.roundToPx()) }
                 .padding(top = 52.dp, bottom = 60.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -1030,7 +1035,13 @@ fun LauncherLeftPanel(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer { alpha = carOverlayAlpha },
+                        .then(
+                            if (carOverlayAlpha < 0.999f) {
+                                Modifier.graphicsLayer { alpha = carOverlayAlpha }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     LauncherHeadlightOverlay(
                         beams = headlightBeams,
@@ -1156,7 +1167,13 @@ fun LauncherLeftPanel(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer { alpha = carOverlayAlpha },
+                        .then(
+                            if (carOverlayAlpha < 0.999f) {
+                                Modifier.graphicsLayer { alpha = carOverlayAlpha }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     if (!bodyRigAvailable) {
                         LauncherDoorBadges(
@@ -1174,6 +1191,7 @@ fun LauncherLeftPanel(
                         driving = inDriveGear || steerPreview,
                         pasOn = pasOn,
                         topView = !showDriveView,
+                        syncedClock = synced30FpsClock,
                         modifier = Modifier.fillMaxSize(),
                     )
                     LauncherBsdOverlay(

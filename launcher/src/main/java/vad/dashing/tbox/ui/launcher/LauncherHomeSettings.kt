@@ -287,6 +287,27 @@ internal fun LauncherExpCpuAffinitySettings() {
         LauncherAppConfigStore.experimentalPinCanBusCpu45(context)
     }
 
+    val pinRenderThreadRevision by LauncherAppConfigStore.experimentalPinRenderThreadRevisionFlow
+        .collectAsStateWithLifecycle()
+    val pinRenderThreadAlwaysEnabled = remember(context, pinRenderThreadRevision) {
+        LauncherAppConfigStore.experimentalPinRenderThreadAlwaysCpu05(context)
+    }
+    val pinRenderThreadSmartEnabled = remember(context, pinRenderThreadRevision) {
+        LauncherAppConfigStore.experimentalPinRenderThreadSmartCpu05(context)
+    }
+
+    val pinServiceBgRevision by LauncherAppConfigStore.experimentalPinServiceBgThreadsCpu05RevisionFlow
+        .collectAsStateWithLifecycle()
+    val pinServiceBgEnabled = remember(context, pinServiceBgRevision) {
+        LauncherAppConfigStore.experimentalPinServiceBgThreadsCpu05(context)
+    }
+
+    val pinLightPollersRevision by LauncherAppConfigStore.experimentalPinLightPollersCpu05RevisionFlow
+        .collectAsStateWithLifecycle()
+    val pinLightPollersEnabled = remember(context, pinLightPollersRevision) {
+        LauncherAppConfigStore.experimentalPinLightPollersCpu05(context)
+    }
+
     LauncherSettingsToggleRow(
         label = stringResource(R.string.launcher_vs_exp_pin_3d_render_cpu45_title),
         active = pin3dEnabled,
@@ -313,6 +334,68 @@ internal fun LauncherExpCpuAffinitySettings() {
     )
     Text(
         text = stringResource(R.string.launcher_vs_exp_pin_can_bus_cpu45_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_pin_render_thread_always_title),
+        active = pinRenderThreadAlwaysEnabled,
+        onClick = {
+            LauncherAppConfigStore.setExperimentalPinRenderThreadAlwaysCpu05(
+                context,
+                !pinRenderThreadAlwaysEnabled,
+            )
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_pin_render_thread_always_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_pin_render_thread_smart_title),
+        active = pinRenderThreadSmartEnabled,
+        onClick = {
+            LauncherAppConfigStore.setExperimentalPinRenderThreadSmartCpu05(
+                context,
+                !pinRenderThreadSmartEnabled,
+            )
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_pin_render_thread_smart_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_pin_service_bg_threads_title),
+        active = pinServiceBgEnabled,
+        onClick = {
+            val next = !pinServiceBgEnabled
+            LauncherAppConfigStore.setExperimentalPinServiceBgThreadsCpu05(context, next)
+            LauncherCpuAffinity.setPinServiceBgThreadsToCpu05(next)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_pin_service_bg_threads_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_pin_light_pollers_title),
+        active = pinLightPollersEnabled,
+        onClick = {
+            val next = !pinLightPollersEnabled
+            LauncherAppConfigStore.setExperimentalPinLightPollersCpu05(context, next)
+            LauncherCpuAffinity.setPinLightPollersToCpu05(next)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_pin_light_pollers_desc),
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )

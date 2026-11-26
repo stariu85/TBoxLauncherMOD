@@ -8,23 +8,37 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import vad.dashing.tbox.ShellExecutor
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Dedicated low-priority background coroutine dispatchers and optional experimental CPU 4–5
- * affinity helpers for SM6150 (8-core little/big: CPU 0–5 @ 1.59 GHz, CPU 6–7 @ 1.90 GHz).
+ * Dedicated low-priority background coroutine dispatchers and optional experimental little-cluster
+ * CPU 0–5 affinity helpers for SM6150 (8-core little/big: CPU 0–5 @ 1.59 GHz, CPU 6–7 @ 1.90 GHz).
+ *
+ * Uses mask `0x3f` (all 6 little cores CPU 0–5, matching `/dev/cpuset/background/cpus = 0-5`)
+ * instead of `0x30` (CPU 4–5 only) because Qualcomm `core_ctl` dynamically isolates idle CPU 4/5
+ * (`/sys/devices/system/cpu/cpu{4,5}/isolate = 1`), causing `taskset -p 30` to fail with `EINVAL`.
+ * Mask `0x3f` always succeeds (CPU 0–3 remain unisolated), keeps workloads off big cores CPU 6–7,
+ * and allows `core_ctl` to unisolate and schedule across CPU 4–5 under load.
  *
  * - Minimap JPEG decoding & light-theme conversion always run at [Process.THREAD_PRIORITY_BACKGROUND]
- *   and are pinned to CPU 4–5 (`0x30`) when the 8-core heterogeneous topology is confirmed.
- * - Optional experimental toggles can also pin Filament 3D rendering threads (`FEngine::loop`,
- *   `JobSystem::loop`, etc.) and CAN bus polling/request threads (`dcl-can-poll-*`,
- *   `mbcan-state-apply`, vendor `can-thread`) to CPU 4–5 (`0x30`) or restore full CPU mask (`0xff`).
+ *   and are pinned to CPU 0–5 (`0x3f`) when the 8-core heterogeneous topology is confirmed.
+ * - Optional experimental toggles can also pin:
+ *   - Filament 3D rendering threads (`FEngine::loop`, `JobSystem::loop`, etc.);
+ *   - CAN bus polling/request threads (`dcl-can-poll-*`, `mbcan-state-apply`, vendor `can-thread`);
+ *   - Launcher `RenderThread` (always or smartly when an external app is foreground, together with
+ *     ART Runtime GC/JIT/finalizer threads in smart mode);
+ *   - Dedicated service background threads (`dcl-logger`, `tbox-diag-log`, `launcher-tbox-packets`,
+ *     `vhal-state-apply`, `dcl-shell-drain`, `dcl-affinity-ctl`, `dcl-screencap`, `LiveWallpaperRelease`);
+ *   - Lightweight background pollers pool (`dcl-poll-*`).
  */
 internal object LauncherCpuAffinity {
     private const val TAG = "LauncherCpuAffinity"
     internal const val EXPECTED_OCTA_CORE_COUNT = 8
-    internal const val BACKGROUND_CPU_45_HEX_MASK = "30"
+    internal const val LITTLE_CLUSTER_CPU_05_HEX_MASK = "3f"
     private const val TASKSET_TIMEOUT_MS = 1_500L
 
     @Volatile
@@ -32,6 +46,24 @@ internal object LauncherCpuAffinity {
 
     @Volatile
     private var pinCanBusToCpu45Enabled: Boolean = false
+
+    @Volatile
+    private var pinServiceBgThreadsToCpu05Enabled: Boolean = false
+
+    @Volatile
+    private var pinLightPollersToCpu05Enabled: Boolean = false
+
+    @Volatile
+    private var lastAppliedRenderThreadPinned: Boolean? = null
+
+    @Volatile
+    private var lastAppliedArtRuntimePinned: Boolean? = null
+
+    internal enum class RenderThreadAffinityMode {
+        OFF,
+        ALWAYS_LITTLE,
+        SMART_WHEN_EXTERNAL_APP,
+    }
 
     private val pinCpu45Supported: Boolean by lazy {
         val cores = Runtime.getRuntime().availableProcessors()
@@ -82,17 +114,36 @@ internal object LauncherCpuAffinity {
         createCanBusPoolDispatcher(threadCount = 2, baseName = "dcl-can-poll")
     }
 
+    /**
+     * Shared bounded pool (`dcl-poll-*`) for lightweight background pollers and non-critical
+     * background work (solar theme, auto-weather, platform audio polling, Wi-Fi AP polling,
+     * window/app trackers, history persistence, CAMD/TBM polling, media palette).
+     */
+    val lightPollersDispatcher: ExecutorCoroutineDispatcher by lazy {
+        createLightPollersPoolDispatcher(maxThreads = 8, baseName = "dcl-poll")
+    }
+
     fun syncExperimentalFlagsFromStore(context: Context) {
         val appCtx = context.applicationContext
         val pin3d = LauncherAppConfigStore.experimentalPin3dRenderCpu45(appCtx)
         val pinCan = LauncherAppConfigStore.experimentalPinCanBusCpu45(appCtx)
+        val pinServiceBg = LauncherAppConfigStore.experimentalPinServiceBgThreadsCpu05(appCtx)
+        val pinLightPollers = LauncherAppConfigStore.experimentalPinLightPollersCpu05(appCtx)
         pin3dRenderToCpu45Enabled = pin3d
         pinCanBusToCpu45Enabled = pinCan
+        pinServiceBgThreadsToCpu05Enabled = pinServiceBg
+        pinLightPollersToCpu05Enabled = pinLightPollers
         if (pin3d) {
             reapply3dRenderAffinityIfEnabledAsync()
         }
         if (pinCan) {
             reapplyCanBusAffinityIfEnabledAsync()
+        }
+        if (pinServiceBg) {
+            reapplyServiceBgThreadsAffinityIfEnabledAsync()
+        }
+        if (pinLightPollers) {
+            reapplyLightPollersAffinityIfEnabledAsync()
         }
     }
 
@@ -132,14 +183,71 @@ internal object LauncherCpuAffinity {
         )
     }
 
+    fun setPinServiceBgThreadsToCpu05(enabled: Boolean) {
+        pinServiceBgThreadsToCpu05Enabled = enabled
+        applyAffinityToProcessThreadsAsync(
+            category = "service-bg",
+            pinToCpu45 = enabled,
+            matcher = ::isServiceBackgroundThreadName,
+        )
+    }
+
+    fun reapplyServiceBgThreadsAffinityIfEnabledAsync() {
+        if (!pinServiceBgThreadsToCpu05Enabled) return
+        applyAffinityToProcessThreadsAsync(
+            category = "service-bg",
+            pinToCpu45 = true,
+            matcher = ::isServiceBackgroundThreadName,
+        )
+    }
+
+    fun setPinLightPollersToCpu05(enabled: Boolean) {
+        pinLightPollersToCpu05Enabled = enabled
+        applyAffinityToProcessThreadsAsync(
+            category = "light-pollers",
+            pinToCpu45 = enabled,
+            matcher = ::isLightPollerThreadName,
+        )
+    }
+
+    fun reapplyLightPollersAffinityIfEnabledAsync() {
+        if (!pinLightPollersToCpu05Enabled) return
+        applyAffinityToProcessThreadsAsync(
+            category = "light-pollers",
+            pinToCpu45 = true,
+            matcher = ::isLightPollerThreadName,
+        )
+    }
+
+    /**
+     * Asynchronously pins the calling service background thread to CPU 0–5 if the experimental
+     * service-background toggle is enabled. Safe to call at worker thread startup (offloaded to
+     * [affinityControlExecutor] so it never blocks thread start or recurses into [ShellExecutor]).
+     */
+    fun applyOptionalServiceBackgroundAffinityOnCurrentThread(threadName: String) {
+        if (!pinServiceBgThreadsToCpu05Enabled || !pinCpu45Supported) return
+        val tid = runCatching { Process.myTid() }.getOrDefault(-1)
+        if (tid <= 0) return
+        affinityControlExecutor.execute {
+            if (!pinServiceBgThreadsToCpu05Enabled || !pinCpu45Supported) return@execute
+            if (applyTaskset(tid, LITTLE_CLUSTER_CPU_05_HEX_MASK, "service-bg:$threadName")) {
+                Log.d(
+                    TAG,
+                    "Pinned service-bg thread $threadName (tid=$tid) to CPU 0-5 (mask=0x$LITTLE_CLUSTER_CPU_05_HEX_MASK)",
+                )
+            }
+        }
+    }
+
     internal fun parseCpuMaxFreqKhz(rawText: String?): Long? {
         val value = rawText?.trim()?.toLongOrNull() ?: return null
         return value.takeIf { it > 0L }
     }
 
     /**
-     * Pure topology guard: pins background threads to CPU 4–5 (`0x30`) ONLY on confirmed
-     * 8-core heterogeneous SoCs where CPU 4 & 5 are little cores relative to big cores CPU 6 & 7.
+     * Pure topology guard: pins background/offloaded threads to the little cluster CPU 0–5 (`0x3f`)
+     * ONLY on confirmed 8-core heterogeneous SoCs where CPU 4 & 5 are little cores relative to
+     * big cores CPU 6 & 7.
      */
     internal fun shouldPinBackgroundThreadsToCpu45(
         availableProcessors: Int,
@@ -163,10 +271,136 @@ internal object LauncherCpuAffinity {
     }
 
     internal fun resolveTargetCpuHexMask(pinToCpu45: Boolean, availableProcessors: Int): String {
-        if (pinToCpu45) return BACKGROUND_CPU_45_HEX_MASK
+        if (pinToCpu45) return LITTLE_CLUSTER_CPU_05_HEX_MASK
         val clampedCores = availableProcessors.coerceIn(1, 63)
         val fullMask = (1L shl clampedCores) - 1L
         return fullMask.toString(16)
+    }
+
+    internal fun resolveRenderThreadAffinityMode(
+        alwaysEnabled: Boolean,
+        smartEnabled: Boolean,
+    ): RenderThreadAffinityMode = when {
+        alwaysEnabled -> RenderThreadAffinityMode.ALWAYS_LITTLE
+        smartEnabled -> RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP
+        else -> RenderThreadAffinityMode.OFF
+    }
+
+    internal fun isExternalAppForegroundForRenderThread(
+        hiddenForExternalApp: Boolean,
+        activeAppPackage: String?,
+        isActiveAppFullscreen: Boolean,
+        isWindowFocused: Boolean,
+        isLauncherOverlayOpen: Boolean,
+    ): Boolean {
+        if (isLauncherOverlayOpen) return false
+        if (hiddenForExternalApp) return true
+        if (!activeAppPackage.isNullOrBlank()) {
+            val recoveredFromFullscreen = isActiveAppFullscreen && isWindowFocused
+            if (!recoveredFromFullscreen) return true
+        }
+        return false
+    }
+
+    internal fun shouldPinRenderThreadToLittleCores(
+        mode: RenderThreadAffinityMode,
+        isExternalAppOpen: Boolean,
+    ): Boolean = when (mode) {
+        RenderThreadAffinityMode.OFF -> false
+        RenderThreadAffinityMode.ALWAYS_LITTLE -> true
+        RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP -> isExternalAppOpen
+    }
+
+    internal fun shouldPinArtRuntimeToLittleCores(
+        mode: RenderThreadAffinityMode,
+        isExternalAppOpen: Boolean,
+    ): Boolean = mode == RenderThreadAffinityMode.SMART_WHEN_EXTERNAL_APP && isExternalAppOpen
+
+    internal fun isRenderThreadName(comm: String): Boolean =
+        comm.trim().equals("RenderThread", ignoreCase = true)
+
+    internal fun isArtRuntimeThreadName(comm: String): Boolean {
+        val name = comm.trim()
+        if (name.isEmpty()) return false
+        return name.startsWith("HeapTaskDaemon", ignoreCase = true) ||
+            name.startsWith("Jit thread pool", ignoreCase = true) ||
+            name.startsWith("FinalizerDaemon", ignoreCase = true) ||
+            name.startsWith("FinalizerWatchd", ignoreCase = true) ||
+            name.startsWith("ReferenceQueueD", ignoreCase = true)
+    }
+
+    fun applyRenderThreadAffinityAsync(
+        pinToLittleCores: Boolean,
+        forceReapply: Boolean = false,
+    ) {
+        affinityControlExecutor.execute {
+            if (!pinCpu45Supported) return@execute
+            if (!forceReapply && lastAppliedRenderThreadPinned == pinToLittleCores) return@execute
+            val targetMask = resolveTargetCpuHexMask(
+                pinToCpu45 = pinToLittleCores,
+                availableProcessors = Runtime.getRuntime().availableProcessors(),
+            )
+            val taskDir = File("/proc/self/task")
+            val entries = runCatching { taskDir.listFiles() }.getOrNull() ?: return@execute
+            var matched = 0
+            var succeeded = 0
+            val matchedNames = mutableListOf<String>()
+            for (entry in entries) {
+                val tid = entry.name.toIntOrNull() ?: continue
+                val comm = runCatching { File(entry, "comm").readText().trim() }.getOrNull() ?: continue
+                if (!isRenderThreadName(comm)) continue
+                matched++
+                matchedNames.add("$comm($tid)")
+                if (applyTaskset(tid, targetMask, "render-thread:$comm")) {
+                    succeeded++
+                }
+            }
+            if (matched > 0 && succeeded == matched) {
+                lastAppliedRenderThreadPinned = pinToLittleCores
+            }
+            Log.d(
+                TAG,
+                "Applied render-thread CPU affinity mask=0x$targetMask (pinLittle=$pinToLittleCores): " +
+                    "$succeeded/$matched threads updated $matchedNames",
+            )
+        }
+    }
+
+    fun applyArtRuntimeAffinityAsync(
+        pinToLittleCores: Boolean,
+        forceReapply: Boolean = false,
+    ) {
+        affinityControlExecutor.execute {
+            if (!pinCpu45Supported) return@execute
+            if (!forceReapply && lastAppliedArtRuntimePinned == pinToLittleCores) return@execute
+            val targetMask = resolveTargetCpuHexMask(
+                pinToCpu45 = pinToLittleCores,
+                availableProcessors = Runtime.getRuntime().availableProcessors(),
+            )
+            val taskDir = File("/proc/self/task")
+            val entries = runCatching { taskDir.listFiles() }.getOrNull() ?: return@execute
+            var matched = 0
+            var succeeded = 0
+            val matchedNames = mutableListOf<String>()
+            for (entry in entries) {
+                val tid = entry.name.toIntOrNull() ?: continue
+                val comm = runCatching { File(entry, "comm").readText().trim() }.getOrNull() ?: continue
+                if (!isArtRuntimeThreadName(comm)) continue
+                matched++
+                matchedNames.add("$comm($tid)")
+                if (applyTaskset(tid, targetMask, "art-runtime:$comm")) {
+                    succeeded++
+                }
+            }
+            if (matched > 0 && succeeded == matched) {
+                lastAppliedArtRuntimePinned = pinToLittleCores
+            }
+            Log.d(
+                TAG,
+                "Applied art-runtime CPU affinity mask=0x$targetMask (pinLittle=$pinToLittleCores): " +
+                    "$succeeded/$matched threads updated $matchedNames",
+            )
+        }
     }
 
     internal fun is3dRenderThreadName(comm: String): Boolean {
@@ -184,6 +418,25 @@ internal object LauncherCpuAffinity {
         return name.startsWith("dcl-can-", ignoreCase = true) ||
             name.startsWith("mbcan-", ignoreCase = true) ||
             name.equals("can-thread", ignoreCase = true)
+    }
+
+    internal fun isServiceBackgroundThreadName(comm: String): Boolean {
+        val name = comm.trim()
+        if (name.isEmpty()) return false
+        return name.startsWith("dcl-logger", ignoreCase = true) ||
+            name.startsWith("tbox-diag-log", ignoreCase = true) ||
+            name.startsWith("launcher-tbox-p", ignoreCase = true) ||
+            name.startsWith("vhal-state-appl", ignoreCase = true) ||
+            name.startsWith("dcl-shell-drain", ignoreCase = true) ||
+            name.startsWith("dcl-affinity-ct", ignoreCase = true) ||
+            name.startsWith("dcl-screencap", ignoreCase = true) ||
+            name.startsWith("LiveWallpaperRe", ignoreCase = true)
+    }
+
+    internal fun isLightPollerThreadName(comm: String): Boolean {
+        val name = comm.trim()
+        if (name.isEmpty()) return false
+        return name.startsWith("dcl-poll-", ignoreCase = true)
     }
 
     private fun readCpuMaxFreqKhz(cpuIndex: Int): Long? = runCatching {
@@ -256,16 +509,29 @@ internal object LauncherCpuAffinity {
 
         if (!pinCpu45Supported) return
         val tid = runCatching { Process.myTid() }.getOrDefault(-1)
-        if (applyTaskset(tid, BACKGROUND_CPU_45_HEX_MASK, threadName)) {
-            Log.d(TAG, "Pinned background thread $threadName (tid=$tid) to CPU 4-5 (mask=0x$BACKGROUND_CPU_45_HEX_MASK)")
+        if (applyTaskset(tid, LITTLE_CLUSTER_CPU_05_HEX_MASK, threadName)) {
+            Log.d(TAG, "Pinned background thread $threadName (tid=$tid) to CPU 0-5 (mask=0x$LITTLE_CLUSTER_CPU_05_HEX_MASK)")
         }
     }
 
     private fun applyOptionalCanAffinityOnWorkerThread(threadName: String) {
         if (!pinCanBusToCpu45Enabled || !pinCpu45Supported) return
         val tid = runCatching { Process.myTid() }.getOrDefault(-1)
-        if (applyTaskset(tid, BACKGROUND_CPU_45_HEX_MASK, "can-bus:$threadName")) {
-            Log.d(TAG, "Pinned CAN thread $threadName (tid=$tid) to CPU 4-5 (mask=0x$BACKGROUND_CPU_45_HEX_MASK)")
+        if (applyTaskset(tid, LITTLE_CLUSTER_CPU_05_HEX_MASK, "can-bus:$threadName")) {
+            Log.d(TAG, "Pinned CAN thread $threadName (tid=$tid) to CPU 0-5 (mask=0x$LITTLE_CLUSTER_CPU_05_HEX_MASK)")
+        }
+    }
+
+    private fun applyOptionalLightPollerAffinityOnWorkerThread(threadName: String) {
+        runCatching {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+        }.onFailure { e ->
+            Log.w(TAG, "Failed to set THREAD_PRIORITY_BACKGROUND for $threadName: ${e.message}")
+        }
+        if (!pinLightPollersToCpu05Enabled || !pinCpu45Supported) return
+        val tid = runCatching { Process.myTid() }.getOrDefault(-1)
+        if (applyTaskset(tid, LITTLE_CLUSTER_CPU_05_HEX_MASK, "light-pollers:$threadName")) {
+            Log.d(TAG, "Pinned light-poller thread $threadName (tid=$tid) to CPU 0-5 (mask=0x$LITTLE_CLUSTER_CPU_05_HEX_MASK)")
         }
     }
 
@@ -324,5 +590,36 @@ internal object LauncherCpuAffinity {
             }
         }
         return Executors.newFixedThreadPool(threadCount, factory).asCoroutineDispatcher()
+    }
+
+    private fun createLightPollersPoolDispatcher(
+        maxThreads: Int,
+        baseName: String,
+    ): ExecutorCoroutineDispatcher {
+        val counter = AtomicInteger(0)
+        val factory = ThreadFactory { runnable ->
+            val idx = counter.incrementAndGet()
+            val fullName = "$baseName-$idx"
+            Thread(
+                {
+                    applyOptionalLightPollerAffinityOnWorkerThread(fullName)
+                    runnable.run()
+                },
+                fullName,
+            ).apply {
+                isDaemon = true
+            }
+        }
+        val executor = ThreadPoolExecutor(
+            maxThreads,
+            maxThreads,
+            60L,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+            factory,
+        ).apply {
+            allowCoreThreadTimeOut(true)
+        }
+        return executor.asCoroutineDispatcher()
     }
 }

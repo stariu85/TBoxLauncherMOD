@@ -38,7 +38,14 @@ object DiagFileLog {
     @Volatile
     private var writerThreadRef: Thread? = null
     private val writer = Executors.newSingleThreadExecutor { r ->
-        Thread(r, WRITER_THREAD_NAME).apply {
+        Thread(
+            {
+                vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
+                    .applyOptionalServiceBackgroundAffinityOnCurrentThread(WRITER_THREAD_NAME)
+                r.run()
+            },
+            WRITER_THREAD_NAME,
+        ).apply {
             isDaemon = true
             writerThreadRef = this
         }

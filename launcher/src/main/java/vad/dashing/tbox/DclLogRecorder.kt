@@ -58,7 +58,14 @@ object DclLogRecorder {
     @Volatile
     private var ioThreadRef: Thread? = null
     private val executor = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "dcl-logger").apply {
+        Thread(
+            {
+                vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
+                    .applyOptionalServiceBackgroundAffinityOnCurrentThread("dcl-logger")
+                r.run()
+            },
+            "dcl-logger",
+        ).apply {
             isDaemon = true
             ioThreadRef = this
         }

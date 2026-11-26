@@ -38,7 +38,7 @@ private const val REGULAR_POLL_INTERVAL_MS = 60_000L       // 60 seconds
  * or doing synchronous GPS/SharedPreferences I/O in Compose composition.
  */
 object LauncherSolarThemeManager {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.lightPollersDispatcher)
     private val started = AtomicBoolean(false)
 
     private val _isDaytime = MutableStateFlow<Boolean?>(null)
