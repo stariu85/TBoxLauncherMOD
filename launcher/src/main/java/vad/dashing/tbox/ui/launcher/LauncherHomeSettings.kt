@@ -273,6 +273,52 @@ internal fun LauncherExpHomeMoveTaskToBackSettings() {
 }
 
 @Composable
+internal fun LauncherExpCpuAffinitySettings() {
+    val context = LocalContext.current
+    val pin3dRevision by LauncherAppConfigStore.experimentalPin3dRenderCpu45RevisionFlow
+        .collectAsStateWithLifecycle()
+    val pin3dEnabled = remember(context, pin3dRevision) {
+        LauncherAppConfigStore.experimentalPin3dRenderCpu45(context)
+    }
+
+    val pinCanRevision by LauncherAppConfigStore.experimentalPinCanBusCpu45RevisionFlow
+        .collectAsStateWithLifecycle()
+    val pinCanEnabled = remember(context, pinCanRevision) {
+        LauncherAppConfigStore.experimentalPinCanBusCpu45(context)
+    }
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_pin_3d_render_cpu45_title),
+        active = pin3dEnabled,
+        onClick = {
+            val next = !pin3dEnabled
+            LauncherAppConfigStore.setExperimentalPin3dRenderCpu45(context, next)
+            LauncherCpuAffinity.setPin3dRenderToCpu45(next)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_pin_3d_render_cpu45_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_exp_pin_can_bus_cpu45_title),
+        active = pinCanEnabled,
+        onClick = {
+            val next = !pinCanEnabled
+            LauncherAppConfigStore.setExperimentalPinCanBusCpu45(context, next)
+            LauncherCpuAffinity.setPinCanBusToCpu45(next)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_exp_pin_can_bus_cpu45_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+}
+
+@Composable
 internal fun LauncherHomeSettingsContent() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -353,6 +399,24 @@ internal fun LauncherHomeSettingsContent() {
     )
     Text(
         text = stringResource(R.string.launcher_show_player_name_in_widget_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    val enableMediaTextAnimRevision by LauncherAppConfigStore.enableMediaTextAnimationRevisionFlow
+        .collectAsStateWithLifecycle()
+    val enableMediaTextAnim = remember(context, enableMediaTextAnimRevision) {
+        LauncherAppConfigStore.enableMediaTextAnimation(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_enable_media_text_animation_title),
+        active = enableMediaTextAnim,
+        onClick = {
+            LauncherAppConfigStore.setEnableMediaTextAnimation(context, !enableMediaTextAnim)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_enable_media_text_animation_desc),
         color = LauncherColors.TextMuted,
         fontSize = 12.sp,
     )
@@ -2038,6 +2102,15 @@ fun CruiseControlSettingsContent() {
         LauncherAppConfigStore.isConventionalCruise(context)
     }
 
+    val cruisePresetsRevision by LauncherAppConfigStore.cruisePresetsRevisionFlow
+        .collectAsStateWithLifecycle()
+    val ccsPulseOnMs = remember(context, cruisePresetsRevision) {
+        LauncherAppConfigStore.ccsPulseOnMs(context)
+    }
+    val ccsPulseOffMs = remember(context, cruisePresetsRevision) {
+        LauncherAppConfigStore.ccsPulseOffMs(context)
+    }
+
     val cruiseEngageActionRevision by LauncherAppConfigStore.cruiseEngageActionRevisionFlow
         .collectAsStateWithLifecycle()
     val cruiseEngageAction = remember(context, cruiseEngageActionRevision) {
@@ -2102,6 +2175,39 @@ fun CruiseControlSettingsContent() {
                         LauncherAppConfigStore.setCruiseType(context, CRUISE_TYPE_CONVENTIONAL)
                     },
                     modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        if (isConventional) {
+            Column(
+                modifier = Modifier.padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.launcher_ccs_pulse_timing_title),
+                    color = LauncherColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = stringResource(R.string.launcher_ccs_pulse_timing_desc),
+                    color = LauncherColors.TextMuted,
+                    fontSize = 12.sp,
+                )
+                CruiseIntervalSliderRow(
+                    title = stringResource(R.string.launcher_ccs_pulse_on_title),
+                    valueMs = ccsPulseOnMs,
+                    onChange = { next ->
+                        LauncherAppConfigStore.setCcsPulseOnMs(context, next)
+                    },
+                )
+                CruiseIntervalSliderRow(
+                    title = stringResource(R.string.launcher_ccs_pulse_off_title),
+                    valueMs = ccsPulseOffMs,
+                    onChange = { next ->
+                        LauncherAppConfigStore.setCcsPulseOffMs(context, next)
+                    },
                 )
             }
         }
@@ -2909,6 +3015,7 @@ fun YandexNavSettingsContent() {
         NavBgMinimapFilterQualitySelector()
         NavBgMinimap3dToggle()
         NavBgMinimapAutoZoomToggle()
+        NavBgMinimapHideOnAccToggle()
     }
 }
 
@@ -3365,6 +3472,25 @@ private fun NavBgMinimapAutoZoomToggle() {
         )
         Text(
             text = stringResource(R.string.launcher_nav_bg_minimap_auto_zoom_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun NavBgMinimapHideOnAccToggle() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.navBgMinimapRevisionFlow.collectAsStateWithLifecycle()
+    val enabled = remember(context, revision) { LauncherAppConfigStore.navBgMinimapHideOnAccEnabled(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        LauncherSettingsToggleRow(
+            label = stringResource(R.string.launcher_nav_bg_minimap_hide_on_acc_title),
+            active = enabled,
+            onClick = { LauncherAppConfigStore.setNavBgMinimapHideOnAccEnabled(context, !enabled) },
+        )
+        Text(
+            text = stringResource(R.string.launcher_nav_bg_minimap_hide_on_acc_desc),
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )

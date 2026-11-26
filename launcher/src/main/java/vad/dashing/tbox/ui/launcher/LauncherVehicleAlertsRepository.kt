@@ -2,7 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -26,7 +25,7 @@ object LauncherVehicleAlertsRepository {
     private const val ENGINE_CLASS = "com.mengbo.mbCan.MBCanEngine"
     private const val POLL_MS = 1_200L
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.canBusDispatcher)
     private val stateLock = Any()
     @Volatile private var pollJob: Job? = null
     private var chimeProxy: Any? = null

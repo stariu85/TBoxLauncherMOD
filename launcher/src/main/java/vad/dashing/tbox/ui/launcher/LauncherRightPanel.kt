@@ -212,8 +212,11 @@ fun LauncherRightPanel(
 
     var wallpaperDialogVisible by remember { mutableStateOf(false) }
     val wallpaperRevision by LauncherAppConfigStore.wallpaperRevisionFlow.collectAsStateWithLifecycle()
+    val wallpaperDarkRevision by LauncherAppConfigStore.wallpaperDarkRevisionFlow.collectAsStateWithLifecycle()
+    val wallpaperLightRevision by LauncherAppConfigStore.wallpaperLightRevisionFlow.collectAsStateWithLifecycle()
     val isDarkTheme = LauncherThemeState.darkTheme
-    val activeWallpaperUri = remember(context, isDarkTheme, wallpaperRevision) {
+    val activeWallpaperRevision = if (isDarkTheme) wallpaperDarkRevision else wallpaperLightRevision
+    val activeWallpaperUri = remember(context, isDarkTheme, activeWallpaperRevision) {
         if (isDarkTheme) {
             LauncherAppConfigStore.wallpaperDarkUri(context)
         } else {
@@ -667,6 +670,7 @@ fun LauncherRightPanel(
     ) {
         LauncherDesktopWallpaperLayer(
             activeWallpaperUri = activeWallpaperUri,
+            wallpaperRevision = activeWallpaperRevision,
             isDarkTheme = isDarkTheme,
             scaleMode = wallpaperScaleMode,
             modifier = Modifier.fillMaxSize(),

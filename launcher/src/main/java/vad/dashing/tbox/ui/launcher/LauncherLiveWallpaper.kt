@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -31,16 +32,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import vad.dashing.tbox.LauncherHomeActivityHolder
-import vad.dashing.tbox.LauncherVehicleSettingsActivity
-import vad.dashing.tbox.LauncherWindowState
-import vad.dashing.tbox.camd.CamdCameraRepository
-import vad.dashing.tbox.camd.CamdConnectionStatus
-import vad.dashing.tbox.camd.CamdWidgetCameraMode
 import vad.dashing.tbox.toOwnedImageBitmap
 import java.io.File
 import java.util.concurrent.Executors
@@ -189,20 +182,22 @@ internal fun shouldPauseLiveWallpaper(
     isQuickSettingsOpen: Boolean,
     isAvmActive: Boolean,
     isCamdCameraActive: Boolean,
-): Boolean {
-    if (!isFirstDrawComplete) return true
-    if (!isActivityStarted) return true
-    if (hiddenForExternalApp) return true
-    if (isTopShadeOpen) return true
-    if (isVehicleSettingsOpen || isVehicleSettingsOverlayShowing || isVehicleSettingsActivityOpen) return true
-    if (isAboutOverlayShowing || isQuickSettingsOpen) return true
-    if (isAvmActive || isCamdCameraActive) return true
-    if (!activeAppPackage.isNullOrBlank()) {
-        val recoveredFromFullscreen = isActiveAppFullscreen && isWindowFocused
-        if (!recoveredFromFullscreen) return true
-    }
-    return false
-}
+): Boolean = !shouldAnimateRightPanel(
+    isFirstDrawComplete = isFirstDrawComplete,
+    isActivityStarted = isActivityStarted,
+    isWindowFocused = isWindowFocused,
+    hiddenForExternalApp = hiddenForExternalApp,
+    activeAppPackage = activeAppPackage,
+    isActiveAppFullscreen = isActiveAppFullscreen,
+    isTopShadeOpen = isTopShadeOpen,
+    isVehicleSettingsOpen = isVehicleSettingsOpen,
+    isVehicleSettingsOverlayShowing = isVehicleSettingsOverlayShowing,
+    isVehicleSettingsActivityOpen = isVehicleSettingsActivityOpen,
+    isAboutOverlayShowing = isAboutOverlayShowing,
+    isQuickSettingsOpen = isQuickSettingsOpen,
+    isAvmActive = isAvmActive,
+    isCamdCameraActive = isCamdCameraActive,
+)
 
 /**
  * Computes TextureView post-stretch scale factors around the view center to match [WallpaperScaleMode].
@@ -349,6 +344,9 @@ private val videoReleaseExecutor = Executors.newSingleThreadExecutor { runnable 
     Thread(runnable, "LiveWallpaperRelease").apply { isDaemon = true }
 }
 
+@Volatile
+private var pendingVideoReleaseFuture: java.util.concurrent.Future<*>? = null
+
 /**
  * Manages [MediaPlayer] bound to a [TextureView] with instant hardware decoder release on pause.
  *
@@ -363,6 +361,7 @@ private class LiveVideoWallpaperController(
 ) : TextureView.SurfaceTextureListener {
 
     private var filePath: String = ""
+    private var wallpaperRevision: Int = 0
     private var scaleMode: WallpaperScaleMode = WallpaperScaleMode.FILL_HEIGHT
     private var paused: Boolean = true
     private var destroyed: Boolean = false
@@ -388,15 +387,21 @@ private class LiveVideoWallpaperController(
         }
     }
 
-    fun update(newFilePath: String, newScaleMode: WallpaperScaleMode, newPaused: Boolean) {
+    fun update(
+        newFilePath: String,
+        newWallpaperRevision: Int,
+        newScaleMode: WallpaperScaleMode,
+        newPaused: Boolean,
+    ) {
         if (destroyed) return
-        val fileChanged = newFilePath != filePath
+        val fileChanged = newFilePath != filePath || newWallpaperRevision != wallpaperRevision
         val scaleChanged = newScaleMode != scaleMode
         val pauseChanged = newPaused != paused
 
         if (fileChanged) {
             releasePlayer(savePosition = false)
             filePath = newFilePath
+            wallpaperRevision = newWallpaperRevision
             lastPositionMs = 0
             videoWidth = 0
             videoHeight = 0
@@ -459,9 +464,6 @@ private class LiveVideoWallpaperController(
         }
     }
 
-    @Volatile
-    private var pendingReleaseFuture: java.util.concurrent.Future<*>? = null
-
     private fun startPlayer() {
         val st = surfaceTexture ?: return
         val file = File(filePath)
@@ -473,9 +475,9 @@ private class LiveVideoWallpaperController(
         releasePlayer(savePosition = false)
         // Briefly await pending async MediaPlayer release so hardware MediaCodec slots
         // are freed before instantiating a new decoder on constrained Android 9 head units.
-        pendingReleaseFuture?.let { future ->
+        pendingVideoReleaseFuture?.let { future ->
             runCatching { future.get(250L, java.util.concurrent.TimeUnit.MILLISECONDS) }
-            pendingReleaseFuture = null
+            pendingVideoReleaseFuture = null
         }
 
         val surface = Surface(st)
@@ -591,7 +593,7 @@ private class LiveVideoWallpaperController(
             runCatching { mp.setSurface(null) }
             runCatching { surface?.release() }
 
-            pendingReleaseFuture = videoReleaseExecutor.submit {
+            pendingVideoReleaseFuture = videoReleaseExecutor.submit {
                 runCatching { mp.reset() }
                 runCatching { mp.release() }
             }
@@ -699,26 +701,36 @@ private fun WallpaperScaleMode.toComposeContentScale(): ContentScale = when (thi
 @Composable
 internal fun LauncherDesktopWallpaperLayer(
     activeWallpaperUri: String,
+    wallpaperRevision: Int,
     isDarkTheme: Boolean,
     scaleMode: WallpaperScaleMode,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val mediaType by produceState(
-        initialValue = WallpaperMediaType.STATIC_IMAGE,
-        key1 = activeWallpaperUri,
-    ) {
-        value = withContext(Dispatchers.IO) {
-            detectWallpaperMediaTypeFromPath(activeWallpaperUri)
+    val syncMediaType = remember(activeWallpaperUri) {
+        if (activeWallpaperUri.substringAfterLast('.', "").lowercase() == "webp") {
+            null
+        } else {
+            detectWallpaperMediaType(activeWallpaperUri)
         }
     }
+    val detectedWebpType by produceState(
+        initialValue = WallpaperMediaType.STATIC_IMAGE,
+        key1 = activeWallpaperUri,
+        key2 = wallpaperRevision,
+    ) {
+        if (syncMediaType == null) {
+            value = withContext(Dispatchers.IO) {
+                detectWallpaperMediaTypeFromPath(activeWallpaperUri)
+            }
+        }
+    }
+    val mediaType = syncMediaType ?: detectedWebpType
 
     if (mediaType == WallpaperMediaType.STATIC_IMAGE) {
         val staticBitmap by produceState<ImageBitmap?>(
             initialValue = null,
-            key1 = context,
-            key2 = activeWallpaperUri,
-            key3 = isDarkTheme,
+            keys = arrayOf(context, activeWallpaperUri, isDarkTheme, wallpaperRevision),
         ) {
             value = withContext(Dispatchers.IO) {
                 loadWallpaperImageBitmap(context, activeWallpaperUri, isDarkTheme)
@@ -736,92 +748,35 @@ internal fun LauncherDesktopWallpaperLayer(
         return
     }
 
-    // Collect with Lifecycle.State.CREATED so onStop() (isStarted = false) and overlay/camera
-    // pause signals are always delivered even after the activity transitions to STOPPED.
-    val isFirstDrawComplete by LauncherHomeActivityHolder.firstDrawFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isActivityStarted by LauncherHomeActivityHolder.isStartedFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isWindowFocused by LauncherHomeActivityHolder.windowFocusedFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val activeAppPackage by LauncherActiveAppTracker.activeAppPackageFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isActiveAppFullscreen by LauncherActiveAppTracker.isFullscreenFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isTopShadeOpen by LauncherCar3DModelTrigger.topShadeOpen
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isVehicleSettingsOpen = LauncherVehicleSettingsUiState.open
-    val isVehicleSettingsOverlayShowing by LauncherVehicleSettingsOverlayWindow.isShowingFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isVehicleSettingsActivityOpen by LauncherVehicleSettingsActivity.isOpenFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isAboutOverlayShowing by LauncherAboutOverlayWindow.isShowingFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isQuickSettingsOpen by LauncherAdasQuickSettingsWindow.isShowingFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isAvmActive by LauncherAvmRepository.isAvmActive
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-
-    val isDesktopCamerasOpen by CamdCameraRepository.isDesktopCamerasOpen
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val isReverseCamerasOpen by CamdCameraRepository.isReverseCamerasOpen
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val activeWidgetCameraMode by CamdCameraRepository.activeWidgetCameraMode
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val activeTurnSignalCamera by CamdCameraRepository.activeTurnSignalCamera
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val activeTurnSignalSide by CamdCameraRepository.activeTurnSignalSideFlow
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-    val camdStatus by CamdCameraRepository.status
-        .collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
-
-    val isCamdCameraActive = isDesktopCamerasOpen ||
-        isReverseCamerasOpen ||
-        activeWidgetCameraMode != CamdWidgetCameraMode.NONE ||
-        activeTurnSignalCamera != null ||
-        activeTurnSignalSide != null ||
-        ((camdStatus as? CamdConnectionStatus.Connected)?.openWindows?.isNotEmpty() == true)
-
-    val shouldPause = shouldPauseLiveWallpaper(
-        isFirstDrawComplete = isFirstDrawComplete,
-        isActivityStarted = isActivityStarted,
-        isWindowFocused = isWindowFocused,
-        hiddenForExternalApp = hiddenForExternalApp,
-        activeAppPackage = activeAppPackage,
-        isActiveAppFullscreen = isActiveAppFullscreen,
-        isTopShadeOpen = isTopShadeOpen,
-        isVehicleSettingsOpen = isVehicleSettingsOpen,
-        isVehicleSettingsOverlayShowing = isVehicleSettingsOverlayShowing,
-        isVehicleSettingsActivityOpen = isVehicleSettingsActivityOpen,
-        isAboutOverlayShowing = isAboutOverlayShowing,
-        isQuickSettingsOpen = isQuickSettingsOpen,
-        isAvmActive = isAvmActive,
-        isCamdCameraActive = isCamdCameraActive,
-    )
+    val animState = rememberRightPanelAnimationSnapshot()
+    val shouldPause = !animState.shouldAnimate
 
     LaunchedEffect(shouldPause, mediaType) {
         Log.d(
             TAG,
             "Live wallpaper state: type=$mediaType paused=$shouldPause " +
-                "(started=$isActivityStarted, app=$activeAppPackage, shade=$isTopShadeOpen, " +
-                "settings=${isVehicleSettingsOpen || isVehicleSettingsOverlayShowing || isVehicleSettingsActivityOpen}, " +
-                "avm=$isAvmActive, camd=$isCamdCameraActive)",
+                "(started=${animState.isActivityStarted}, app=${animState.activeAppPackage}, " +
+                "shade=${animState.isTopShadeOpen}, " +
+                "settings=${animState.isVehicleSettingsOpen || animState.isVehicleSettingsOverlayShowing || animState.isVehicleSettingsActivityOpen}, " +
+                "avm=${animState.isAvmActive}, camd=${animState.isCamdCameraActive})",
         )
     }
 
     if (mediaType == WallpaperMediaType.VIDEO) {
-        LiveVideoWallpaperLayer(
-            filePath = activeWallpaperUri,
-            isDarkTheme = isDarkTheme,
-            scaleMode = scaleMode,
-            paused = shouldPause,
-            modifier = modifier,
-        )
+        key(activeWallpaperUri, wallpaperRevision) {
+            LiveVideoWallpaperLayer(
+                filePath = activeWallpaperUri,
+                wallpaperRevision = wallpaperRevision,
+                isDarkTheme = isDarkTheme,
+                scaleMode = scaleMode,
+                paused = shouldPause,
+                modifier = modifier,
+            )
+        }
     } else {
         AnimatedImageWallpaperLayer(
             filePath = activeWallpaperUri,
+            wallpaperRevision = wallpaperRevision,
             isDarkTheme = isDarkTheme,
             scaleMode = scaleMode,
             paused = shouldPause,
@@ -833,18 +788,20 @@ internal fun LauncherDesktopWallpaperLayer(
 @Composable
 private fun LiveVideoWallpaperLayer(
     filePath: String,
+    wallpaperRevision: Int,
     isDarkTheme: Boolean,
     scaleMode: WallpaperScaleMode,
     paused: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var playbackFailed by remember(filePath) { mutableStateOf(false) }
-    var isVideoFrameVisible by remember(filePath) { mutableStateOf(false) }
+    var playbackFailed by remember { mutableStateOf(false) }
+    var isVideoFrameVisible by remember { mutableStateOf(false) }
 
     val posterBitmap by produceState<ImageBitmap?>(
-        initialValue = remember(filePath) { LiveWallpaperPosterCache.get(File(filePath)) },
+        initialValue = remember(filePath, wallpaperRevision) { LiveWallpaperPosterCache.get(File(filePath)) },
         key1 = filePath,
+        key2 = wallpaperRevision,
     ) {
         val file = File(filePath)
         val cached = LiveWallpaperPosterCache.get(file)
@@ -903,11 +860,11 @@ private fun LiveVideoWallpaperLayer(
                             },
                         )
                         controllerHolder[0] = ctrl
-                        ctrl.update(filePath, scaleMode, paused)
+                        ctrl.update(filePath, wallpaperRevision, scaleMode, paused)
                     }
                 },
                 update = {
-                    controllerHolder[0]?.update(filePath, scaleMode, paused)
+                    controllerHolder[0]?.update(filePath, wallpaperRevision, scaleMode, paused)
                 },
                 onRelease = {
                     controllerHolder[0]?.destroy()
@@ -924,13 +881,18 @@ private fun LiveVideoWallpaperLayer(
 @Composable
 private fun AnimatedImageWallpaperLayer(
     filePath: String,
+    wallpaperRevision: Int,
     isDarkTheme: Boolean,
     scaleMode: WallpaperScaleMode,
     paused: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val decodedDrawable by produceState<Drawable?>(initialValue = null, key1 = filePath) {
+    val decodedDrawable by produceState<Drawable?>(
+        initialValue = null,
+        key1 = filePath,
+        key2 = wallpaperRevision,
+    ) {
         value = withContext(Dispatchers.IO) {
             decodeAnimatedWallpaperDrawable(File(filePath))
         }

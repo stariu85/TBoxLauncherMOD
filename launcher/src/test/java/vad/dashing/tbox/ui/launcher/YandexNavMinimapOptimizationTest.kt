@@ -52,4 +52,81 @@ class YandexNavMinimapOptimizationTest {
     fun virtualRoadFrameInterval_capsAtRoughly30Fps() {
         assertTrue(VIRTUAL_ROAD_FRAME_INTERVAL_NS in 30_000_000L..34_000_000L)
     }
+
+    @Test
+    fun shouldSuppressNavMinimapForAcc_hidesOnlyWhenEnabledAndAccEngaged() {
+        assertTrue(shouldSuppressNavMinimapForAcc(hideOnAccEnabled = true, accActive = true, accOverride = false))
+        assertTrue(shouldSuppressNavMinimapForAcc(hideOnAccEnabled = true, accActive = false, accOverride = true))
+        assertEquals(false, shouldSuppressNavMinimapForAcc(hideOnAccEnabled = true, accActive = false, accOverride = false))
+        assertEquals(false, shouldSuppressNavMinimapForAcc(hideOnAccEnabled = false, accActive = true, accOverride = false))
+        assertEquals(false, shouldSuppressNavMinimapForAcc(hideOnAccEnabled = false, accActive = false, accOverride = true))
+    }
+
+    @Test
+    fun resolveLanesOrTurnTapAction_togglesMinimapOnlyWhenSettingEnabled() {
+        assertEquals(
+            LanesOrTurnTapAction.TOGGLE_MINIMAP,
+            resolveLanesOrTurnTapAction(minimapSettingEnabled = true),
+        )
+        assertEquals(
+            LanesOrTurnTapAction.OPEN_YANDEX_NAV,
+            resolveLanesOrTurnTapAction(minimapSettingEnabled = false),
+        )
+    }
+
+    @Test
+    fun isNavMinimapEffectivelyVisible_combinesSettingManualToggleAndAccSuppression() {
+        assertEquals(
+            false,
+            isNavMinimapEffectivelyVisible(
+                minimapSettingEnabled = false,
+                hideOnAccEnabled = false,
+                accActive = false,
+                accOverride = false,
+                manuallyHidden = false,
+            ),
+        )
+        assertEquals(
+            true,
+            isNavMinimapEffectivelyVisible(
+                minimapSettingEnabled = true,
+                hideOnAccEnabled = false,
+                accActive = false,
+                accOverride = false,
+                manuallyHidden = false,
+            ),
+        )
+        assertEquals(
+            false,
+            isNavMinimapEffectivelyVisible(
+                minimapSettingEnabled = true,
+                hideOnAccEnabled = false,
+                accActive = false,
+                accOverride = false,
+                manuallyHidden = true,
+            ),
+        )
+        assertEquals(
+            false,
+            isNavMinimapEffectivelyVisible(
+                minimapSettingEnabled = true,
+                hideOnAccEnabled = true,
+                accActive = true,
+                accOverride = false,
+                manuallyHidden = false,
+                accOverrideVisible = false,
+            ),
+        )
+        assertEquals(
+            true,
+            isNavMinimapEffectivelyVisible(
+                minimapSettingEnabled = true,
+                hideOnAccEnabled = true,
+                accActive = true,
+                accOverride = false,
+                manuallyHidden = false,
+                accOverrideVisible = true,
+            ),
+        )
+    }
 }

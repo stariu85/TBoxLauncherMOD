@@ -61,6 +61,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -791,45 +792,55 @@ private fun RenderQuickPanelCard(
             .background(LauncherColors.LeftPanelCard)
             .pointerInput(id) {
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial,
+                    )
                     val downTime = SystemClock.uptimeMillis()
-                    var dragActive = false
+                    val touchSlop = viewConfiguration.touchSlop
                     var accumulativeY = 0f
 
                     while (true) {
-                        val event = awaitPointerEvent()
-                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
-
-                        if (!pointer.pressed) {
-                            if (dragActive) {
-                                pointer.consume()
-                                latestOnDragEnd(accumulativeY)
-                            }
+                        val remainingMs = 1000L - (SystemClock.uptimeMillis() - downTime)
+                        if (remainingMs <= 0L) {
                             break
                         }
+                        val event = withTimeoutOrNull(remainingMs) {
+                            awaitPointerEvent(PointerEventPass.Initial)
+                        } ?: break
+                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                        if (!pointer.pressed) {
+                            return@awaitEachGesture
+                        }
+                        if ((pointer.position - down.position).getDistance() > touchSlop) {
+                            return@awaitEachGesture
+                        }
+                    }
 
-                        val elapsed = SystemClock.uptimeMillis() - downTime
-                        if (!dragActive) {
-                            val totalDeltaY = abs(pointer.position.y - down.position.y)
-                            val totalDeltaX = abs(pointer.position.x - down.position.x)
-                            if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
-                                dragActive = true
-                                latestOnDragStart(id, localTopPx, localHeightPx)
-                                accumulativeY = pointer.position.y - down.position.y
-                                latestOnDragMove(accumulativeY)
+                    latestOnDragStart(id, localTopPx, localHeightPx)
+                    latestOnDragMove(0f)
+
+                    var finished = false
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                            if (!pointer.pressed) {
                                 pointer.consume()
-                            } else if (elapsed >= 1000L) {
-                                dragActive = true
-                                latestOnDragStart(id, localTopPx, localHeightPx)
-                                accumulativeY = 0f
-                                latestOnDragMove(accumulativeY)
-                                pointer.consume()
+                                finished = true
+                                latestOnDragEnd(accumulativeY)
+                                break
                             }
-                        } else {
+
                             val frameDelta = pointer.position.y - pointer.previousPosition.y
                             accumulativeY += frameDelta
                             latestOnDragMove(accumulativeY)
                             pointer.consume()
+                        }
+                    } finally {
+                        if (!finished) {
+                            latestOnDragEnd(0f)
                         }
                     }
                 }
@@ -840,6 +851,7 @@ private fun RenderQuickPanelCard(
             "media_player" -> LauncherMediaMiniPlayer(
                 modifier = Modifier.fillMaxWidth(),
                 sourceId = "launcher_mini_player_quick",
+                animate = false,
             )
             "drive_mode" -> LauncherDriveModeBar(canViewModel = canViewModel, initialPage = 0, reportSubPanel = false, onModeSelected = {}, modifier = Modifier.fillMaxWidth())
             "drive_mode_offroad" -> LauncherDriveModeBar(canViewModel = canViewModel, initialPage = 1, reportSubPanel = false, onModeSelected = {}, modifier = Modifier.fillMaxWidth())

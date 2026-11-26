@@ -21,6 +21,7 @@ import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.settingsDataStore
 import vad.dashing.tbox.ui.launcher.LauncherAppConfigStore
 import vad.dashing.tbox.ui.launcher.LauncherFirstInstallDefaults
+import vad.dashing.tbox.ui.launcher.LiveWallpaperPosterCache
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -463,11 +464,13 @@ object LauncherBackupManager {
             val darkExt = darkSource.extension.lowercase().takeIf { it in ALLOWED_WALLPAPER_EXTENSIONS } ?: "jpg"
             wallpapersDir.listFiles()?.forEach { existing ->
                 if (existing.isFile && existing.name.startsWith("wallpaper_dark.")) {
+                    LiveWallpaperPosterCache.invalidatePath(existing.absolutePath)
                     runCatching { existing.delete() }
                 }
             }
             val targetDark = File(wallpapersDir, "wallpaper_dark.$darkExt")
             darkSource.copyTo(targetDark, overwrite = true)
+            LiveWallpaperPosterCache.invalidatePath(targetDark.absolutePath)
             LauncherAppConfigStore.setWallpaperDarkUri(context, targetDark.absolutePath)
         }
 
@@ -484,11 +487,13 @@ object LauncherBackupManager {
             val lightExt = lightSource.extension.lowercase().takeIf { it in ALLOWED_WALLPAPER_EXTENSIONS } ?: "jpg"
             wallpapersDir.listFiles()?.forEach { existing ->
                 if (existing.isFile && existing.name.startsWith("wallpaper_light.")) {
+                    LiveWallpaperPosterCache.invalidatePath(existing.absolutePath)
                     runCatching { existing.delete() }
                 }
             }
             val targetLight = File(wallpapersDir, "wallpaper_light.$lightExt")
             lightSource.copyTo(targetLight, overwrite = true)
+            LiveWallpaperPosterCache.invalidatePath(targetLight.absolutePath)
             LauncherAppConfigStore.setWallpaperLightUri(context, targetLight.absolutePath)
         }
     }
@@ -683,7 +688,9 @@ object LauncherBackupManager {
                 "tire_pressure_low_threshold", "fuel_price" -> PrefType.FLOAT
 
                 "top_bar_left_indicators_visible", "top_bar_indicators_border_enabled",
-                "media_mini_player_visible", "show_player_name_in_widget", "disable_media_card_cover_color",
+                "media_mini_player_visible", "show_player_name_in_widget", "enable_media_text_animation",
+                "disable_media_card_cover_color", "exp_pin_3d_render_cpu45", "exp_pin_can_bus_cpu45",
+                "nav_bg_minimap_hide_on_acc",
                 "floating_home_visible", "camera_animation_enabled", "trunk_long_press_enabled",
                 "edge_gestures_enabled", "nav_buttons_visible", "climate_controls_visible",
                 "climate_card_bg_visible", "climate_temp_color_indication", "adas_panel_visible", "adas_alerts_in_left_panel",

@@ -3,7 +3,6 @@ package vad.dashing.tbox.ui.launcher
 import android.os.Handler
 import android.os.Looper
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -46,7 +45,7 @@ object LauncherAdasRepository {
     private var lastRadarMs = 0L
     private var pdcActive = false
     @Volatile private var lastSpeedKmh = 0f
-    private val adasScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val adasScope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.canBusDispatcher)
     @Volatile private var pdcWatchdogJob: Job? = null
     @Volatile private var lasModeJob: Job? = null
     @Volatile private var cachedLasMode: Int = -1

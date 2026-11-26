@@ -481,6 +481,18 @@ private fun LauncherCarFilamentContent(
         Modifier
     }
     val engine = rememberEngine()
+    val pin3dRenderRevision by LauncherAppConfigStore.experimentalPin3dRenderCpu45RevisionFlow
+        .collectAsStateWithLifecycle()
+    val pin3dRenderCpu45 = remember(context, pin3dRenderRevision) {
+        LauncherAppConfigStore.experimentalPin3dRenderCpu45(context)
+    }
+    LaunchedEffect(engine, pin3dRenderCpu45) {
+        LauncherCpuAffinity.setPin3dRenderToCpu45(pin3dRenderCpu45)
+        if (pin3dRenderCpu45) {
+            delay(1_000L)
+            LauncherCpuAffinity.reapply3dRenderAffinityIfEnabledAsync()
+        }
+    }
     val modelLoader = rememberModelLoader(engine)
     val cameraNode = rememberCameraNode(engine)
     val modelBuffer by produceState<java.nio.ByteBuffer?>(

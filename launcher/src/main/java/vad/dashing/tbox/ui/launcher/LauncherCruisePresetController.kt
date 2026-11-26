@@ -23,11 +23,13 @@ import vad.dashing.tbox.mbcan.Android10VhalRepository
 import vad.dashing.tbox.mbcan.CcsRememberedSetpoint
 import vad.dashing.tbox.mbcan.MbCanBinaryState
 import vad.dashing.tbox.mbcan.MbCanCommand
+import vad.dashing.tbox.mbcan.MbCanDiagnostics
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
 import vad.dashing.tbox.mbcan.MbCanKnownVehiclePropertyId
 import vad.dashing.tbox.mbcan.UniversalCanRepository
 import vad.dashing.tbox.ui.sendToggleTjaIca
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 enum class AccCruiseState {
     Off,
@@ -37,21 +39,58 @@ enum class AccCruiseState {
     Fault,
 }
 
+internal sealed class CcsCatchUpDecision {
+    data object Reached : CcsCatchUpDecision()
+    data object NoProgress : CcsCatchUpDecision()
+    data class CatchUp(val actualKmh: Int, val errorKmh: Int) : CcsCatchUpDecision()
+}
+
+private const val CCS_VERIFY_MIN_ERROR_KMH = 2
+private const val CCS_VERIFY_MIN_PROGRESS_KMH = 1.0f
+private const val CCS_RETRIGGER_MIN_ERROR_KMH = 3
+
+internal fun shouldRetriggerConventionalPreset(targetKmh: Int, actualKmh: Int): Boolean =
+    abs(actualKmh - targetKmh) >= CCS_RETRIGGER_MIN_ERROR_KMH
+
+internal fun evaluateConventionalCatchUp(
+    targetKmh: Int,
+    plateauSpeedKmh: Float,
+    previousPlateauSpeedKmh: Float?,
+    previousErrorSign: Int,
+): CcsCatchUpDecision {
+    val actualKmh = plateauSpeedKmh.roundToInt().coerceIn(30, 160)
+    val error = targetKmh - actualKmh
+    if (abs(error) < CCS_VERIFY_MIN_ERROR_KMH) {
+        return CcsCatchUpDecision.Reached
+    }
+    if (previousPlateauSpeedKmh != null && previousErrorSign != 0) {
+        val progress = (plateauSpeedKmh - previousPlateauSpeedKmh) * previousErrorSign
+        if (progress < CCS_VERIFY_MIN_PROGRESS_KMH) {
+            return CcsCatchUpDecision.NoProgress
+        }
+    }
+    return CcsCatchUpDecision.CatchUp(actualKmh = actualKmh, errorKmh = error)
+}
+
 /**
  * Steering wheel MFS preset controller for Cruise / ACC speed stepping.
  */
 internal object LauncherCruisePresetController {
     private const val TAG = "CruisePreset"
     private const val PULSE_HOLD_MS = 80L
-    private const val CONVENTIONAL_PULSE_HOLD_MS = 150L
     private const val POST_CONVERGE_VERIFY_MS = 1000L
     private const val MAX_PULSES = 50
-    private const val CONVENTIONAL_BATCH_SIZE = 10
     private const val MAX_CONVENTIONAL_TOTAL_PULSES = 60
-    private const val TARGET_FINE_STEP_BAND_KMH = 5
     private const val SMART_ACC_DEACTIVATE_DELAY_MS = 3000L
     private const val CCS_ENGAGE_TIMEOUT_MS = 4000L
     private const val CCS_STATE_POLL_MS = 50L
+    private const val CCS_POST_ENGAGE_DELAY_MS = 200L
+    private const val CCS_VERIFY_POLL_MS = 250L
+    private const val CCS_VERIFY_STABLE_BAND_KMH = 1.0f
+    private const val CCS_VERIFY_STABLE_DURATION_MS = 3_000L
+    private const val CCS_VERIFY_MAX_WAIT_MS = 22_000L
+    private const val CCS_VERIFY_MAX_ROUNDS = 2
+    private const val CCS_PULSE_WINDOW_EXTENSION_MS = 3_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
@@ -95,6 +134,23 @@ internal object LauncherCruisePresetController {
     private fun isConventionalCruise(): Boolean {
         val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull ?: return false
         return LauncherAppConfigStore.isConventionalCruise(ctx)
+    }
+
+    private fun conventionalPulseOnMs(): Long {
+        val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull
+            ?: return CCS_PULSE_ON_DEFAULT_MS
+        return LauncherAppConfigStore.ccsPulseOnMs(ctx)
+    }
+
+    private fun conventionalPulseOffMs(): Long {
+        val ctx = vad.dashing.tbox.AppContextHolder.appContextOrNull
+            ?: return CCS_PULSE_OFF_DEFAULT_MS
+        return LauncherAppConfigStore.ccsPulseOffMs(ctx)
+    }
+
+    private fun logDiag(message: String) {
+        DiagFileLog.i(TAG, message)
+        MbCanDiagnostics.log("INFO", TAG, message)
     }
 
     private suspend fun waitPredicate(timeoutMs: Long, predicate: () -> Boolean): Boolean {
@@ -276,8 +332,18 @@ internal object LauncherCruisePresetController {
         return null
     }
 
+    private fun liveSpeedFloat(): Float? {
+        if (isConventionalCruise()) {
+            val ccsSpeed = CcsRememberedSetpoint.currentVehicleSpeedKmh()
+            if (ccsSpeed != null) return ccsSpeed
+        }
+        return CanDataRepository.carSpeedAccurate.value
+            ?: CanDataRepository.carSpeed.value
+            ?: UniversalCanRepository.carSpeedState.value
+    }
+
     fun vehicleSpeedKmh(): Int {
-        val raw = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value ?: 0f
+        val raw = liveSpeedFloat() ?: 0f
         return if (raw.isFinite()) kotlin.math.round(raw).toInt().coerceIn(0, 260) else 0
     }
 
@@ -348,28 +414,41 @@ internal object LauncherCruisePresetController {
                     return@launchExclusive
                 }
 
+                val conventional = isConventionalCruise()
                 val currentSpeed = currentSetSpeedKmh()
 
-                // If already Active and at target speed, single click pauses (MFS_CANCEL)
+                // If already Active and at target speed, single click pauses (MFS_CANCEL).
+                // For CCS, if actual vehicle speed is still far from target (>= 3 km/h),
+                // reconcile remembered setpoint to live speed and catch up instead of cancelling.
                 if (state == AccCruiseState.Active && currentSpeed == target) {
-                    if (isFromSpeedLimit) {
-                        DiagFileLog.i(TAG, "Already active at target limit $target km/h (isFromSpeedLimit), ignoring MFS_CANCEL")
+                    val actualKmh = vehicleSpeedKmh()
+                    if (conventional && shouldRetriggerConventionalPreset(target, actualKmh)) {
+                        logDiag(
+                            "CCS re-tap target=$target while actual=$actualKmh (remembered=$currentSpeed) " +
+                                "-> reconcile and catch-up",
+                        )
+                        CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+                        CcsRememberedSetpoint.remember(actualKmh, "preset_retrigger_reconcile")
+                    } else {
+                        if (isFromSpeedLimit) {
+                            DiagFileLog.i(TAG, "Already active at target limit $target km/h (isFromSpeedLimit), ignoring MFS_CANCEL")
+                            return@launchExclusive
+                        }
+                        DiagFileLog.i(TAG, "Already active at target $target km/h -> pulse MFS_CANCEL")
+                        pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
                         return@launchExclusive
                     }
-                    DiagFileLog.i(TAG, "Already active at target $target km/h -> pulse MFS_CANCEL")
-                    pulse(MbCanKnownVehiclePropertyId.MFS_CANCEL)
-                    return@launchExclusive
                 }
 
                 // Enable: Off -> Standby
                 if (state == AccCruiseState.Off) {
-                    DiagFileLog.i(TAG, "Cruise Off -> pulse MFS_CRUISE_CONTROL")
-                    if (isConventionalCruise()) {
-                        CcsRememberedSetpoint.markOurPulse()
+                    logDiag("Cruise Off -> pulse MFS_CRUISE_CONTROL")
+                    if (conventional) {
+                        CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
                     }
                     pulse(MbCanKnownVehiclePropertyId.MFS_CRUISE_CONTROL)
 
-                    if (isConventionalCruise()) {
+                    if (conventional) {
                         val waitStart = SystemClock.uptimeMillis()
                         while (SystemClock.uptimeMillis() - waitStart < CCS_ENGAGE_TIMEOUT_MS) {
                             delay(CCS_STATE_POLL_MS)
@@ -388,15 +467,21 @@ internal object LauncherCruisePresetController {
 
                 // Activate: Standby -> Active
                 if (state == AccCruiseState.Standby) {
-                    DiagFileLog.i(TAG, "Cruise Standby -> pulse MFS_SET_MINUS")
-                    if (isConventionalCruise()) {
-                        CcsRememberedSetpoint.markOurPulse()
+                    logDiag("Cruise Standby -> pulse MFS_SET_MINUS")
+                    if (conventional) {
+                        CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
                     }
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                    if (isConventionalCruise()) {
-                        waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                    if (conventional) {
+                        val becameActive = waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
                             val s = currentAccCruiseState()
                             s == AccCruiseState.Active || s == AccCruiseState.Override
+                        }
+                        if (becameActive) {
+                            // MFS_SET_MINUS in Standby always locks ECU to current live speed,
+                            // overriding any stale remembered setpoint kept across Standby.
+                            CcsRememberedSetpoint.captureFromVehicleSpeed("ccs_set_minus_engage")
+                            delay(CCS_POST_ENGAGE_DELAY_MS)
                         }
                     } else {
                         delay(250L)
@@ -411,75 +496,42 @@ internal object LauncherCruisePresetController {
                     )
                 }
 
+                val ccsOnMs = if (conventional) conventionalPulseOnMs() else PULSE_HOLD_MS
+                val ccsOffMs = if (conventional) conventionalPulseOffMs() else increaseIntervalMs
+                val effectiveIncDelay = if (conventional) ccsOffMs else increaseIntervalMs
+                val effectiveDecDelay = if (conventional) ccsOffMs else decreaseIntervalMs
+
+                if (conventional) {
+                    logDiag(
+                        "CCS engage start target=$target state=$state remembered=${currentSetSpeedKmh()} " +
+                            "mbCan=${UniversalCanRepository.carSpeedState.value} " +
+                            "tboxAcc=${CanDataRepository.carSpeedAccurate.value} " +
+                            "tboxSpd=${CanDataRepository.carSpeed.value} " +
+                            "onMs=$ccsOnMs offMs=$ccsOffMs",
+                    )
+                }
+
                 // Stepping loop
-                var current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
-                var totalPulses = 0
-                val maxAllowedPulses = if (isConventionalCruise()) MAX_CONVENTIONAL_TOTAL_PULSES else MAX_PULSES
+                val maxAllowedPulses = if (conventional) MAX_CONVENTIONAL_TOTAL_PULSES else MAX_PULSES
+                val totalPulses = stepToTarget(
+                    target = target,
+                    conventional = conventional,
+                    increaseDelayMs = effectiveIncDelay,
+                    decreaseDelayMs = effectiveDecDelay,
+                    maxPulses = maxAllowedPulses,
+                )
 
-                steppingLoop@ while (current != target && totalPulses < maxAllowedPulses) {
-                    val currentState = currentAccCruiseState()
-                    if (currentState != AccCruiseState.Active && currentState != AccCruiseState.Override) {
-                        DiagFileLog.i(TAG, "Cruise no longer active ($currentState), stopping loop")
-                        break@steppingLoop
-                    }
+                logDiag("Stepping loop finished. Target=$target, pulses=$totalPulses, now=${currentSetSpeedKmh()}")
 
-                    val distance = abs(current - target)
-                    val batchSize = if (isConventionalCruise() && distance > TARGET_FINE_STEP_BAND_KMH) {
-                        minOf(CONVENTIONAL_BATCH_SIZE, distance - TARGET_FINE_STEP_BAND_KMH)
-                    } else {
-                        1
-                    }
-
-                    var step = 0
-                    batchLoop@ while (step < batchSize) {
-                        step++
-                        val cs = currentAccCruiseState()
-                        if (cs != AccCruiseState.Active && cs != AccCruiseState.Override) {
-                            DiagFileLog.i(TAG, "Cruise no longer active ($cs), stopping loop")
-                            break@steppingLoop
-                        }
-
-                        if (current < target) {
-                            pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
-                            if (isConventionalCruise()) {
-                                CcsRememberedSetpoint.markOurPulse()
-                                CcsRememberedSetpoint.nudgeBy(1, "preset_stepping")
-                            }
-                            delay(increaseIntervalMs)
-                        } else {
-                            pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                            if (isConventionalCruise()) {
-                                CcsRememberedSetpoint.markOurPulse()
-                                CcsRememberedSetpoint.nudgeBy(-1, "preset_stepping")
-                            }
-                            delay(decreaseIntervalMs)
-                        }
-
-                        val fresh = currentSetSpeedKmh()
-                        current = fresh ?: (current + if (current < target) 1 else -1)
-                        totalPulses++
-
-                        if (current == target) {
-                            break@steppingLoop
-                        }
-                    }
-
-                    if (batchSize > 1) {
-                        delay(100L)
-                    }
-                }
-
-                DiagFileLog.i(TAG, "Stepping loop finished. Target=$target, pulses=$totalPulses, now=${currentSetSpeedKmh()}")
-
-                if (isConventionalCruise()) {
-                    val speedDelta = abs((currentSetSpeedKmh() ?: target) - vehicleSpeedKmh())
-                    // Allow 1.2s per km/h of speed delta + 5s buffer (min 8s, max 45s) for vehicle to reach target
-                    val settleMs = (speedDelta * 1200L + 5000L).coerceIn(8_000L, 45_000L)
-                    CcsRememberedSetpoint.markOurPulse(settleMs)
-                }
-
-                // Post-converge verify & catch-up (ACC only, since conventional handles fine steps in main loop)
-                if (!isConventionalCruise()) {
+                if (conventional) {
+                    _adjustingTargetSpeed.value = null
+                    verifyAndCatchUpConventionalCruise(
+                        target = target,
+                        pulseOffMs = ccsOffMs,
+                        pulsesAlreadyUsed = totalPulses,
+                    )
+                } else {
+                    // Post-converge verify & catch-up (ACC only)
                     delay(POST_CONVERGE_VERIFY_MS)
                     val postCheck = currentSetSpeedKmh()
                     if (postCheck != null && postCheck != target && abs(postCheck - target) <= 5) {
@@ -506,6 +558,176 @@ internal object LauncherCruisePresetController {
                 _adjustingTargetSpeed.value = null
             }
         }
+    }
+
+    private suspend fun stepToTarget(
+        target: Int,
+        conventional: Boolean,
+        increaseDelayMs: Long,
+        decreaseDelayMs: Long,
+        maxPulses: Int,
+    ): Int {
+        var current = currentSetSpeedKmh() ?: vehicleSpeedKmh().coerceAtLeast(30)
+        var pulses = 0
+        while (current != target && pulses < maxPulses) {
+            val cs = currentAccCruiseState()
+            if (cs != AccCruiseState.Active && cs != AccCruiseState.Override) {
+                logDiag("Cruise no longer active ($cs), stopping stepping loop")
+                break
+            }
+
+            if (current < target) {
+                if (conventional) {
+                    CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+                }
+                pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
+                if (conventional) {
+                    CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+                    CcsRememberedSetpoint.nudgeBy(1, "preset_stepping")
+                }
+                delay(increaseDelayMs)
+            } else {
+                if (conventional) {
+                    CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+                }
+                pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                if (conventional) {
+                    CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+                    CcsRememberedSetpoint.nudgeBy(-1, "preset_stepping")
+                }
+                delay(decreaseDelayMs)
+            }
+
+            val fresh = currentSetSpeedKmh()
+            current = fresh ?: (current + if (current < target) 1 else -1)
+            pulses++
+        }
+        return pulses
+    }
+
+    /**
+     * Closed-loop plateau verification for conventional cruise (no CAN VSetDis feedback).
+     * Waits until live vehicle speed settles on a plateau, then sends a bounded catch-up burst
+     * if actual speed stopped short/over target. Aborts immediately on driver override, brake,
+     * stalk hardkey press, or cruise deactivation, and stops if a catch-up burst produces no
+     * speed progress (e.g. steep uphill / power limit).
+     */
+    private suspend fun verifyAndCatchUpConventionalCruise(
+        target: Int,
+        pulseOffMs: Long,
+        pulsesAlreadyUsed: Int,
+    ) {
+        var totalPulses = pulsesAlreadyUsed
+        var previousPlateauSpeed: Float? = null
+        var previousErrorSign = 0
+
+        for (round in 1..CCS_VERIFY_MAX_ROUNDS) {
+            val plateauSpeed = waitForConventionalSpeedPlateau()
+            if (plateauSpeed == null) {
+                logDiag("CCS verify round=$round aborted (state/brake/hardkey/timeout)")
+                return
+            }
+
+            when (
+                val decision = evaluateConventionalCatchUp(
+                    targetKmh = target,
+                    plateauSpeedKmh = plateauSpeed,
+                    previousPlateauSpeedKmh = previousPlateauSpeed,
+                    previousErrorSign = previousErrorSign,
+                )
+            ) {
+                CcsCatchUpDecision.Reached -> {
+                    logDiag(
+                        "CCS verify round=$round reached target=$target " +
+                            "(plateau=${"%.2f".format(plateauSpeed)})",
+                    )
+                    CcsRememberedSetpoint.markOurPulse(CcsRememberedSetpoint.OUR_PULSE_WINDOW_MS)
+                    return
+                }
+                CcsCatchUpDecision.NoProgress -> {
+                    val actualKmh = plateauSpeed.roundToInt().coerceIn(30, 160)
+                    logDiag(
+                        "CCS verify round=$round no progress " +
+                            "(prev=${previousPlateauSpeed?.let { "%.2f".format(it) }}, " +
+                            "now=${"%.2f".format(plateauSpeed)}, target=$target) -> stopping catch-up",
+                    )
+                    CcsRememberedSetpoint.remember(actualKmh, "ccs_verify_no_progress")
+                    return
+                }
+                is CcsCatchUpDecision.CatchUp -> {
+                    val remainingBudget = (MAX_CONVENTIONAL_TOTAL_PULSES - totalPulses).coerceAtLeast(0)
+                    if (remainingBudget == 0) {
+                        logDiag("CCS verify round=$round pulse budget exhausted (actual=${decision.actualKmh}, target=$target)")
+                        CcsRememberedSetpoint.remember(decision.actualKmh, "ccs_verify_budget_exhausted")
+                        return
+                    }
+
+                    logDiag(
+                        "CCS verify round=$round catch-up: plateau=${"%.2f".format(plateauSpeed)} " +
+                            "actual=${decision.actualKmh} target=$target error=${decision.errorKmh} " +
+                            "budget=$remainingBudget",
+                    )
+                    CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+                    CcsRememberedSetpoint.remember(decision.actualKmh, "ccs_verify_reconcile")
+
+                    _adjustingTargetSpeed.value = target
+                    val sent = try {
+                        stepToTarget(
+                            target = target,
+                            conventional = true,
+                            increaseDelayMs = pulseOffMs,
+                            decreaseDelayMs = pulseOffMs,
+                            maxPulses = remainingBudget,
+                        )
+                    } finally {
+                        _adjustingTargetSpeed.value = null
+                    }
+                    totalPulses += sent
+                    logDiag("CCS verify round=$round catch-up sent=$sent pulses (total=$totalPulses, now=${currentSetSpeedKmh()})")
+
+                    if (sent == 0) return
+
+                    previousPlateauSpeed = plateauSpeed
+                    previousErrorSign = if (decision.errorKmh > 0) 1 else -1
+
+                    if (round == CCS_VERIFY_MAX_ROUNDS) {
+                        val settleMs = (abs(decision.errorKmh) * 1200L + 3000L).coerceIn(4_000L, 15_000L)
+                        CcsRememberedSetpoint.markOurPulse(settleMs)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun waitForConventionalSpeedPlateau(): Float? {
+        val startElapsed = SystemClock.uptimeMillis()
+        val initialHardkeyElapsed = CcsRememberedSetpoint.lastHardkeyElapsedMs()
+        var anchorSpeed: Float? = null
+        var anchorSinceElapsed = startElapsed
+
+        while (SystemClock.uptimeMillis() - startElapsed < CCS_VERIFY_MAX_WAIT_MS) {
+            if (currentAccCruiseState() != AccCruiseState.Active || isBrakeActive()) {
+                return null
+            }
+            if (CcsRememberedSetpoint.lastHardkeyElapsedMs() > initialHardkeyElapsed) {
+                return null
+            }
+            CcsRememberedSetpoint.markOurPulse(CCS_PULSE_WINDOW_EXTENSION_MS)
+
+            val speed = liveSpeedFloat()
+            val now = SystemClock.uptimeMillis()
+            if (speed != null && speed.isFinite()) {
+                val anchor = anchorSpeed
+                if (anchor == null || abs(speed - anchor) > CCS_VERIFY_STABLE_BAND_KMH) {
+                    anchorSpeed = speed
+                    anchorSinceElapsed = now
+                } else if (now - anchorSinceElapsed >= CCS_VERIFY_STABLE_DURATION_MS) {
+                    return speed
+                }
+            }
+            delay(CCS_VERIFY_POLL_MS)
+        }
+        return null
     }
 
     fun launchStatusSingleTap(context: Context) {
@@ -589,11 +811,14 @@ internal object LauncherCruisePresetController {
                 }
                 AccCruiseState.Standby -> {
                     if (isConventionalCruise()) {
-                        DiagFileLog.i(TAG, "Single tap in Standby (CCS) -> pulse MFS_SET_MINUS (214)")
+                        logDiag("Single tap in Standby (CCS) -> pulse MFS_SET_MINUS (214)")
                         CcsRememberedSetpoint.markOurPulse()
                         pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                        waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
+                        val becameActive = waitPredicate(CCS_ENGAGE_TIMEOUT_MS) {
                             currentAccCruiseState() == AccCruiseState.Active
+                        }
+                        if (becameActive) {
+                            CcsRememberedSetpoint.captureFromVehicleSpeed("ccs_single_tap_standby")
                         }
                         val speed = vehicleSpeedKmh().coerceAtLeast(30)
                         updateRememberedSetpoint(context, speed)
@@ -662,15 +887,24 @@ internal object LauncherCruisePresetController {
 
             when (state) {
                 AccCruiseState.Standby -> {
-                    DiagFileLog.i(TAG, "SwipeUp in Standby -> pulse MFS_RES_PLUS (213)")
+                    logDiag("SwipeUp in Standby -> pulse MFS_RES_PLUS (213)")
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
                     pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
                     if (isConventionalCruise()) {
                         conventionalCruiseStandby = false
                     }
                 }
                 AccCruiseState.Active, AccCruiseState.Override -> {
-                    DiagFileLog.i(TAG, "SwipeUp in Active/Override -> pulse MFS_RES_PLUS (213) (+1 km/h)")
+                    logDiag("SwipeUp in Active/Override -> pulse MFS_RES_PLUS (213) (+1 km/h)")
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
                     pulse(MbCanKnownVehiclePropertyId.MFS_RES_PLUS)
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.nudgeBy(1, "swipe_up")
+                    }
                     val cur = currentSetSpeedKmh() ?: getRememberedSetpoint(context) ?: vehicleSpeedKmh()
                     updateRememberedSetpoint(context, (cur + 1).coerceIn(30, 160))
                 }
@@ -697,17 +931,27 @@ internal object LauncherCruisePresetController {
 
             when (state) {
                 AccCruiseState.Standby -> {
-                    DiagFileLog.i(TAG, "SwipeDown in Standby -> pulse MFS_SET_MINUS (214)")
-                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
-                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
-                    updateRememberedSetpoint(context, speed)
+                    logDiag("SwipeDown in Standby -> pulse MFS_SET_MINUS (214)")
                     if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
+                    pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.captureFromVehicleSpeed("swipe_down_standby")
                         conventionalCruiseStandby = false
                     }
+                    val speed = vehicleSpeedKmh().coerceAtLeast(30)
+                    updateRememberedSetpoint(context, speed)
                 }
                 AccCruiseState.Active, AccCruiseState.Override -> {
-                    DiagFileLog.i(TAG, "SwipeDown in Active/Override -> pulse MFS_SET_MINUS (214) (-1 km/h)")
+                    logDiag("SwipeDown in Active/Override -> pulse MFS_SET_MINUS (214) (-1 km/h)")
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.markOurPulse()
+                    }
                     pulse(MbCanKnownVehiclePropertyId.MFS_SET_MINUS)
+                    if (isConventionalCruise()) {
+                        CcsRememberedSetpoint.nudgeBy(-1, "swipe_down")
+                    }
                     val cur = currentSetSpeedKmh() ?: getRememberedSetpoint(context) ?: vehicleSpeedKmh()
                     updateRememberedSetpoint(context, (cur - 1).coerceIn(30, 160))
                 }
@@ -839,7 +1083,7 @@ internal object LauncherCruisePresetController {
     }
 
     private suspend fun pulse(propertyId: Int) = withContext(Dispatchers.IO) {
-        val holdMs = if (isConventionalCruise()) CONVENTIONAL_PULSE_HOLD_MS else PULSE_HOLD_MS
+        val holdMs = if (isConventionalCruise()) conventionalPulseOnMs() else PULSE_HOLD_MS
         val isAndroid10Vhal = UniversalCanRepository.mode.value == HeadUnitCanMode.Android10Vhal
         try {
             if (isAndroid10Vhal) {

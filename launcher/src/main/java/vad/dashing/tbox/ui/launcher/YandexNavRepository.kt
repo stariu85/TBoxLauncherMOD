@@ -35,7 +35,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import vad.dashing.tbox.ShellExecutor
@@ -107,8 +106,7 @@ object YandexNavRepository {
     private const val MINIMAP_BITMAP_POOL_SIZE = 3
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val minimapDecodeDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val minimapDecodeDispatcher get() = LauncherCpuAffinity.minimapDecodeDispatcher
     private val pendingMinimapJpeg = AtomicReference<Triple<ByteArray, Boolean, Long>?>(null)
     private val minimapDecodeScheduled = AtomicBoolean(false)
     private val minimapFrameSeq = AtomicLong(0L)

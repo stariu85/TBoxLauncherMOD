@@ -38,4 +38,29 @@ class LauncherGearboxTypeTest {
         assertFalse(CanDataRepository.isManualGearbox.value)
         assertFalse(CanDataRepository.is6DctGearbox.value)
     }
+
+    @Test
+    fun testParseGearboxTypeFromSystemConfigStringsIgnoresRawBitSubstrings() {
+        // Hex/bitmask strings containing "000", "001", or "110" must not trigger false positives.
+        assertEquals(
+            GearboxType.DCT_7,
+            CanDataRepository.parseGearboxTypeFromSystemConfigStrings(
+                "",
+                "000110001A2B3C",
+                "FFFFFFFF000110001",
+            ),
+        )
+        assertEquals(
+            GearboxType.DCT_6,
+            CanDataRepository.parseGearboxTypeFromSystemConfigStrings("1.5_6DCT", "000001"),
+        )
+        assertEquals(
+            GearboxType.MANUAL,
+            CanDataRepository.parseGearboxTypeFromSystemConfigStrings("1.5_6MT", "110"),
+        )
+        assertEquals(
+            GearboxType.DCT_7,
+            CanDataRepository.parseGearboxTypeFromSystemConfigStrings("1.6_7DCT", "110000001"),
+        )
+    }
 }

@@ -22,6 +22,10 @@ class LauncherApplication : Application() {
         super.onCreate()
         AppContextHolder.init(this)
         vad.dashing.tbox.ui.launcher.LauncherFirstInstallDefaults.applyIfNeeded(this)
+        vad.dashing.tbox.ui.launcher.LauncherCpuAffinity.syncExperimentalFlagsFromStore(this)
+        CanDataRepository.setGearboxType(
+            vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.gearboxType(this),
+        )
 
         val settings = SettingsManager(this)
         BootSessionTracker.onAppStart(this, appScope)

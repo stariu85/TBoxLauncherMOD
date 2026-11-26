@@ -444,6 +444,33 @@ fun LauncherLeftPanel(
     val navBgMinimapAutoZoomEnabled = remember(context, navBgMinimapRevision) {
         LauncherAppConfigStore.navBgMinimapAutoZoomEnabled(context)
     }
+    val navBgMinimapHideOnAccEnabled = remember(context, navBgMinimapRevision) {
+        LauncherAppConfigStore.navBgMinimapHideOnAccEnabled(context)
+    }
+    val navBgMinimapAccSuppressed = shouldSuppressNavMinimapForAcc(
+        hideOnAccEnabled = navBgMinimapHideOnAccEnabled,
+        accActive = adas.accActive,
+        accOverride = adas.accOverride,
+    )
+    var navBgMinimapManuallyHidden by remember { mutableStateOf(false) }
+    var navBgMinimapAccOverrideVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(navBgMinimapVisible) {
+        if (!navBgMinimapVisible) {
+            navBgMinimapManuallyHidden = false
+            navBgMinimapAccOverrideVisible = false
+        }
+    }
+    LaunchedEffect(navBgMinimapAccSuppressed) {
+        navBgMinimapAccOverrideVisible = false
+    }
+    val navBgMinimapEffectiveVisible = isNavMinimapEffectivelyVisible(
+        minimapSettingEnabled = navBgMinimapVisible,
+        hideOnAccEnabled = navBgMinimapHideOnAccEnabled,
+        accActive = adas.accActive,
+        accOverride = adas.accOverride,
+        manuallyHidden = navBgMinimapManuallyHidden,
+        accOverrideVisible = navBgMinimapAccOverrideVisible,
+    )
     val navBgMinimapPositionRevision by LauncherAppConfigStore.navBgMinimapPositionRevisionFlow.collectAsStateWithLifecycle()
     var navBgMinimapXRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapXRatio(context)) }
     var navBgMinimapYRatio by remember { mutableFloatStateOf(LauncherAppConfigStore.navBgMinimapYRatio(context)) }
@@ -933,9 +960,11 @@ fun LauncherLeftPanel(
                     }
                     "media_player" -> {
                         if (miniPlayerVisible) {
+                            val canAnimateMiniPlayer = rememberRightPanelAnimationsActive()
                             LauncherMediaMiniPlayer(
                                 modifier = Modifier.fillMaxWidth(),
                                 sourceId = "launcher_mini_player_main",
+                                animate = canAnimateMiniPlayer,
                             )
                         }
                     }
@@ -1029,7 +1058,7 @@ fun LauncherLeftPanel(
                 }
             }
             // Freely Movable Background Navigation Overlay 9: Full-width Minimap Block
-            if (!racing && showDriveView && navBgMinimapVisible && !hideYandexWidgets) {
+            if (!racing && showDriveView && navBgMinimapEffectiveVisible && !hideYandexWidgets) {
                 val currentEffectiveSpeed by rememberUpdatedState(effectiveSpeed)
                 val minimapSpeedProvider = remember { { currentEffectiveSpeed } }
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -1416,7 +1445,7 @@ fun LauncherLeftPanel(
                             )
                         }
 
-                        if (navBgMinimapVisible && !hideYandexWidgets) {
+                        if (navBgMinimapEffectiveVisible && !hideYandexWidgets) {
                             val mapHeightDp = navBgMinimapHeightDp.dp
                             val mapHeightPx = with(density) { mapHeightDp.toPx() }
                             val mapCenterY = containerHeightPx * navBgMinimapYRatio
@@ -1483,6 +1512,20 @@ fun LauncherLeftPanel(
 
                             LauncherNavBgLanesOrTurnOverlay(
                                 scale = navBgLanesOrTurnScale,
+                                onClick = {
+                                    when (resolveLanesOrTurnTapAction(navBgMinimapVisible)) {
+                                        LanesOrTurnTapAction.TOGGLE_MINIMAP -> {
+                                            if (navBgMinimapAccSuppressed) {
+                                                navBgMinimapAccOverrideVisible = !navBgMinimapAccOverrideVisible
+                                            } else {
+                                                navBgMinimapManuallyHidden = !navBgMinimapManuallyHidden
+                                            }
+                                        }
+                                        LanesOrTurnTapAction.OPEN_YANDEX_NAV -> {
+                                            launchLauncherApp(context, "ru.yandex.yandexnavi")
+                                        }
+                                    }
+                                },
                                 onDrag = { delta ->
                                     if (containerWidthPx > 0f && containerHeightPx > 0f) {
                                         val currentX = containerWidthPx * navBgLanesOrTurnXRatio

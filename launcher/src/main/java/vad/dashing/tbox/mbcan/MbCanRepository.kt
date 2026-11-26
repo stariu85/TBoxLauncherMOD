@@ -33,8 +33,8 @@ import vad.dashing.tbox.mbcan.MbCanRepository.setSourceSignals
 import vad.dashing.tbox.mbcan.MbCanRepository.setSourceWidgetKeys
 import vad.dashing.tbox.mbcan.MbCanRepository.stateApplyDispatcher
 import vad.dashing.tbox.ui.decodeHvacTemperatureRaw
+import vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 enum class MbCanSignalCategory { FAST, MEDIUM, SLOW }
@@ -107,7 +107,7 @@ object MbCanRepository {
      */
     private const val CLEAR_SOURCE_PUSH_DEBOUNCE_MS = 3 * 60_000L
 
-    private val debouncedClearSourceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val debouncedClearSourceScope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.canBusDispatcher)
     private val pendingDebouncedClearJobs = ConcurrentHashMap<String, Job>()
 
     fun enqueueClearSource(sourceId: String) {
@@ -167,9 +167,7 @@ object MbCanRepository {
      * Single-thread dispatcher for streak counters, burst decisions, and [StateFlow] writes so push
      * (Handler → launch) and poll ([MbCanJobManager] IO) never interleave.
      */
-    private val stateApplyDispatcher = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "mbcan-state-apply").apply { isDaemon = true }
-    }.asCoroutineDispatcher()
+    private val stateApplyDispatcher = LauncherCpuAffinity.createCanBusSingleThreadDispatcher("mbcan-state-apply")
 
     private val cfgPushHandler = Handler(Looper.getMainLooper())
     private val pendingCfgPushes = mutableMapOf<Int, Int>()
@@ -337,7 +335,7 @@ object MbCanRepository {
     suspend fun bind(scope: CoroutineScope) {
         try {
             boundScope = scope
-            _availability.value = withContext(Dispatchers.IO) { MbCanEngineFacade.probeAvailability() }
+            _availability.value = withContext(LauncherCpuAffinity.canBusDispatcher) { MbCanEngineFacade.probeAvailability() }
             MbCanDiagnostics.log("DEBUG", "bind() availability=${_availability.value}")
             android.util.Log.i("TBoxCan", "bind() availability=${_availability.value}")
             MbCanJobManager.attach(scope)
@@ -357,7 +355,7 @@ object MbCanRepository {
      * Ensures mbCAN is initialized and republishes [availability] without any widget subscriptions.
      * Used so Settings (e.g. "Reboot HU") can enable controls when no mbCAN dashboard widget was shown yet.
      */
-    suspend fun warmUpAvailabilityForUi() = withContext(Dispatchers.IO) {
+    suspend fun warmUpAvailabilityForUi() = withContext(LauncherCpuAffinity.canBusDispatcher) {
         try {
             if (MbCanEngineFacade.isInitialized()) {
                 _availability.value = MbCanEngineFacade.availability
@@ -959,7 +957,7 @@ object MbCanRepository {
         applyCandidate: suspend (MbCanBinaryState) -> Unit,
         currentState: () -> MbCanBinaryState,
     ) {
-        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
+        val (initialized, availability, raw) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1074,7 +1072,7 @@ object MbCanRepository {
     )
 
     private suspend fun refreshHvacPm25() {
-        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
+        val (initialized, availability, raw) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1117,7 +1115,7 @@ object MbCanRepository {
     )
 
     private suspend fun refreshAudioVolumeSpeed() {
-        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
+        val (initialized, availability, raw) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1163,7 +1161,7 @@ object MbCanRepository {
     }
 
     private suspend fun refreshAudioVolume() {
-        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
+        val (initialized, availability, raw) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1196,7 +1194,7 @@ object MbCanRepository {
     }
 
     private suspend fun refreshEngineRpm() {
-        val (initialized, availability, rpm) = withContext(Dispatchers.IO) {
+        val (initialized, availability, rpm) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1220,7 +1218,7 @@ object MbCanRepository {
     }
 
     private suspend fun refreshEngineTemperature() {
-        val (initialized, availability, temp) = withContext(Dispatchers.IO) {
+        val (initialized, availability, temp) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1244,7 +1242,7 @@ object MbCanRepository {
     }
 
     private suspend fun refreshCarSpeed() {
-        val (initialized, availability, newSpeed) = withContext(Dispatchers.IO) {
+        val (initialized, availability, newSpeed) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1314,7 +1312,7 @@ object MbCanRepository {
 
     private suspend fun refreshSeatSlot(slot: MbCanSeatSlot) {
         val propertyId = slot.propertyId
-        val (initialized, availability, raw) = withContext(Dispatchers.IO) {
+        val (initialized, availability, raw) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {
@@ -1359,7 +1357,7 @@ object MbCanRepository {
 
     private suspend fun ensureMbCanReadyIfNeeded() {
         if (MbCanEngineFacade.isInitialized()) return
-        val availability = withContext(Dispatchers.IO) { MbCanEngineFacade.ensureInitialized() }
+        val availability = withContext(LauncherCpuAffinity.canBusDispatcher) { MbCanEngineFacade.ensureInitialized() }
         _availability.value = availability
         MbCanDiagnostics.log("DEBUG", "ensureMbCanReadyIfNeeded availability=$availability")
         if (availability is MbCanAvailability.Available) {
@@ -1438,7 +1436,7 @@ object MbCanRepository {
     }
 
     private suspend fun refreshCarSettingsVehicleParams() {
-        val (initialized, availability, values) = withContext(Dispatchers.IO) {
+        val (initialized, availability, values) = withContext(LauncherCpuAffinity.canBusDispatcher) {
             if (!MbCanEngineFacade.isInitialized()) {
                 Triple(false, MbCanEngineFacade.probeAvailability(), null)
             } else {

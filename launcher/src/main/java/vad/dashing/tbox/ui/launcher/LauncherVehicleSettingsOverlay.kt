@@ -1009,6 +1009,8 @@ internal fun LauncherVehicleSettingsContent(
             Spacer(modifier = Modifier.height(12.dp))
             LauncherExpHomeMoveTaskToBackSettings()
             Spacer(modifier = Modifier.height(8.dp))
+            LauncherExpCpuAffinitySettings()
+            Spacer(modifier = Modifier.height(8.dp))
             ExperimentalAdasSliders()
             Spacer(modifier = Modifier.height(8.dp))
             LauncherSettingsToggleRow(

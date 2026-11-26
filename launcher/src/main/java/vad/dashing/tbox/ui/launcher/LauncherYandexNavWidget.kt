@@ -35,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -886,6 +885,46 @@ internal fun shouldShowNavMinimap(
     hasBitmap: Boolean,
 ): Boolean = isYandexWindowOpen && hasBitmap
 
+internal fun shouldSuppressNavMinimapForAcc(
+    hideOnAccEnabled: Boolean,
+    accActive: Boolean,
+    accOverride: Boolean,
+): Boolean = hideOnAccEnabled && (accActive || accOverride)
+
+internal enum class LanesOrTurnTapAction {
+    TOGGLE_MINIMAP,
+    OPEN_YANDEX_NAV,
+}
+
+internal fun resolveLanesOrTurnTapAction(
+    minimapSettingEnabled: Boolean,
+): LanesOrTurnTapAction = if (minimapSettingEnabled) {
+    LanesOrTurnTapAction.TOGGLE_MINIMAP
+} else {
+    LanesOrTurnTapAction.OPEN_YANDEX_NAV
+}
+
+internal fun isNavMinimapEffectivelyVisible(
+    minimapSettingEnabled: Boolean,
+    hideOnAccEnabled: Boolean,
+    accActive: Boolean,
+    accOverride: Boolean,
+    manuallyHidden: Boolean,
+    accOverrideVisible: Boolean = false,
+): Boolean {
+    if (!minimapSettingEnabled) return false
+    val accSuppressed = shouldSuppressNavMinimapForAcc(
+        hideOnAccEnabled = hideOnAccEnabled,
+        accActive = accActive,
+        accOverride = accOverride,
+    )
+    return if (accSuppressed) {
+        accOverrideVisible
+    } else {
+        !manuallyHidden
+    }
+}
+
 /**
  * Full-width Rectangular Minimap Block (from com.yandex.MINIMAP).
  * Spans full width of ADAS zone with configurable height, transparency, and edge gradients.
@@ -1008,7 +1047,7 @@ private fun LauncherNavBgMinimapFrameContent(
 
     LaunchedEffect(bmp, frameSeq, isDarkTheme) {
         if (!isDarkTheme && lightFrame?.first != frameSeq) {
-            val converted = withContext(Dispatchers.Default) {
+            val converted = withContext(LauncherCpuAffinity.minimapLightConvertDispatcher) {
                 lightBuffer.convert(bmp)
             }
             if (converted != null) {
@@ -1429,6 +1468,7 @@ internal fun trimLaneBitmapsCommonVerticalBounds(
 @Composable
 internal fun LauncherNavBgLanesOrTurnOverlay(
     scale: Float = 1f,
+    onClick: (() -> Unit)? = null,
     onDrag: (Offset) -> Unit = {},
     onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -1471,7 +1511,7 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
         key2 = navState.lanesBitmaps,
     ) {
         value = if (hasLanes && navState.lanesBitmaps.isNotEmpty()) {
-            withContext(Dispatchers.Default) {
+            withContext(LauncherCpuAffinity.minimapLightConvertDispatcher) {
                 trimLaneBitmapsCommonVerticalBounds(navState.lanesBitmaps)
             }
         } else {
@@ -1486,7 +1526,7 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
     ) {
         val src = navState.lanesBitmap
         value = if (needSingleLaneBitmap && src != null) {
-            withContext(Dispatchers.Default) {
+            withContext(LauncherCpuAffinity.minimapLightConvertDispatcher) {
                 trimBitmapTransparentBounds(src)
             }
         } else {
@@ -1500,7 +1540,7 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
         key2 = turnBmp,
     ) {
         value = if (needTurnBitmap && turnBmp != null) {
-            withContext(Dispatchers.Default) {
+            withContext(LauncherCpuAffinity.minimapLightConvertDispatcher) {
                 trimBitmapTransparentBounds(turnBmp)
             }
         } else {
@@ -1508,6 +1548,7 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
         }
     }
 
+    val currentOnClick by rememberUpdatedState(onClick)
     val currentOnDrag by rememberUpdatedState(onDrag)
     val currentOnDragEnd by rememberUpdatedState(onDragEnd)
 
@@ -1529,7 +1570,14 @@ internal fun LauncherNavBgLanesOrTurnOverlay(
                     onDragCancel = { currentOnDragEnd() },
                 )
             }
-            .clickable { launchLauncherApp(context, "ru.yandex.yandexnavi") }
+            .clickable {
+                val clickHandler = currentOnClick
+                if (clickHandler != null) {
+                    clickHandler()
+                } else {
+                    launchLauncherApp(context, "ru.yandex.yandexnavi")
+                }
+            }
             .clip(RoundedCornerShape((16f * s).dp))
             .background(signBlue)
             .padding(horizontal = (16f * s).dp, vertical = (8f * s).dp),

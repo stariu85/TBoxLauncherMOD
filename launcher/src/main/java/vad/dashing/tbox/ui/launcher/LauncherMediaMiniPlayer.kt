@@ -9,13 +9,7 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -30,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -44,10 +39,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,9 +53,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -72,24 +69,49 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toBitmap
-import androidx.core.graphics.withRotation
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
+import kotlinx.coroutines.isActive
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SharedMediaControlService
 import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.theme.tboxCaption
 import kotlin.math.abs
+import kotlin.math.ceil
 
 private const val LAUNCHER_MEDIA_SOURCE_ID = "launcher_mini_player"
+internal const val ROTATING_PLAYER_NAME_DEGREES_PER_SEC = 360f / 23.4f
+internal const val ROTATING_PLAYER_NAME_FRAME_INTERVAL_NS = 50_000_000L // 20 FPS
+internal const val ROTATING_PLAYER_NAME_MAX_DT_SEC = 0.15f
+private const val MEDIA_MARQUEE_ITERATIONS = 1
+private const val MEDIA_MARQUEE_INITIAL_DELAY_MS = 1_500
+private const val MEDIA_MARQUEE_REPEAT_DELAY_MS = 3_000
+
+internal fun shouldRunMediaMarquee(animate: Boolean, isPlaying: Boolean): Boolean =
+    animate && isPlaying
+
+internal fun advanceRotatingPlayerNameAngle(
+    currentAngleDeg: Float,
+    deltaNs: Long,
+    minIntervalNs: Long = ROTATING_PLAYER_NAME_FRAME_INTERVAL_NS,
+    degreesPerSec: Float = ROTATING_PLAYER_NAME_DEGREES_PER_SEC,
+    maxDtSec: Float = ROTATING_PLAYER_NAME_MAX_DT_SEC,
+): Float? {
+    if (deltaNs < minIntervalNs) return null
+    val dtSec = (deltaNs / 1_000_000_000f).coerceIn(0f, maxDtSec)
+    val next = (currentAngleDeg + dtSec * degreesPerSec) % 360f
+    return if (next < 0f) next + 360f else next
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LauncherMediaMiniPlayer(
     modifier: Modifier = Modifier,
     sourceId: String = LAUNCHER_MEDIA_SOURCE_ID,
+    animate: Boolean = true,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -119,6 +141,12 @@ fun LauncherMediaMiniPlayer(
     val showPlayerName = remember(context, showPlayerNameRevision) {
         LauncherAppConfigStore.showPlayerNameInWidget(context)
     }
+    val enableMediaTextAnimRevision by LauncherAppConfigStore.enableMediaTextAnimationRevisionFlow
+        .collectAsStateWithLifecycle()
+    val enableMediaTextAnim = remember(context, enableMediaTextAnimRevision) {
+        LauncherAppConfigStore.enableMediaTextAnimation(context)
+    }
+    val effectiveAnimate = animate && enableMediaTextAnim
 
     val isDark = LauncherThemeState.darkTheme
 
@@ -414,25 +442,46 @@ fun LauncherMediaMiniPlayer(
                             modifier = Modifier.clickable { openNotificationListenerSettings(context) },
                         )
                     } else {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.tboxCaption,
-                            color = primaryTextColor,
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Clip,
-                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
-                        )
-                        if (artist.isNotBlank()) {
+                        val runMarquee = shouldRunMediaMarquee(animate = effectiveAnimate, isPlaying = isPlaying)
+                        key(title, runMarquee) {
                             Text(
-                                text = artist,
+                                text = title,
                                 style = MaterialTheme.typography.tboxCaption,
-                                color = secondaryTextColor,
-                                fontSize = 12.sp,
+                                color = primaryTextColor,
+                                fontSize = 14.sp,
                                 maxLines = 1,
-                                overflow = TextOverflow.Clip,
-                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = if (runMarquee) {
+                                    Modifier.basicMarquee(
+                                        iterations = MEDIA_MARQUEE_ITERATIONS,
+                                        repeatDelayMillis = MEDIA_MARQUEE_REPEAT_DELAY_MS,
+                                        initialDelayMillis = MEDIA_MARQUEE_INITIAL_DELAY_MS,
+                                    )
+                                } else {
+                                    Modifier
+                                },
                             )
+                        }
+                        if (artist.isNotBlank()) {
+                            key(artist, runMarquee) {
+                                Text(
+                                    text = artist,
+                                    style = MaterialTheme.typography.tboxCaption,
+                                    color = secondaryTextColor,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = if (runMarquee) {
+                                        Modifier.basicMarquee(
+                                            iterations = MEDIA_MARQUEE_ITERATIONS,
+                                            repeatDelayMillis = MEDIA_MARQUEE_REPEAT_DELAY_MS,
+                                            initialDelayMillis = MEDIA_MARQUEE_INITIAL_DELAY_MS,
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -521,6 +570,7 @@ fun LauncherMediaMiniPlayer(
                     text = activePkgLabel,
                     playButtonSize = playButtonSize,
                     textColor = secondaryTextColor,
+                    animate = effectiveAnimate,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -701,23 +751,13 @@ private fun RotatingPlayerNameText(
     text: String,
     playButtonSize: Dp,
     textColor: Color,
+    animate: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val fontSizePx = with(density) { 10.dp.toPx() }
     val playButtonRadiusPx = with(density) { playButtonSize.toPx() / 2f }
     val pathRadiusPx = playButtonRadiusPx + with(density) { 10.dp.toPx() }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "playerTextRotation")
-    val rotationAngleState = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 23400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "rotationAngle",
-    )
 
     val paint = remember(textColor, fontSizePx) {
         android.graphics.Paint().apply {
@@ -745,20 +785,64 @@ private fun RotatingPlayerNameText(
             sectorUnit.repeat(count)
         }
     }
-    val reusablePath = remember { android.graphics.Path() }
 
-    Canvas(modifier = modifier) {
-        if (formattedText.isNotBlank()) {
-            val centerX = size.width / 2f
-            val centerY = size.height / 2f
-            reusablePath.reset()
-            reusablePath.addCircle(centerX, centerY, pathRadiusPx, android.graphics.Path.Direction.CW)
-            val angle = rotationAngleState.value
-            drawIntoCanvas { canvas ->
-                canvas.nativeCanvas.withRotation(angle, centerX, centerY) {
-                    drawTextOnPath(formattedText, reusablePath, 0f, 0f, paint)
+    // Pre-render the circular label once into an offscreen Bitmap so frames never invoke
+    // nativeCanvas.drawTextOnPath; old bitmaps are left to GC so RenderThread is never raced.
+    val preRenderedBitmap: ImageBitmap? = remember(formattedText, textColor, fontSizePx, pathRadiusPx) {
+        if (formattedText.isBlank()) {
+            null
+        } else {
+            val textMarginPx = maxOf(abs(paint.fontMetrics.top) + 4f, fontSizePx * 1.5f)
+            val bitmapSizePx = ceil((pathRadiusPx + textMarginPx) * 2f).toInt().coerceIn(1, 1024)
+            val bitmap = createBitmap(bitmapSizePx, bitmapSizePx, android.graphics.Bitmap.Config.ARGB_8888)
+            val center = bitmapSizePx / 2f
+            val path = android.graphics.Path().apply {
+                addCircle(center, center, pathRadiusPx, android.graphics.Path.Direction.CW)
+            }
+            android.graphics.Canvas(bitmap).drawTextOnPath(formattedText, path, 0f, 0f, paint)
+            bitmap.prepareToDraw()
+            bitmap.asImageBitmap()
+        }
+    }
+
+    val rotationAngleState = remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(animate, preRenderedBitmap != null) {
+        if (!animate || preRenderedBitmap == null) return@LaunchedEffect
+        var lastTickFrameNs = 0L
+        while (isActive) {
+            withFrameNanos { frameNs ->
+                if (lastTickFrameNs == 0L) {
+                    lastTickFrameNs = frameNs
+                    return@withFrameNanos
+                }
+                val nextAngle = advanceRotatingPlayerNameAngle(
+                    currentAngleDeg = rotationAngleState.floatValue,
+                    deltaNs = frameNs - lastTickFrameNs,
+                )
+                if (nextAngle != null) {
+                    lastTickFrameNs = frameNs
+                    rotationAngleState.floatValue = nextAngle
                 }
             }
+        }
+    }
+
+    if (preRenderedBitmap != null) {
+        val bitmapSizeDp = with(density) { preRenderedBitmap.width.toDp() }
+        Box(
+            modifier = modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                bitmap = preRenderedBitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .requiredSize(bitmapSizeDp)
+                    .graphicsLayer {
+                        rotationZ = rotationAngleState.floatValue
+                    },
+            )
         }
     }
 }

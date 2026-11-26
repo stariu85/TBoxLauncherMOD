@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -75,7 +74,7 @@ data class LauncherVehicleControlSnapshot(
  */
 object LauncherVehicleControlRepository {
     private const val TAG = "VehicleControlRepo"
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.canBusDispatcher)
     private val _snapshot = MutableStateFlow(LauncherVehicleControlSnapshot())
     val snapshot: StateFlow<LauncherVehicleControlSnapshot> = _snapshot.asStateFlow()
 

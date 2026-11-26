@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -43,6 +44,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+
+private const val ADAS_PANEL_DRAG_HOLD_TIMEOUT_MS = 1000L
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -167,18 +170,44 @@ internal fun DraggableAdasPanel(
             )
             .pointerInput(panelId, topPanels, bottomPanels, containerHeightPx) {
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial,
+                    )
                     val downTime = SystemClock.uptimeMillis()
-                    var dragActive = false
+                    val touchSlop = viewConfiguration.touchSlop
                     var accumulativeDragY = 0f
 
                     while (true) {
-                        val event = awaitPointerEvent()
-                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
-
+                        val remainingMs = ADAS_PANEL_DRAG_HOLD_TIMEOUT_MS - (SystemClock.uptimeMillis() - downTime)
+                        if (remainingMs <= 0L) {
+                            break
+                        }
+                        val event = withTimeoutOrNull(remainingMs) {
+                            awaitPointerEvent(PointerEventPass.Initial)
+                        } ?: break
+                        val pointer = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
                         if (!pointer.pressed) {
-                            if (dragActive) {
+                            return@awaitEachGesture
+                        }
+                        if ((pointer.position - down.position).getDistance() > touchSlop) {
+                            return@awaitEachGesture
+                        }
+                    }
+
+                    isDragging = true
+                    onDragStarted()
+                    dragOffsetY = 0f
+
+                    var finished = false
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                            if (!pointer.pressed) {
                                 pointer.consume()
+                                finished = true
                                 val releasedCenterY = initialPanelTopPx + panelHeightPx / 2f + accumulativeDragY
                                 val newLayout = calculateNewPanelLayout(
                                     draggedPanelId = panelId,
@@ -200,35 +229,19 @@ internal fun DraggableAdasPanel(
                                 dragOffsetY = 0f
                                 onLayoutChanged(newLayout.first, newLayout.second)
                                 onDragEnded()
+                                break
                             }
-                            break
-                        }
 
-                        val elapsed = SystemClock.uptimeMillis() - downTime
-
-                        if (!dragActive) {
-                            val totalDeltaY = kotlin.math.abs(pointer.position.y - down.position.y)
-                            val totalDeltaX = kotlin.math.abs(pointer.position.x - down.position.x)
-                            if (totalDeltaY > 12f && totalDeltaY > totalDeltaX * 1.2f) {
-                                dragActive = true
-                                isDragging = true
-                                onDragStarted()
-                                accumulativeDragY = pointer.position.y - down.position.y
-                                dragOffsetY = accumulativeDragY
-                                pointer.consume()
-                            } else if (elapsed >= 350L) {
-                                dragActive = true
-                                isDragging = true
-                                onDragStarted()
-                                accumulativeDragY = 0f
-                                dragOffsetY = accumulativeDragY
-                                pointer.consume()
-                            }
-                        } else {
                             val frameDeltaY = pointer.position.y - pointer.previousPosition.y
                             accumulativeDragY += frameDeltaY
                             dragOffsetY = accumulativeDragY
                             pointer.consume()
+                        }
+                    } finally {
+                        if (!finished) {
+                            isDragging = false
+                            dragOffsetY = 0f
+                            onDragEnded()
                         }
                     }
                 }

@@ -25,10 +25,13 @@ private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_MEDIA_CARD_HEIGHT_SCALE = "media_card_height_scale"
 private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
 private const val KEY_SHOW_PLAYER_NAME_IN_WIDGET = "show_player_name_in_widget"
+private const val KEY_ENABLE_MEDIA_TEXT_ANIMATION = "enable_media_text_animation"
 private const val KEY_EXPERIMENTAL_PLAYER_LAUNCH_MODE = "exp_player_launch_mode"
 private const val KEY_EXPERIMENTAL_HIDE_APPS_ON_HOME = "exp_hide_apps_on_home"
 private const val KEY_EXPERIMENTAL_HOME_MOVE_TASK_TO_BACK = "exp_home_move_task_to_back"
 private const val KEY_EXPERIMENTAL_HOME_WINDOWING_MODE = "exp_home_windowing_mode"
+private const val KEY_EXPERIMENTAL_PIN_3D_RENDER_CPU45 = "exp_pin_3d_render_cpu45"
+private const val KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45 = "exp_pin_can_bus_cpu45"
 private const val KEY_USE_NEW_SETTINGS_VIEW = "use_new_settings_view"
 private const val KEY_BOOT_LOG_ENABLED = "boot_log_enabled"
 private const val KEY_SEAT_MIRROR_LAUNCH_MODE = "seat_mirror_launch_mode"
@@ -432,6 +435,7 @@ private const val KEY_NAV_BG_MINIMAP_TRANSPARENCY = "nav_bg_minimap_transparency
 private const val KEY_NAV_BG_MINIMAP_HEIGHT_DP = "nav_bg_minimap_height_dp"
 private const val KEY_NAV_BG_MINIMAP_3D_ENABLED = "nav_bg_minimap_3d_enabled"
 private const val KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED = "nav_bg_minimap_auto_zoom_enabled"
+private const val KEY_NAV_BG_MINIMAP_HIDE_ON_ACC = "nav_bg_minimap_hide_on_acc"
 private const val KEY_NAV_BG_MINIMAP_RESOLUTION_PERCENT = "nav_bg_minimap_resolution_percent"
 private const val KEY_NAV_BG_MINIMAP_FILTER_QUALITY = "nav_bg_minimap_filter_quality"
 private const val KEY_NAV_BG_NEXT_TURN_VISIBLE = "nav_bg_next_turn_visible"
@@ -460,6 +464,12 @@ private const val KEY_NGP_ENABLED = "ngp_enabled"
 private const val KEY_TIME_GAP_LEVEL = "time_gap_level"
 private const val KEY_CRUISE_INCREASE_INTERVAL = "cruise_increase_interval"
 private const val KEY_CRUISE_DECREASE_INTERVAL = "cruise_decrease_interval"
+private const val KEY_CCS_PULSE_ON_MS = "ccs_pulse_on_ms"
+private const val KEY_CCS_PULSE_OFF_MS = "ccs_pulse_off_ms"
+internal const val CCS_PULSE_ON_DEFAULT_MS = 150L
+internal const val CCS_PULSE_OFF_DEFAULT_MS = 250L
+internal const val CCS_PULSE_MIN_MS = 50L
+internal const val CCS_PULSE_MAX_MS = 1500L
 private const val KEY_FUEL_PRICE = "fuel_price_rub"
 internal const val FUEL_PRICE_DEFAULT = 75.0f
 internal const val FUEL_PRICE_MIN = 60.0f
@@ -510,13 +520,18 @@ internal object LauncherAppConfigStore {
 
     private val wallpaperRevision = registeredRevisionFlow()
     internal val wallpaperRevisionFlow: StateFlow<Int> = wallpaperRevision
+    private val wallpaperDarkRevision = registeredRevisionFlow()
+    internal val wallpaperDarkRevisionFlow: StateFlow<Int> = wallpaperDarkRevision
+    private val wallpaperLightRevision = registeredRevisionFlow()
+    internal val wallpaperLightRevisionFlow: StateFlow<Int> = wallpaperLightRevision
 
     fun wallpaperDarkUri(context: Context): String =
         prefs(context).getString(KEY_WALLPAPER_DARK_URI, "").orEmpty()
 
     fun setWallpaperDarkUri(context: Context, uri: String) {
         prefs(context).edit().putString(KEY_WALLPAPER_DARK_URI, uri).apply()
-        wallpaperRevision.value++
+        wallpaperDarkRevision.update { it + 1 }
+        wallpaperRevision.update { it + 1 }
     }
 
     fun wallpaperLightUri(context: Context): String =
@@ -524,7 +539,8 @@ internal object LauncherAppConfigStore {
 
     fun setWallpaperLightUri(context: Context, uri: String) {
         prefs(context).edit().putString(KEY_WALLPAPER_LIGHT_URI, uri).apply()
-        wallpaperRevision.value++
+        wallpaperLightRevision.update { it + 1 }
+        wallpaperRevision.update { it + 1 }
     }
 
     fun wallpaperScaleMode(context: Context): WallpaperScaleMode =
@@ -532,7 +548,7 @@ internal object LauncherAppConfigStore {
 
     fun setWallpaperScaleMode(context: Context, mode: WallpaperScaleMode) {
         prefs(context).edit().putInt(KEY_WALLPAPER_SCALE_MODE, mode.code).apply()
-        wallpaperRevision.value++
+        wallpaperRevision.update { it + 1 }
     }
 
     private val mediaCardAlphaRevision = registeredRevisionFlow()
@@ -543,6 +559,8 @@ internal object LauncherAppConfigStore {
     internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
     private val showPlayerNameInWidgetRevision = registeredRevisionFlow()
     internal val showPlayerNameInWidgetRevisionFlow: StateFlow<Int> = showPlayerNameInWidgetRevision
+    private val enableMediaTextAnimationRevision = registeredRevisionFlow()
+    internal val enableMediaTextAnimationRevisionFlow: StateFlow<Int> = enableMediaTextAnimationRevision
     private val selectedMediaPackagesRevision = registeredRevisionFlow()
     internal val selectedMediaPackagesRevisionFlow: StateFlow<Int> = selectedMediaPackagesRevision
     private val experimentalPlayerLaunchModeRevision = registeredRevisionFlow()
@@ -553,6 +571,10 @@ internal object LauncherAppConfigStore {
     internal val experimentalHomeMoveTaskToBackRevisionFlow: StateFlow<Int> = experimentalHomeMoveTaskToBackRevision
     private val experimentalHomeWindowingModeRevision = registeredRevisionFlow()
     internal val experimentalHomeWindowingModeRevisionFlow: StateFlow<Int> = experimentalHomeWindowingModeRevision
+    private val experimentalPin3dRenderCpu45Revision = registeredRevisionFlow()
+    internal val experimentalPin3dRenderCpu45RevisionFlow: StateFlow<Int> = experimentalPin3dRenderCpu45Revision
+    private val experimentalPinCanBusCpu45Revision = registeredRevisionFlow()
+    internal val experimentalPinCanBusCpu45RevisionFlow: StateFlow<Int> = experimentalPinCanBusCpu45Revision
     private val useNewSettingsViewRevision = registeredRevisionFlow()
     internal val useNewSettingsViewRevisionFlow: StateFlow<Int> = useNewSettingsViewRevision
     private val bootLogRevision = registeredRevisionFlow()
@@ -1064,6 +1086,30 @@ internal object LauncherAppConfigStore {
     fun setShowPlayerNameInWidget(context: Context, show: Boolean) {
         prefs(context).edit().putBoolean(KEY_SHOW_PLAYER_NAME_IN_WIDGET, show).apply()
         showPlayerNameInWidgetRevision.value++
+    }
+
+    fun enableMediaTextAnimation(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_ENABLE_MEDIA_TEXT_ANIMATION, true)
+
+    fun setEnableMediaTextAnimation(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_ENABLE_MEDIA_TEXT_ANIMATION, enabled).apply()
+        enableMediaTextAnimationRevision.value++
+    }
+
+    fun experimentalPin3dRenderCpu45(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_3D_RENDER_CPU45, false)
+
+    fun setExperimentalPin3dRenderCpu45(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_3D_RENDER_CPU45, enabled).apply()
+        experimentalPin3dRenderCpu45Revision.value++
+    }
+
+    fun experimentalPinCanBusCpu45(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45, false)
+
+    fun setExperimentalPinCanBusCpu45(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45, enabled).apply()
+        experimentalPinCanBusCpu45Revision.value++
     }
 
     fun experimentalPlayerLaunchMode(context: Context): ExperimentalPlayerLaunchMode =
@@ -2004,6 +2050,14 @@ internal object LauncherAppConfigStore {
 
     fun setNavBgMinimapAutoZoomEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_AUTO_ZOOM_ENABLED, enabled).apply()
+        navBgMinimapRevision.value++
+    }
+
+    fun navBgMinimapHideOnAccEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NAV_BG_MINIMAP_HIDE_ON_ACC, false)
+
+    fun setNavBgMinimapHideOnAccEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_NAV_BG_MINIMAP_HIDE_ON_ACC, enabled).apply()
         navBgMinimapRevision.value++
     }
 
@@ -3122,6 +3176,28 @@ internal object LauncherAppConfigStore {
         val valid = intervalMs.coerceIn(50L, 1500L)
         if (cruiseDecreaseIntervalMs(context) == valid) return
         prefs(context).edit().putLong(KEY_CRUISE_DECREASE_INTERVAL, valid).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun ccsPulseOnMs(context: Context): Long =
+        prefs(context).getLong(KEY_CCS_PULSE_ON_MS, CCS_PULSE_ON_DEFAULT_MS)
+            .coerceIn(CCS_PULSE_MIN_MS, CCS_PULSE_MAX_MS)
+
+    fun setCcsPulseOnMs(context: Context, durationMs: Long) {
+        val valid = durationMs.coerceIn(CCS_PULSE_MIN_MS, CCS_PULSE_MAX_MS)
+        if (ccsPulseOnMs(context) == valid) return
+        prefs(context).edit().putLong(KEY_CCS_PULSE_ON_MS, valid).apply()
+        cruisePresetsRevision.value++
+    }
+
+    fun ccsPulseOffMs(context: Context): Long =
+        prefs(context).getLong(KEY_CCS_PULSE_OFF_MS, CCS_PULSE_OFF_DEFAULT_MS)
+            .coerceIn(CCS_PULSE_MIN_MS, CCS_PULSE_MAX_MS)
+
+    fun setCcsPulseOffMs(context: Context, durationMs: Long) {
+        val valid = durationMs.coerceIn(CCS_PULSE_MIN_MS, CCS_PULSE_MAX_MS)
+        if (ccsPulseOffMs(context) == valid) return
+        prefs(context).edit().putLong(KEY_CCS_PULSE_OFF_MS, valid).apply()
         cruisePresetsRevision.value++
     }
 

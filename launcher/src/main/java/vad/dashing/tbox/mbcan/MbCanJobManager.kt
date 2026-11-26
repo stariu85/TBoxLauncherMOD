@@ -2,13 +2,13 @@ package vad.dashing.tbox.mbcan
 
 import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
 object MbCanJobManager {
     private const val NORMAL_POLL_MS = 60_000L
     private const val BURST_POLL_MS = 1_500L
@@ -124,7 +124,7 @@ object MbCanJobManager {
     private fun ensureSignalJobLocked(signal: MbCanSignal) {
         val currentScope = scope ?: return
         if (signalJobs[signal]?.isActive == true) return
-        signalJobs[signal] = currentScope.launch(Dispatchers.IO) {
+        signalJobs[signal] = currentScope.launch(LauncherCpuAffinity.canBusDispatcher) {
             while (isActive) {
                 MbCanRepository.refreshSignal(signal)
                 val now = nowElapsedMs()

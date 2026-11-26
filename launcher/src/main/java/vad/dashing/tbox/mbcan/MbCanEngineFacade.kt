@@ -10,6 +10,7 @@ import vad.dashing.tbox.mbcan.MbCanEngineFacade.ensureInitialized
 import vad.dashing.tbox.mbcan.MbCanEngineFacade.syncVehicleCfgCmdListener
 import vad.dashing.tbox.CanDataRepository
 import vad.dashing.tbox.DclLogRecorder
+import vad.dashing.tbox.ui.launcher.LauncherCpuAffinity
 import vad.dashing.tbox.ui.launcher.LauncherTireRepository
 import vad.dashing.tbox.ui.launcher.LauncherVehicleAlertsRepository
 import java.lang.reflect.Constructor
@@ -36,7 +37,7 @@ object MbCanEngineFacade {
     private const val LOG_TAG = "TBoxCan"
 
     private val availabilityRef = AtomicReference<MbCanAvailability>(MbCanAvailability.Unknown)
-    private val callbackFallbackScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val callbackFallbackScope = CoroutineScope(SupervisorJob() + LauncherCpuAffinity.canBusDispatcher)
     private var engineInstance: Any? = null
     private var getMbCanDataMethod: Method? = null
     private var canSetWindowStatusMethod: Method? = null
@@ -248,6 +249,7 @@ object MbCanEngineFacade {
             initialized = true
             availabilityRef.set(MbCanAvailability.Available)
             Log.i(LOG_TAG, "ensureInitialized: OK")
+            runCatching { LauncherCpuAffinity.reapplyCanBusAffinityIfEnabledAsync() }
             runCatching { unsubscribeUnusedChannels() }
             runCatching { syncGaspedStatusListener(true) }
             runCatching { ensureHardKeyListener() }

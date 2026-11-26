@@ -100,6 +100,21 @@ object CcsRememberedSetpoint {
 
     fun hasSetpoint(): Boolean = _kmh.value != null
 
+    fun lastHardkeyElapsedMs(): Long = synchronized(stateLock) { lastHardkeyElapsed }
+
+    /**
+     * Unified live vehicle speed (km/h) for CCS setpoint capture and reconciliation.
+     * Prefers head-unit CAN speed ([UniversalCanRepository.carSpeedState]) which matches the
+     * conventional cruise ECU closely (~20 ms updates, 1/16 km/h), with fallback to TBox CAN.
+     */
+    fun currentVehicleSpeedKmh(): Float? {
+        val headUnit = UniversalCanRepository.carSpeedState.value?.takeIf { it.isFinite() && it >= 0f }
+        if (headUnit != null) return headUnit
+        val accurate = CanDataRepository.carSpeedAccurate.value?.takeIf { it.isFinite() && it >= 0f }
+        if (accurate != null) return accurate
+        return CanDataRepository.carSpeed.value?.takeIf { it.isFinite() && it >= 0f }
+    }
+
     fun ensureStarted() {
         synchronized(stateLock) {
             if (started) return
@@ -111,15 +126,21 @@ object CcsRememberedSetpoint {
             }
         }
         scope.launch {
-            CanDataRepository.carSpeed.collectLatest { speed ->
-                val effective = CanDataRepository.carSpeedAccurate.value ?: speed
-                onSpeedWhileActive(effective)
+            UniversalCanRepository.carSpeedState.collectLatest { speed ->
+                if (speed != null) {
+                    onSpeedWhileActive(currentVehicleSpeedKmh())
+                }
+            }
+        }
+        scope.launch {
+            CanDataRepository.carSpeed.collectLatest {
+                onSpeedWhileActive(currentVehicleSpeedKmh())
             }
         }
         scope.launch {
             CanDataRepository.carSpeedAccurate.collectLatest { speed ->
                 if (speed != null) {
-                    onSpeedWhileActive(speed)
+                    onSpeedWhileActive(currentVehicleSpeedKmh())
                 }
             }
         }
@@ -166,7 +187,7 @@ object CcsRememberedSetpoint {
 
     /** Capture rounded vehicle speed as remembered setpoint. */
     fun captureFromVehicleSpeed(reason: String): Boolean {
-        val speed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
+        val speed = currentVehicleSpeedKmh()
         val rounded = roundSpeedKmh(speed) ?: return false
         remember(rounded, reason)
         return true
@@ -341,7 +362,7 @@ object CcsRememberedSetpoint {
     }
 
     private fun onEnteredActive() {
-        val currentSpeed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
+        val currentSpeed = currentVehicleSpeedKmh()
         synchronized(stateLock) {
             val now = nowElapsedMs()
             if (now < ourPulseUntilElapsed) {
@@ -444,7 +465,7 @@ object CcsRememberedSetpoint {
                 if (lastStatus != 1 || now < ourPulseUntilElapsed) return@synchronized
                 if (pendingNudgeKmh != targetRounded) return@synchronized
                 if (now - pendingNudgeSinceElapsed < NUDGE_SETTLE_MS) return@synchronized
-                val liveSpeed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
+                val liveSpeed = currentVehicleSpeedKmh()
                 val liveRounded = roundSpeedKmh(liveSpeed) ?: return@synchronized
                 val remembered = _kmh.value ?: return@synchronized
                 if (liveRounded == targetRounded && abs(liveRounded - remembered) == 1) {
@@ -473,7 +494,7 @@ object CcsRememberedSetpoint {
                 if (lastStatus != 1 || now < ourPulseUntilElapsed) return@synchronized
                 val anchor = stabilityAnchorKmh ?: return@synchronized
                 if (anchor != anchorSpeed) return@synchronized
-                val liveSpeed = CanDataRepository.carSpeedAccurate.value ?: CanDataRepository.carSpeed.value
+                val liveSpeed = currentVehicleSpeedKmh()
                 if (liveSpeed == null || !liveSpeed.isFinite()) return@synchronized
                 if (abs(liveSpeed - anchor) > STABLE_SPEED_BAND_KMH) return@synchronized
                 val rounded = roundSpeedKmh(liveSpeed) ?: return@synchronized

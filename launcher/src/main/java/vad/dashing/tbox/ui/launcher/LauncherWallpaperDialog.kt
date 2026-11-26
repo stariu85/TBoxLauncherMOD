@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,6 +79,8 @@ fun LauncherWallpaperDialog(
     var lightUri by remember(visible) {
         mutableStateOf(LauncherAppConfigStore.wallpaperLightUri(context))
     }
+    val darkRevision by LauncherAppConfigStore.wallpaperDarkRevisionFlow.collectAsStateWithLifecycle()
+    val lightRevision by LauncherAppConfigStore.wallpaperLightRevisionFlow.collectAsStateWithLifecycle()
     var scaleMode by remember(visible) {
         mutableStateOf(LauncherAppConfigStore.wallpaperScaleMode(context))
     }
@@ -197,6 +200,7 @@ fun LauncherWallpaperDialog(
                 WallpaperThemeSection(
                     title = stringResource(R.string.launcher_wallpaper_dark_title),
                     currentUri = darkUri,
+                    mediaRevision = darkRevision,
                     enabled = !isCopying,
                     onPickImage = {
                         dialogError = null
@@ -224,6 +228,7 @@ fun LauncherWallpaperDialog(
                 WallpaperThemeSection(
                     title = stringResource(R.string.launcher_wallpaper_light_title),
                     currentUri = lightUri,
+                    mediaRevision = lightRevision,
                     enabled = !isCopying,
                     onPickImage = {
                         dialogError = null
@@ -330,12 +335,13 @@ fun LauncherWallpaperDialog(
 private fun WallpaperThemeSection(
     title: String,
     currentUri: String,
+    mediaRevision: Int,
     enabled: Boolean,
     onPickImage: () -> Unit,
     onPickVideo: () -> Unit,
     onClear: () -> Unit,
 ) {
-    val mediaType = remember(currentUri) {
+    val mediaType = remember(currentUri, mediaRevision) {
         if (currentUri.isBlank()) null else detectWallpaperMediaTypeFromPath(currentUri)
     }
 

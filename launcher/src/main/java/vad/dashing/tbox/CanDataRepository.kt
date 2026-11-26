@@ -2,7 +2,6 @@ package vad.dashing.tbox
 
 import android.content.Context
 import android.os.SystemClock
-import com.mengbo.mbconfig.MBConfigConstant
 import com.mengbo.mbconfig.PropManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -196,7 +195,11 @@ object CanDataRepository {
     private val _maxGearSeen = MutableStateFlow(0)
     val maxGearSeen: StateFlow<Int> = _maxGearSeen.asStateFlow()
 
-    private val initialGearboxType: GearboxType = gearboxTypeBySystemConfig()
+    private val initialGearboxType: GearboxType =
+        AppContextHolder.appContextOrNull?.let { ctx ->
+            runCatching { vad.dashing.tbox.ui.launcher.LauncherAppConfigStore.gearboxType(ctx) }
+                .getOrNull()
+        } ?: gearboxTypeBySystemConfig()
 
     private val _gearboxType = MutableStateFlow(initialGearboxType)
     val gearboxType: StateFlow<GearboxType> = _gearboxType.asStateFlow()
@@ -808,32 +811,36 @@ object CanDataRepository {
         _gearBoxWork.setIfChanged(newValue)
     }
 
+    internal fun parseGearboxTypeFromSystemConfigStrings(vararg values: String?): GearboxType {
+        val combined = values
+            .asSequence()
+            .filterNotNull()
+            .joinToString(" ")
+            .uppercase(Locale.ROOT)
+
+        if (combined.contains("7DCT")) {
+            return GearboxType.DCT_7
+        }
+        if (combined.contains("6MT") ||
+            combined.contains("5MT") ||
+            combined.contains("MANUAL")
+        ) {
+            return GearboxType.MANUAL
+        }
+        if (combined.contains("6DCT")) {
+            return GearboxType.DCT_6
+        }
+        return GearboxType.DCT_7
+    }
+
     fun gearboxTypeBySystemConfig(): GearboxType {
         return try {
             val pm = PropManager.getInstance()
-            val c1 = pm.config ?: ""
-            val c2 = pm.persistConfig ?: ""
-            val c3 = pm.carType ?: ""
-            val c4 = pm.getProp(MBConfigConstant.RO_MB_CAN_CONFIG)
-            val c5 = pm.getProp(MBConfigConstant.PERSIST_MB_CAN_CONFIG)
-            val combined = "$c1 $c2 $c3 $c4 $c5".uppercase(Locale.ROOT)
-
-            if (combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_6MT) ||
-                combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_5MT) ||
-                combined.contains("6MT") ||
-                combined.contains("5MT") ||
-                combined.contains("1.5_6MT") ||
-                combined.contains("MANUAL")
-            ) {
-                return GearboxType.MANUAL
-            }
-            if (combined.contains(MBConfigConstant.MB_X50_GEAR_BOX_TYPE_6DCT) ||
-                combined.contains("6DCT") ||
-                combined.contains("1.5_6DCT")
-            ) {
-                return GearboxType.DCT_6
-            }
-            GearboxType.DCT_7
+            parseGearboxTypeFromSystemConfigStrings(
+                pm.carType,
+                pm.config,
+                pm.persistConfig,
+            )
         } catch (_: Throwable) {
             GearboxType.DCT_7
         }
