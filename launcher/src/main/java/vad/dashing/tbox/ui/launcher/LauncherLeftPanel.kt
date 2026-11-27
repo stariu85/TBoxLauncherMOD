@@ -285,8 +285,7 @@ fun LauncherLeftPanel(
     var isOverlayReady by remember { mutableStateOf(false) }
     var viewTransitionActive by remember { mutableStateOf(false) }
     var lastSettledDriveView by remember { mutableStateOf(false) }
-    val synced30FpsClock = remember { LauncherSynced30FpsClock() }
-    LauncherSynced30FpsClockHost(synced30FpsClock)
+    val synced30FpsClock = rememberSynced30FpsClock()
 
     val isOverlayTransitioning = !isOverlayReady || isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
     val carOverlayAlpha by rememberSyncedFloatAsState(
@@ -753,6 +752,8 @@ fun LauncherLeftPanel(
         }
     }
 
+    val ambilightState = LocalLauncherAmbilightState.current
+
     CompositionLocalProvider(LocalLauncherSynced30FpsClock provides synced30FpsClock) {
     Box(
         modifier = modifier
@@ -771,7 +772,7 @@ fun LauncherLeftPanel(
                 vad.dashing.tbox.DclLogRecorder.log("LeftPanel", "onGloballyPositioned leftPanelBounds=$boundsRect carModelScale=$carModelScale")
                 onCarBoundsChanged(rect)
             }
-            .background(baseLeftPanelBg),
+            .launcherLeftPanelAmbilight(ambilightState, baseLeftPanelBg),
     ) {
         val effectiveRoadVisible = roadVisible && carModelVisible
         if (effectiveRoadVisible) {
@@ -783,6 +784,12 @@ fun LauncherLeftPanel(
                 inDriveGear = showDriveView,
                 isSnow = isSnow,
                 syncedClock = synced30FpsClock,
+                horizonHazeProvider = {
+                    resolveLeftPanelHorizonHaze(
+                        state = ambilightState,
+                        baseLeftPanelBg = baseLeftPanelBg,
+                    )
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }

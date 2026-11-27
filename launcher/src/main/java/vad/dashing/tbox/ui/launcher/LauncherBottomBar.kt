@@ -843,6 +843,7 @@ fun LauncherBottomBar(
     }
 
     val localView = LocalView.current
+    val ambilightState = LocalLauncherAmbilightState.current
 
     CompositionLocalProvider(LocalDockIconScale provides dockScale) {
     Box(
@@ -857,7 +858,7 @@ fun LauncherBottomBar(
                 LauncherEmbeddedBoundsState.bottomBarTopOnScreenPx = location[1]
                 LauncherEmbeddedBoundsState.bottomBarHeightOnScreenPx = localView.height
             }
-            .background(LauncherColors.BottomBarBg)
+            .launcherBottomBarAmbilight(ambilightState)
             .padding(horizontal = 12.dp),
     ) {
         if (climateVisible) {
@@ -2635,11 +2636,23 @@ internal fun LauncherDockIcon(
         Modifier.clickable(onClick = wrappedOnClick)
     }
 
+    val ambilightState = LocalLauncherAmbilightState.current
+    val cardBackgroundColor = if (cardBgVisible) {
+        if (ambilightState.isVisuallyActive) {
+            val fadeFactor = if (ambilightState.isDarkTheme) 0.24f else 0.38f
+            LauncherColors.CardDark.copy(alpha = 1f - fadeFactor * ambilightState.alpha)
+        } else {
+            LauncherColors.CardDark
+        }
+    } else {
+        Color.Transparent
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(8.dp))
-            .background(if (cardBgVisible) LauncherColors.CardDark else Color.Transparent)
+            .background(cardBackgroundColor)
             .then(clickModifier),
         contentAlignment = Alignment.Center,
     ) {

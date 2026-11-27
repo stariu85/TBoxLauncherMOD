@@ -22,9 +22,11 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -198,98 +201,130 @@ fun TeslaLauncherScreen(
             }
 
             LauncherDevScaleProvider {
-                Column(
-                    modifier = modifier
-                        .fillMaxSize()
-                        .background(LauncherColors.CanvasDark),
+                var contentRowWidthPx by remember { mutableFloatStateOf(0f) }
+                var contentRowHeightPx by remember { mutableFloatStateOf(0f) }
+                val sidebarWidthPx = with(LocalDensity.current) { sidebarWidth.toPx() }
+                val rightPanelWidthPx = if (adasPanelVisible) {
+                    (contentRowWidthPx - sidebarWidthPx).coerceAtLeast(1f)
+                } else {
+                    contentRowWidthPx.coerceAtLeast(1f)
+                }
+                val rightPanelAspect = if (contentRowWidthPx > 1f && contentRowHeightPx > 1f) {
+                    rightPanelWidthPx / contentRowHeightPx
+                } else {
+                    16f / 9f
+                }
+                val synced30FpsClock = remember { LauncherSynced30FpsClock() }
+                LauncherSynced30FpsClockHost(synced30FpsClock)
+                val ambilightUiState = remember { LauncherAmbilightUiState() }
+                LauncherAmbilightController(
+                    state = ambilightUiState,
+                    syncedClock = synced30FpsClock,
+                    adasPanelVisible = adasPanelVisible,
+                    sidebarWidthPx = sidebarWidthPx,
+                    screenWidthPx = contentRowWidthPx,
+                    rightPanelAspect = rightPanelAspect,
+                )
+
+                CompositionLocalProvider(
+                    LocalLauncherSynced30FpsClock provides synced30FpsClock,
+                    LocalLauncherAmbilightState provides ambilightUiState,
                 ) {
-                    LauncherTopHeaderBar(
-                        canViewModel = canViewModel,
-                        tboxViewModel = tboxViewModel,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(topBarHeightDp.dp)
-                            .background(LauncherColors.TopBarBg),
-                    )
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
+                    Column(
+                        modifier = modifier
                             .fillMaxSize()
-                            .onGloballyPositioned { coordinates ->
-                                val rect = coordinates.boundsInWindow()
-                                LauncherEmbeddedBoundsState.contentRowBounds = android.graphics.Rect(
-                                    rect.left.toInt(),
-                                    rect.top.toInt(),
-                                    rect.right.toInt(),
-                                    rect.bottom.toInt(),
-                                )
-                            },
+                            .background(LauncherColors.CanvasDark),
                     ) {
-                        if (adasPanelVisible) {
-                            LauncherLeftPanel(
-                                tboxViewModel = tboxViewModel,
-                                canViewModel = canViewModel,
-                                onOpenVehicleSettings = openVehicleSettings,
-                                modelRevision = surfaceRecoveryEpoch,
-                                paintId = carPaintId,
-                                paintRevision = carPaintRevision,
-                                onCarBoundsChanged = {},
-                                colorPickerVisible = colorPickerVisible && (useNewSettingsView || !settingsOpen),
-                                roadVisible = if (useNewSettingsView) true else !settingsOpen,
-                                carHidden = false,
-                                settingsTransitionProgress = 0f,
-                                settingsUserYawDeg = 0f,
-                                onColorPickerOpen = { colorPickerVisible = true },
-                                onColorPickerDismiss = { colorPickerVisible = false },
-                                onPaintChanged = { id ->
-                                    LauncherAppConfigStore.setCarPaintId(context, id)
-                                },
-                                modifier = Modifier
-                                    .width(sidebarWidth)
-                                    .fillMaxHeight(),
-                            )
-                        }
-                        Box(
+                        LauncherTopHeaderBar(
+                            canViewModel = canViewModel,
+                            tboxViewModel = tboxViewModel,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(topBarHeightDp.dp)
+                                .launcherTopBarAmbilight(ambilightUiState),
+                        )
+                        Row(
                             modifier = Modifier
                                 .weight(1f)
-                                .fillMaxHeight()
-                                .background(LauncherColors.CanvasDark),
-                        ) {
-                            var rightPanelConfigRev by remember { mutableIntStateOf(0) }
-                            LauncherRightPanel(
-                                canViewModel = canViewModel,
-                                settingsViewModel = settingsViewModel,
-                                tboxViewModel = tboxViewModel,
-                                onOpenConsole = { launchTBoxSettings(context) },
-                                onOpenApps = {
-                                    val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
-                                    if (activity != null) {
-                                        LauncherAppDrawerWindow.toggle(activity, settingsViewModel, {})
-                                    }
+                                .fillMaxSize()
+                                .onGloballyPositioned { coordinates ->
+                                    contentRowWidthPx = coordinates.size.width.toFloat()
+                                    contentRowHeightPx = coordinates.size.height.toFloat()
+                                    val rect = coordinates.boundsInWindow()
+                                    LauncherEmbeddedBoundsState.contentRowBounds = android.graphics.Rect(
+                                        rect.left.toInt(),
+                                        rect.top.toInt(),
+                                        rect.right.toInt(),
+                                        rect.bottom.toInt(),
+                                    )
                                 },
-                                configRevision = rightPanelConfigRev,
-                                onConfigChanged = { rightPanelConfigRev++ },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-
-                            if (settingsOpen && useNewSettingsView) {
-                                LauncherNewSettingsScreen(
-                                    canViewModel = canViewModel,
+                        ) {
+                            if (adasPanelVisible) {
+                                LauncherLeftPanel(
                                     tboxViewModel = tboxViewModel,
-                                    onClose = closeVehicleSettings,
+                                    canViewModel = canViewModel,
+                                    onOpenVehicleSettings = openVehicleSettings,
+                                    modelRevision = surfaceRecoveryEpoch,
+                                    paintId = carPaintId,
+                                    paintRevision = carPaintRevision,
+                                    onCarBoundsChanged = {},
+                                    colorPickerVisible = colorPickerVisible && (useNewSettingsView || !settingsOpen),
+                                    roadVisible = if (useNewSettingsView) true else !settingsOpen,
+                                    carHidden = false,
+                                    settingsTransitionProgress = 0f,
+                                    settingsUserYawDeg = 0f,
+                                    onColorPickerOpen = { colorPickerVisible = true },
+                                    onColorPickerDismiss = { colorPickerVisible = false },
+                                    onPaintChanged = { id ->
+                                        LauncherAppConfigStore.setCarPaintId(context, id)
+                                    },
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .zIndex(10f),
+                                        .width(sidebarWidth)
+                                        .fillMaxHeight(),
                                 )
                             }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .background(LauncherColors.CanvasDark),
+                            ) {
+                                var rightPanelConfigRev by remember { mutableIntStateOf(0) }
+                                LauncherRightPanel(
+                                    canViewModel = canViewModel,
+                                    settingsViewModel = settingsViewModel,
+                                    tboxViewModel = tboxViewModel,
+                                    onOpenConsole = { launchTBoxSettings(context) },
+                                    onOpenApps = {
+                                        val activity = LauncherHomeActivityHolder.instance ?: (context as? LauncherHomeActivity)
+                                        if (activity != null) {
+                                            LauncherAppDrawerWindow.toggle(activity, settingsViewModel, {})
+                                        }
+                                    },
+                                    configRevision = rightPanelConfigRev,
+                                    onConfigChanged = { rightPanelConfigRev++ },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+
+                                if (settingsOpen && useNewSettingsView) {
+                                    LauncherNewSettingsScreen(
+                                        canViewModel = canViewModel,
+                                        tboxViewModel = tboxViewModel,
+                                        onClose = closeVehicleSettings,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f),
+                                    )
+                                }
+                            }
                         }
+                        LauncherBottomBar(
+                            canViewModel = canViewModel,
+                            onCloseVehicleSettings = closeVehicleSettings,
+                            onOpenVehicleSettings = openVehicleSettings,
+                            configRevision = configRevision,
+                        )
                     }
-                    LauncherBottomBar(
-                        canViewModel = canViewModel,
-                        onCloseVehicleSettings = closeVehicleSettings,
-                        onOpenVehicleSettings = openVehicleSettings,
-                        configRevision = configRevision,
-                    )
                 }
             }
 

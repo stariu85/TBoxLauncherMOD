@@ -201,6 +201,8 @@ private const val KEY_HOME_ICON_SCALE = "home_icon_scale"
 private const val KEY_WALLPAPER_DARK_URI = "wallpaper_dark_uri"
 private const val KEY_WALLPAPER_LIGHT_URI = "wallpaper_light_uri"
 private const val KEY_WALLPAPER_SCALE_MODE = "wallpaper_scale_mode"
+private const val KEY_WALLPAPER_AMBILIGHT_MODE = "wallpaper_ambilight_mode"
+private const val KEY_WALLPAPER_AMBILIGHT_ANIMATE_LIVE = "wallpaper_ambilight_animate_live"
 
 internal const val GRID_SLOTS_TOTAL_COUNT = 20
 
@@ -289,6 +291,19 @@ enum class WallpaperScaleMode(val code: Int) {
             0 -> FILL_BOUNDS
             2 -> FILL_HEIGHT
             else -> FILL_WIDTH
+        }
+    }
+}
+
+enum class WallpaperAmbilightMode(val code: Int) {
+    OFF(0),
+    EDGE_GRADIENT(1),
+    BLURRED_WALLPAPER(2);
+
+    companion object {
+        fun fromCode(code: Int): WallpaperAmbilightMode = when (code) {
+            1, 2 -> EDGE_GRADIENT
+            else -> OFF
         }
     }
 }
@@ -553,6 +568,25 @@ internal object LauncherAppConfigStore {
     fun setWallpaperScaleMode(context: Context, mode: WallpaperScaleMode) {
         prefs(context).edit().putInt(KEY_WALLPAPER_SCALE_MODE, mode.code).apply()
         wallpaperRevision.update { it + 1 }
+    }
+
+    private val wallpaperAmbilightRevision = registeredRevisionFlow()
+    internal val wallpaperAmbilightRevisionFlow: StateFlow<Int> = wallpaperAmbilightRevision
+
+    fun wallpaperAmbilightMode(context: Context): WallpaperAmbilightMode =
+        WallpaperAmbilightMode.fromCode(prefs(context).getInt(KEY_WALLPAPER_AMBILIGHT_MODE, WallpaperAmbilightMode.OFF.code))
+
+    fun setWallpaperAmbilightMode(context: Context, mode: WallpaperAmbilightMode) {
+        prefs(context).edit().putInt(KEY_WALLPAPER_AMBILIGHT_MODE, mode.code).apply()
+        wallpaperAmbilightRevision.update { it + 1 }
+    }
+
+    fun wallpaperAmbilightAnimateLive(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_WALLPAPER_AMBILIGHT_ANIMATE_LIVE, false)
+
+    fun setWallpaperAmbilightAnimateLive(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_WALLPAPER_AMBILIGHT_ANIMATE_LIVE, enabled).apply()
+        wallpaperAmbilightRevision.update { it + 1 }
     }
 
     private val mediaCardAlphaRevision = registeredRevisionFlow()

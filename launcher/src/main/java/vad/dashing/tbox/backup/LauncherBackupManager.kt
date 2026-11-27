@@ -676,7 +676,7 @@ object LauncherBackupManager {
                 "home_grid_columns", "home_grid_rows", "home_grid_row_spacing", "top_bar_height_dp",
                 "bottom_bar_height_dp", "floating_home_size_dp", "sidebar_width_dp", "camera_switch_mode",
                 "avm_camera_action", "pdc_visual_mode", "edge_gestures_width_dp", "adas_distance_text_size",
-                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode", "dock_columns",
+                "time_gap_level", "last_cruise_speed", "wallpaper_scale_mode", "wallpaper_ambilight_mode", "dock_columns",
                 "nav_bg_minimap_transparency", "nav_bg_minimap_height_dp",
                 "nav_bg_minimap_resolution_percent", "nav_bg_minimap_filter_quality" -> PrefType.INT
 
@@ -704,7 +704,8 @@ object LauncherBackupManager {
                 "drive_mode_bar_visible", "assist_panel_visible", "body_controls_panel_visible",
                 "drive_mode_glow_visible", "headlight_beams_visible", "ngp_enabled",
                 "classic_speed_limit_visible", "speed_limit_warning_sound_enabled",
-                "launcher_settings_on_double_tap", "dock_second_row_enabled" -> PrefType.BOOLEAN
+                "launcher_settings_on_double_tap", "dock_second_row_enabled",
+                "wallpaper_ambilight_animate_live" -> PrefType.BOOLEAN
                 "panel_swipe_left_map", "panel_swipe_right_map" -> PrefType.STRING
 
                 else -> {

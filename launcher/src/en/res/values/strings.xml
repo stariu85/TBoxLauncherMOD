@@ -1714,4 +1714,10 @@
     <string name="settings_usb_mount_remounting">Mounting…</string>
     <string name="settings_usb_mount_remount_ok">Successfully mounted</string>
     <string name="settings_usb_mount_remount_fail">Mount failed: %1$s</string>
+
+    <!-- Wallpaper Ambilight Settings -->
+    <string name="launcher_vs_ambilight_title">Panel backlight from wallpaper</string>
+    <string name="launcher_vs_ambilight_desc">Tints the top, bottom, and left panels with gradients sampled from the wallpaper edges</string>
+    <string name="launcher_vs_ambilight_animate_live_title">Animate backlight with live wallpapers</string>
+    <string name="launcher_vs_ambilight_animate_live_desc">Updates panel colors in real time with live wallpapers (when off, uses a static 5th-frame snapshot with zero ongoing load)</string>
 </resources>

@@ -130,9 +130,55 @@ fun ThemeSettingsContent() {
             color = LauncherColors.TextMuted,
             fontSize = 12.sp,
         )
+        WallpaperAmbilightSettings()
         AdasWeatherSettings()
         UiClickSoundsSettingToggle()
     }
+}
+
+@Composable
+private fun WallpaperAmbilightSettings() {
+    val context = LocalContext.current
+    val ambilightRevision by LauncherAppConfigStore.wallpaperAmbilightRevisionFlow
+        .collectAsStateWithLifecycle()
+    val ambilightMode = remember(context, ambilightRevision) {
+        LauncherAppConfigStore.wallpaperAmbilightMode(context)
+    }
+    val animateLive = remember(context, ambilightRevision) {
+        LauncherAppConfigStore.wallpaperAmbilightAnimateLive(context)
+    }
+    val ambilightEnabled = ambilightMode != WallpaperAmbilightMode.OFF
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_ambilight_title),
+        active = ambilightEnabled,
+        onClick = {
+            val next = if (ambilightEnabled) {
+                WallpaperAmbilightMode.OFF
+            } else {
+                WallpaperAmbilightMode.EDGE_GRADIENT
+            }
+            LauncherAppConfigStore.setWallpaperAmbilightMode(context, next)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_ambilight_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
+
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_vs_ambilight_animate_live_title),
+        active = animateLive,
+        onClick = {
+            LauncherAppConfigStore.setWallpaperAmbilightAnimateLive(context, !animateLive)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_vs_ambilight_animate_live_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
 }
 
 @Composable

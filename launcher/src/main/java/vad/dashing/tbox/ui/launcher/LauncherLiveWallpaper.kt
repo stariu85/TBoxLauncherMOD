@@ -1,6 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
@@ -32,7 +34,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import vad.dashing.tbox.toOwnedImageBitmap
 import java.io.File
@@ -302,6 +307,7 @@ internal object LiveWallpaperPosterCache {
                 it.remove()
             }
         }
+        WallpaperAmbilightCache.invalidatePath(path)
     }
 }
 
@@ -431,6 +437,14 @@ private class LiveVideoWallpaperController(
             }
         }
     }
+
+    fun currentPlaybackPositionMs(): Long {
+        val mp = mediaPlayer ?: return lastPositionMs.toLong()
+        if (!isPrepared) return lastPositionMs.toLong()
+        return runCatching { mp.currentPosition.toLong() }.getOrDefault(lastPositionMs.toLong())
+    }
+
+    fun currentVideoDimensions(): Pair<Int, Int> = videoWidth to videoHeight
 
     fun destroy() {
         destroyed = true
@@ -734,6 +748,9 @@ internal fun LauncherDesktopWallpaperLayer(
     val mediaType = syncMediaType ?: detectedWebpType
 
     if (mediaType == WallpaperMediaType.STATIC_IMAGE) {
+        LaunchedEffect(activeWallpaperUri, wallpaperRevision, isDarkTheme) {
+            LiveWallpaperAmbilightBridge.clear()
+        }
         val staticBitmap by produceState<ImageBitmap?>(
             initialValue = null,
             keys = arrayOf(context, activeWallpaperUri, isDarkTheme, wallpaperRevision),
@@ -791,6 +808,8 @@ internal fun LauncherDesktopWallpaperLayer(
     }
 }
 
+private const val LIVE_AMBILIGHT_SAMPLE_INTERVAL_MS = 280L
+
 @Composable
 private fun LiveVideoWallpaperLayer(
     filePath: String,
@@ -832,11 +851,285 @@ private fun LiveVideoWallpaperLayer(
     }
 
     val controllerHolder = remember { arrayOfNulls<LiveVideoWallpaperController>(1) }
+    val textureViewHolder = remember { arrayOfNulls<TextureView>(1) }
+
+    val ambilightRevision by LauncherAppConfigStore.wallpaperAmbilightRevisionFlow
+        .collectAsStateWithLifecycle()
+    val ambilightMode = remember(context, ambilightRevision) {
+        LauncherAppConfigStore.wallpaperAmbilightMode(context)
+    }
+    val ambilightAnimateLive = remember(context, ambilightRevision) {
+        LauncherAppConfigStore.wallpaperAmbilightAnimateLive(context)
+    }
+    val ambilightSourceKey = LiveWallpaperAmbilightBridge.buildSourceKey(
+        uri = filePath,
+        wallpaperRevision = wallpaperRevision,
+        isDarkTheme = isDarkTheme,
+        mode = ambilightMode,
+    )
+
+    DisposableEffect(ambilightSourceKey) {
+        onDispose {
+            LiveWallpaperAmbilightBridge.clear(ambilightSourceKey)
+        }
+    }
+
+    val ambilightSamplingActive = ambilightMode != WallpaperAmbilightMode.OFF &&
+        !paused &&
+        isVideoFrameVisible &&
+        !playbackFailed
+
+    LaunchedEffect(
+        ambilightSamplingActive,
+        ambilightAnimateLive,
+        filePath,
+        wallpaperRevision,
+        isDarkTheme,
+        scaleMode,
+        ambilightMode,
+    ) {
+        if (!ambilightSamplingActive) return@LaunchedEffect
+
+        fun currentLeftPanelFraction(): Float {
+            val leftW = LauncherEmbeddedBoundsState.leftPanelBounds?.width()?.toFloat() ?: 0f
+            val totalW = LauncherEmbeddedBoundsState.contentRowBounds?.width()?.toFloat()
+                ?: LauncherEmbeddedBoundsState.screenBounds?.width()?.toFloat()
+                ?: 0f
+            return if (leftW > 1f && totalW > 1f) (leftW / totalW).coerceIn(0f, 0.55f) else 0f
+        }
+
+        fun currentViewportAspect(): Float {
+            val tv = textureViewHolder[0]
+            if (tv != null && tv.width > 0 && tv.height > 0) {
+                return tv.width.toFloat() / tv.height.toFloat().coerceAtLeast(1f)
+            }
+            val rightBounds = LauncherEmbeddedBoundsState.embeddedZoneBounds
+            if (rightBounds != null && rightBounds.width() > 0 && rightBounds.height() > 0) {
+                return rightBounds.width().toFloat() / rightBounds.height().toFloat().coerceAtLeast(1f)
+            }
+            return 16f / 9f
+        }
+
+        fun buildCacheKey(viewAspect: Float, leftFrac: Float): String = buildWallpaperAmbilightCacheKey(
+            activeWallpaperUri = filePath,
+            isDarkTheme = isDarkTheme,
+            scaleMode = scaleMode,
+            viewportAspect = viewAspect,
+            leftPanelFraction = leftFrac,
+            mode = ambilightMode,
+        )
+
+        // When live animation is OFF and the ~5th-frame snapshot is already cached, publish once
+        // and exit immediately with zero getBitmap() calls and zero allocations.
+        if (!ambilightAnimateLive) {
+            val cachedKey = buildCacheKey(currentViewportAspect(), currentLeftPanelFraction())
+            WallpaperAmbilightCache.get(cachedKey)?.let { cached ->
+                LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, cached)
+                return@LaunchedEffect
+            }
+        }
+
+        val reusableBitmap = Bitmap.createBitmap(
+            AMBILIGHT_WORKING_WIDTH,
+            AMBILIGHT_WORKING_HEIGHT,
+            Bitmap.Config.ARGB_8888,
+        )
+        val rawPixels = IntArray(AMBILIGHT_WORKING_WIDTH * AMBILIGHT_WORKING_HEIGHT)
+        var prevSmoothed: IntArray? = null
+        var consecutiveEmptySamples = 0
+        var fallbackTimeline: List<Pair<Long, WallpaperAmbilightData>>? = null
+        var lastPublishedTimelineIdx = -1
+
+        suspend fun sampleCurrentTextureFrame(
+            tv: TextureView,
+            ctrl: LiveVideoWallpaperController?,
+            leftFrac: Float,
+            prevCopy: IntArray?,
+        ): Pair<IntArray, WallpaperAmbilightData>? {
+            reusableBitmap.eraseColor(0)
+            val captured = runCatching { tv.getBitmap(reusableBitmap) }.getOrNull() ?: return null
+            captured.getPixels(
+                rawPixels,
+                0,
+                AMBILIGHT_WORKING_WIDTH,
+                0,
+                0,
+                AMBILIGHT_WORKING_WIDTH,
+                AMBILIGHT_WORKING_HEIGHT,
+            )
+            if (!hasVisibleFrameContent(rawPixels)) return null
+            val (vidW, vidH) = ctrl?.currentVideoDimensions() ?: (0 to 0)
+            val viewAspect = tv.width.toFloat() / tv.height.toFloat().coerceAtLeast(1f)
+            val snapshot = rawPixels.copyOf()
+            return withContext(LauncherCpuAffinity.lightPollersDispatcher) {
+                val croppedPixels = if (vidW > 0 && vidH > 0 && scaleMode != WallpaperScaleMode.FILL_BOUNDS) {
+                    val videoAspect = vidW.toFloat() / vidH.toFloat()
+                    val crop = if (scaleMode == WallpaperScaleMode.FILL_HEIGHT) {
+                        if (videoAspect > viewAspect) {
+                            val fracW = (viewAspect / videoAspect).coerceIn(0.1f, 1f)
+                            val cw = (AMBILIGHT_WORKING_WIDTH * fracW).toInt().coerceIn(1, AMBILIGHT_WORKING_WIDTH)
+                            WallpaperCropRect((AMBILIGHT_WORKING_WIDTH - cw) / 2, 0, cw, AMBILIGHT_WORKING_HEIGHT)
+                        } else {
+                            WallpaperCropRect(0, 0, AMBILIGHT_WORKING_WIDTH, AMBILIGHT_WORKING_HEIGHT)
+                        }
+                    } else {
+                        if (videoAspect < viewAspect) {
+                            val fracH = (videoAspect / viewAspect).coerceIn(0.1f, 1f)
+                            val ch = (AMBILIGHT_WORKING_HEIGHT * fracH).toInt().coerceIn(1, AMBILIGHT_WORKING_HEIGHT)
+                            WallpaperCropRect(0, (AMBILIGHT_WORKING_HEIGHT - ch) / 2, AMBILIGHT_WORKING_WIDTH, ch)
+                        } else {
+                            WallpaperCropRect(0, 0, AMBILIGHT_WORKING_WIDTH, AMBILIGHT_WORKING_HEIGHT)
+                        }
+                    }
+                    cropAndResizePixels(
+                        srcPixels = snapshot,
+                        srcWidth = AMBILIGHT_WORKING_WIDTH,
+                        srcHeight = AMBILIGHT_WORKING_HEIGHT,
+                        crop = crop,
+                    )
+                } else {
+                    snapshot
+                }
+                val framePixels = if (ambilightMode == WallpaperAmbilightMode.BLURRED_WALLPAPER) {
+                    blendPixelBuffers(prevCopy, croppedPixels, blendFactor = 0.55f)
+                } else {
+                    croppedPixels
+                }
+                val data = computeWallpaperAmbilightDataFromPixels(
+                    pixels = framePixels,
+                    width = AMBILIGHT_WORKING_WIDTH,
+                    height = AMBILIGHT_WORKING_HEIGHT,
+                    isDarkTheme = isDarkTheme,
+                    leftPanelFraction = leftFrac,
+                    mode = ambilightMode,
+                )
+                framePixels to data
+            }
+        }
+
+        try {
+            if (!ambilightAnimateLive) {
+                // Static ~5th-frame mode: wait ~180 ms (~5th frame at 25–30 FPS), capture ONE
+                // visible 48x32 frame directly from TextureView (works for 4K/HEVC codecs where
+                // MediaMetadataRetriever fails), cache it, publish once, and exit completely.
+                delay(180L)
+                var capturedOnce = false
+                repeat(6) {
+                    if (!isActive || capturedOnce) return@repeat
+                    val tv = textureViewHolder[0]
+                    val ctrl = controllerHolder[0]
+                    val leftFrac = currentLeftPanelFraction()
+                    if (tv != null && tv.isAvailable && tv.width > 0 && tv.height > 0) {
+                        val viewAspect = tv.width.toFloat() / tv.height.toFloat().coerceAtLeast(1f)
+                        val sampled = sampleCurrentTextureFrame(tv, ctrl, leftFrac, prevCopy = null)
+                        if (sampled != null) {
+                            val cacheKey = buildCacheKey(viewAspect, leftFrac)
+                            WallpaperAmbilightCache.put(cacheKey, sampled.second)
+                            LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, sampled.second)
+                            capturedOnce = true
+                            return@repeat
+                        }
+                    }
+                    delay(120L)
+                }
+                if (!capturedOnce && isActive) {
+                    val viewAspect = currentViewportAspect()
+                    val leftFrac = currentLeftPanelFraction()
+                    val fallbackData = withContext(LauncherCpuAffinity.lightPollersDispatcher) {
+                        val frame = extractSmallVideoFrame(File(filePath)) ?: return@withContext null
+                        try {
+                            val (cLeft, cTop, cWidth, cHeight) = computeVisibleWallpaperCropRect(
+                                bitmapWidth = frame.width,
+                                bitmapHeight = frame.height,
+                                viewportAspect = viewAspect,
+                                scaleMode = scaleMode,
+                            )
+                            val cropped = Bitmap.createBitmap(frame, cLeft, cTop, cWidth, cHeight)
+                            val working = Bitmap.createScaledBitmap(cropped, AMBILIGHT_WORKING_WIDTH, AMBILIGHT_WORKING_HEIGHT, true)
+                            if (cropped !== frame && cropped !== working) cropped.recycle()
+                            val px = IntArray(AMBILIGHT_WORKING_WIDTH * AMBILIGHT_WORKING_HEIGHT)
+                            working.getPixels(px, 0, AMBILIGHT_WORKING_WIDTH, 0, 0, AMBILIGHT_WORKING_WIDTH, AMBILIGHT_WORKING_HEIGHT)
+                            if (working !== frame) working.recycle()
+                            computeWallpaperAmbilightDataFromPixels(
+                                pixels = px,
+                                width = AMBILIGHT_WORKING_WIDTH,
+                                height = AMBILIGHT_WORKING_HEIGHT,
+                                isDarkTheme = isDarkTheme,
+                                leftPanelFraction = leftFrac,
+                                mode = ambilightMode,
+                            )
+                        } finally {
+                            if (!frame.isRecycled) frame.recycle()
+                        }
+                    }
+                    if (fallbackData != null) {
+                        WallpaperAmbilightCache.put(buildCacheKey(viewAspect, leftFrac), fallbackData)
+                        LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, fallbackData)
+                    }
+                }
+                return@LaunchedEffect
+            }
+
+            delay(140L)
+            while (isActive) {
+                val tv = textureViewHolder[0]
+                val ctrl = controllerHolder[0]
+                val leftFrac = currentLeftPanelFraction()
+                if (tv != null && tv.isAvailable && tv.width > 0 && tv.height > 0 && fallbackTimeline == null) {
+                    val sampled = sampleCurrentTextureFrame(tv, ctrl, leftFrac, prevSmoothed)
+                    if (sampled != null) {
+                        consecutiveEmptySamples = 0
+                        prevSmoothed = sampled.first
+                        val viewAspect = tv.width.toFloat() / tv.height.toFloat().coerceAtLeast(1f)
+                        val cacheKey = buildCacheKey(viewAspect, leftFrac)
+                        if (WallpaperAmbilightCache.get(cacheKey) == null) {
+                            WallpaperAmbilightCache.put(cacheKey, sampled.second)
+                        }
+                        LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, sampled.second)
+                    } else {
+                        consecutiveEmptySamples++
+                        if (consecutiveEmptySamples >= 3) {
+                            val viewAspect = tv.width.toFloat() / tv.height.toFloat().coerceAtLeast(1f)
+                            fallbackTimeline = withContext(LauncherCpuAffinity.lightPollersDispatcher) {
+                                extractVideoAmbilightTimeline(
+                                    file = File(filePath),
+                                    isDarkTheme = isDarkTheme,
+                                    scaleMode = scaleMode,
+                                    viewportAspect = viewAspect,
+                                    leftPanelFraction = leftFrac,
+                                    mode = ambilightMode,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val timeline = fallbackTimeline
+                if (timeline != null && timeline.isNotEmpty()) {
+                    val posMs = ctrl?.currentPlaybackPositionMs() ?: 0L
+                    var idx = 0
+                    for (i in timeline.indices) {
+                        if (timeline[i].first <= posMs) idx = i else break
+                    }
+                    if (idx != lastPublishedTimelineIdx) {
+                        lastPublishedTimelineIdx = idx
+                        LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, timeline[idx].second)
+                    }
+                }
+                delay(LIVE_AMBILIGHT_SAMPLE_INTERVAL_MS)
+            }
+        } finally {
+            if (!reusableBitmap.isRecycled) {
+                reusableBitmap.recycle()
+            }
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
             controllerHolder[0]?.destroy()
             controllerHolder[0] = null
+            textureViewHolder[0] = null
         }
     }
 
@@ -857,6 +1150,7 @@ private fun LiveVideoWallpaperLayer(
                     controllerHolder[0]?.destroy()
                     TextureView(ctx).apply {
                         isOpaque = false
+                        textureViewHolder[0] = this
                         val ctrl = LiveVideoWallpaperController(
                             textureView = this,
                             onFirstFrameRendered = { visible -> isVideoFrameVisible = visible },
@@ -875,6 +1169,7 @@ private fun LiveVideoWallpaperLayer(
                 onRelease = {
                     controllerHolder[0]?.destroy()
                     controllerHolder[0] = null
+                    textureViewHolder[0] = null
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -917,6 +1212,180 @@ private fun AnimatedImageWallpaperLayer(
             if (animated.isRunning) animated.stop()
         } else {
             if (!animated.isRunning) animated.start()
+        }
+    }
+
+    val ambilightRevision by LauncherAppConfigStore.wallpaperAmbilightRevisionFlow
+        .collectAsStateWithLifecycle()
+    val ambilightMode = remember(context, ambilightRevision) {
+        LauncherAppConfigStore.wallpaperAmbilightMode(context)
+    }
+    val ambilightAnimateLive = remember(context, ambilightRevision) {
+        LauncherAppConfigStore.wallpaperAmbilightAnimateLive(context)
+    }
+    val ambilightSourceKey = LiveWallpaperAmbilightBridge.buildSourceKey(
+        uri = filePath,
+        wallpaperRevision = wallpaperRevision,
+        isDarkTheme = isDarkTheme,
+        mode = ambilightMode,
+    )
+
+    DisposableEffect(ambilightSourceKey) {
+        onDispose {
+            LiveWallpaperAmbilightBridge.clear(ambilightSourceKey)
+        }
+    }
+
+    val ambilightAnimSamplingActive = ambilightMode != WallpaperAmbilightMode.OFF &&
+        !paused &&
+        decodedDrawable != null
+
+    LaunchedEffect(
+        ambilightAnimSamplingActive,
+        ambilightAnimateLive,
+        decodedDrawable,
+        filePath,
+        wallpaperRevision,
+        isDarkTheme,
+        scaleMode,
+        ambilightMode,
+    ) {
+        val currentDrawable = decodedDrawable ?: return@LaunchedEffect
+        if (!ambilightAnimSamplingActive) return@LaunchedEffect
+
+        fun currentLeftPanelFraction(): Float {
+            val leftW = LauncherEmbeddedBoundsState.leftPanelBounds?.width()?.toFloat() ?: 0f
+            val totalW = LauncherEmbeddedBoundsState.contentRowBounds?.width()?.toFloat()
+                ?: LauncherEmbeddedBoundsState.screenBounds?.width()?.toFloat()
+                ?: 0f
+            return if (leftW > 1f && totalW > 1f) (leftW / totalW).coerceIn(0f, 0.55f) else 0f
+        }
+
+        fun currentViewportAspect(): Float {
+            val rightBounds = LauncherEmbeddedBoundsState.embeddedZoneBounds
+            return if (rightBounds != null && rightBounds.width() > 0 && rightBounds.height() > 0) {
+                rightBounds.width().toFloat() / rightBounds.height().toFloat().coerceAtLeast(1f)
+            } else {
+                16f / 9f
+            }
+        }
+
+        fun buildCacheKey(leftFrac: Float): String = buildWallpaperAmbilightCacheKey(
+            activeWallpaperUri = filePath,
+            isDarkTheme = isDarkTheme,
+            scaleMode = scaleMode,
+            viewportAspect = currentViewportAspect(),
+            leftPanelFraction = leftFrac,
+            mode = ambilightMode,
+        )
+
+        if (!ambilightAnimateLive) {
+            val cachedKey = buildCacheKey(currentLeftPanelFraction())
+            WallpaperAmbilightCache.get(cachedKey)?.let { cached ->
+                LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, cached)
+                return@LaunchedEffect
+            }
+        }
+
+        val reusableBitmap = Bitmap.createBitmap(
+            AMBILIGHT_WORKING_WIDTH,
+            AMBILIGHT_WORKING_HEIGHT,
+            Bitmap.Config.ARGB_8888,
+        )
+        val drawCanvas = Canvas(reusableBitmap)
+        val rawPixels = IntArray(AMBILIGHT_WORKING_WIDTH * AMBILIGHT_WORKING_HEIGHT)
+        var prevSmoothed: IntArray? = null
+
+        suspend fun sampleAnimatedFrame(
+            leftFrac: Float,
+            prevCopy: IntArray?,
+        ): Pair<IntArray, WallpaperAmbilightData>? {
+            val dw = currentDrawable.intrinsicWidth
+            val dh = currentDrawable.intrinsicHeight
+            if (dw <= 0 || dh <= 0) return null
+            val savedBounds = currentDrawable.copyBounds()
+            runCatching {
+                val params = computeDrawableMatrixParams(
+                    viewWidth = AMBILIGHT_WORKING_WIDTH,
+                    viewHeight = AMBILIGHT_WORKING_HEIGHT,
+                    drawableWidth = dw,
+                    drawableHeight = dh,
+                    scaleMode = scaleMode,
+                )
+                reusableBitmap.eraseColor(android.graphics.Color.BLACK)
+                drawCanvas.save()
+                drawCanvas.translate(params.translateX, params.translateY)
+                drawCanvas.scale(params.scaleX, params.scaleY)
+                currentDrawable.setBounds(0, 0, dw, dh)
+                currentDrawable.draw(drawCanvas)
+                drawCanvas.restore()
+            }
+            currentDrawable.bounds = savedBounds
+            reusableBitmap.getPixels(
+                rawPixels,
+                0,
+                AMBILIGHT_WORKING_WIDTH,
+                0,
+                0,
+                AMBILIGHT_WORKING_WIDTH,
+                AMBILIGHT_WORKING_HEIGHT,
+            )
+            if (!hasVisibleFrameContent(rawPixels)) return null
+            val snapshot = rawPixels.copyOf()
+            return withContext(LauncherCpuAffinity.lightPollersDispatcher) {
+                val framePixels = if (ambilightMode == WallpaperAmbilightMode.BLURRED_WALLPAPER) {
+                    blendPixelBuffers(prevCopy, snapshot, blendFactor = 0.55f)
+                } else {
+                    snapshot
+                }
+                val computed = computeWallpaperAmbilightDataFromPixels(
+                    pixels = framePixels,
+                    width = AMBILIGHT_WORKING_WIDTH,
+                    height = AMBILIGHT_WORKING_HEIGHT,
+                    isDarkTheme = isDarkTheme,
+                    leftPanelFraction = leftFrac,
+                    mode = ambilightMode,
+                )
+                framePixels to computed
+            }
+        }
+
+        try {
+            if (!ambilightAnimateLive) {
+                delay(180L)
+                var capturedOnce = false
+                repeat(4) {
+                    if (!isActive || capturedOnce) return@repeat
+                    val leftFrac = currentLeftPanelFraction()
+                    val sampled = sampleAnimatedFrame(leftFrac, prevCopy = null)
+                    if (sampled != null) {
+                        WallpaperAmbilightCache.put(buildCacheKey(leftFrac), sampled.second)
+                        LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, sampled.second)
+                        capturedOnce = true
+                        return@repeat
+                    }
+                    delay(120L)
+                }
+                return@LaunchedEffect
+            }
+
+            while (isActive) {
+                val leftFrac = currentLeftPanelFraction()
+                val sampled = sampleAnimatedFrame(leftFrac, prevSmoothed)
+                if (sampled != null) {
+                    prevSmoothed = sampled.first
+                    val cacheKey = buildCacheKey(leftFrac)
+                    if (WallpaperAmbilightCache.get(cacheKey) == null) {
+                        WallpaperAmbilightCache.put(cacheKey, sampled.second)
+                    }
+                    LiveWallpaperAmbilightBridge.publish(ambilightSourceKey, sampled.second)
+                }
+                delay(LIVE_AMBILIGHT_SAMPLE_INTERVAL_MS)
+            }
+        } finally {
+            if (!reusableBitmap.isRecycled) {
+                reusableBitmap.recycle()
+            }
         }
     }
 

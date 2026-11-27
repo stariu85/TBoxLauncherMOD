@@ -1720,4 +1720,10 @@
     <string name="settings_usb_mount_remounting">Монтирование…</string>
     <string name="settings_usb_mount_remount_ok">Успешно смонтировано</string>
     <string name="settings_usb_mount_remount_fail">Ошибка монтирования: %1$s</string>
+
+    <!-- Wallpaper Ambilight Settings -->
+    <string name="launcher_vs_ambilight_title">Подсветка панелей фоном</string>
+    <string name="launcher_vs_ambilight_desc">Подсвечивает верхнюю, нижнюю и левую панели градиентами по цветам краёв обоев</string>
+    <string name="launcher_vs_ambilight_animate_live_title">Анимировать подсветку при живых обоях</string>
+    <string name="launcher_vs_ambilight_animate_live_desc">Менять цвет панелей в реальном времени вместе с живыми обоями (при выключении используется статичный цвет 5-го кадра без нагрузки на систему)</string>
 </resources>

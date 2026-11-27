@@ -169,18 +169,30 @@ internal class VirtualRoadDrawCache {
     private var hazeHorizonY = Float.NaN
     private var hazeHeight = Float.NaN
     private var hazeBgArgb = 0
+    private var hazeAlphaScale = Float.NaN
     private var hazeBrush: Brush? = null
 
-    fun horizonHazeBrush(horizonY: Float, canvasHeight: Float, bg: Color): Brush {
+    fun horizonHazeBrush(
+        horizonY: Float,
+        canvasHeight: Float,
+        bg: Color,
+        alphaScale: Float = 1f,
+    ): Brush {
         val bgArgb = bg.toArgb()
+        val clampedScale = alphaScale.coerceIn(0f, 1f)
         val existing = hazeBrush
-        if (existing != null && hazeHorizonY == horizonY && hazeHeight == canvasHeight && hazeBgArgb == bgArgb) {
+        if (existing != null &&
+            hazeHorizonY == horizonY &&
+            hazeHeight == canvasHeight &&
+            hazeBgArgb == bgArgb &&
+            hazeAlphaScale == clampedScale
+        ) {
             return existing
         }
         val hazeBottom = horizonY + (canvasHeight - horizonY) * 0.34f
         return Brush.verticalGradient(
-            0f to bg,
-            0.45f to bg.copy(alpha = 0.72f),
+            0f to bg.copy(alpha = bg.alpha * clampedScale),
+            0.45f to bg.copy(alpha = bg.alpha * 0.72f * clampedScale),
             1f to bg.copy(alpha = 0f),
             startY = horizonY - canvasHeight * 0.06f,
             endY = hazeBottom,
@@ -188,6 +200,7 @@ internal class VirtualRoadDrawCache {
             hazeHorizonY = horizonY
             hazeHeight = canvasHeight
             hazeBgArgb = bgArgb
+            hazeAlphaScale = clampedScale
             hazeBrush = it
         }
     }
@@ -305,6 +318,9 @@ fun LauncherVirtualRoad(
     inDriveGear: Boolean = false,
     isSnow: Boolean = false,
     syncedClock: LauncherSynced30FpsClock? = null,
+    horizonHazeColor: Color = LauncherColors.LeftPanelBg,
+    horizonHazeAlphaScale: Float = 1f,
+    horizonHazeProvider: (() -> Pair<Color, Float>)? = null,
 ) {
     val bsdLeftActive = inDriveGear && adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off
     val bsdRightActive = inDriveGear && adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off
@@ -549,6 +565,7 @@ fun LauncherVirtualRoad(
     ) {
         val currentWeatherPhase = weatherPhaseState.floatValue
         currentWeatherPhase.let {}
+        val resolvedHaze = horizonHazeProvider?.invoke()
         drawVirtualRoad(
             roadPhase = roadPhaseState.floatValue,
             speedKmh = speedKmh,
@@ -569,6 +586,8 @@ fun LauncherVirtualRoad(
             isRain = effectiveIsRain,
             raindrops = raindrops,
             steerAngleDeg = currentSteerDeg,
+            horizonHazeColor = resolvedHaze?.first ?: horizonHazeColor,
+            horizonHazeAlphaScale = resolvedHaze?.second ?: horizonHazeAlphaScale,
             drawCache = drawCache,
         )
     }
@@ -834,6 +853,8 @@ private fun DrawScope.drawVirtualRoad(
     isRain: Boolean = false,
     raindrops: List<Raindrop> = emptyList(),
     steerAngleDeg: Float = 0f,
+    horizonHazeColor: Color = LauncherColors.LeftPanelBg,
+    horizonHazeAlphaScale: Float = 1f,
     drawCache: VirtualRoadDrawCache? = null,
 ) {
     val w = size.width
@@ -1032,7 +1053,13 @@ private fun DrawScope.drawVirtualRoad(
         }
     }
 
-    drawHorizonHaze(horizonY = horizonY, canvasHeight = h, drawCache = drawCache)
+    drawHorizonHaze(
+        horizonY = horizonY,
+        canvasHeight = h,
+        bg = horizonHazeColor,
+        alphaScale = horizonHazeAlphaScale,
+        drawCache = drawCache,
+    )
     drawSnowflakes(isSnow = isSnow, snowflakes = snowflakes)
     drawRaindrops(
         isRain = isRain,
@@ -1181,13 +1208,16 @@ private fun DrawScope.drawRoadSurface(
 private fun DrawScope.drawHorizonHaze(
     horizonY: Float,
     canvasHeight: Float,
+    bg: Color = LauncherColors.LeftPanelBg,
+    alphaScale: Float = 1f,
     drawCache: VirtualRoadDrawCache? = null,
 ) {
-    val bg = LauncherColors.LeftPanelBg
+    val clampedScale = alphaScale.coerceIn(0f, 1f)
+    if (clampedScale <= 0.005f) return
     val hazeBottom = horizonY + (canvasHeight - horizonY) * 0.34f
-    val brush = drawCache?.horizonHazeBrush(horizonY, canvasHeight, bg) ?: Brush.verticalGradient(
-        0f to bg,
-        0.45f to bg.copy(alpha = 0.72f),
+    val brush = drawCache?.horizonHazeBrush(horizonY, canvasHeight, bg, clampedScale) ?: Brush.verticalGradient(
+        0f to bg.copy(alpha = bg.alpha * clampedScale),
+        0.45f to bg.copy(alpha = bg.alpha * 0.72f * clampedScale),
         1f to bg.copy(alpha = 0f),
         startY = horizonY - canvasHeight * 0.06f,
         endY = hazeBottom,
