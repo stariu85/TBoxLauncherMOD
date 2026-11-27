@@ -2,11 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.os.SystemClock
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -156,21 +151,14 @@ private fun LauncherVehicleAlertIcon(
         }
     }
 
-    val alpha = if (isFlashing) {
-        val infiniteTransition = rememberInfiniteTransition(label = "alert_flash_${alert.id}")
-        val animatedAlpha by infiniteTransition.animateFloat(
-            initialValue = 1.0f,
-            targetValue = 0.15f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 350, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "alert_alpha_${alert.id}",
-        )
-        animatedAlpha
-    } else {
-        1.0f
-    }
+    val alpha by rememberSyncedPulseState(
+        active = isFlashing,
+        initialValue = 1.0f,
+        targetValue = 0.15f,
+        durationMillis = 350,
+        easing = LinearEasing,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
+    )
 
     val tint = when (alert.severity) {
         LauncherAlertSeverity.Critical -> LauncherColors.WarningRed

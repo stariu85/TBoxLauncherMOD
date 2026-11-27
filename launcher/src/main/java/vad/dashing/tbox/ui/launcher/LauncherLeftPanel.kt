@@ -8,15 +8,8 @@ import android.os.SystemClock
 import vad.dashing.tbox.TboxRepository
 import vad.dashing.tbox.camd.CamdCameraRepository
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -50,6 +43,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -290,11 +284,16 @@ fun LauncherLeftPanel(
     var isOverlayReady by remember { mutableStateOf(false) }
     var viewTransitionActive by remember { mutableStateOf(false) }
     var lastSettledDriveView by remember { mutableStateOf(false) }
+    val synced30FpsClock = remember { LauncherSynced30FpsClock() }
+    LauncherSynced30FpsClockHost(synced30FpsClock)
+
     val isOverlayTransitioning = !isOverlayReady || isCameraSwitching || viewTransitionActive || (settingsTransitionProgress in 0.02f..0.98f)
-    val carOverlayAlpha by animateFloatAsState(
+    val carOverlayAlpha by rememberSyncedFloatAsState(
         targetValue = if (isOverlayTransitioning) 0f else 1f,
-        animationSpec = tween(durationMillis = 1000),
-        label = "carOverlayAlpha",
+        durationMillis = 1000,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = synced30FpsClock,
     )
 
     // Simulation gear override (hidden settings tab) takes precedence over live gearbox.
@@ -724,22 +723,27 @@ fun LauncherLeftPanel(
 
     val targetGlowColor = if (isDrivingState && driveModeGlowVisible) baseGlowColor else baseGlowColor.copy(alpha = 0f)
 
-    val animatedGlowColor by animateColorAsState(
+    val animatedGlowColor by rememberSyncedColorAsState(
         targetValue = targetGlowColor,
-        animationSpec = tween(durationMillis = 600),
-        label = "driveModeGlowColor",
+        durationMillis = 600,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
+        sharedClock = synced30FpsClock,
     )
 
-    val carOffsetDriveY by animateDpAsState(
+    val carOffsetDriveY by rememberSyncedDpAsState(
         targetValue = if (showDriveView) (-40).dp else 0.dp,
-        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-        label = "carOffsetDriveY",
+        durationMillis = 1500,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = synced30FpsClock,
     )
 
-    val alertsDriveViewOffsetY by animateDpAsState(
+    val alertsDriveViewOffsetY by rememberSyncedDpAsState(
         targetValue = if (showDriveView) 60.dp else 0.dp,
-        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-        label = "alertsDriveViewOffsetY",
+        durationMillis = 1500,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = synced30FpsClock,
     )
 
     DisposableEffect(Unit) {
@@ -748,9 +752,7 @@ fun LauncherLeftPanel(
         }
     }
 
-    val synced30FpsClock = remember { LauncherSynced30FpsClock() }
-    LauncherSynced30FpsClockHost(synced30FpsClock)
-
+    CompositionLocalProvider(LocalLauncherSynced30FpsClock provides synced30FpsClock) {
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -965,11 +967,12 @@ fun LauncherLeftPanel(
                     }
                     "media_player" -> {
                         if (miniPlayerVisible) {
-                            val canAnimateMiniPlayer = rememberRightPanelAnimationsActive()
+                            val panelAnimSnapshot = rememberRightPanelAnimationSnapshot()
                             LauncherMediaMiniPlayer(
                                 modifier = Modifier.fillMaxWidth(),
                                 sourceId = "launcher_mini_player_main",
-                                animate = canAnimateMiniPlayer,
+                                animate = panelAnimSnapshot.shouldAnimate,
+                                animateRotatingName = panelAnimSnapshot.shouldAnimateLeftPanel,
                             )
                         }
                     }
@@ -1155,6 +1158,7 @@ fun LauncherLeftPanel(
                     projectPdcRings = !racing,
                     projectHeadlights = !racing && (projectHeadlightsEnabled || isHighBeamIndicated),
                     textureSurface = racing,
+                    syncedClock = synced30FpsClock,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
@@ -1731,6 +1735,7 @@ fun LauncherLeftPanel(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -1827,15 +1832,13 @@ private fun BoxScope.LauncherCriticalCollisionWarningBanner(
     val bannerBgColor = if (isCritical) Color(0xFFDC2626) else Color(0xFFEAB308)
     val contentColor = if (isCritical) Color.White else Color(0xFF18181B)
 
-    val infiniteTransition = rememberInfiniteTransition(label = "collision_warning_pulse")
-    val animatedAlpha by infiniteTransition.animateFloat(
+    val animatedAlpha by rememberSyncedPulseState(
+        active = true,
         initialValue = 1.0f,
         targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 300, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "collision_warning_alpha",
+        durationMillis = 300,
+        easing = LinearEasing,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
     )
 
     if (isTakeover) {

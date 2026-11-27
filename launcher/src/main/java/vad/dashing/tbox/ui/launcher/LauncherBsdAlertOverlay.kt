@@ -6,11 +6,6 @@ import android.os.Build
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -94,15 +89,14 @@ fun LauncherBsdAlertOverlay(
         rectCorners = rectCorners,
     )
 
-    // Keep State<Float> reference so pulse is read exclusively inside the draw phase
-    val pulseState = rememberInfiniteTransition(label = "bsdOverlayPulse").animateFloat(
+    // Keep State<Float> reference so pulse is read exclusively inside the draw phase (15 FPS synced)
+    val pulseState = rememberSyncedPulseState(
+        active = true,
         initialValue = 0.35f,
         targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 450, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "bsdOverlayPulseValue",
+        durationMillis = 450,
+        easing = FastOutSlowInEasing,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
     )
 
     val alertRed = Color(0xFFFF1744)

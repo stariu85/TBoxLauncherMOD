@@ -65,8 +65,62 @@ class LauncherPanelAnimationPolicyTest {
         assertFalse(eval(camd = true))
     }
 
+    private fun evalLeft(
+        firstDraw: Boolean = true,
+        started: Boolean = true,
+        focused: Boolean = true,
+        hidden: Boolean = false,
+        pkg: String? = null,
+        fullscreen: Boolean = false,
+        shade: Boolean = false,
+        vehSettings: Boolean = false,
+        vehOverlay: Boolean = false,
+        vehActivity: Boolean = false,
+        about: Boolean = false,
+        quick: Boolean = false,
+        avm: Boolean = false,
+        camd: Boolean = false,
+    ): Boolean = shouldAnimateLeftPanel(
+        isFirstDrawComplete = firstDraw,
+        isActivityStarted = started,
+        isWindowFocused = focused,
+        hiddenForExternalApp = hidden,
+        activeAppPackage = pkg,
+        isActiveAppFullscreen = fullscreen,
+        isTopShadeOpen = shade,
+        isVehicleSettingsOpen = vehSettings,
+        isVehicleSettingsOverlayShowing = vehOverlay,
+        isVehicleSettingsActivityOpen = vehActivity,
+        isAboutOverlayShowing = about,
+        isQuickSettingsOpen = quick,
+        isAvmActive = avm,
+        isCamdCameraActive = camd,
+    )
+
     @Test
     fun resumesWhenRecoveredFromFullscreenWithFocus() {
         assertTrue(eval(pkg = "ru.yandex.yandexnavi", fullscreen = true, focused = true))
+    }
+
+    @Test
+    fun leftPanelContinuesAnimatingWhenEmbeddedAppIsInRightPanel() {
+        assertTrue(evalLeft(pkg = "ru.yandex.yandexnavi", fullscreen = false, focused = false))
+    }
+
+    @Test
+    fun leftPanelPausesForFullscreenAppOrOverlaysOrHiddenLauncher() {
+        assertFalse(evalLeft(firstDraw = false))
+        assertFalse(evalLeft(started = false))
+        assertFalse(evalLeft(hidden = true))
+        assertFalse(evalLeft(pkg = "ru.yandex.yandexnavi", fullscreen = true, focused = false))
+        assertTrue(evalLeft(pkg = "ru.yandex.yandexnavi", fullscreen = true, focused = true))
+        assertFalse(evalLeft(shade = true))
+        assertFalse(evalLeft(vehSettings = true))
+        assertFalse(evalLeft(vehOverlay = true))
+        assertFalse(evalLeft(vehActivity = true))
+        assertFalse(evalLeft(about = true))
+        assertFalse(evalLeft(quick = true))
+        assertFalse(evalLeft(avm = true))
+        assertFalse(evalLeft(camd = true))
     }
 }

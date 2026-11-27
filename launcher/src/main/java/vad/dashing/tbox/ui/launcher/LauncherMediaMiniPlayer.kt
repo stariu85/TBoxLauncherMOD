@@ -7,9 +7,8 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,15 +44,15 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -73,7 +72,6 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
-import kotlinx.coroutines.isActive
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import vad.dashing.tbox.R
 import vad.dashing.tbox.SharedMediaControlService
@@ -112,6 +110,7 @@ fun LauncherMediaMiniPlayer(
     modifier: Modifier = Modifier,
     sourceId: String = LAUNCHER_MEDIA_SOURCE_ID,
     animate: Boolean = true,
+    animateRotatingName: Boolean = animate,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -147,6 +146,7 @@ fun LauncherMediaMiniPlayer(
         LauncherAppConfigStore.enableMediaTextAnimation(context)
     }
     val effectiveAnimate = animate && enableMediaTextAnim
+    val effectiveRotateAnimate = animateRotatingName && enableMediaTextAnim
 
     val isDark = LauncherThemeState.darkTheme
 
@@ -328,9 +328,10 @@ fun LauncherMediaMiniPlayer(
             }.getOrNull() ?: baseCardColor
         }
     }
-    val mediaCardColor by animateColorAsState(
+    val mediaCardColor by rememberSyncedColorAsState(
         targetValue = mediaCardTarget.copy(alpha = mediaCardTarget.alpha * mediaCardAlpha),
-        label = "mediaCardTint",
+        durationMillis = 300,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
     )
 
     val primaryTextColor = if (isDark) LauncherColors.LeftTextPrimary else Color(0xFF111827)
@@ -525,10 +526,10 @@ fun LauncherMediaMiniPlayer(
     } else {
         val view = LocalView.current
         var isFlashedState by remember { mutableStateOf(false) }
-        val isFlashed by animateColorAsState(
+        val isFlashed by rememberSyncedColorAsState(
             targetValue = if (isFlashedState) Color.Gray.copy(alpha = 0.5f) else Color.Transparent,
-            animationSpec = tween(durationMillis = 120),
-            label = "widgetFlash",
+            durationMillis = 120,
+            tickDivisor = PDC_CLOCK_TICK_DIVISOR,
         )
         LaunchedEffect(isFlashedState) {
             if (isFlashedState) {
@@ -570,7 +571,7 @@ fun LauncherMediaMiniPlayer(
                     text = activePkgLabel,
                     playButtonSize = playButtonSize,
                     textColor = secondaryTextColor,
-                    animate = effectiveAnimate,
+                    animate = effectiveRotateAnimate,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -806,26 +807,20 @@ private fun RotatingPlayerNameText(
     }
 
     val rotationAngleState = remember { mutableFloatStateOf(0f) }
+    val activeClock = rememberSynced30FpsClock()
 
-    LaunchedEffect(animate, preRenderedBitmap != null) {
-        if (!animate || preRenderedBitmap == null) return@LaunchedEffect
-        var lastTickFrameNs = 0L
-        while (isActive) {
-            withFrameNanos { frameNs ->
-                if (lastTickFrameNs == 0L) {
-                    lastTickFrameNs = frameNs
-                    return@withFrameNanos
-                }
-                val nextAngle = advanceRotatingPlayerNameAngle(
-                    currentAngleDeg = rotationAngleState.floatValue,
-                    deltaNs = frameNs - lastTickFrameNs,
-                )
-                if (nextAngle != null) {
-                    lastTickFrameNs = frameNs
-                    rotationAngleState.floatValue = nextAngle
-                }
+    DisposableEffect(activeClock, animate, preRenderedBitmap != null) {
+        if (!animate || preRenderedBitmap == null) return@DisposableEffect onDispose {}
+        val unregister = activeClock.registerListener(tickDivisor = PDC_CLOCK_TICK_DIVISOR) { _, deltaNs ->
+            val nextAngle = advanceRotatingPlayerNameAngle(
+                currentAngleDeg = rotationAngleState.floatValue,
+                deltaNs = deltaNs,
+            )
+            if (nextAngle != null) {
+                rotationAngleState.floatValue = nextAngle
             }
         }
+        onDispose { unregister() }
     }
 
     if (preRenderedBitmap != null) {
@@ -834,15 +829,22 @@ private fun RotatingPlayerNameText(
             modifier = modifier,
             contentAlignment = Alignment.Center,
         ) {
-            Image(
-                bitmap = preRenderedBitmap,
-                contentDescription = null,
-                modifier = Modifier
-                    .requiredSize(bitmapSizeDp)
-                    .graphicsLayer {
-                        rotationZ = rotationAngleState.floatValue
-                    },
-            )
+            // Rotate in DrawScope instead of Modifier.graphicsLayer { rotationZ = ... }:
+            // changing graphicsLayer positional properties triggers NodeCoordinator ->
+            // owner.onLayoutChange -> checkForSemanticsChanges every ~100 ms when an
+            // AccessibilityService is active, burning ~4s of UI-thread CPU per 20s.
+            Canvas(modifier = Modifier.requiredSize(bitmapSizeDp)) {
+                val topLeft = Offset(
+                    x = (size.width - preRenderedBitmap.width) / 2f,
+                    y = (size.height - preRenderedBitmap.height) / 2f,
+                )
+                rotate(degrees = rotationAngleState.floatValue) {
+                    drawImage(
+                        image = preRenderedBitmap,
+                        topLeft = topLeft,
+                    )
+                }
+            }
         }
     }
 }

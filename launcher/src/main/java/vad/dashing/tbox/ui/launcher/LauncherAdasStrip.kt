@@ -2,11 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import android.os.SystemClock
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -82,21 +77,15 @@ private fun rememberAdasFlashingAlpha(key: String, activationTimeMs: Long): Floa
         }
     }
 
-    return if (isFlashing) {
-        val infiniteTransition = rememberInfiniteTransition(label = "adas_flash_$key")
-        val animatedAlpha by infiniteTransition.animateFloat(
-            initialValue = 1.0f,
-            targetValue = 0.15f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 350, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "adas_alpha_$key",
-        )
-        animatedAlpha
-    } else {
-        1.0f
-    }
+    val animatedAlpha by rememberSyncedPulseState(
+        active = isFlashing,
+        initialValue = 1.0f,
+        targetValue = 0.15f,
+        durationMillis = 350,
+        easing = LinearEasing,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
+    )
+    return animatedAlpha
 }
 
 /** Compact ADAS status chips aligned with launcher palette. */

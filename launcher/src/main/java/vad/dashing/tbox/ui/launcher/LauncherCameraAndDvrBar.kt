@@ -1,6 +1,5 @@
 package vad.dashing.tbox.ui.launcher
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -178,13 +177,13 @@ fun LauncherCamdDvrPage(
             vad.dashing.tbox.camd.CamdRecIndicatorState.STANDBY -> LauncherColors.AccentBlue
             vad.dashing.tbox.camd.CamdRecIndicatorState.OFF -> Color.Transparent
         }
-        val recBgColor by animateColorAsState(
+        val recBgColor by rememberSyncedColorAsState(
             targetValue = if (isRecorderOn) recAccentColor.copy(alpha = 0.22f) else LauncherColors.LeftPanelCard,
-            label = "rec_bg",
+            tickDivisor = PDC_CLOCK_TICK_DIVISOR,
         )
-        val recBorderColor by animateColorAsState(
+        val recBorderColor by rememberSyncedColorAsState(
             targetValue = recAccentColor,
-            label = "rec_border",
+            tickDivisor = PDC_CLOCK_TICK_DIVISOR,
         )
         val recIconRes = when (recState) {
             vad.dashing.tbox.camd.CamdRecIndicatorState.ACTIVE -> R.drawable.ic_camd_rec_active
@@ -239,17 +238,17 @@ fun LauncherCamdDvrPage(
         }
 
         // Button 2: SOS
-        val sosBgColor by animateColorAsState(
+        val sosBgColor by rememberSyncedColorAsState(
             targetValue = if (showSosActive) Color(0xFFEF4444).copy(alpha = 0.22f) else LauncherColors.LeftPanelCard,
-            label = "sos_bg",
+            tickDivisor = PDC_CLOCK_TICK_DIVISOR,
         )
-        val sosBorderColor by animateColorAsState(
+        val sosBorderColor by rememberSyncedColorAsState(
             targetValue = if (showSosActive) Color(0xFFEF4444) else Color.Transparent,
-            label = "sos_border",
+            tickDivisor = PDC_CLOCK_TICK_DIVISOR,
         )
-        val sosIconTint by animateColorAsState(
+        val sosIconTint by rememberSyncedColorAsState(
             targetValue = if (showSosActive) Color(0xFFEF4444) else Color(0xFFE2E8F0),
-            label = "sos_icon_tint",
+            tickDivisor = PDC_CLOCK_TICK_DIVISOR,
         )
 
         Box(
@@ -308,17 +307,17 @@ private fun CamdControlButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bgColor by animateColorAsState(
+    val bgColor by rememberSyncedColorAsState(
         targetValue = if (isActive) Color(0xFF0284C7).copy(alpha = 0.28f) else LauncherColors.LeftPanelCard,
-        label = "cam_btn_bg",
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
     )
-    val borderColor by animateColorAsState(
+    val borderColor by rememberSyncedColorAsState(
         targetValue = if (isActive) Color(0xFF38BDF8) else Color.Transparent,
-        label = "cam_btn_border",
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
     )
-    val tintColor by animateColorAsState(
+    val tintColor by rememberSyncedColorAsState(
         targetValue = if (isActive) Color(0xFF38BDF8) else LauncherColors.LeftTextPrimary,
-        label = "cam_btn_tint",
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
     )
 
     Box(

@@ -1,11 +1,12 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.TextureView
+import android.view.WindowManager
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,9 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -30,26 +33,47 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.viewinterop.AndroidView
 import vad.dashing.tbox.ui.rememberPlaySystemClickSound
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.filament.Engine
+import com.google.android.filament.Renderer
+import com.google.android.filament.View.BlendMode
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Quaternion
-import io.github.sceneview.SceneView
-import io.github.sceneview.SurfaceType
+import io.github.sceneview.RenderQuality
+import io.github.sceneview.SceneAutoCenterState
+import io.github.sceneview.SceneNodeManager
+import io.github.sceneview.SceneRenderer
+import io.github.sceneview.applyRenderQuality
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberEnvironment
+import io.github.sceneview.rememberEnvironmentLoader
+import io.github.sceneview.rememberFillLightNode
+import io.github.sceneview.rememberMainLightNode
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberRenderer
+import io.github.sceneview.rememberScene
+import io.github.sceneview.rememberView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,6 +81,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.LauncherHomeActivityHolder
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.exp
@@ -172,10 +197,20 @@ private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val BASE_MODEL_SCALE = 0.378f
 private const val PREPARED_FRAMES_WARMUP = 15
-private const val TRANSITION_FRAME_INTERVAL_NS = 14_000_000L // 60 FPS target during transitions (1 VSYNC tick at 60Hz = 16.6ms with 14ms tolerance)
-private const val DYNAMIC_FRAME_INTERVAL_NS = 42_000_000L // 20 FPS target (3 VSYNC ticks at 60Hz = 50ms with 42ms hysteresis tolerance margin)
-private const val STATIC_FRAME_INTERVAL_NS = 1_000_000_000L // 1 FPS in statics (~1000ms)
+internal const val CAR_3D_TRANSITION_TICK_DIVISOR = 1 // 30 FPS (2 VSYNC ticks at 60 Hz, synced with road)
+internal const val CAR_3D_WAKEUP_TICK_DIVISOR = 2 // 15 FPS (4 VSYNC ticks at 60 Hz, synced with PDC)
+internal const val CAR_3D_STATIC_TICK_DIVISOR = 30 // ~1 FPS (when pause is blocked, e.g. door left open >2s)
 private const val DYNAMIC_GRACE_PERIOD_NS = 2_000_000_000L // 2 seconds grace period
+
+internal fun resolveCar3dTickDivisor(
+    isCameraSwitching: Boolean,
+    isInitializing: Boolean,
+    isDynamic: Boolean,
+): Int = when {
+    isCameraSwitching || isInitializing -> CAR_3D_TRANSITION_TICK_DIVISOR
+    isDynamic -> CAR_3D_WAKEUP_TICK_DIVISOR
+    else -> CAR_3D_STATIC_TICK_DIVISOR
+}
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
 private const val HOME_MODEL_X = 0f
@@ -206,7 +241,7 @@ private fun multiplyQuaternions(q1: Quaternion, q2: Quaternion): Quaternion {
 }
 
 /**
- * Plain non-Compose holder for 60 FPS [SceneView] `onFrame` loop state.
+ * Plain non-Compose holder for [ThrottledCarSceneView] `onFrame` loop state.
  * Mutating fields here does NOT invalidate Compose snapshot state.
  */
 private class FrameLoopState(
@@ -276,7 +311,9 @@ fun LauncherCar3DModel(
     textureSurface: Boolean = true,
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
+    syncedClock: LauncherSynced30FpsClock? = null,
 ) {
+    val activeSyncedClock = rememberSynced30FpsClock(syncedClock)
     val firstDrawComplete by LauncherHomeActivityHolder.firstDrawFlow.collectAsStateWithLifecycle()
     var filamentReady by remember { mutableStateOf(firstDrawComplete || settingsView) }
 
@@ -298,6 +335,7 @@ fun LauncherCar3DModel(
                 steerAngleDeg = steeringDeg,
                 steerPreview = steerPreview,
                 inDriveGear = inDriveGear,
+                syncedClock = activeSyncedClock,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -336,6 +374,7 @@ fun LauncherCar3DModel(
                 isAvmActive = isAvmActive,
                 carHidden = carHidden,
                 lowPowerPreview = settingsView || settingsProgress > 0.5f,
+                syncedClock = activeSyncedClock,
             )
         }
     }
@@ -376,6 +415,7 @@ private fun LauncherCarFilamentModel(
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
+    syncedClock: LauncherSynced30FpsClock,
 ) {
     val contentKey = modelRevision.hashCode()
 
@@ -414,6 +454,7 @@ private fun LauncherCarFilamentModel(
                 isAvmActive = isAvmActive,
                 carHidden = carHidden,
                 lowPowerPreview = lowPowerPreview,
+                syncedClock = syncedClock,
             )
         }
     }
@@ -453,6 +494,7 @@ private fun LauncherCarFilamentContent(
     isAvmActive: Boolean = false,
     carHidden: Boolean = false,
     lowPowerPreview: Boolean = false,
+    syncedClock: LauncherSynced30FpsClock,
 ) {
     val context = LocalContext.current
     val playSound = rememberPlaySystemClickSound()
@@ -592,10 +634,12 @@ private fun LauncherCarFilamentContent(
     }
 
     var modelReady by remember(modelInstance) { mutableStateOf(false) }
-    val modelAlpha by animateFloatAsState(
+    val modelAlpha by rememberSyncedFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
-        animationSpec = tween(durationMillis = 1000),
-        label = "launcherCarModelAlpha",
+        durationMillis = 1000,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = syncedClock,
     )
     LaunchedEffect(modelReady) {
         if (modelReady) {
@@ -807,22 +851,98 @@ private fun LauncherCarFilamentContent(
         }
     }
 
+    var wakeupNonce by remember(modelInstance) { mutableIntStateOf(0) }
+    val composeDesiredTickDivisor = resolveCar3dTickDivisor(
+        isCameraSwitching = cameraSwitching || orbitInteracting,
+        isInitializing = isInitializing,
+        isDynamic = true,
+    )
+    LaunchedEffect(
+        rigState,
+        cameraSwitching,
+        orbitInteracting,
+        isInitializing,
+        homePressedEvent,
+        backPressedEvent,
+        previousAppPressedEvent,
+        quickSettingsClosedEvent,
+        camdCamerasClosedEvent,
+        reverseCamerasClosedEvent,
+        topShadeClosedEvent,
+        paintChangedEvent,
+        settingsOrbitEvent,
+        parkEngagedEvent,
+        startupTopViewDone,
+        windowReturnedEvent,
+    ) {
+        wakeupNonce++
+    }
+
     Box(modifier = modifier) {
         if (modelInstance != null) {
-            SceneView(
+            val initialTransition = settingsProgress.coerceIn(0f, 1f)
+            val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
+            val safeCustomDriveScale = customModelDriveScale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
+            val initialDriveBlend = if (cameraAnimEnabled) {
+                FastOutSlowInEasing.transform(frameState.currentDriveBlend.coerceIn(0f, 1f))
+            } else {
+                frameState.currentDriveBlend.coerceIn(0f, 1f)
+            }
+            val initialDriveScale = lerp(1f, 1.21f * safeCustomDriveScale, initialDriveBlend)
+            val initialHomeScale = BASE_MODEL_SCALE * initialDriveScale
+            val initialSettingsScale = SETTINGS_MODEL_SCALE * safeCustomScale
+            val initialBaseScale = lerp(initialHomeScale, initialSettingsScale, initialTransition)
+            val initialPinchScale = lerp(
+                1f,
+                settingsUserScale.coerceIn(
+                    SETTINGS_USER_SCALE_MIN,
+                    SETTINGS_USER_SCALE_MAX,
+                ),
+                initialTransition,
+            )
+            val initialTargetScale = initialBaseScale * initialPinchScale
+            val initialTargetDriveModelX = 0f
+            val initialDriveModelX = lerp(HOME_MODEL_X, initialTargetDriveModelX, initialDriveBlend)
+            val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, initialDriveBlend)
+
+            ThrottledCarSceneView(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = modelAlpha }
                     .pointerInteropFilter { false },
                 lifecycle = customSceneLifecycleOwner.lifecycle,
-                surfaceType = SurfaceType.TextureSurface,
+                syncedClock = syncedClock,
+                desiredTickDivisor = composeDesiredTickDivisor,
+                wakeupNonce = wakeupNonce,
                 engine = engine,
                 modelLoader = modelLoader,
                 cameraNode = cameraNode,
-                cameraManipulator = null,
+                modelInstance = modelInstance,
                 isOpaque = lowPowerPreview,
-                autoFitContent = false,
+                initialScale = Scale(if (initialTransition >= 0.99f) 0.001f else initialTargetScale),
+                initialPosition = Position(
+                    x = lerp(initialDriveModelX, SETTINGS_MODEL_X, initialTransition),
+                    y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, initialTransition),
+                    z = lerp(initialDriveModelZ, SETTINGS_MODEL_Z, initialTransition),
+                ),
+                initialRotation = Rotation(
+                    y = lerp(
+                        MODEL_YAW_DEG,
+                        SETTINGS_YAW_DEG + settingsUserYawDeg,
+                        initialTransition,
+                    ),
+                ),
+                onModelNodeCreated = { createdNode ->
+                    createdNode.isVisible = false
+                    modelNodeRef.set(createdNode)
+                    animationController?.resetToRestPose()
+                },
                 onFrame = { frameNs ->
+                    var nextTickDivisor = if (!modelReady) {
+                        CAR_3D_TRANSITION_TICK_DIVISOR
+                    } else {
+                        CAR_3D_WAKEUP_TICK_DIVISOR
+                    }
                     runCatching {
                         val nowMs = SystemClock.uptimeMillis()
                         val paintChangedEventMs = LauncherCar3DModelTrigger.paintChangedEvent.value
@@ -910,32 +1030,16 @@ private fun LauncherCarFilamentContent(
 
                         val isStartupRecent = (nowMs - startupUptimeMs) < 5000L
 
-                        val wasDynamic = (frameNs - frameState.lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
-
                         if (bodyStateChanged || isCameraSwitching || isInitializing || isActionRecent || isStartupRecent || isHoldingStartupTopView) {
                             frameState.lastDynamicNs = frameNs
                         }
 
                         val isDynamic = (frameNs - frameState.lastDynamicNs) < DYNAMIC_GRACE_PERIOD_NS
 
-                        if (!wasDynamic && isDynamic) {
-                            frameState.lastFrameNs = 0L
-                        }
-
-                        val requiredIntervalNs = when {
-                            isCameraSwitching -> TRANSITION_FRAME_INTERVAL_NS
-                            isDynamic -> DYNAMIC_FRAME_INTERVAL_NS
-                            else -> STATIC_FRAME_INTERVAL_NS
-                        }
-
-                        if (frameState.lastFrameNs != 0L && frameNs - frameState.lastFrameNs < requiredIntervalNs) {
-                            return@runCatching
-                        }
-
                         val dt = if (frameState.lastFrameNs == 0L) {
                             0.033f
                         } else {
-                            ((frameNs - frameState.lastFrameNs) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                            ((frameNs - frameState.lastFrameNs) / 1_000_000_000f).coerceIn(0f, 0.1f)
                         }
 
                         if (!cameraAnimEnabledRef.value) {
@@ -1191,6 +1295,12 @@ private fun LauncherCarFilamentContent(
                             }
                         }
 
+                        nextTickDivisor = resolveCar3dTickDivisor(
+                            isCameraSwitching = isStillSwitching,
+                            isInitializing = !modelReady,
+                            isDynamic = isDynamic,
+                        )
+
                         val publishNs = 1_000_000_000L // 1 second interval
                         if (!isStillSwitching && (transitionJustFinished || frameState.lastAnchorPublishNs == 0L || frameNs - frameState.lastAnchorPublishNs >= publishNs)) {
                             frameState.lastAnchorPublishNs = frameNs
@@ -1240,56 +1350,9 @@ private fun LauncherCarFilamentContent(
                             }
                         }
                     }
+                    nextTickDivisor
                 },
-            ) {
-                val initialTransition = settingsProgress.coerceIn(0f, 1f)
-                val safeCustomScale = customModelScale.coerceIn(CAR_MODEL_SCALE_MIN, CAR_MODEL_SCALE_MAX)
-                val safeCustomDriveScale = customModelDriveScale.coerceIn(CAR_MODEL_DRIVE_SCALE_MIN, CAR_MODEL_DRIVE_SCALE_MAX)
-                val initialDriveBlend = if (cameraAnimEnabled) {
-                    FastOutSlowInEasing.transform(frameState.currentDriveBlend.coerceIn(0f, 1f))
-                } else {
-                    frameState.currentDriveBlend.coerceIn(0f, 1f)
-                }
-                val initialDriveScale = lerp(1f, 1.21f * safeCustomDriveScale, initialDriveBlend)
-                val initialHomeScale = BASE_MODEL_SCALE * initialDriveScale
-                val initialSettingsScale = SETTINGS_MODEL_SCALE * safeCustomScale
-                val initialBaseScale = lerp(initialHomeScale, initialSettingsScale, initialTransition)
-                val initialPinchScale = lerp(
-                    1f,
-                    settingsUserScale.coerceIn(
-                        SETTINGS_USER_SCALE_MIN,
-                        SETTINGS_USER_SCALE_MAX,
-                    ),
-                    initialTransition,
-                )
-                val initialTargetScale = initialBaseScale * initialPinchScale
-                val initialTargetDriveModelX = 0f
-                val initialDriveModelX = lerp(HOME_MODEL_X, initialTargetDriveModelX, initialDriveBlend)
-                val initialDriveModelZ = lerp(HOME_MODEL_Z, -0.21f, initialDriveBlend)
-
-                ModelNode(
-                    modelInstance = modelInstance,
-                    autoAnimate = false,
-                    scale = Scale(if (initialTransition >= 0.99f) 0.001f else initialTargetScale),
-                    position = Position(
-                        x = lerp(initialDriveModelX, SETTINGS_MODEL_X, initialTransition),
-                        y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, initialTransition),
-                        z = lerp(initialDriveModelZ, SETTINGS_MODEL_Z, initialTransition),
-                    ),
-                    rotation = Rotation(
-                        y = lerp(
-                            MODEL_YAW_DEG,
-                            SETTINGS_YAW_DEG + settingsUserYawDeg,
-                            initialTransition,
-                        ),
-                    ),
-                    apply = {
-                        isVisible = false
-                        modelNodeRef.set(this)
-                        animationController?.resetToRestPose()
-                    },
-                )
-            }
+            )
         }
         if (onClick != null || onLongClick != null || onDoubleClick != null) {
             val tapDriveBlend = if (isDriveLayout) 1f else 0f
@@ -1335,6 +1398,199 @@ private fun LauncherCarFilamentContent(
 }
 
 private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/**
+ * Filament [TextureView] scene host backed by [LauncherSynced30FpsClock] instead of
+ * SceneView's hardcoded 60 Hz `withFrameNanos` loop.
+ *
+ * This genuinely throttles Filament `Renderer.beginFrame`/`render`/`endFrame` and GPU
+ * submission to 30 FPS during view transitions/warmup, 15 FPS during 2-second wakeups,
+ * ~1 FPS in static open-door holds, and 0 FPS when paused, while staying phase-locked
+ * to the virtual road (30 FPS) and PDC overlay (15 FPS).
+ */
+@Composable
+private fun ThrottledCarSceneView(
+    modifier: Modifier = Modifier,
+    lifecycle: Lifecycle,
+    syncedClock: LauncherSynced30FpsClock,
+    desiredTickDivisor: Int,
+    wakeupNonce: Int,
+    engine: Engine,
+    modelLoader: ModelLoader,
+    cameraNode: CameraNode,
+    modelInstance: ModelInstance,
+    isOpaque: Boolean,
+    initialScale: Scale,
+    initialPosition: Position,
+    initialRotation: Rotation,
+    onModelNodeCreated: (ModelNode) -> Unit,
+    onFrame: (frameTimeNanos: Long) -> Int,
+) {
+    if (LocalInspectionMode.current) {
+        Box(modifier = modifier)
+        return
+    }
+
+    val context = LocalContext.current
+    val environmentLoader = rememberEnvironmentLoader(engine)
+    val view = rememberView(engine)
+    val renderer = rememberRenderer(engine)
+    val scene = rememberScene(engine)
+    val environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque)
+    val mainLightNode = rememberMainLightNode(engine)
+    val fillLightNode = rememberFillLightNode(engine)
+    val collisionSystem = rememberCollisionSystem(view)
+    val nodeManager = remember(scene, collisionSystem) { SceneNodeManager(scene, collisionSystem) }
+
+    SideEffect {
+        scene.indirectLight = environment.indirectLight
+        scene.skybox = environment.skybox
+        view.scene = scene
+        view.camera = cameraNode.camera
+        cameraNode.collisionSystem = collisionSystem
+        cameraNode.setView(view)
+        view.blendMode = if (isOpaque) BlendMode.OPAQUE else BlendMode.TRANSLUCENT
+    }
+
+    LaunchedEffect(view) {
+        view.applyRenderQuality(RenderQuality.Default)
+    }
+
+    LaunchedEffect(renderer, isOpaque) {
+        renderer.clearOptions = Renderer.ClearOptions().apply {
+            clear = true
+            clearColor = doubleArrayOf(0.0, 0.0, 0.0, if (isOpaque) 1.0 else 0.0)
+        }
+    }
+
+    DisposableEffect(cameraNode) {
+        nodeManager.addNode(cameraNode)
+        onDispose { nodeManager.removeNode(cameraNode) }
+    }
+    DisposableEffect(mainLightNode) {
+        nodeManager.addNode(mainLightNode)
+        onDispose { nodeManager.removeNode(mainLightNode) }
+    }
+    DisposableEffect(fillLightNode) {
+        nodeManager.addNode(fillLightNode)
+        onDispose { nodeManager.removeNode(fillLightNode) }
+    }
+
+    val contentRoot = remember(engine) { Node(engine) }
+    val autoCenterState = remember { SceneAutoCenterState() }
+    DisposableEffect(contentRoot) {
+        nodeManager.addNode(contentRoot)
+        onDispose { nodeManager.removeNode(contentRoot) }
+    }
+
+    @Suppress("DEPRECATION")
+    val display = remember(context) {
+        (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
+    }
+    val sceneRenderer = remember(engine, view, renderer) {
+        SceneRenderer(engine, view, renderer)
+    }
+    SideEffect {
+        sceneRenderer.onSurfaceResized = { _, _ ->
+            cameraNode.updateProjection()
+        }
+        sceneRenderer.onSurfaceReady = { _ ->
+            syncedClock.wakeNow()
+        }
+    }
+    DisposableEffect(sceneRenderer) {
+        onDispose { sceneRenderer.destroy() }
+    }
+
+    val modelNode = remember(engine, modelInstance) {
+        ModelNode(
+            modelInstance = modelInstance,
+            autoAnimate = false,
+        ).apply {
+            scale = initialScale
+            position = initialPosition
+            rotation = initialRotation
+            onModelNodeCreated(this)
+        }
+    }
+    DisposableEffect(modelNode, contentRoot, nodeManager) {
+        modelNode.parent = contentRoot
+        autoCenterState.reset()
+        onDispose {
+            if (modelNode.parent == contentRoot) modelNode.parent = null
+            nodeManager.removeNode(modelNode)
+            modelNode.destroy()
+        }
+    }
+
+    var isResumed by remember(lifecycle) {
+        mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(lifecycle) {
+        val observer = object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) {
+                isResumed = true
+            }
+            override fun onPause(owner: LifecycleOwner) {
+                isResumed = false
+            }
+        }
+        lifecycle.addObserver(observer)
+        isResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        onDispose {
+            lifecycle.removeObserver(observer)
+        }
+    }
+
+    val currentOnFrame = rememberUpdatedState(onFrame)
+    val desiredDivisorRef = rememberUpdatedState(desiredTickDivisor)
+    val handleRef = remember { AtomicReference<LauncherSynced30FpsClock.ListenerHandle?>(null) }
+    val appliedDivisorRef = remember { AtomicInteger(desiredTickDivisor) }
+
+    LaunchedEffect(desiredTickDivisor, wakeupNonce) {
+        val handle = handleRef.get() ?: return@LaunchedEffect
+        if (desiredTickDivisor < appliedDivisorRef.get()) {
+            appliedDivisorRef.set(desiredTickDivisor)
+            handle.setTickDivisor(desiredTickDivisor)
+        }
+    }
+
+    DisposableEffect(syncedClock, sceneRenderer, modelNode, isResumed) {
+        if (!isResumed) {
+            handleRef.set(null)
+            return@DisposableEffect onDispose {}
+        }
+        val startDivisor = desiredDivisorRef.value
+        appliedDivisorRef.set(startDivisor)
+        val handle = syncedClock.registerListenerWithHandle(tickDivisor = startDivisor) { frameTimeNanos, _ ->
+            var nextDivisor = desiredDivisorRef.value
+            sceneRenderer.renderFrame(frameTimeNanos) {
+                modelLoader.updateLoad()
+                modelNode.onFrame(frameTimeNanos)
+                autoCenterState.maybeCenter(contentRoot)
+                nextDivisor = currentOnFrame.value(frameTimeNanos)
+            }
+            if (appliedDivisorRef.getAndSet(nextDivisor) != nextDivisor) {
+                handleRef.get()?.setTickDivisor(nextDivisor)
+            }
+        }
+        handleRef.set(handle)
+        onDispose {
+            handleRef.compareAndSet(handle, null)
+            handle.unregister()
+        }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            TextureView(ctx).also { tv ->
+                sceneRenderer.attachToTextureView(tv, isOpaque, ctx, display, onTouch = null)
+            }
+        },
+        update = {},
+    )
+}
 
 /**
  * Custom [LifecycleOwner] for the 3D SceneView.

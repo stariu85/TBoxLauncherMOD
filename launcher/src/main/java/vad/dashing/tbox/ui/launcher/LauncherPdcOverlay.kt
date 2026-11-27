@@ -2,8 +2,6 @@ package vad.dashing.tbox.ui.launcher
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -120,10 +118,13 @@ fun LauncherPdcOverlay(
     val hasPhysicalObstacle = hasPhysicalPdcObstacle(pdc)
     val showOverlay = pasOn || hasPhysicalObstacle
 
-    val overlayAlphaState = animateFloatAsState(
+    val activeClock = rememberSynced30FpsClock(syncedClock)
+    val overlayAlphaState = rememberSyncedFloatAsState(
         targetValue = if (showOverlay) 1f else 0f,
-        animationSpec = if (showOverlay) tween(200) else tween(1000, easing = LinearEasing),
-        label = "pdcOverlayAlpha",
+        durationMillis = if (showOverlay) 200 else 1000,
+        easing = if (showOverlay) FastOutSlowInEasing else LinearEasing,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
+        sharedClock = activeClock,
     )
 
     if (!showOverlay && overlayAlphaState.value <= 0.001f) return
@@ -154,7 +155,6 @@ fun LauncherPdcOverlay(
         else -> false
     }
     val shouldTickPdc = canAnimate && needsPdcAnimation
-    val activeClock = rememberSynced30FpsClock(syncedClock)
     val pdcAnimElapsedMsState = remember { mutableFloatStateOf(0f) }
 
     DisposableEffect(activeClock, shouldTickPdc) {

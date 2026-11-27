@@ -44,11 +44,29 @@ internal data class RightPanelAnimationSnapshot(
             isAvmActive = isAvmActive,
             isCamdCameraActive = isCamdCameraActive,
         )
+
+    val shouldAnimateLeftPanel: Boolean
+        get() = shouldAnimateLeftPanel(
+            isFirstDrawComplete = isFirstDrawComplete,
+            isActivityStarted = isActivityStarted,
+            isWindowFocused = isWindowFocused,
+            hiddenForExternalApp = hiddenForExternalApp,
+            activeAppPackage = activeAppPackage,
+            isActiveAppFullscreen = isActiveAppFullscreen,
+            isTopShadeOpen = isTopShadeOpen,
+            isVehicleSettingsOpen = isVehicleSettingsOpen,
+            isVehicleSettingsOverlayShowing = isVehicleSettingsOverlayShowing,
+            isVehicleSettingsActivityOpen = isVehicleSettingsActivityOpen,
+            isAboutOverlayShowing = isAboutOverlayShowing,
+            isQuickSettingsOpen = isQuickSettingsOpen,
+            isAvmActive = isAvmActive,
+            isCamdCameraActive = isCamdCameraActive,
+        )
 }
 
 /**
- * Pure predicate deciding whether right-panel / desktop animations (live wallpapers, rotating
- * player label, track title marquee) should run.
+ * Pure predicate deciding whether right-panel / desktop animations (live wallpapers,
+ * track title marquee) should run.
  *
  * Uses [isActivityStarted] (onStart/onStop) rather than onResume so animations still run reliably
  * on Android 9 in all Home button modes — including off-screen freeform hiding (`dclwm minimize`
@@ -86,6 +104,41 @@ internal fun shouldAnimateRightPanel(
         if (!recoveredFromFullscreen) return false
     }
     return true
+}
+
+/**
+ * Pure predicate deciding whether left-panel widget animations (such as the 15 FPS rotating
+ * player name ring) should run.
+ *
+ * Unlike [shouldAnimateRightPanel], keeps running when an external app is open in the right
+ * working area (`isActiveAppFullscreen == false`), because the left panel remains visible on
+ * screen. Still pauses when a fullscreen external app covers the launcher, when the home window
+ * is stopped/hidden, or when a shade/settings/overlay/camera is covering the screen.
+ */
+internal fun shouldAnimateLeftPanel(
+    isFirstDrawComplete: Boolean,
+    isActivityStarted: Boolean,
+    isWindowFocused: Boolean,
+    hiddenForExternalApp: Boolean,
+    activeAppPackage: String?,
+    isActiveAppFullscreen: Boolean,
+    isTopShadeOpen: Boolean,
+    isVehicleSettingsOpen: Boolean,
+    isVehicleSettingsOverlayShowing: Boolean,
+    isVehicleSettingsActivityOpen: Boolean = false,
+    isAboutOverlayShowing: Boolean,
+    isQuickSettingsOpen: Boolean,
+    isAvmActive: Boolean,
+    isCamdCameraActive: Boolean,
+): Boolean {
+    if (!isFirstDrawComplete) return false
+    if (!isActivityStarted) return false
+    if (hiddenForExternalApp) return false
+    if (isTopShadeOpen) return false
+    if (isVehicleSettingsOpen || isVehicleSettingsOverlayShowing || isVehicleSettingsActivityOpen) return false
+    if (isAboutOverlayShowing || isQuickSettingsOpen) return false
+    if (isAvmActive || isCamdCameraActive) return false
+    return activeAppPackage.isNullOrBlank() || !isActiveAppFullscreen || isWindowFocused
 }
 
 /**
@@ -158,7 +211,3 @@ internal fun rememberRightPanelAnimationSnapshot(): RightPanelAnimationSnapshot 
         isCamdCameraActive = isCamdCameraActive,
     )
 }
-
-@Composable
-internal fun rememberRightPanelAnimationsActive(): Boolean =
-    rememberRightPanelAnimationSnapshot().shouldAnimate

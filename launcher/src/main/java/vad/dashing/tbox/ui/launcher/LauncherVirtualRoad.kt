@@ -5,14 +5,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -25,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -315,18 +309,23 @@ fun LauncherVirtualRoad(
     val bsdLeftActive = inDriveGear && adas.rearThreats.bsdLeft != LauncherRearThreatLevel.Off
     val bsdRightActive = inDriveGear && adas.rearThreats.bsdRight != LauncherRearThreatLevel.Off
 
+    val activeClock = rememberSynced30FpsClock(syncedClock)
     val currentSteerDeg by rememberUpdatedState(steerAngleDeg)
 
-    val bsdLeftProgress by animateFloatAsState(
+    val bsdLeftProgress by rememberSyncedFloatAsState(
         targetValue = if (bsdLeftActive) 1f else 0f,
-        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
-        label = "bsdLeftProgress",
+        durationMillis = 400,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = activeClock,
     )
 
-    val bsdRightProgress by animateFloatAsState(
+    val bsdRightProgress by rememberSyncedFloatAsState(
         targetValue = if (bsdRightActive) 1f else 0f,
-        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
-        label = "bsdRightProgress",
+        durationMillis = 400,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = activeClock,
     )
 
     val currentSpeedKmh by rememberUpdatedState(speedKmh)
@@ -401,10 +400,12 @@ fun LauncherVirtualRoad(
         steerPreview -> 1f
         else -> 0f
     }
-    val driveBlend by animateFloatAsState(
+    val driveBlend by rememberSyncedFloatAsState(
         targetValue = driveTarget,
-        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-        label = "roadDriveBlend",
+        durationMillis = 1500,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = activeClock,
     )
 
     val roadPhaseState = remember { mutableFloatStateOf(0f) }
@@ -413,7 +414,6 @@ fun LauncherVirtualRoad(
     val currentWeatherActive by rememberUpdatedState(weatherActive)
     val currentRoadAnimating by rememberUpdatedState(isRoadAnimating)
     val isVirtualRoadTicking = weatherActive || isRoadAnimating
-    val activeClock = rememberSynced30FpsClock(syncedClock)
 
     DisposableEffect(activeClock, isVirtualRoadTicking, canAnimate) {
         if (!isVirtualRoadTicking || !canAnimate) {
@@ -494,36 +494,43 @@ fun LauncherVirtualRoad(
     }
 
     val leadSprites = rememberLeadObjectSprites()
-    val leadVisual = rememberLeadObjectVisual(adas)
+    val leadVisual = rememberLeadObjectVisual(adas, activeClock)
     val lanesActive = adas.leftLane != LauncherAdasLaneVisualization.Hidden ||
         adas.rightLane != LauncherAdasLaneVisualization.Hidden
     val isCruiseActive = adas.accActive || adas.accStandby || adas.accOverride || ((adas.accSetSpeedKmh ?: 0) > 0)
 
-    val laneAnimProgress by animateFloatAsState(
+    val laneAnimProgress by rememberSyncedFloatAsState(
         targetValue = if (lanesActive) 1f else 0f,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-        label = "laneGlowAnimProgress",
+        durationMillis = 1000,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = activeClock,
     )
 
-    val cruiseBeamProgress by animateFloatAsState(
+    val cruiseBeamProgress by rememberSyncedFloatAsState(
         targetValue = if (isCruiseActive) 1f else 0f,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-        label = "cruiseBeamAnimProgress",
+        durationMillis = 1000,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = activeClock,
     )
 
-    val bsdPulseProvider: () -> Float = if (driveBlend > 0.01f && (bsdLeftActive || bsdRightActive)) {
-        val pulseState = rememberInfiniteTransition(label = "bsdRoadPulse").animateFloat(
-            initialValue = 0.35f,
-            targetValue = 0.95f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "bsdRoadPulseValue",
-        )
-        remember(pulseState) { { pulseState.value } }
-    } else {
-        remember { { 1f } }
+    val bsdPulseActive = driveBlend > 0.01f && (bsdLeftActive || bsdRightActive)
+    val bsdPulseState = rememberSyncedPulseState(
+        active = bsdPulseActive,
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        durationMillis = 650,
+        easing = FastOutSlowInEasing,
+        tickDivisor = PDC_CLOCK_TICK_DIVISOR,
+        sharedClock = activeClock,
+    )
+    val bsdPulseProvider: () -> Float = remember(bsdPulseState, bsdPulseActive) {
+        if (bsdPulseActive) {
+            { bsdPulseState.value }
+        } else {
+            { 1f }
+        }
     }
 
     val drawCache = remember { VirtualRoadDrawCache() }
@@ -665,41 +672,59 @@ private data class LeadObjectVisual(
 )
 
 @Composable
-private fun rememberLeadObjectVisual(adas: LauncherAdasState): LeadObjectVisual? {
+private fun rememberLeadObjectVisual(
+    adas: LauncherAdasState,
+    syncedClock: LauncherSynced30FpsClock,
+): LeadObjectVisual? {
     val targetType = adas.frontObject.takeIf { it.valid }?.type
         ?.takeUnless { it == LauncherAdasFrontObjectType.None }
     val targetDistance = adas.frontObject.displayDistanceM
     var shownType by remember { mutableStateOf(targetType) }
     var lastDistance by remember { mutableStateOf(targetDistance ?: 35) }
-    val alpha = remember { Animatable(if (targetType != null) 1f else 0f) }
-    val alphaValue by alpha.asState()
+    var targetAlpha by remember { mutableFloatStateOf(if (targetType != null) 1f else 0f) }
+    var fadeDurationMs by remember { mutableIntStateOf(320) }
+
+    val alphaValue by rememberSyncedFloatAsState(
+        targetValue = targetAlpha,
+        durationMillis = fadeDurationMs,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
+        sharedClock = syncedClock,
+    )
 
     SideEffect {
         if (targetDistance != null) lastDistance = targetDistance
     }
 
-    LaunchedEffect(targetType) {
+    LaunchedEffect(targetType, alphaValue <= 0.01f) {
         val current = shownType
         when {
             targetType != null && current == targetType -> {
-                if (alpha.value < 0.999f) {
-                    alpha.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
-                }
+                fadeDurationMs = 280
+                targetAlpha = 1f
             }
             targetType != null && current == null -> {
                 shownType = targetType
-                alpha.snapTo(0f)
-                alpha.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+                fadeDurationMs = 320
+                targetAlpha = 1f
             }
             targetType != null -> {
-                alpha.animateTo(0f, tween(160, easing = FastOutSlowInEasing))
-                shownType = targetType
-                alpha.snapTo(0f)
-                alpha.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+                if (alphaValue <= 0.01f) {
+                    shownType = targetType
+                    fadeDurationMs = 320
+                    targetAlpha = 1f
+                } else {
+                    fadeDurationMs = 160
+                    targetAlpha = 0f
+                }
             }
             current != null -> {
-                alpha.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
-                shownType = null
+                if (alphaValue <= 0.01f) {
+                    shownType = null
+                } else {
+                    fadeDurationMs = 220
+                    targetAlpha = 0f
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 package vad.dashing.tbox
 
 import android.app.Application
+import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
@@ -17,6 +18,11 @@ import vad.dashing.tbox.ui.launcher.YandexNavRepository
  */
 class LauncherApplication : Application() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        vad.dashing.tbox.ui.launcher.Api28RenderNodeCompat.installIfNeeded(base)
+    }
 
     override fun onCreate() {
         super.onCreate()

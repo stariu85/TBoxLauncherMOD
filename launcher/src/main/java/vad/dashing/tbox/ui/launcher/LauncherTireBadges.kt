@@ -1,8 +1,5 @@
 package vad.dashing.tbox.ui.launcher
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,14 +16,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,10 +38,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import vad.dashing.tbox.R
 import vad.dashing.tbox.valueToString
 import kotlin.math.abs
@@ -71,67 +71,72 @@ fun LauncherTireBadges(
 
     val currentSpeedState = rememberUpdatedState(speedKmh)
     val currentSteerState = rememberUpdatedState(steerAngleDeg)
-    val targetYAnim = remember { Animatable(0f) }
-    val targetXAnim = remember { Animatable(0f) }
+    val currentInertiaActiveState = rememberUpdatedState(inertiaEnabled && isRearView)
+    val activeClock = rememberSynced30FpsClock()
+    val offsetYState = remember { mutableFloatStateOf(0f) }
+    val offsetXState = remember { mutableFloatStateOf(0f) }
+    val springY = remember { SyncedSpring1D(stiffness = 10f, dampingRatio = 0.38f) }
+    val springX = remember { SyncedSpring1D(stiffness = 10f, dampingRatio = 0.38f) }
+    var isInertiaRunning by remember { mutableStateOf(false) }
 
-    LaunchedEffect(inertiaEnabled, isRearView) {
-        if (!inertiaEnabled || !isRearView) {
-            if (abs(targetYAnim.value) > 0.05f || abs(targetYAnim.targetValue) > 0.05f) {
-                launch { targetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
-            }
-            if (abs(targetXAnim.value) > 0.05f || abs(targetXAnim.targetValue) > 0.05f) {
-                launch { targetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessVeryLow)) }
-            }
-            return@LaunchedEffect
+    LaunchedEffect(speedKmh, steerAngleDeg, inertiaEnabled, isRearView) {
+        val activeInput = inertiaEnabled && isRearView && (speedKmh > 0.1f || abs(steerAngleDeg) > 0.5f)
+        val needsReturn = abs(springX.position) >= 0.05f ||
+            abs(springY.position) >= 0.05f ||
+            abs(springX.velocity) >= 0.05f ||
+            abs(springY.velocity) >= 0.05f
+        if (activeInput || needsReturn) {
+            isInertiaRunning = true
         }
+    }
+
+    DisposableEffect(activeClock, isInertiaRunning) {
+        if (!isInertiaRunning) return@DisposableEffect onDispose {}
         var lastSpeed = currentSpeedState.value
         var accumulatedY = 0f
         var accumulatedX = 0f
-        var yAnimJob: Job? = null
-        var xAnimJob: Job? = null
-        val looseSpring = spring<Float>(
-            dampingRatio = 0.38f, // Loose pendulum oscillation (bouncy)
-            stiffness = 10f,     // Very low stiffness (loose spring / ball on thread)
-        )
-
-        while (isActive) {
-            delay(40L) // 25 Hz calculation rate for smooth continuous motion
+        val unregister = activeClock.registerListener(tickDivisor = 1) { _, deltaNs ->
+            val dtSec = (deltaNs / 1_000_000_000f).coerceIn(0f, 0.05f)
+            val active = currentInertiaActiveState.value
             val currentSpeed = currentSpeedState.value
             val currentSteer = currentSteerState.value
 
-            val delta = currentSpeed - lastSpeed
-            lastSpeed = currentSpeed
+            val targetY: Float
+            val targetX: Float
+            if (active) {
+                val delta = currentSpeed - lastSpeed
+                lastSpeed = currentSpeed
+                val impulseY = (delta * 45f).coerceIn(-40f, 40f)
+                accumulatedY = (accumulatedY * 0.30f + impulseY * 0.70f).coerceIn(-40f, 40f)
+                if (abs(accumulatedY) < 0.05f) accumulatedY = 0f
 
-            // Y axis: longitudinal acceleration (back = +dp, braking = -dp)
-            val impulseY = (delta * 45f).coerceIn(-40f, 40f)
-            accumulatedY = (accumulatedY * 0.30f + impulseY * 0.70f).coerceIn(-40f, 40f)
-            if (abs(accumulatedY) < 0.05f) accumulatedY = 0f
+                val steerNorm = (currentSteer / 360f).coerceIn(-1f, 1f)
+                val speedFactor = (currentSpeed / 15f).coerceIn(0f, 1f)
+                val targetCentrifugalX = -steerNorm * speedFactor * 50f
+                accumulatedX = (accumulatedX * 0.30f + targetCentrifugalX * 0.70f).coerceIn(-40f, 40f)
+                if (abs(accumulatedX) < 0.05f) accumulatedX = 0f
 
-            // X axis: lateral centrifugal force from steering angle and speed
-            // Right turn (steer > 0) -> badges fly LEFT (-40dp)
-            // Left turn (steer < 0) -> badges fly RIGHT (+40dp)
-            val steerNorm = (currentSteer / 360f).coerceIn(-1f, 1f)
-            val speedFactor = (currentSpeed / 15f).coerceIn(0f, 1f)
-            val targetCentrifugalX = -steerNorm * speedFactor * 50f
-
-            accumulatedX = (accumulatedX * 0.30f + targetCentrifugalX * 0.70f).coerceIn(-40f, 40f)
-            if (abs(accumulatedX) < 0.05f) accumulatedX = 0f
-
-            if (abs(accumulatedY - targetYAnim.targetValue) > 0.25f) {
-                yAnimJob?.cancel()
-                val targetY = accumulatedY
-                yAnimJob = launch {
-                    targetYAnim.animateTo(targetValue = targetY, animationSpec = looseSpring)
-                }
+                targetY = accumulatedY
+                targetX = accumulatedX
+            } else {
+                lastSpeed = currentSpeed
+                accumulatedY = 0f
+                accumulatedX = 0f
+                targetY = 0f
+                targetX = 0f
             }
-            if (abs(accumulatedX - targetXAnim.targetValue) > 0.25f) {
-                xAnimJob?.cancel()
-                val targetX = accumulatedX
-                xAnimJob = launch {
-                    targetXAnim.animateTo(targetValue = targetX, animationSpec = looseSpring)
-                }
+
+            val movingY = springY.step(targetY, dtSec)
+            val movingX = springX.step(targetX, dtSec)
+            offsetYState.floatValue = springY.position
+            offsetXState.floatValue = springX.position
+
+            val idleInput = !active || (currentSpeed <= 0.1f && abs(currentSteer) <= 0.5f && targetY == 0f && targetX == 0f)
+            if (idleInput && !movingY && !movingX) {
+                isInertiaRunning = false
             }
         }
+        onDispose { unregister() }
     }
 
     BoxWithConstraints(modifier = modifier) {
@@ -178,11 +183,12 @@ fun LauncherTireBadges(
             )
         }
 
-        // Read animated inertia offsets strictly in Draw (Canvas) and Layout (Modifier.offset)
-        // phases so steady 60 FPS animations never trigger composition of all badges.
+        // Read animated inertia offsets strictly in DrawScope (Canvas + drawWithContent translate)
+        // so 30 FPS spring updates never trigger relayout, owner.onLayoutChange, or
+        // AndroidComposeViewAccessibilityDelegateCompat.checkForSemanticsChanges.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val cornerXOffsetPx = targetXAnim.value.dp.toPx()
-            val cornerYOffsetPx = targetYAnim.value.dp.toPx()
+            val cornerXOffsetPx = offsetXState.floatValue.dp.toPx()
+            val cornerYOffsetPx = offsetYState.floatValue.dp.toPx()
             val strokePx = 1.5.dp.toPx()
             visibleCorners.forEach { corner ->
                 val anchor = wheelAnchorsPx[corner] ?: return@forEach
@@ -208,30 +214,41 @@ fun LauncherTireBadges(
                 )
             }
         }
-        for (corner in visibleCorners) {
-            val rect = layout[corner] ?: continue
-
-            LauncherTireBadge(
-                corner = corner,
-                wheel = state.wheel(corner),
-                compact = compact,
-                lowPressureThreshold = lowPressureThreshold,
-                allowLowTempNotification = allowLowTempNotification,
-                badgeShape = badgeShape,
-                badgeHeight = badgeHeight,
-                showHundredths = showHundredths,
-                showTemperature = showTemperature,
-                modifier = Modifier
-                    .offset {
-                        val cornerXOffsetPx = targetXAnim.value.dp.toPx()
-                        val cornerYOffsetPx = targetYAnim.value.dp.toPx()
-                        IntOffset(
-                            (rect.left + cornerXOffsetPx).roundToInt(),
-                            (rect.top + cornerYOffsetPx).roundToInt(),
-                        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    translate(
+                        left = offsetXState.floatValue.dp.toPx(),
+                        top = offsetYState.floatValue.dp.toPx(),
+                    ) {
+                        this@drawWithContent.drawContent()
                     }
-                    .width(badgeWidth),
-            )
+                },
+        ) {
+            for (corner in visibleCorners) {
+                val rect = layout[corner] ?: continue
+
+                LauncherTireBadge(
+                    corner = corner,
+                    wheel = state.wheel(corner),
+                    compact = compact,
+                    lowPressureThreshold = lowPressureThreshold,
+                    allowLowTempNotification = allowLowTempNotification,
+                    badgeShape = badgeShape,
+                    badgeHeight = badgeHeight,
+                    showHundredths = showHundredths,
+                    showTemperature = showTemperature,
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                rect.left.roundToInt(),
+                                rect.top.roundToInt(),
+                            )
+                        }
+                        .width(badgeWidth),
+                )
+            }
         }
     }
 }

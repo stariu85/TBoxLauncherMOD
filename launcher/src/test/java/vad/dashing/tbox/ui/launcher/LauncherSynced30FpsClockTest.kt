@@ -162,4 +162,114 @@ class LauncherSynced30FpsClockTest {
         assertEquals(0f, computePdcStandbyJitterPhase(PDC_STANDBY_JITTER_PERIOD_MS), 1e-4f)
         assertEquals(0f, computePdcStandbyJitterPhase(PDC_ANIM_WRAP_PERIOD_MS), 1e-4f)
     }
+
+    @Test
+    fun car3dListenerHandle_switchesDynamicallyBetween30Fps15FpsAnd1FpsSyncedWithRoadAndPdc() {
+        val clock = LauncherSynced30FpsClock(frameIntervalNs = VIRTUAL_ROAD_FRAME_INTERVAL_NS)
+        val roadTicks = mutableListOf<Long>()
+        val pdcTicks = mutableListOf<Long>()
+        val carTicks = mutableListOf<Long>()
+
+        val carHandle = clock.registerListenerWithHandle(tickDivisor = CAR_3D_TRANSITION_TICK_DIVISOR) { frameNs, _ ->
+            carTicks.add(frameNs)
+        }
+        assertEquals(VIRTUAL_ROAD_FRAME_INTERVAL_NS, clock.effectiveIntervalNs) // 30 FPS
+
+        val vsyncStepNs = 16_666_667L
+        val t0 = 10_000_000_000L
+        assertFalse(clock.stepFrame(t0, t0)) // Prime
+        assertTrue(clock.stepFrame(t0 + 2 * vsyncStepNs, t0 + 2 * vsyncStepNs)) // 30 FPS transition tick #1
+        assertEquals(1, carTicks.size)
+
+        // Transition ends -> drop 3D car to 15 FPS wakeup (divisor = 2).
+        carHandle.setTickDivisor(CAR_3D_WAKEUP_TICK_DIVISOR)
+        assertEquals(64_000_000L, clock.effectiveIntervalNs) // 15 FPS when car is sole listener
+
+        // 33.3 ms after last tick must be skipped now that car is at 15 FPS.
+        assertFalse(clock.stepFrame(t0 + 4 * vsyncStepNs, t0 + 4 * vsyncStepNs))
+        // 66.7 ms after last tick fires car at 15 FPS.
+        assertTrue(clock.stepFrame(t0 + 6 * vsyncStepNs, t0 + 6 * vsyncStepNs))
+        assertEquals(2, carTicks.size)
+
+        // Add road (30 FPS) and PDC (15 FPS): clock runs at 30 FPS, car & PDC fire on the exact same VSYNCs.
+        val unregRoad = clock.registerListener(tickDivisor = 1) { frameNs, _ -> roadTicks.add(frameNs) }
+        val unregPdc = clock.registerListener(tickDivisor = PDC_CLOCK_TICK_DIVISOR) { frameNs, _ -> pdcTicks.add(frameNs) }
+        assertEquals(VIRTUAL_ROAD_FRAME_INTERVAL_NS, clock.effectiveIntervalNs)
+
+        assertTrue(clock.stepFrame(t0 + 8 * vsyncStepNs, t0 + 8 * vsyncStepNs)) // road only
+        assertTrue(clock.stepFrame(t0 + 10 * vsyncStepNs, t0 + 10 * vsyncStepNs)) // road + PDC + 3D car synced!
+        assertEquals(2, roadTicks.size)
+        assertEquals(1, pdcTicks.size)
+        assertEquals(3, carTicks.size)
+        assertEquals(roadTicks[1], pdcTicks[0])
+        assertEquals(roadTicks[1], carTicks[2])
+
+        // Remove road & PDC, drop car to static (~1 FPS), then escalate back to 30 FPS.
+        unregRoad()
+        unregPdc()
+        carHandle.setTickDivisor(CAR_3D_STATIC_TICK_DIVISOR)
+        assertEquals(VIRTUAL_ROAD_FRAME_INTERVAL_NS * CAR_3D_STATIC_TICK_DIVISOR, clock.effectiveIntervalNs)
+        carHandle.setTickDivisor(CAR_3D_TRANSITION_TICK_DIVISOR)
+        assertEquals(VIRTUAL_ROAD_FRAME_INTERVAL_NS, clock.effectiveIntervalNs)
+
+        carHandle.unregister()
+        assertFalse(clock.hasActiveListeners)
+    }
+
+    @Test
+    fun resolveCar3dTickDivisor_selects30FpsForTransitionOrWarmup15FpsForWakeupAnd1FpsForStatic() {
+        assertEquals(
+            CAR_3D_TRANSITION_TICK_DIVISOR,
+            resolveCar3dTickDivisor(isCameraSwitching = true, isInitializing = false, isDynamic = true),
+        )
+        assertEquals(
+            CAR_3D_TRANSITION_TICK_DIVISOR,
+            resolveCar3dTickDivisor(isCameraSwitching = false, isInitializing = true, isDynamic = true),
+        )
+        assertEquals(
+            CAR_3D_WAKEUP_TICK_DIVISOR,
+            resolveCar3dTickDivisor(isCameraSwitching = false, isInitializing = false, isDynamic = true),
+        )
+        assertEquals(
+            CAR_3D_STATIC_TICK_DIVISOR,
+            resolveCar3dTickDivisor(isCameraSwitching = false, isInitializing = false, isDynamic = false),
+        )
+    }
+
+    @Test
+    fun syncedFloatTweenDriver_stepsToTargetAndFinishesCleanly() {
+        val driver = SyncedFloatTweenDriver(0f)
+        assertTrue(driver.isFinished)
+
+        assertTrue(driver.retarget(100f, durationMillis = 200, newEasing = androidx.compose.animation.core.LinearEasing))
+        assertFalse(driver.isFinished)
+
+        assertEquals(50f, driver.step(100_000_000L), 1e-3f)
+        assertFalse(driver.isFinished)
+
+        assertEquals(100f, driver.step(100_000_000L), 1e-3f)
+        assertTrue(driver.isFinished)
+    }
+
+    @Test
+    fun computeSyncedPulseValue_oscillatesSymmetricallyAndWraps() {
+        val easing = androidx.compose.animation.core.LinearEasing
+        assertEquals(0.35f, computeSyncedPulseValue(0f, 400, 0.35f, 0.95f, easing), 1e-4f)
+        assertEquals(0.65f, computeSyncedPulseValue(200f, 400, 0.35f, 0.95f, easing), 1e-4f)
+        assertEquals(0.95f, computeSyncedPulseValue(400f, 400, 0.35f, 0.95f, easing), 1e-4f)
+        assertEquals(0.65f, computeSyncedPulseValue(600f, 400, 0.35f, 0.95f, easing), 1e-4f)
+        assertEquals(0.35f, computeSyncedPulseValue(800f, 400, 0.35f, 0.95f, easing), 1e-4f)
+    }
+
+    @Test
+    fun syncedSpring1D_approachesTargetAndSettlesAt30Fps() {
+        val spring = SyncedSpring1D(stiffness = 10f, dampingRatio = 0.38f)
+        var stillMoving = true
+        repeat(300) {
+            stillMoving = spring.step(target = 20f, dtSec = 1f / 30f)
+        }
+        assertFalse(stillMoving)
+        assertEquals(20f, spring.position, 1e-3f)
+        assertEquals(0f, spring.velocity, 1e-3f)
+    }
 }

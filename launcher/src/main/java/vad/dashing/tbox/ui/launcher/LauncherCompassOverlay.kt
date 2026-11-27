@@ -4,8 +4,6 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.location.Location
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
@@ -265,11 +263,12 @@ fun LauncherCompassOverlay(
         }
     }
 
-    // 1-second smoothing animation to prevent erratic heading jumping (read inside Canvas draw scope)
-    val animatedHeadingState = animateFloatAsState(
+    // 1-second smoothing animation synced to 30 FPS road clock (read inside Canvas draw scope)
+    val animatedHeadingState = rememberSyncedFloatAsState(
         targetValue = continuousHeading,
-        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
-        label = "compassHeading",
+        durationMillis = 1000,
+        easing = FastOutSlowInEasing,
+        tickDivisor = 1,
     )
 
     val currentOnDragY = rememberUpdatedState(onDragY)
