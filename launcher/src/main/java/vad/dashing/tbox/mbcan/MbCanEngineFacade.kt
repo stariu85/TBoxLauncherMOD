@@ -1,5 +1,6 @@
 package vad.dashing.tbox.mbcan
 
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,7 +91,11 @@ object MbCanEngineFacade {
     @Volatile
     private var lastSpeed: Float? = null
     @Volatile
+    private var lastSpeedPushMs: Long = 0L
+    @Volatile
     private var lastEngineRpm: Float? = null
+    @Volatile
+    private var lastRpmPushMs: Long = 0L
     @Volatile
     private var lastEngineTemp: Float? = null
     @Volatile
@@ -507,10 +512,15 @@ object MbCanEngineFacade {
 
     private fun forwardVehicleSpeedPush(speed: Float?) {
         val prev = lastSpeed
-        if (prev != null && speed != null && Math.abs(speed - prev) < 1.0f && (speed > 0.5f || prev <= 0.5f)) {
+        if (speed == prev) return
+        val now = SystemClock.elapsedRealtime()
+        val isStopping = speed == 0f && (prev ?: 0f) > 0f
+        val delta: Float = if (prev != null && speed != null) kotlin.math.abs(speed - prev) else Float.MAX_VALUE
+        if (!isStopping && delta < 1.0f && ((now - lastSpeedPushMs) < 80L)) {
             return
         }
         lastSpeed = speed
+        lastSpeedPushMs = now
         MbCanRepository.scheduleCarSpeedPush(speed)
     }
 
@@ -532,9 +542,6 @@ object MbCanEngineFacade {
                 "toString" -> return@InvocationHandler "MbCanSettingsTelemetryProxy"
             }
             vad.dashing.tbox.DclLogRecorder.recordCanRx()
-            if (DclLogRecorder.isLoggingActive()) {
-                DclLogRecorder.log("CAN_RX_MBCAN", "event=${method.name}")
-            }
             when (method.name) {
                 "onCanVehicleSpeed" -> {
                     val fromArgs = runCatching {
@@ -572,10 +579,20 @@ object MbCanEngineFacade {
                         if (rpm == lastEngineRpm && temperature == lastEngineTemp) {
                             return@InvocationHandler defaultProxyReturn(method.returnType)
                         }
-                        lastEngineRpm = rpm
-                        lastEngineTemp = temperature
-                        MbCanRepository.scheduleEngineRpmPush(rpm)
-                        MbCanRepository.scheduleEngineTemperaturePush(temperature)
+                        if (rpm != lastEngineRpm) {
+                            val now = SystemClock.elapsedRealtime()
+                            val isRpmStopping = rpm == 0f && (lastEngineRpm ?: 0f) > 0f
+                            val rpmDelta: Float = if (rpm != null && lastEngineRpm != null) kotlin.math.abs(rpm - lastEngineRpm!!) else Float.MAX_VALUE
+                            if (isRpmStopping || rpmDelta >= 50f || ((now - lastRpmPushMs) >= 80L)) {
+                                lastEngineRpm = rpm
+                                lastRpmPushMs = now
+                                MbCanRepository.scheduleEngineRpmPush(rpm)
+                            }
+                        }
+                        if (temperature != lastEngineTemp) {
+                            lastEngineTemp = temperature
+                            MbCanRepository.scheduleEngineTemperaturePush(temperature)
+                        }
                     }
                 }
                 "onCanVehicleTires" -> {
@@ -1164,7 +1181,7 @@ object MbCanEngineFacade {
                         vad.dashing.tbox.DclLogRecorder.recordCanRx()
                         val spd = (args?.getOrNull(0) as? Number)?.toFloat()
                         if (spd != null) {
-                            MbCanRepository.scheduleCarSpeedPush(spd)
+                            forwardVehicleSpeedPush(spd)
                         }
                     }
                     "onSteeringWheel" -> {

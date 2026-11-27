@@ -129,4 +129,46 @@ class YandexNavMinimapOptimizationTest {
             ),
         )
     }
+
+    @Test
+    fun tryClaimUnsolicitedMinimapDisable_throttlesWhenInactiveAndBlocksWhenActive() {
+        try {
+            // Active minimap must never trigger unsolicited MINIMAP_DISABLE
+            YandexNavRepository.setMinimapDisableStateForTest(active = true)
+            assertEquals(false, YandexNavRepository.tryClaimUnsolicitedMinimapDisable(10_000L))
+
+            // Inactive minimap with no prior disable triggers immediately on first frame
+            YandexNavRepository.setMinimapDisableStateForTest(active = false)
+            assertEquals(true, YandexNavRepository.tryClaimUnsolicitedMinimapDisable(10_000L))
+            // Subsequent frames inside throttle window are suppressed
+            assertEquals(false, YandexNavRepository.tryClaimUnsolicitedMinimapDisable(10_500L))
+            assertEquals(
+                false,
+                YandexNavRepository.tryClaimUnsolicitedMinimapDisable(
+                    10_000L + YandexNavRepository.MINIMAP_UNSOLICITED_DISABLE_INTERVAL_MS - 1L,
+                ),
+            )
+            // After interval elapses, another MINIMAP_DISABLE is sent
+            assertEquals(
+                true,
+                YandexNavRepository.tryClaimUnsolicitedMinimapDisable(
+                    10_000L + YandexNavRepository.MINIMAP_UNSOLICITED_DISABLE_INTERVAL_MS,
+                ),
+            )
+            // Recent explicit disableMinimap() suppresses trailing in-flight frames
+            YandexNavRepository.setMinimapDisableStateForTest(
+                active = false,
+                lastDisableElapsedMs = 20_000L,
+            )
+            assertEquals(false, YandexNavRepository.tryClaimUnsolicitedMinimapDisable(20_100L))
+            assertEquals(
+                true,
+                YandexNavRepository.tryClaimUnsolicitedMinimapDisable(
+                    20_000L + YandexNavRepository.MINIMAP_UNSOLICITED_DISABLE_INTERVAL_MS,
+                ),
+            )
+        } finally {
+            YandexNavRepository.setMinimapDisableStateForTest(active = false)
+        }
+    }
 }

@@ -123,26 +123,21 @@ public class MBCanEngine extends MBCanClient {
     private ICanBaseCallback mCanCallback = new ICanBaseCallback() { // from class: com.mengbo.mbCan.MBCanEngine.1
         @Override // com.mengbo.mbCan.interfaces.ICanBaseCallback
         public void onCanDataCallback(final int i, final Object obj) {
-            MBCanEngine.this.canHandler.postDelayed(new Runnable() { // from class: com.mengbo.mbCan.MBCanEngine.1.1
-                @Override // java.lang.Runnable
-                public void run() {
-                    if (obj != null) {
-                        String str = MBCanEngine.TAG;
-                        Log.d(str, MBCanEngine.this.mIMBLogListener + "run: " + i + ",data =" + obj.toString());
-                        if (MBCanEngine.this.mIMBLogListener != null) {
-                            MBCanEngine.this.mIMBLogListener.onLog(obj.toString());
-                        }
+            vad.dashing.tbox.DclLogRecorder.recordMbCanCallbackType(i);
+            final IMBLogListener logListener = MBCanEngine.this.mIMBLogListener;
+            if (logListener != null && obj != null) {
+                MBCanEngine.this.canHandler.postDelayed(new Runnable() { // from class: com.mengbo.mbCan.MBCanEngine.1.1
+                    @Override // java.lang.Runnable
+                    public void run() {
+                        logListener.onLog(obj.toString());
                     }
-                }
-            }, 1L);
+                }, 1L);
+            }
             if (MBCanDataType.eMBCAN_VEHICLE_SPEED.getValue() == i) {
                 MBCanEngine.this.canHandler.postDelayed(new Runnable() { // from class: com.mengbo.mbCan.MBCanEngine.1.2
                     @Override // java.lang.Runnable
                     public void run() {
                         if (obj != null) {
-                            if (MBCanEngine.this.mVehicletener != null) {
-                                MBCanEngine.this.mVehicletener.onSpeed(((MBCanVehicleSpeed) obj).getSpeed(), ((MBCanVehicleSpeed) obj).getGear());
-                            }
                             if (MBCanEngine.this.mVehicletener != null) {
                                 MBCanEngine.this.mVehicletener.onSpeed(((MBCanVehicleSpeed) obj).getSpeed(), ((MBCanVehicleSpeed) obj).getGear());
                             }
@@ -705,8 +700,11 @@ public class MBCanEngine extends MBCanClient {
         }
     }
 
+    private static final int HIGH_FREQ_TELEMETRY_INTERVAL_MS = 80;
+
     private void initSubscribe() {
-        initSubscribe(0);
+        // Applies only to SPEED, STEERING_ANGLE, WHEEL, ENGINE; buttons/BCM/CFG/doors remain 0.
+        initSubscribe(HIGH_FREQ_TELEMETRY_INTERVAL_MS);
         this.mSubscribedTypeList = new ArrayList();
     }
 

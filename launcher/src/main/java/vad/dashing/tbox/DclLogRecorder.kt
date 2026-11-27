@@ -29,6 +29,7 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -52,6 +53,10 @@ object DclLogRecorder {
     private const val WRITER_FLUSH_LINE_INTERVAL = 32
     private const val WRITER_FLUSH_TIME_INTERVAL_MS = 1_000L
     private const val BOOT_FLUSH_CHECK_INTERVAL_MS = 2_000L
+    private const val CAN_COUNTER_DURATION_MS = 60_000L // 1 minute, independent of main log button
+    private const val CAN_COUNTER_INTERVAL_MS = 10_000L // 10-second breakdown snapshots
+    private const val CAN_COUNTER_MAX_TYPE_ID = 64
+    private const val CAN_COUNTER_FILE_PREFIX = "can_stats_"
 
     // Guards in-memory session state & listeners only (never held during disk I/O).
     private val stateLock = Any()
@@ -70,7 +75,7 @@ object DclLogRecorder {
             ioThreadRef = this
         }
     }
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler: Handler by lazy { Handler(Looper.getMainLooper()) }
 
     private val logDateFormat = ThreadLocal.withInitial {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
@@ -127,6 +132,52 @@ object DclLogRecorder {
     private val stopRunnable = Runnable {
         checkSessionExpiration()
     }
+
+    // Independent 1-minute MBCan callback type counter (runs even if user stops main log session).
+    private val canCounterLock = Any()
+    @Volatile
+    private var isCanCounterActive: Boolean = false
+    private var canCounterStartMs: Long = 0L
+    private var canCounterLastTickMs: Long = 0L
+    private var canCounterDeadlineMs: Long = 0L
+    private var canCounterTickRunnable: Runnable? = null
+    // I/O-thread-only writer for can_stats_*.txt (accessed strictly on `executor`).
+    private var canCounterWriter: BufferedWriter? = null
+    private val canTypeIntervalCounts = AtomicIntegerArray(CAN_COUNTER_MAX_TYPE_ID)
+    private val canTypeTotalCounts = AtomicIntegerArray(CAN_COUNTER_MAX_TYPE_ID)
+    private val canTypeIntervalUnknown = AtomicInteger(0)
+    private val canTypeTotalUnknown = AtomicInteger(0)
+    private val mbCanDataTypeNames: Array<String?> by lazy {
+        val names = arrayOfNulls<String>(CAN_COUNTER_MAX_TYPE_ID)
+        runCatching {
+            for (entry in com.mengbo.mbCan.defines.MBCanDataType.entries) {
+                val id = entry.value
+                if (id in 0 until CAN_COUNTER_MAX_TYPE_ID) {
+                    names[id] = entry.name
+                }
+            }
+        }
+        names
+    }
+
+    /**
+     * Lock-free, zero-allocation hook invoked on every native `MBCanEngine.onCanDataCallback`.
+     * Only counts while the independent 1-minute CAN counter window is active.
+     */
+    @JvmStatic
+    fun recordMbCanCallbackType(dataTypeId: Int) {
+        if (!isCanCounterActive) return
+        if (dataTypeId in 0 until CAN_COUNTER_MAX_TYPE_ID) {
+            canTypeIntervalCounts.incrementAndGet(dataTypeId)
+            canTypeTotalCounts.incrementAndGet(dataTypeId)
+        } else {
+            canTypeIntervalUnknown.incrementAndGet()
+            canTypeTotalUnknown.incrementAndGet()
+        }
+    }
+
+    @JvmStatic
+    fun isCanCounterRecordingActive(): Boolean = isCanCounterActive
 
     /**
      * Record CAN Bus receive event.
@@ -238,11 +289,13 @@ object DclLogRecorder {
     fun flushSync(timeoutMs: Long = 1_500L) {
         if (Thread.currentThread() === ioThreadRef || Thread.currentThread().name == "dcl-logger") {
             runCatching { activeWriter?.flush() }
+            runCatching { canCounterWriter?.flush() }
             return
         }
         runCatching {
             executor.submit {
                 runCatching { activeWriter?.flush() }
+                runCatching { canCounterWriter?.flush() }
             }.get(timeoutMs, TimeUnit.MILLISECONDS)
         }
     }
@@ -360,6 +413,7 @@ object DclLogRecorder {
                 }
                 appendOnIo(extLine + "\n", forceFlush = true)
             }
+            startCanTypeCounterIfIdle(appCtx, timeStamp, startTimeStr)
             Log.i(TAG, "DCL logging session extended (reason=$reason, durationMs=$durationMs)")
             return
         }
@@ -381,6 +435,7 @@ object DclLogRecorder {
             appendOnIo(header, forceFlush = true)
             Log.i(TAG, "DCL logging session started (file=${newFile.absolutePath}, reason=$reason, durationMs=$durationMs)")
         }
+        startCanTypeCounterIfIdle(appCtx, timeStamp, startTimeStr)
     }
 
     /**
@@ -881,7 +936,16 @@ object DclLogRecorder {
 
     private fun rotateLogFiles(dir: File) {
         if (!dir.exists()) return
-        val files = dir.listFiles { f -> f.isFile && (f.name.startsWith("dcl_log_") || f.name.startsWith("boot_")) } ?: return
+        rotateFilesMatching(dir) { f -> f.isFile && (f.name.startsWith("dcl_log_") || f.name.startsWith("boot_")) }
+    }
+
+    private fun rotateCanCounterFiles(dir: File) {
+        if (!dir.exists()) return
+        rotateFilesMatching(dir) { f -> f.isFile && f.name.startsWith(CAN_COUNTER_FILE_PREFIX) }
+    }
+
+    private fun rotateFilesMatching(dir: File, predicate: (File) -> Boolean) {
+        val files = dir.listFiles { f -> predicate(f) } ?: return
         if (files.size >= MAX_LOG_FILES) {
             val sorted = files.sortedBy { it.lastModified() }
             val deleteCount = files.size - (MAX_LOG_FILES - 1)
@@ -893,6 +957,248 @@ object DclLogRecorder {
                 }
             }
         }
+    }
+
+    /**
+     * Starts an independent 1-minute CAN callback type counter writing to `can_stats_<timestamp>.txt`
+     * in the same `DCLlogs` directory. Automatically stops after 60 seconds regardless of whether
+     * the user stops the main log session early.
+     */
+    private fun startCanTypeCounterIfIdle(
+        appCtx: Context,
+        timeStamp: String,
+        startTimeStr: String,
+    ) {
+        synchronized(canCounterLock) {
+            if (isCanCounterActive) return
+            for (idx in 0 until CAN_COUNTER_MAX_TYPE_ID) {
+                canTypeIntervalCounts.set(idx, 0)
+                canTypeTotalCounts.set(idx, 0)
+            }
+            canTypeIntervalUnknown.set(0)
+            canTypeTotalUnknown.set(0)
+
+            val nowMs = SystemClock.elapsedRealtime()
+            canCounterStartMs = nowMs
+            canCounterLastTickMs = nowMs
+            canCounterDeadlineMs = nowMs + CAN_COUNTER_DURATION_MS
+            isCanCounterActive = true
+
+            val tick = object : Runnable {
+                override fun run() {
+                    onCanCounterTick(this)
+                }
+            }
+            canCounterTickRunnable?.let { mainHandler.removeCallbacks(it) }
+            canCounterTickRunnable = tick
+            mainHandler.postDelayed(tick, CAN_COUNTER_INTERVAL_MS)
+        }
+
+        executor.execute {
+            val logsDir = resolveLogsDir(appCtx)
+            rotateCanCounterFiles(logsDir)
+            val counterFile = File(logsDir, "$CAN_COUNTER_FILE_PREFIX$timeStamp.txt")
+            closeCanCounterWriterOnIo()
+            runCatching {
+                canCounterWriter = BufferedWriter(FileWriter(counterFile, true), WRITER_BUFFER_BYTES)
+                val header = buildString {
+                    append("========================================\n")
+                    append("CAN CALLBACK TYPE COUNTER STARTED\n")
+                    append("Time: ").append(startTimeStr).append("\n")
+                    append("Duration: ").append(CAN_COUNTER_DURATION_MS / 1000).append(" sec (auto-stop, independent of log button)\n")
+                    append("Interval: ").append(CAN_COUNTER_INTERVAL_MS / 1000).append(" sec\n")
+                    append("File: ").append(counterFile.absolutePath).append("\n")
+                    append("========================================\n")
+                }
+                canCounterWriter?.write(header)
+                canCounterWriter?.flush()
+                Log.i(TAG, "CAN type counter started (file=${counterFile.absolutePath}, duration=60s)")
+            }.onFailure {
+                Log.w(TAG, "Failed to open CAN type counter file ${counterFile.absolutePath}", it)
+                closeCanCounterWriterOnIo()
+            }
+        }
+    }
+
+    private fun onCanCounterTick(self: Runnable) {
+        val nowMs = SystemClock.elapsedRealtime()
+        val intervalMs: Long
+        val totalElapsedMs: Long
+        val finished: Boolean
+        synchronized(canCounterLock) {
+            if (!isCanCounterActive) return
+            intervalMs = (nowMs - canCounterLastTickMs).coerceAtLeast(1L)
+            totalElapsedMs = (nowMs - canCounterStartMs).coerceAtLeast(1L)
+            canCounterLastTickMs = nowMs
+            finished = nowMs >= canCounterDeadlineMs - 250L
+            if (finished) {
+                isCanCounterActive = false
+                canCounterTickRunnable = null
+            } else {
+                val nextDelay = (canCounterDeadlineMs - nowMs).coerceIn(250L, CAN_COUNTER_INTERVAL_MS)
+                mainHandler.postDelayed(self, nextDelay)
+            }
+        }
+
+        val intervalSnapshot = IntArray(CAN_COUNTER_MAX_TYPE_ID) { idx ->
+            canTypeIntervalCounts.getAndSet(idx, 0)
+        }
+        val intervalUnknown = canTypeIntervalUnknown.getAndSet(0)
+        val ts = logDateFormat.get()?.format(Date()) ?: System.currentTimeMillis().toString()
+        val intervalBlock = formatCanTypeIntervalBlock(
+            timestamp = ts,
+            elapsedSec = totalElapsedMs / 1000f,
+            intervalMs = intervalMs,
+            counts = intervalSnapshot,
+            unknownCount = intervalUnknown,
+            typeNames = mbCanDataTypeNames,
+        )
+
+        val finalSummaryBlock = if (finished) {
+            val totalSnapshot = IntArray(CAN_COUNTER_MAX_TYPE_ID) { idx ->
+                canTypeTotalCounts.getAndSet(idx, 0)
+            }
+            val totalUnknown = canTypeTotalUnknown.getAndSet(0)
+            formatCanTypeTotalSummary(
+                endTimestamp = ts,
+                totalDurationMs = totalElapsedMs,
+                counts = totalSnapshot,
+                unknownCount = totalUnknown,
+                typeNames = mbCanDataTypeNames,
+            )
+        } else {
+            null
+        }
+
+        executor.execute {
+            runCatching {
+                canCounterWriter?.write(intervalBlock)
+                if (finalSummaryBlock != null) {
+                    canCounterWriter?.write(finalSummaryBlock)
+                    closeCanCounterWriterOnIo()
+                    Log.i(TAG, "CAN type counter finished after ${totalElapsedMs / 1000}s")
+                } else {
+                    canCounterWriter?.flush()
+                }
+            }.onFailure {
+                Log.w(TAG, "Failed writing CAN type counter", it)
+                if (finished) closeCanCounterWriterOnIo()
+            }
+        }
+    }
+
+    private fun closeCanCounterWriterOnIo() {
+        val writer = canCounterWriter
+        canCounterWriter = null
+        if (writer != null) {
+            runCatching {
+                writer.flush()
+                writer.close()
+            }
+        }
+    }
+
+    internal fun formatCanTypeIntervalBlock(
+        timestamp: String,
+        elapsedSec: Float,
+        intervalMs: Long,
+        counts: IntArray,
+        unknownCount: Int,
+        typeNames: Array<String?>,
+    ): String {
+        val intervalSec = (intervalMs / 1000f).coerceAtLeast(0.001f)
+        val entries = buildSortedCanTypeEntries(counts, unknownCount, typeNames)
+        val total = entries.sumOf { it.count }
+        val totalRate = total / intervalSec
+        return buildString {
+            append(timestamp)
+            append(" [+")
+            append(String.format(Locale.US, "%.1fs", elapsedSec))
+            append(", dt=")
+            append(String.format(Locale.US, "%.1fs", intervalSec))
+            append("] total=").append(total)
+            append(" (").append(String.format(Locale.US, "%.1f/s", totalRate)).append(")")
+            if (entries.isEmpty()) {
+                append(" [no callbacks]\n")
+            } else {
+                append(": ")
+                entries.forEachIndexed { index, e ->
+                    if (index > 0) append(", ")
+                    append(e.label)
+                    append('=').append(e.count)
+                    append(" (").append(String.format(Locale.US, "%.1f/s", e.count / intervalSec)).append(')')
+                }
+                append('\n')
+            }
+        }
+    }
+
+    internal fun formatCanTypeTotalSummary(
+        endTimestamp: String,
+        totalDurationMs: Long,
+        counts: IntArray,
+        unknownCount: Int,
+        typeNames: Array<String?>,
+    ): String {
+        val durationSec = (totalDurationMs / 1000f).coerceAtLeast(0.001f)
+        val entries = buildSortedCanTypeEntries(counts, unknownCount, typeNames)
+        val total = entries.sumOf { it.count }
+        return buildString {
+            append("========================================\n")
+            append("CAN CALLBACK TYPE COUNTER SUMMARY (")
+            append(String.format(Locale.US, "%.1fs", durationSec))
+            append(")\n")
+            append("End time: ").append(endTimestamp).append('\n')
+            append("Total callbacks: ").append(total)
+            append(" (").append(String.format(Locale.US, "%.1f/s", total / durationSec)).append(")\n")
+            append("----------------------------------------\n")
+            if (entries.isEmpty()) {
+                append("(no callbacks recorded)\n")
+            } else {
+                for (e in entries) {
+                    val pct = if (total > 0) (e.count * 100f) / total else 0f
+                    val rate = e.count / durationSec
+                    append(
+                        String.format(
+                            Locale.US,
+                            "%-38s %7d  %6.1f/s  %5.1f%%\n",
+                            e.label,
+                            e.count,
+                            rate,
+                            pct,
+                        ),
+                    )
+                }
+            }
+            append("========================================\n")
+        }
+    }
+
+    private data class CanTypeCountEntry(
+        val id: Int,
+        val label: String,
+        val count: Int,
+    )
+
+    private fun buildSortedCanTypeEntries(
+        counts: IntArray,
+        unknownCount: Int,
+        typeNames: Array<String?>,
+    ): List<CanTypeCountEntry> {
+        val list = ArrayList<CanTypeCountEntry>(16)
+        for (id in counts.indices) {
+            val c = counts[id]
+            if (c > 0) {
+                val name = typeNames.getOrNull(id)
+                val label = if (name != null) "$name($id)" else "TYPE_$id($id)"
+                list.add(CanTypeCountEntry(id = id, label = label, count = c))
+            }
+        }
+        if (unknownCount > 0) {
+            list.add(CanTypeCountEntry(id = -1, label = "UNKNOWN", count = unknownCount))
+        }
+        list.sortWith(compareByDescending<CanTypeCountEntry> { it.count }.thenBy { it.id })
+        return list
     }
 
     private fun offerMemoryBuffer(line: String) {

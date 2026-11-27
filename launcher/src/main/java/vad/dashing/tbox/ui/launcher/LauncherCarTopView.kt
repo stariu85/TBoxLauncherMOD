@@ -75,7 +75,7 @@ fun LauncherCarTopView(
     val driveTarget = if (state.speedKmh > DRIVE_SPEED_THRESHOLD_KMH) 1f else 0f
     val driveBlend by animateFloatAsState(
         targetValue = driveTarget,
-        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = CAR_3D_VIEW_TRANSITION_DURATION_MS, easing = FastOutSlowInEasing),
         label = "driveBlend",
     )
 

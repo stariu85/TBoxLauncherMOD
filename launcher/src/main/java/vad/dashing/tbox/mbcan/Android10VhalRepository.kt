@@ -776,10 +776,23 @@ object Android10VhalRepository {
 
     suspend fun setSourceSignals(sourceId: String, signals: Set<MbCanSignal>) {
         cancelDebouncedClearSource(sourceId)
-        logDebug("setSourceSignals sourceId=$sourceId signals=${signals.joinToString()}")
-        sourceMutex.withLock {
-            if (signals.isEmpty()) sourceSignals.remove(sourceId) else sourceSignals[sourceId] = signals
+        val changed = sourceMutex.withLock {
+            val existing = sourceSignals[sourceId]
+            if (signals.isEmpty()) {
+                if (existing != null) {
+                    sourceSignals.remove(sourceId)
+                    true
+                } else false
+            } else {
+                if (existing != signals) {
+                    sourceSignals[sourceId] = signals
+                    true
+                } else false
+            }
         }
+        if (!changed) return
+
+        logDebug("setSourceSignals sourceId=$sourceId signals=${signals.joinToString()}")
         restartPolling()
     }
 

@@ -447,8 +447,29 @@ object CanDataRepository {
         updateIdleFuelTracking()
     }
 
+    @Volatile
+    private var lastAccurateSpeedPushMs = 0L
+
+    @Volatile
+    private var lastIdleFuelTickMs = 0L
+
     fun updateCarSpeedAccurate(newValue: Float) {
-        _carSpeedAccurate.setIfChanged(newValue)
+        val current = _carSpeedAccurate.value
+        val now = nowElapsedMs()
+        if (newValue == current) {
+            if (now - lastIdleFuelTickMs >= 500L) {
+                lastIdleFuelTickMs = now
+                updateIdleFuelTracking()
+            }
+            return
+        }
+        val isStopping = (newValue == 0f && (current ?: 0f) != 0f)
+        val delta = if (current != null) kotlin.math.abs(current - newValue) else Float.MAX_VALUE
+        if (isStopping || delta >= 1.5f || (now - lastAccurateSpeedPushMs >= 80L)) {
+            lastAccurateSpeedPushMs = now
+            _carSpeedAccurate.setIfChanged(newValue)
+        }
+        lastIdleFuelTickMs = now
         updateIdleFuelTracking()
     }
 
@@ -735,8 +756,26 @@ object CanDataRepository {
         _wheelsTemperature.setIfChanged(newValue)
     }
 
+    @Volatile
+    private var lastEngineRpmPushMs = 0L
+
     fun updateEngineRPM(newValue: Float) {
-        _engineRPM.setIfChanged(newValue)
+        val current = _engineRPM.value
+        val now = nowElapsedMs()
+        if (newValue == current) {
+            if (now - lastIdleFuelTickMs >= 500L) {
+                lastIdleFuelTickMs = now
+                updateIdleFuelTracking()
+            }
+            return
+        }
+        val isStopping = (newValue == 0f && (current ?: 0f) != 0f)
+        val delta = if (current != null) kotlin.math.abs(current - newValue) else Float.MAX_VALUE
+        if (isStopping || delta >= 50f || (now - lastEngineRpmPushMs >= 80L)) {
+            lastEngineRpmPushMs = now
+            _engineRPM.setIfChanged(newValue)
+        }
+        lastIdleFuelTickMs = now
         updateIdleFuelTracking()
     }
 

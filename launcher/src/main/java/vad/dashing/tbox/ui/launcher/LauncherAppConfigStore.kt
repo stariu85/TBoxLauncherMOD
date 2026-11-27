@@ -1115,7 +1115,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun experimentalPinCanBusCpu45(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45, false)
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45, true)
 
     fun setExperimentalPinCanBusCpu45(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_CAN_BUS_CPU45, enabled).apply()
@@ -1137,7 +1137,7 @@ internal object LauncherAppConfigStore {
 
     fun experimentalPinRenderThreadSmartCpu05(context: Context): Boolean =
         !experimentalPinRenderThreadAlwaysCpu05(context) &&
-            prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_SMART_CPU05, false)
+            prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_RENDER_THREAD_SMART_CPU05, true)
 
     fun setExperimentalPinRenderThreadSmartCpu05(context: Context, enabled: Boolean) {
         prefs(context).edit().apply {
@@ -1150,7 +1150,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun experimentalPinServiceBgThreadsCpu05(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_SERVICE_BG_THREADS_CPU05, false)
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_SERVICE_BG_THREADS_CPU05, true)
 
     fun setExperimentalPinServiceBgThreadsCpu05(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_SERVICE_BG_THREADS_CPU05, enabled).apply()
@@ -1158,7 +1158,7 @@ internal object LauncherAppConfigStore {
     }
 
     fun experimentalPinLightPollersCpu05(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_LIGHT_POLLERS_CPU05, false)
+        prefs(context).getBoolean(KEY_EXPERIMENTAL_PIN_LIGHT_POLLERS_CPU05, true)
 
     fun setExperimentalPinLightPollersCpu05(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_EXPERIMENTAL_PIN_LIGHT_POLLERS_CPU05, enabled).apply()

@@ -36,6 +36,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import vad.dashing.tbox.CanDataRepository
+import vad.dashing.tbox.DclLogRecorder
 import vad.dashing.tbox.MediaControlNotificationListenerService
 import vad.dashing.tbox.ShellExecutor
 import vad.dashing.tbox.mbcan.UniversalCanRepository
@@ -103,12 +104,15 @@ object YandexNavRepository {
     internal const val MINIMAP_MOVING_DECODE_INTERVAL_MS = 67L // ~15 FPS while moving
     internal const val MINIMAP_STATIONARY_DECODE_INTERVAL_MS = 333L // ~3 FPS when stationary (< 3 km/h)
     internal const val MINIMAP_STATIONARY_SPEED_THRESHOLD_KMH = 3.0f
+    internal const val MINIMAP_UNSOLICITED_DISABLE_INTERVAL_MS = 3_000L
     private const val MINIMAP_BITMAP_POOL_SIZE = 3
 
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val minimapDecodeDispatcher get() = LauncherCpuAffinity.minimapDecodeDispatcher
     private val pendingMinimapJpeg = AtomicReference<Triple<ByteArray, Boolean, Long>?>(null)
     private val minimapDecodeScheduled = AtomicBoolean(false)
+    private val isMinimapActive = AtomicBoolean(false)
+    private val lastMinimapDisableElapsedMs = AtomicLong(Long.MIN_VALUE)
     private val minimapFrameSeq = AtomicLong(0L)
     private val minimapPoolLock = Any()
     private val minimapBitmapPool = arrayOfNulls<Bitmap>(MINIMAP_BITMAP_POOL_SIZE)
@@ -599,6 +603,16 @@ object YandexNavRepository {
                     }
                 }
                 "MINIMAP" -> {
+                    if (!isMinimapActive.get()) {
+                        if (tryClaimUnsolicitedMinimapDisable()) {
+                            dispatchMinimapDisableBroadcast(context)
+                            DclLogRecorder.log(
+                                "YandexNav",
+                                "Unsolicited MINIMAP received while inactive -> sent MINIMAP_DISABLE",
+                            )
+                        }
+                        return@onReceive
+                    }
                     val jpeg = intent.getByteArrayExtra("minimap_jpeg")
                     val hasRoute = intent.getBooleanExtra("minimap_has_route", false)
                     if (jpeg != null && jpeg.isNotEmpty()) {
@@ -746,6 +760,7 @@ object YandexNavRepository {
         zoom: Float = 16f,
         viewMode: Int = 0,
     ) {
+        isMinimapActive.set(true)
         val w = (widthPx / 8 * 8).coerceIn(96, 1920)
         val h = (heightPx / 8 * 8).coerceIn(96, 1920)
         val z = zoom.coerceIn(10f, 19f)
@@ -764,7 +779,47 @@ object YandexNavRepository {
     }
 
     fun disableMinimap(context: Context) {
+        isMinimapActive.set(false)
+        pendingMinimapJpeg.set(null)
         clearMinimapFrame()
+        lastMinimapDisableElapsedMs.set(elapsedRealtimeProvider())
+        dispatchMinimapDisableBroadcast(context)
+    }
+
+    internal fun shouldSendUnsolicitedMinimapDisable(
+        isMinimapActive: Boolean,
+        nowElapsedMs: Long,
+        lastDisableElapsedMs: Long,
+    ): Boolean {
+        if (isMinimapActive) return false
+        if (lastDisableElapsedMs == Long.MIN_VALUE) return true
+        val elapsed = nowElapsedMs - lastDisableElapsedMs
+        return elapsed < 0L || elapsed >= MINIMAP_UNSOLICITED_DISABLE_INTERVAL_MS
+    }
+
+    internal fun tryClaimUnsolicitedMinimapDisable(
+        nowElapsedMs: Long = elapsedRealtimeProvider(),
+    ): Boolean {
+        if (isMinimapActive.get()) return false
+        while (true) {
+            val prev = lastMinimapDisableElapsedMs.get()
+            if (!shouldSendUnsolicitedMinimapDisable(false, nowElapsedMs, prev)) return false
+            if (lastMinimapDisableElapsedMs.compareAndSet(prev, nowElapsedMs)) {
+                return true
+            }
+        }
+    }
+
+    @VisibleForTesting
+    internal fun setMinimapDisableStateForTest(
+        active: Boolean,
+        lastDisableElapsedMs: Long = Long.MIN_VALUE,
+    ) {
+        isMinimapActive.set(active)
+        lastMinimapDisableElapsedMs.set(lastDisableElapsedMs)
+    }
+
+    private fun dispatchMinimapDisableBroadcast(context: Context) {
         val minimapIntent = Intent("com.yandex.MINIMAP_DISABLE").apply {
             putExtra("minimap_hide_on_route_end", false)
             addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES)

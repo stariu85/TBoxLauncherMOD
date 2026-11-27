@@ -423,14 +423,23 @@ object UniversalCanRepository {
 
     suspend fun setSourceSignals(sourceId: String, signals: Set<MbCanSignal>) {
         pendingCanonicalClearJobs.remove(sourceId)?.cancel()
-        synchronized(sourcesLock) {
+        val changed = synchronized(sourcesLock) {
             canonicalSourceWidgetKeys.remove(sourceId)
+            val prev = canonicalSourceSignals[sourceId]
             if (signals.isEmpty()) {
-                canonicalSourceSignals.remove(sourceId)
+                if (prev != null) {
+                    canonicalSourceSignals.remove(sourceId)
+                    true
+                } else false
             } else {
-                canonicalSourceSignals[sourceId] = signals.toSet()
+                if (prev != signals) {
+                    canonicalSourceSignals[sourceId] = signals.toSet()
+                    true
+                } else false
             }
         }
+        if (!changed) return
+
         if (_mode.value == HeadUnitCanMode.Android9MbCan) {
             MbCanRepository.setSourceSignals(sourceId, signals)
         } else {

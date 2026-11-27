@@ -402,7 +402,7 @@ fun LauncherVirtualRoad(
     }
     val driveBlend by rememberSyncedFloatAsState(
         targetValue = driveTarget,
-        durationMillis = 1500,
+        durationMillis = CAR_3D_VIEW_TRANSITION_DURATION_MS,
         easing = FastOutSlowInEasing,
         tickDivisor = 1,
         sharedClock = activeClock,

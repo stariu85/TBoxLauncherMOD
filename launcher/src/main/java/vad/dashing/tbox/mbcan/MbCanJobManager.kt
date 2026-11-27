@@ -67,6 +67,7 @@ object MbCanJobManager {
         mutex.withLock {
             val toAdd = signals - activeSignals
             val toRemove = activeSignals - signals
+            if (toAdd.isEmpty() && toRemove.isEmpty()) return
             MbCanDiagnostics.log(
                 "DEBUG",
                 "replaceSignals active=${activeSignals.joinToString()} incoming=${signals.joinToString()} add=${toAdd.joinToString()} remove=${toRemove.joinToString()}"

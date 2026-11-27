@@ -5,6 +5,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.SystemClock
+import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.TboxRepository
 import vad.dashing.tbox.camd.CamdCameraRepository
 import androidx.compose.animation.AnimatedContent
@@ -675,7 +676,7 @@ fun LauncherLeftPanel(
     LaunchedEffect(showDriveView) {
         if (showDriveView != lastSettledDriveView) {
             viewTransitionActive = true
-            delay(2000L)
+            delay(CAR_3D_VIEW_TRANSITION_DURATION_MS + 500L)
             viewTransitionActive = false
             lastSettledDriveView = showDriveView
         }
@@ -732,7 +733,7 @@ fun LauncherLeftPanel(
 
     val carOffsetDriveY by rememberSyncedDpAsState(
         targetValue = if (showDriveView) (-40).dp else 0.dp,
-        durationMillis = 1500,
+        durationMillis = CAR_3D_VIEW_TRANSITION_DURATION_MS,
         easing = FastOutSlowInEasing,
         tickDivisor = 1,
         sharedClock = synced30FpsClock,
@@ -740,7 +741,7 @@ fun LauncherLeftPanel(
 
     val alertsDriveViewOffsetY by rememberSyncedDpAsState(
         targetValue = if (showDriveView) 60.dp else 0.dp,
-        durationMillis = 1500,
+        durationMillis = CAR_3D_VIEW_TRANSITION_DURATION_MS,
         easing = FastOutSlowInEasing,
         tickDivisor = 1,
         sharedClock = synced30FpsClock,
@@ -1019,7 +1020,10 @@ fun LauncherLeftPanel(
                     isVehicleSettingsOverlayShowing ||
                     isVehicleSettingsActivityOpen
             )
-            val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible
+            val isActiveAppFullscreen by LauncherActiveAppTracker.isFullscreenFlow.collectAsStateWithLifecycle()
+            val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow.collectAsStateWithLifecycle()
+            val isCovered = isActiveAppFullscreen || hiddenForExternalApp || LauncherCarSurfaceRecovery.isCovered()
+            val carHidden = isAvmActive || isReverseCamerasOpen || isVehicleSettingsOpen || isAboutSettingsOpen || isQuickSettingsOpen || !carModelVisible || isCovered
             val parkEngagedEvent by LauncherCar3DModelTrigger.parkEngagedEvent.collectAsStateWithLifecycle(minActiveState = Lifecycle.State.CREATED)
             var isParkEngageRecent by remember { mutableStateOf(false) }
             LaunchedEffect(parkEngagedEvent) {

@@ -710,17 +710,26 @@ object MbCanRepository {
         val signals = widgetKeys.mapNotNull { key ->
             widgetKeyToSignal(UniversalCanRepository.normalizeWidgetDataKey(key))
         }.toSet()
+        val changed = sourceMutex.withLock {
+            val existing = sourceSignals[sourceId]
+            if (signals.isEmpty()) {
+                if (existing != null) {
+                    sourceSignals.remove(sourceId)
+                    true
+                } else false
+            } else {
+                if (existing != signals) {
+                    sourceSignals[sourceId] = signals
+                    true
+                } else false
+            }
+        }
+        if (!changed) return
+
         MbCanDiagnostics.log(
             "DEBUG",
             "setSourceWidgetKeys source=$sourceId widgetKeys=${widgetKeys.joinToString()} signals=${signals.joinToString()}"
         )
-        sourceMutex.withLock {
-            if (signals.isEmpty()) {
-                sourceSignals.remove(sourceId)
-            } else {
-                sourceSignals[sourceId] = signals
-            }
-        }
         scheduleReapplyAllInterests()
     }
 
@@ -730,23 +739,35 @@ object MbCanRepository {
      */
     suspend fun setSourceSignals(sourceId: String, signals: Set<MbCanSignal>) {
         cancelDebouncedClearSource(sourceId)
+        val changed = sourceMutex.withLock {
+            val existing = sourceSignals[sourceId]
+            if (signals.isEmpty()) {
+                if (existing != null) {
+                    sourceSignals.remove(sourceId)
+                    true
+                } else false
+            } else {
+                if (existing != signals) {
+                    sourceSignals[sourceId] = signals
+                    true
+                } else false
+            }
+        }
+        if (!changed) return
+
         MbCanDiagnostics.log(
             "DEBUG",
             "setSourceSignals source=$sourceId signals=${signals.joinToString()}"
         )
-        sourceMutex.withLock {
-            if (signals.isEmpty()) {
-                sourceSignals.remove(sourceId)
-            } else {
-                sourceSignals[sourceId] = signals
-            }
-        }
         scheduleReapplyAllInterests()
     }
 
     suspend fun clearSource(sourceId: String) {
+        val changed = sourceMutex.withLock {
+            sourceSignals.remove(sourceId) != null
+        }
+        if (!changed) return
         MbCanDiagnostics.log("DEBUG", "clearSource source=$sourceId")
-        sourceMutex.withLock { sourceSignals.remove(sourceId) }
         scheduleReapplyAllInterests()
     }
 
@@ -1375,8 +1396,13 @@ object MbCanRepository {
         reapplyJobRef.getAndSet(nextJob)?.cancel()
     }
 
+    @Volatile private var lastAppliedMergedSignals: Set<MbCanSignal>? = null
+
     private suspend fun reapplyAllInterests() {
         val mergedSignals = sourceMutex.withLock { sourceSignals.values.flatten().toSet() }
+        if (lastAppliedMergedSignals == mergedSignals) return
+        lastAppliedMergedSignals = mergedSignals
+
         MbCanJobManager.replaceSignals(mergedSignals)
         val needsCfgVehicleListener = mergedSignals.any { signal ->
             signal.subscribeDataTypes.contains(CFG_VEHICLE_DATA_TYPE)

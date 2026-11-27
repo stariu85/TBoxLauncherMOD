@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import vad.dashing.tbox.LauncherWindowState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -943,7 +944,10 @@ internal fun LauncherNavBgMinimapOverlay(
 ) {
     val context = LocalContext.current
     val isYandexOpen by YandexNavWindowTracker.isWindowOpen.collectAsStateWithLifecycle()
-    if (!isYandexOpen) return
+    val isFullscreen by LauncherActiveAppTracker.isFullscreenFlow.collectAsStateWithLifecycle()
+    val isHiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow.collectAsStateWithLifecycle()
+    val isCovered = isFullscreen || isHiddenForExternalApp || LauncherCarSurfaceRecovery.isCovered()
+    if (!isYandexOpen || isCovered) return
 
     val currentSpeedProvider by rememberUpdatedState(speedProvider)
     var appliedZoom by remember(isAutoZoomEnabled) {

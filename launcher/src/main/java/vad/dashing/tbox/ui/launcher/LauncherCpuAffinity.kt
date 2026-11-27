@@ -45,13 +45,13 @@ internal object LauncherCpuAffinity {
     private var pin3dRenderToCpu45Enabled: Boolean = false
 
     @Volatile
-    private var pinCanBusToCpu45Enabled: Boolean = false
+    private var pinCanBusToCpu45Enabled: Boolean = true
 
     @Volatile
-    private var pinServiceBgThreadsToCpu05Enabled: Boolean = false
+    private var pinServiceBgThreadsToCpu05Enabled: Boolean = true
 
     @Volatile
-    private var pinLightPollersToCpu05Enabled: Boolean = false
+    private var pinLightPollersToCpu05Enabled: Boolean = true
 
     @Volatile
     private var lastAppliedRenderThreadPinned: Boolean? = null

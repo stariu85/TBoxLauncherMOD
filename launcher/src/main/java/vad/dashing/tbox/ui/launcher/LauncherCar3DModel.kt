@@ -35,6 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.viewinterop.AndroidView
+import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.ui.rememberPlaySystemClickSound
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -103,9 +104,6 @@ object LauncherCar3DModelTrigger {
     private val _quickSettingsClosedEvent = MutableStateFlow(0L)
     val quickSettingsClosedEvent: StateFlow<Long> = _quickSettingsClosedEvent.asStateFlow()
 
-    private val _camdCamerasClosedEvent = MutableStateFlow(0L)
-    val camdCamerasClosedEvent: StateFlow<Long> = _camdCamerasClosedEvent.asStateFlow()
-
     private val _reverseCamerasClosedEvent = MutableStateFlow(0L)
     val reverseCamerasClosedEvent: StateFlow<Long> = _reverseCamerasClosedEvent.asStateFlow()
 
@@ -132,10 +130,6 @@ object LauncherCar3DModelTrigger {
 
     fun notifyQuickSettingsClosed() {
         _quickSettingsClosedEvent.value = SystemClock.uptimeMillis()
-    }
-
-    fun notifyCamdCamerasClosed() {
-        _camdCamerasClosedEvent.value = SystemClock.uptimeMillis()
     }
 
     fun notifyReverseCamerasClosed() {
@@ -197,6 +191,8 @@ private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val BASE_MODEL_SCALE = 0.378f
 private const val PREPARED_FRAMES_WARMUP = 15
+internal const val CAR_3D_VIEW_TRANSITION_DURATION_MS = 1000
+internal const val CAR_3D_VIEW_TRANSITION_DURATION_SEC = CAR_3D_VIEW_TRANSITION_DURATION_MS / 1000f
 internal const val CAR_3D_TRANSITION_TICK_DIVISOR = 1 // 30 FPS (2 VSYNC ticks at 60 Hz, synced with road)
 internal const val CAR_3D_WAKEUP_TICK_DIVISOR = 2 // 15 FPS (4 VSYNC ticks at 60 Hz, synced with PDC)
 internal const val CAR_3D_STATIC_TICK_DIVISOR = 30 // ~1 FPS (when pause is blocked, e.g. door left open >2s)
@@ -597,7 +593,6 @@ private fun LauncherCarFilamentContent(
     val backPressedEvent by LauncherCar3DModelTrigger.backPressedEvent.collectAsStateWithLifecycle()
     val previousAppPressedEvent by LauncherCar3DModelTrigger.previousAppPressedEvent.collectAsStateWithLifecycle()
     val quickSettingsClosedEvent by LauncherCar3DModelTrigger.quickSettingsClosedEvent.collectAsStateWithLifecycle()
-    val camdCamerasClosedEvent by LauncherCar3DModelTrigger.camdCamerasClosedEvent.collectAsStateWithLifecycle()
     val reverseCamerasClosedEvent by LauncherCar3DModelTrigger.reverseCamerasClosedEvent.collectAsStateWithLifecycle()
     val paintChangedEvent by LauncherCar3DModelTrigger.paintChangedEvent.collectAsStateWithLifecycle()
     val settingsOrbitEvent by LauncherCar3DModelTrigger.settingsOrbitEvent.collectAsStateWithLifecycle()
@@ -607,6 +602,8 @@ private fun LauncherCarFilamentContent(
     val windowReturnedEvent by LauncherCar3DModelTrigger.windowReturnedEvent.collectAsStateWithLifecycle(
         minActiveState = Lifecycle.State.CREATED,
     )
+    val isActiveAppFullscreen by LauncherActiveAppTracker.isFullscreenFlow.collectAsStateWithLifecycle()
+    val hiddenForExternalApp by LauncherWindowState.hiddenForExternalAppFlow.collectAsStateWithLifecycle()
     val cameraAnimRevision by LauncherAppConfigStore.cameraAnimationRevisionFlow.collectAsStateWithLifecycle()
     val cameraAnimEnabled = remember(context, cameraAnimRevision) {
         LauncherAppConfigStore.cameraAnimationEnabled(context)
@@ -716,12 +713,13 @@ private fun LauncherCarFilamentContent(
         targetDriveBlend,
         isAvmActive,
         carHidden,
+        isActiveAppFullscreen,
+        hiddenForExternalApp,
         topShadeOpen,
         homePressedEvent,
         backPressedEvent,
         previousAppPressedEvent,
         quickSettingsClosedEvent,
-        camdCamerasClosedEvent,
         reverseCamerasClosedEvent,
         topShadeClosedEvent,
         paintChangedEvent,
@@ -735,7 +733,8 @@ private fun LauncherCarFilamentContent(
         val isOrbitRecentNow = settingsOrbitEvent > 0L && (nowMs - settingsOrbitEvent) < 2_000L
         val isParkEngageRecent = parkEngagedEvent > 0L && (nowMs - parkEngagedEvent) < 2_000L
 
-        val shouldPause = topShadeOpen ||
+        val isHiddenByExternalApp = isActiveAppFullscreen || hiddenForExternalApp || LauncherCarSurfaceRecovery.isCovered()
+        val shouldPause = topShadeOpen || isHiddenByExternalApp ||
             ((isAvmActive || carHidden) && !isPaintChangeRecent && !isParkEngageRecent)
 
         if (shouldPause) {
@@ -866,7 +865,6 @@ private fun LauncherCarFilamentContent(
         backPressedEvent,
         previousAppPressedEvent,
         quickSettingsClosedEvent,
-        camdCamerasClosedEvent,
         reverseCamerasClosedEvent,
         topShadeClosedEvent,
         paintChangedEvent,
@@ -1008,7 +1006,6 @@ private fun LauncherCarFilamentContent(
                         val backEventMs = LauncherCar3DModelTrigger.backPressedEvent.value
                         val prevAppEventMs = LauncherCar3DModelTrigger.previousAppPressedEvent.value
                         val quickSettingsClosedEventMs = LauncherCar3DModelTrigger.quickSettingsClosedEvent.value
-                        val camdCamerasClosedEventMs = LauncherCar3DModelTrigger.camdCamerasClosedEvent.value
                         val reverseCamerasClosedEventMs = LauncherCar3DModelTrigger.reverseCamerasClosedEvent.value
                         val settingsOrbitEventMs = LauncherCar3DModelTrigger.settingsOrbitEvent.value
                         val isOrbitRecentFrame = (nowMs - settingsOrbitEventMs) < 2000L
@@ -1020,7 +1017,6 @@ private fun LauncherCarFilamentContent(
                             (nowMs - backEventMs) < 2000L ||
                             (nowMs - prevAppEventMs) < 2000L ||
                             (nowMs - quickSettingsClosedEventMs) < 2000L ||
-                            (nowMs - camdCamerasClosedEventMs) < 2000L ||
                             (nowMs - reverseCamerasClosedEventMs) < 2000L ||
                             isTopShadeClosedRecent ||
                             isPaintChangeRecent ||
@@ -1064,9 +1060,13 @@ private fun LauncherCarFilamentContent(
                             }
                             frameState.lastTargetDriveBlend = targetDriveBlend
                             if (frameState.currentDriveBlend < targetDriveBlend) {
-                                frameState.currentDriveBlend = (frameState.currentDriveBlend + dt / 1.5f).coerceAtMost(targetDriveBlend)
+                                frameState.currentDriveBlend =
+                                    (frameState.currentDriveBlend + dt / CAR_3D_VIEW_TRANSITION_DURATION_SEC)
+                                        .coerceAtMost(targetDriveBlend)
                             } else if (frameState.currentDriveBlend > targetDriveBlend) {
-                                frameState.currentDriveBlend = (frameState.currentDriveBlend - dt / 1.5f).coerceAtLeast(targetDriveBlend)
+                                frameState.currentDriveBlend =
+                                    (frameState.currentDriveBlend - dt / CAR_3D_VIEW_TRANSITION_DURATION_SEC)
+                                        .coerceAtLeast(targetDriveBlend)
                             }
                             if (abs(frameState.currentDriveBlend - targetDriveBlend) < 0.001f) {
                                 frameState.currentDriveBlend = targetDriveBlend
@@ -1605,6 +1605,9 @@ internal class AdasSceneLifecycleOwner(
 
     private val hostObserver = LifecycleEventObserver { _, event ->
         when (event) {
+            Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                pauseScene()
+            }
             Lifecycle.Event.ON_DESTROY -> {
                 if (registry.currentState != Lifecycle.State.DESTROYED) {
                     registry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -1623,6 +1626,7 @@ internal class AdasSceneLifecycleOwner(
 
     fun resumeScene() {
         if (hostLifecycle.currentState == Lifecycle.State.DESTROYED) return
+        if (!hostLifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
         if (registry.currentState != Lifecycle.State.RESUMED) {
             registry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }

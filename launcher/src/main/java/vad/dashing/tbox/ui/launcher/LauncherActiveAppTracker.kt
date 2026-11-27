@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.api.DclUiStateNotifier
 
 private const val TAG = "ActiveAppTracker"
@@ -114,6 +115,7 @@ internal object LauncherActiveAppTracker {
             )
             _activeAppPackageFlow.value = packageName
             _isFullscreenFlow.value = isFullscreen
+            LauncherWindowState.hiddenForExternalApp = isFullscreen
         }
         if (taskId != null && taskId > 0) {
             recordKnownTaskId(packageName, taskId)
@@ -177,6 +179,7 @@ internal object LauncherActiveAppTracker {
             prevPkgAfter = state.previousAppPackage
             _activeAppPackageFlow.value = null
             _isFullscreenFlow.value = false
+            LauncherWindowState.hiddenForExternalApp = false
         }
         YandexNavWindowTracker.onHomePressed()
         Log.w(TAG, "onHomePressed activePkg=$activePkg previousPkg=$prevPkgAfter")
@@ -235,6 +238,7 @@ internal object LauncherActiveAppTracker {
             )
             _activeAppPackageFlow.value = null
             _isFullscreenFlow.value = false
+            LauncherWindowState.hiddenForExternalApp = false
         }
         Log.w(TAG, "clearActiveApp wasPkg=$wasPkg")
         if (!wasPkg.isNullOrBlank()) {
@@ -253,6 +257,7 @@ internal object LauncherActiveAppTracker {
             state = TrackerState()
             _activeAppPackageFlow.value = null
             _isFullscreenFlow.value = false
+            LauncherWindowState.hiddenForExternalApp = false
         }
         clearAllKnownTaskIds()
         YandexNavWindowTracker.onAppClosed(wasPkg)

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
@@ -231,6 +232,8 @@ object CamdCameraRepository {
     @Volatile
     private var lastAutoAvmHoldOff: Boolean? = null
     @Volatile
+    private var lastAutoAvmSignals: Set<MbCanSignal>? = null
+    @Volatile
     private var avmVerificationJob: Job? = null
     @Volatile
     private var lastRequestedRecording: Boolean? = null
@@ -397,7 +400,10 @@ object CamdCameraRepository {
                 LauncherAvmRepository.isAvmActive,
             ) { _, speed, activeGear, hasPdcObstacle, isAvmActive ->
                 AutoAvmInputs(speed, activeGear, hasPdcObstacle, isAvmActive)
-            }.collect { inputs ->
+            }
+            .distinctUntilChanged()
+            .conflate()
+            .collect { inputs ->
                 if (inputs.activeGear == 'P' && lastAutoAvmGear != null && lastAutoAvmGear != 'P') {
                     LauncherCar3DModelTrigger.notifyParkEngaged()
                 }
@@ -632,8 +638,9 @@ object CamdCameraRepository {
     private suspend fun checkAutoAvmSpeed(context: Context, speed: Float?, activeGear: Char?) {
         val enabled = LauncherAppConfigStore.camdAutoDisableStockAvm(context)
         if (!enabled) {
-            if (lastAutoAvmHoldOff != null) {
+            if (lastAutoAvmHoldOff != null || lastAutoAvmSignals != null) {
                 lastAutoAvmHoldOff = null
+                lastAutoAvmSignals = null
                 UniversalCanRepository.setSourceSignals("camd_auto_avm", emptySet())
             }
             return
@@ -647,7 +654,10 @@ object CamdCameraRepository {
         } else {
             setOf(MbCanSignal.CarSpeed)
         }
-        UniversalCanRepository.setSourceSignals("camd_auto_avm", signals)
+        if (lastAutoAvmSignals != signals) {
+            lastAutoAvmSignals = signals
+            UniversalCanRepository.setSourceSignals("camd_auto_avm", signals)
+        }
 
         if (!CamdSocketClient.isInstalled(context)) return
 
@@ -1143,7 +1153,6 @@ object CamdCameraRepository {
         }
         _isReverseCamerasOpen.value = false
         LauncherCar3DModelTrigger.notifyReverseCamerasClosed()
-        LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
     }
 
     internal fun build360CameraCommands(
@@ -1520,7 +1529,6 @@ object CamdCameraRepository {
             _activeTurnSignalSide.value = null
             turnSignalsLatch.reset()
             LauncherCar3DModelTrigger.notifyReverseCamerasClosed()
-            LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
         }
     }
 
@@ -1546,7 +1554,6 @@ object CamdCameraRepository {
                     _activeTurnSignalSide.value = null
                 }
             }
-            LauncherCar3DModelTrigger.notifyCamdCamerasClosed()
         }
     }
 
